@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { router, usePathname } from 'expo-router';
 import { ScrollView, Text, View, StyleSheet, TextInput, Alert } from 'react-native';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
@@ -13,8 +13,9 @@ import { EstimateFilterBar } from '@/components/renova/estimate/EstimateFilterBa
 import { EstimateSourceLegend } from '@/components/renova/estimate/EstimateSourceLegend';
 import { EstimateEditorByRoom } from '@/components/renova/estimate/EstimateEditorByRoom';
 import { EstimateOperationsPanel } from '@/components/renova/estimate/EstimateOperationsPanel';
+import { RemovedEstimateLinesPanel } from '@/components/renova/estimate/RemovedEstimateLinesPanel';
 import { ObjectTabGuide } from '@/components/screens/object/ObjectTabGuide';
-import { api } from '@/lib/api';
+import { api, type EstimateLifecycleLine, type EstimateLine } from '@/lib/api';
 import { budgetTabRoute, repairTabRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { DOCUMENTS_MENU_HINT } from '@/lib/documentsNav';
@@ -22,6 +23,8 @@ import { alertChangeOrderSubmitted } from '@/lib/procurementNav';
 import { alertEstimateProposed, alertEstimateProposalRevoked } from '@/lib/estimatePayNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { screenLayout } from '@/constants/screenLayout';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
+import { reportError } from '@/lib/reportError';
 import {
   estimateTotals,
   filterEstimateLines,
@@ -36,6 +39,10 @@ export function ContractorEstimateView() {
   const [coAmount, setCoAmount] = useState('8500');
   const [lineType, setLineType] = useState<EstimateLineTypeFilter>('all');
   const [category, setCategory] = useState<string | null>(null);
+  const [lifecycleActive, setLifecycleActive] = useState<EstimateLifecycleLine[]>([]);
+  const [removedLines, setRemovedLines] = useState<EstimateLifecycleLine[]>([]);
+  const [lifecycleHealthy, setLifecycleHealthy] = useState(false);
+  const [lifecycleBusyId, setLifecycleBusyId] = useState<string | null>(null);
 
   const allLines = activeProject?.estimate_lines || [];
   const filtered = useMemo(
@@ -44,18 +51,49 @@ export function ContractorEstimateView() {
   );
   const totals = estimateTotals(allLines);
   const filteredTotal = estimateTotals(filtered).total;
+  const removableIds = useMemo(
+    () => new Set(
+      lifecycleHealthy
+        ? lifecycleActive
+            .filter((line) => line.lifecycle_status === 'active' && line.origin !== 'system')
+            .map((line) => line.id)
+        : [],
+    ),
+    [lifecycleActive, lifecycleHealthy],
+  );
+
+  const loadLifecycle = useCallback(async () => {
+    if (!user || !activeProject) return;
+    const userId = user.id;
+    const projectId = activeProject.id;
+    try {
+      const snapshot = await api.getEstimateLineLifecycle(userId, projectId);
+      setLifecycleActive(snapshot.active);
+      setRemovedLines(snapshot.removed);
+      setLifecycleHealthy(true);
+    } catch (error) {
+      setLifecycleHealthy(false);
+      reportError('estimate.contractor.lifecycle', error, { userId, projectId });
+    }
+  }, [user?.id, activeProject?.id]);
+
+  useEffect(() => { void loadLifecycle(); }, [loadLifecycle]);
+  useProjectDataReload(loadLifecycle);
 
   if (!activeProject) {
     return <ProjectEmptyState role="contractor" />;
   }
   const project = activeProject;
 
+  async function reconcileEstimateLifecycle() {
+    await loadProject(project.id);
+    await loadLifecycle();
+  }
+
   async function patchLine(lineId: string, body: object) {
     if (!user) return;
     try {
       await api.patchEstimateLine(user.id, project.id, lineId, body);
-      // loadProject fetches the committed ProjectDetail and performs project-data
-      // reconciliation; do not follow it with a second sync of stale `project`.
       await loadProject(project.id);
     } catch (e: unknown) {
       if (isOfflineQueued(e)) {
@@ -66,12 +104,74 @@ export function ContractorEstimateView() {
     }
   }
 
+  function removeLine(line: EstimateLine) {
+    if (!user || !canWrite || !lifecycleHealthy || !removableIds.has(line.id) || project.estimate_locked_at) return;
+    showActionConfirm({
+      title: 'Убрать строку из сметы?',
+      message: `«${line.name}» перестанет входить в текущую сумму, но останется в истории и сможет быть восстановлена до фиксации сметы.`,
+      primaryLabel: 'Убрать',
+      primaryDestructive: true,
+      onPrimary: () => {
+        void (async () => {
+          setLifecycleBusyId(line.id);
+          try {
+            await api.removeEstimateLine(user.id, project.id, line.id);
+            await reconcileEstimateLifecycle();
+          } catch (error) {
+            if (isOfflineQueued(error)) {
+              notifyOfflineQueued('Удаление строки сметы');
+            } else {
+              showActionConfirm({
+                title: 'Строка не убрана',
+                message: error instanceof Error ? error.message : 'Повторите действие.',
+              });
+            }
+          } finally {
+            setLifecycleBusyId(null);
+          }
+        })();
+      },
+      secondaryLabel: 'Отмена',
+      onSecondary: () => undefined,
+    });
+  }
+
+  function restoreLine(line: EstimateLifecycleLine) {
+    if (!user || !canWrite || !lifecycleHealthy || project.estimate_locked_at) return;
+    showActionConfirm({
+      title: 'Восстановить строку?',
+      message: `«${line.name}» вернётся в текущую смету с тем же ID и снова войдёт в расчёт бюджета.`,
+      primaryLabel: 'Восстановить',
+      onPrimary: () => {
+        void (async () => {
+          setLifecycleBusyId(line.id);
+          try {
+            await api.restoreEstimateLine(user.id, project.id, line.id);
+            await reconcileEstimateLifecycle();
+          } catch (error) {
+            if (isOfflineQueued(error)) {
+              notifyOfflineQueued('Восстановление строки сметы');
+            } else {
+              showActionConfirm({
+                title: 'Строка не восстановлена',
+                message: error instanceof Error ? error.message : 'Повторите действие.',
+              });
+            }
+          } finally {
+            setLifecycleBusyId(null);
+          }
+        })();
+      },
+      secondaryLabel: 'Отмена',
+      onSecondary: () => undefined,
+    });
+  }
+
   async function addChangeOrder() {
     if (!user) return;
     try {
       await api.createChangeOrder(user.id, project.id, { title: coTitle, amount: parseFloat(coAmount) || 0 });
       await loadProject(project.id);
-      // W127: ДО → слой изменений / бюджет после approve (см. EstimateChangesLayer)
       alertChangeOrderSubmitted('contractor');
     } catch (e: unknown) {
       if (isOfflineQueued(e)) {
@@ -99,6 +199,12 @@ export function ContractorEstimateView() {
           </Text>
         </View>
 
+        {!lifecycleHealthy ? (
+          <Text style={styles.lifecycleWarning}>
+            История строк временно не подтверждена — убрать или восстановить строку сейчас нельзя. Редактирование текущих значений остаётся отдельно.
+          </Text>
+        ) : null}
+
         <EstimateSourceLegend />
         <EstimateFilterBar
           lines={allLines}
@@ -111,7 +217,22 @@ export function ContractorEstimateView() {
         <Text style={styles.sectionTitle}>
           Редактор · {filtered.length} поз. · {formatRub(filteredTotal)}
         </Text>
-        <EstimateEditorByRoom lines={filtered} canWrite={canWrite} onPatch={patchLine} />
+        <EstimateEditorByRoom
+          lines={filtered}
+          canWrite={canWrite && !Boolean(project.estimate_locked_at)}
+          removableIds={project.estimate_locked_at ? new Set<string>() : removableIds}
+          removingId={lifecycleBusyId}
+          onPatch={patchLine}
+          onRemove={removeLine}
+        />
+
+        <RemovedEstimateLinesPanel
+          lines={removedLines}
+          role="contractor"
+          canRestore={canWrite && lifecycleHealthy && !Boolean(project.estimate_locked_at)}
+          busyId={lifecycleBusyId}
+          onRestore={restoreLine}
+        />
 
         {user && canWrite && !project.estimate_locked_at && allLines.length > 0 && (
           <>
@@ -137,7 +258,6 @@ export function ContractorEstimateView() {
                 title="Отозвать предложение"
                 variant="outline"
                 onPress={() => {
-                  // Clarity U: тот же confirm, что EstimateSummaryLayer (не обходить sheet)
                   showActionConfirm({
                     title: 'Отозвать предложение?',
                     message: 'Смета снова станет черновиком. Заказчик не увидит это предложение.',
@@ -170,7 +290,10 @@ export function ContractorEstimateView() {
             collapsed
             userId={user.id}
             project={project}
-            onSaved={() => loadProject(project.id)}
+            onSaved={async () => {
+              await loadProject(project.id);
+              await loadLifecycle();
+            }}
           />
         )}
 
@@ -207,6 +330,7 @@ const styles = StyleSheet.create({
   total: { fontSize: 28, fontWeight: '800', color: RenovaTheme.colors.primary, marginTop: 4 },
   locked: { fontSize: 12, color: RenovaTheme.colors.warningText, marginTop: 4, fontWeight: '600' },
   breakdown: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 4, lineHeight: 16 },
+  lifecycleWarning: { fontSize: 12, lineHeight: 17, color: RenovaTheme.colors.warningText, marginBottom: 10 },
   sectionTitle: { fontWeight: '700', fontSize: 13, marginBottom: 8, color: RenovaTheme.colors.text },
   meta: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 16, marginTop: 8 },
   links: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
