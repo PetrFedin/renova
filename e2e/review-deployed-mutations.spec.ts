@@ -37,7 +37,7 @@ async function json<T>(response: APIResponse, allowed: number | number[] = 200):
   const text = await response.text();
   expect(
     statuses,
-    `${response.request().method()} ${response.url()} -> ${response.status()} ${text}`,
+    `${response.url()} -> ${response.status()} ${text}`,
   ).toContain(response.status());
   if (!text) return {} as T;
   return JSON.parse(text) as T;
@@ -245,7 +245,6 @@ test.describe.serial('deployed mutation proof', () => {
       );
       expect((await project(context, contractor, projectId)).id).toBe(projectId);
 
-      // ESTIMATE: contractor owns draft mutation, customer observes recalculated plan.
       const beforeEstimate = await project(context, customer, projectId);
       const estimatePayload = {
         line_type: 'work',
@@ -308,7 +307,6 @@ test.describe.serial('deployed mutation proof', () => {
         }),
       );
 
-      // FINANCE: prove canonical source, aggregate recalculation and deletion recovery for both roles.
       await proveReceiptMutation({
         context,
         actor: customer,
@@ -328,7 +326,6 @@ test.describe.serial('deployed mutation proof', () => {
         label: 'contractor',
       });
 
-      // SCHEDULE: contractor changes the working plan; customer is read-only for contractor scheduling.
       const start = new Date(Date.now() + 5 * 86_400_000).toISOString().slice(0, 10);
       const end = new Date(Date.now() + 10 * 86_400_000).toISOString().slice(0, 10);
       const stagePayload = {
@@ -382,7 +379,6 @@ test.describe.serial('deployed mutation proof', () => {
         'new stage must participate in the schedule read model',
       ).toBeTruthy();
 
-      // CONTROL: customer creates/reopens; contractor works/fixes; customer verifies/closes.
       const issue = await json<{ id: string; status: string }>(
         await api(context, customer, 'POST', `/projects/${projectId}/issues`, {
           title: `E2E quality issue ${Date.now()}`,
@@ -437,7 +433,6 @@ test.describe.serial('deployed mutation proof', () => {
       );
       expect(issues.find((item) => item.id === issue.id)?.status).toBe('open');
 
-      // Final recovery: only the disposable test project is purged.
       await json(await api(context, customer, 'POST', `/projects/${projectId}/trash`));
       await json<{ ok: boolean }>(await api(context, customer, 'DELETE', `/projects/${projectId}`));
       const missing = await api(context, customer, 'GET', `/projects/${projectId}`);
