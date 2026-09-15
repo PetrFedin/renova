@@ -9,7 +9,7 @@ import { groupEstimateLinesByRoom } from '@/lib/domain/groupEstimateByRoom';
 import { estimateLineSourceLabel } from '@/lib/domain/estimateFilters';
 
 function materialMeta(l: EstimateLine): string {
-  const fact = l.quantity_actual || l.quantity_planned;
+  const fact = l.quantity_actual ?? l.quantity_planned;
   const overrun = l.quantity_planned ? ((fact - l.quantity_planned) / l.quantity_planned) * 100 : 0;
   return `план ${l.quantity_planned} → факт ${fact} ${l.unit}${overrun > 5 ? ` · +${overrun.toFixed(0)}%` : ''}`;
 }
