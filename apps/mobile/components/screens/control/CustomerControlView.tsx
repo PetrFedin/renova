@@ -4,6 +4,7 @@ import { Alert, ScrollView, View, Text, StyleSheet, Pressable } from 'react-nati
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { ReadOnlyBanner } from '@/components/renova/ReadOnlyGuard';
+import { TechnicalSupervisionCard } from '@/components/renova/TechnicalSupervisionCard';
 import { UnifiedAcceptanceList } from '@/components/renova/UnifiedAcceptanceList';
 import { computePendingAcceptanceCount } from '@/lib/domain/acceptancePending';
 import { useCallback, useState } from 'react';
@@ -59,7 +60,6 @@ export function CustomerControlView() {
   }, [user?.id, activeProject?.id]);
 
   useFocusEffect(useCallback(() => { reload(); }, [reload]));
-  // W89: после приёмки/QC в другом экране — обновить список без remount
   useProjectDataReload(reload);
 
   if (!activeProject || !user) return <ProjectEmptyState role="customer" />;
@@ -78,27 +78,25 @@ export function CustomerControlView() {
   }
 
   const pendingCount = computePendingAcceptanceCount(activeProject.stages, acceptances);
-  const rework = activeProject.stages.filter((s) => s.status === 'rework');
-  const openIssues = issues.filter((i) => i.status !== 'closed');
+  const rework = activeProject.stages.filter((stage) => stage.status === 'rework');
+  const openIssues = issues.filter((issue) => issue.status !== 'closed');
   const sortedIssues = focusIssueId
     ? [...openIssues].sort((a, b) => Number(b.id === focusIssueId) - Number(a.id === focusIssueId))
     : openIssues;
-  const openWarranty = warrantyItems.filter((w) => w.status !== 'closed');
+  const openWarranty = warrantyItems.filter((item) => item.status !== 'closed');
 
   const warrantyBlock = (warrantyOpen > 0 || focusWarranty) ? (
     <>
       <Text style={[s.section, focusWarranty && s.sectionFocus]}>Гарантия{warrantyOpen ? ` · ${warrantyOpen}` : ''}</Text>
-      {!openWarranty.length && focusWarranty ? (
-        <Text style={s.empty}>Нет открытых гарантийных обращений</Text>
-      ) : null}
-      {openWarranty.map((w) => (
+      {!openWarranty.length && focusWarranty ? <Text style={s.empty}>Нет открытых гарантийных обращений</Text> : null}
+      {openWarranty.map((item) => (
         <Pressable
-          key={w.id}
+          key={item.id}
           style={[s.row, focusWarranty && s.rowFocus]}
-          onPress={() => openQcIssue(w.id, pathname, 'customer')}
+          onPress={() => openQcIssue(item.id, pathname, 'customer')}
         >
-          <Text style={s.title}>{w.title}{w.overdue ? ' · просрочено' : ''}</Text>
-          <Text style={s.meta}>{w.status}</Text>
+          <Text style={s.title}>{item.title}{item.overdue ? ' · просрочено' : ''}</Text>
+          <Text style={s.meta}>{item.status}</Text>
         </Pressable>
       ))}
       {openWarranty.length > 0 || focusWarranty ? (
@@ -114,13 +112,14 @@ export function CustomerControlView() {
   return (
     <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
       <ReadOnlyBanner />
+      <TechnicalSupervisionCard userId={user.id} projectId={activeProject.id} canManage={!readOnly} />
+
       <View style={s.summary}>
         <View style={s.cell}><Text style={s.n}>{pendingCount}</Text><Text style={s.l}>Приёмка</Text></View>
         <View style={s.cell}><Text style={s.n}>{openIssues.length || rework.length}</Text><Text style={s.l}>Замечания</Text></View>
-        <View style={s.cell}><Text style={s.n}>{warrantyOpen || openIssues.filter(i => i.severity === 'critical' || i.severity === 'high').length}</Text><Text style={s.l}>{warrantyOpen ? 'Гарантия' : 'Критичные'}</Text></View>
+        <View style={s.cell}><Text style={s.n}>{warrantyOpen || openIssues.filter((issue) => issue.severity === 'critical' || issue.severity === 'high').length}</Text><Text style={s.l}>{warrantyOpen ? 'Гарантия' : 'Критичные'}</Text></View>
       </View>
 
-      {/* Investor P1: focus=warranty — блок гарантий первым */}
       {focusWarranty ? warrantyBlock : null}
 
       <Text style={s.section}>Решение</Text>
@@ -137,15 +136,15 @@ export function CustomerControlView() {
 
       <Text style={s.section}>Замечания</Text>
       {!sortedIssues.length && <Text style={s.empty}>Нет открытых замечаний</Text>}
-      {sortedIssues.slice(0, 5).map((iss) => (
+      {sortedIssues.slice(0, 5).map((issue) => (
         <Pressable
-          key={iss.id}
-          style={[s.row, iss.id === focusIssueId && s.rowFocus]}
-          onPress={() => openQcIssue(iss.id, pathname, 'customer')}
+          key={issue.id}
+          style={[s.row, issue.id === focusIssueId && s.rowFocus]}
+          onPress={() => openQcIssue(issue.id, pathname, 'customer')}
         >
-          <Text style={s.title}>{iss.title}{iss.photo_url ? ' · фото' : ''}{iss.floor_plan_id ? ' · план' : ''}</Text>
-          <Text style={s.meta}>{issueSeverityLabel(iss.severity)} · {issueStatusLabel(iss.status)}{iss.due_at ? ` · до ${iss.due_at.slice(0, 10)}` : ''}{iss.stage_id ? ' · → этап' : ''}</Text>
-          {iss.floor_plan_id ? (
+          <Text style={s.title}>{issue.title}{issue.photo_url ? ' · фото' : ''}{issue.floor_plan_id ? ' · план' : ''}</Text>
+          <Text style={s.meta}>{issueSeverityLabel(issue.severity)} · {issueStatusLabel(issue.status)}{issue.due_at ? ` · до ${issue.due_at.slice(0, 10)}` : ''}{issue.stage_id ? ' · → этап' : ''}</Text>
+          {issue.floor_plan_id ? (
             <Pressable
               onPress={() => pushOsNav(objectTabRoute('customer', 'plan', 'floor'), pathname, 'customer')}
               style={{ marginTop: 4 }}
@@ -153,22 +152,21 @@ export function CustomerControlView() {
               <Text style={s.planLink}>→ На план</Text>
             </Pressable>
           ) : null}
-          {!readOnly && iss.status !== 'closed' && (
+          {!readOnly && issue.status !== 'closed' && (
             <PrimaryButton
-              title={iss.status === 'fixed' ? 'Подтвердить исправление' : 'Закрыть'}
+              title={issue.status === 'fixed' ? 'Подтвердить исправление' : 'Закрыть'}
               compact
               variant="outline"
               onPress={() => {
-                const wasFixed = iss.status === 'fixed';
-                // Clarity W: pre-confirm до closeIssue
+                const wasFixed = issue.status === 'fixed';
                 showActionConfirm({
                   title: wasFixed ? 'Подтвердить исправление?' : 'Закрыть замечание?',
-                  message: `«${iss.title}»`,
+                  message: `«${issue.title}»`,
                   primaryLabel: wasFixed ? 'Подтвердить' : 'Закрыть',
                   onPrimary: () => {
                     void (async () => {
                       try {
-                        await api.closeIssue(user!.id, activeProject!.id, iss.id);
+                        await api.closeIssue(user.id, activeProject.id, issue.id);
                         await syncProjectSideEffects({ user, project: activeProject });
                         reload();
                         if (wasFixed) {
@@ -181,14 +179,14 @@ export function CustomerControlView() {
                             onSecondary: () => undefined,
                           });
                         }
-                      } catch (e) {
-                        if (isOfflineQueued(e)) {
+                      } catch (error) {
+                        if (isOfflineQueued(error)) {
                           notifyOfflineQueued(wasFixed ? 'Подтверждение исправления' : 'Закрытие замечания');
                         } else {
-                          reportError('control.customerClose', e);
+                          reportError('control.customerClose', error);
                           showActionConfirm({
                             title: 'Ошибка',
-                            message: e instanceof Error ? e.message : 'Не удалось обновить',
+                            message: error instanceof Error ? error.message : 'Не удалось обновить',
                           });
                         }
                       }
@@ -212,9 +210,9 @@ export function CustomerControlView() {
 
       {rework.length > 0 && <>
         <Text style={s.section}>Доработка</Text>
-        {rework.map((st) => (
-          <Pressable key={st.id} style={s.row} onPress={() => nav.stage(st.id)}>
-            <Text style={s.title}>{st.name}</Text>
+        {rework.map((stage) => (
+          <Pressable key={stage.id} style={s.row} onPress={() => nav.stage(stage.id)}>
+            <Text style={s.title}>{stage.name}</Text>
             <Text style={s.meta}>Доработка</Text>
           </Pressable>
         ))}
