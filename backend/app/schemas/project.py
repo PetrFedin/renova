@@ -193,6 +193,11 @@ class ProjectOut(BaseModel):
     planned_start_date: str | None = None
     planned_end_date: str | None = None
     pending_payments: int | None = None
+    contractor_id: str | None = None
+    # Participant-aware execution truth; not inferred only from contractor_id.
+    has_active_executor: bool = False
+    # Per-request principal capability used by mobile room surfaces.
+    room_direct_edit_allowed: bool = False
     is_archived: bool = False
     trashed_at: str | None = None
     estimate_locked_at: str | None = None
@@ -218,8 +223,4 @@ class YookassaCheckoutIn(BaseModel):
 class YookassaCheckoutOut(BaseModel):
     demo: bool = False
     payment_id: str | None = None
-    yookassa_payment_id: str | None = None
     confirmation_url: str | None = None
-    status: str | None = None
-    error: str | None = None
-    message: str | None = None
