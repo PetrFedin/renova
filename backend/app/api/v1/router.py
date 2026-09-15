@@ -8,6 +8,7 @@ from app.api.v1 import selections
 from app.api.v1 import bank_statements
 from app.api.v1 import expense_mutations
 from app.api.v1 import material_price_sync
+from app.api.v1 import material_needs_integrity
 from app.api.v1 import payment_disputes
 from app.api.v1 import payment_history
 from app.api.v1 import payment_checkout_integrity
@@ -168,5 +169,8 @@ api_router.include_router(bank_statements.router)
 api_router.include_router(warranty.router)
 api_router.include_router(export.router)
 api_router.include_router(receipts.router)
+_MATERIAL_NEEDS_ROUTES: set[RouteSignature] = {("/projects/{project_id}/material-needs/from-estimate", "POST")}
+_remove_replaced_routes(purchases.router, _MATERIAL_NEEDS_ROUTES)
+api_router.include_router(material_needs_integrity.router)
 api_router.include_router(purchases.router)
 api_router.include_router(scratchpad.router)
