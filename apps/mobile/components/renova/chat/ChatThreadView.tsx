@@ -14,6 +14,7 @@ import { HighlightText } from '@/components/renova/HighlightText';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { reportError, reportCatch } from '@/lib/reportError';
 import { api, ChatDetail, ChatMessage } from '@/lib/api';
+import { authHeaders } from '@/lib/api/client';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { compressDataUrl } from '@/lib/compressImage';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -49,6 +50,7 @@ function MessageBubble({
   query,
   returnTo,
   osRole,
+  userId,
   canOpenProjectActions,
   onReact,
   onPin,
@@ -63,6 +65,7 @@ function MessageBubble({
   query?: string;
   returnTo?: string;
   osRole: OsRole;
+  userId: string;
   canOpenProjectActions: boolean;
   onReact: (emoji: string) => void;
   onPin?: () => void;
@@ -122,7 +125,7 @@ function MessageBubble({
           <Text style={s.link}>Открыть задачу →</Text>
         </Pressable>
       )}
-      {m.image_url && <Image source={{ uri: m.image_url }} style={s.img} />}
+      {m.image_url && <Image source={{ uri: m.image_url, headers: authHeaders(userId) }} style={s.img} />}
       {m.file_name ? <Text style={s.file}>📎 {m.file_name}</Text> : null}
       {m.reactions && Object.keys(m.reactions).length > 0 && (
         <View style={s.reactions}>
@@ -424,6 +427,7 @@ export function ChatThreadView({
             query={chatQuery.trim() || undefined}
             returnTo={returnTo || `/chat/${threadId}`}
             osRole={role}
+            userId={user.id}
             canOpenProjectActions={canViewProjectActions}
             onReact={async (emoji) => {
               try {

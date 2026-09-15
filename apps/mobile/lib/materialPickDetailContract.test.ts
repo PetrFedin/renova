@@ -1,4 +1,5 @@
 import './projectMediaAcl.contract.test';
+import './chatMediaAcl.contract.test';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
