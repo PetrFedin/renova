@@ -20,6 +20,7 @@ from app.services import room_service
 from app.services import team_service
 
 RoomDecision = Literal["approve", "reject"]
+ROOM_CHANGE_CREATE_SCOPE = "room_change_request.create"
 
 
 def _target(decision: RoomDecision) -> RoomChangeStatus:
@@ -56,8 +57,14 @@ async def create_request(
     room_id: str,
     message: str,
     payload: dict | None = None,
-) -> RoomChangeRequest:
-    """Create a project-scoped request and notify assigned executors atomically."""
+    client_request_id: str | None = None,
+) -> tuple[RoomChangeRequest, bool]:
+    """Create one project-scoped customer request exactly once."""
+    from app.services.client_write_idempotency import (
+        commit_client_write,
+        replay_entity_id,
+    )
+
     if actor.id != project.customer_id:
         raise ValueError("room_change_customer_required")
     room = (
@@ -75,6 +82,32 @@ async def create_request(
     normalized_payload = None
     if payload is not None:
         normalized_payload = room_service.validate_room_patch(payload)
+
+    canonical_payload = {
+        "room_id": room.id,
+        "message": normalized_message,
+        "payload": normalized_payload,
+    }
+    replay_id = await replay_entity_id(
+        db,
+        scope=ROOM_CHANGE_CREATE_SCOPE,
+        project_id=project.id,
+        user_id=actor.id,
+        request_id=client_request_id,
+        payload=canonical_payload,
+    )
+    if replay_id:
+        existing = (
+            await db.execute(
+                select(RoomChangeRequest).where(
+                    RoomChangeRequest.id == replay_id,
+                    RoomChangeRequest.project_id == project.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is None:
+            raise ValueError("idempotency_entity_missing")
+        return existing, True
 
     request = RoomChangeRequest(
         project_id=project.id,
@@ -126,16 +159,38 @@ async def create_request(
             },
         )
     try:
-        await db.commit()
+        created, entity_id = await commit_client_write(
+            db,
+            scope=ROOM_CHANGE_CREATE_SCOPE,
+            project_id=project.id,
+            user_id=actor.id,
+            request_id=client_request_id,
+            payload=canonical_payload,
+            entity_id=request.id,
+        )
     except BaseException:
         await db.rollback()
         raise
+
+    if not created:
+        existing = (
+            await db.execute(
+                select(RoomChangeRequest).where(
+                    RoomChangeRequest.id == entity_id,
+                    RoomChangeRequest.project_id == project.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is None:
+            raise ValueError("idempotency_entity_missing")
+        return existing, True
+
     await db.refresh(request)
 
     from app.services.outbox_inline_dispatch import dispatch_best_effort
 
     await dispatch_best_effort(db, source="room_change.create", limit=10)
-    return request
+    return request, False
 
 
 async def _prepare_effects(
