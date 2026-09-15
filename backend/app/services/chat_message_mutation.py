@@ -102,7 +102,10 @@ async def send_client_message(db: AsyncSession, *, thread: ChatThread, user_id: 
     await _validate_reply_target(db, thread_id=thread_id, reply_to_id=reply_to_id)
     storage_key = image_url = None
     if message_enum in {ChatMessageType.photo, ChatMessageType.file} and image_data:
-        storage_key, image_url = await storage_svc.save_image(image_data, folder="chat")
+        storage_key, image_url = await storage_svc.save_image(
+            image_data,
+            folder=f"chat-media/{thread_id}",
+        )
     from app.services.chat_service import _dump_meta
     message = ChatMessage(thread_id=thread_id, user_id=user_id, author_role=role, message_type=message_enum, text=text, storage_key=storage_key, image_url=image_url, reply_to_id=reply_to_id, meta_json=_dump_meta(meta or {}))
     db.add(message)
