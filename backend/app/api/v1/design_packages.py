@@ -9,6 +9,7 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import DesignPackage, Project, User
 from app.services import design_package_service as design_svc
+from app.services.project_media_acl import assert_project_media_key_for_project
 
 router = APIRouter(prefix="/projects", tags=["design"])
 
@@ -75,6 +76,14 @@ async def create_design(
     db: AsyncSession = Depends(get_db),
 ):
     project: Project = await require_project(db, project_id, user, write=True)
+    if body.file_key:
+        await assert_project_media_key_for_project(
+            db,
+            user,
+            body.file_key,
+            project_id=project_id,
+            write=True,
+        )
     try:
         package = await design_svc.create_package(
             db,
