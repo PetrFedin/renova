@@ -1,6 +1,7 @@
 /** API: chats */
 import {req, cachedGet, API_BASE, ApiError, authHeaders} from './client';
 import type { ChatDetail, ChatMessage, ChatThread, User } from './types';
+import { submitChatCommand, type ChatTaskInput, type ChatInvoiceInput } from './chatCommands';
 
 export type ChatInviteDeliveryStatus =
   | 'not_queued'
@@ -135,57 +136,19 @@ export const chatsApi = {
       throw new Error('offline_queued');
     }
   },
-  /** W114: задача из чата → работы/календарь — очередь офлайн */
-  taskFromChatMessage: async (
-    userId: string,
-    projectId: string,
-    threadId: string,
-    messageId: string,
-    body: { title: string; assignee_id?: string; due_at?: string; work_type?: string },
-  ) => {
-    try {
-      return await req<ChatMessage>(
-        `/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/task`,
-        { method: 'POST', body: JSON.stringify(body) },
-        userId,
-      );
-    } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
-      const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({
-        path: `/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/task`,
-        method: 'POST',
-        body: JSON.stringify(body),
-        userId,
-      });
-      throw new Error('offline_queued');
-    }
-  },
-  /** W110: счёт из чата — очередь офлайн (связь chat → payment) */
-  invoiceFromChat: async (
-    userId: string,
-    projectId: string,
-    threadId: string,
-    body: { title: string; amount: number; payment_type?: string },
-  ) => {
-    try {
-      return await req<ChatMessage>(
-        `/api/v1/projects/${projectId}/chats/${threadId}/invoice`,
-        { method: 'POST', body: JSON.stringify(body) },
-        userId,
-      );
-    } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
-      const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({
-        path: `/api/v1/projects/${projectId}/chats/${threadId}/invoice`,
-        method: 'POST',
-        body: JSON.stringify(body),
-        userId,
-      });
-      throw new Error('offline_queued');
-    }
-  },
+  /** One task command, retained first-request identity through offline replay. */
+  taskFromChatMessage: (
+    userId: string, projectId: string, threadId: string, messageId: string,
+    body: ChatTaskInput,
+  ) => submitChatCommand(
+    userId, `/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/task`, body,
+  ),
+  /** One pending invoice + one message; never provider checkout/settlement. */
+  invoiceFromChat: (
+    userId: string, projectId: string, threadId: string, body: ChatInvoiceInput,
+  ) => submitChatCommand(
+    userId, `/api/v1/projects/${projectId}/chats/${threadId}/invoice`, body,
+  ),
   /** Read receipt is cursor-bound and never means "read through request time". */
   markChatRead: async (
     userId: string,
