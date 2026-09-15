@@ -11,6 +11,15 @@ export type ProjectMediaUploadIntent = {
   content_type?: string;
 };
 
+export class ProjectMediaUploadUnavailable extends Error {
+  code = 'project_media_upload_transport_unavailable' as const;
+
+  constructor() {
+    super('Project media upload transport is unavailable');
+    this.name = 'ProjectMediaUploadUnavailable';
+  }
+}
+
 /**
  * Запросить storage key, уже привязанный к объекту и write ACL.
  * Project id фиксируется до загрузки bytes; чужой key нельзя потом прикрепить
@@ -46,14 +55,17 @@ export async function uploadMediaBlob(
 ): Promise<string> {
   const normalizedType = contentType || blob.type || 'application/octet-stream';
   const up = await getProjectMediaUploadIntent(userId, projectId, normalizedType, filename);
-  if (up.upload_url) {
-    const res = await fetch(up.upload_url, {
-      method: 'PUT',
-      body: blob,
-      headers: { 'Content-Type': normalizedType },
-    });
-    if (!res.ok) throw new Error(`upload failed: ${res.status}`);
+  if (!up.upload_url) {
+    // Do not attach metadata to bytes that were never persisted. Callers with an
+    // explicit inline fallback (stage photos) may handle this typed condition.
+    throw new ProjectMediaUploadUnavailable();
   }
+  const res = await fetch(up.upload_url, {
+    method: 'PUT',
+    body: blob,
+    headers: { 'Content-Type': normalizedType },
+  });
+  if (!res.ok) throw new Error(`upload failed: ${res.status}`);
   return up.key;
 }
 
