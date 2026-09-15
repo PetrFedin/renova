@@ -33,8 +33,8 @@ async def _fixture(db):
     db.add_all([project, foreign])
     await db.flush()
 
-    room = Room(project_id=project.id, name="Kitchen", room_type="kitchen")
-    foreign_room = Room(project_id=foreign.id, name="Foreign room", room_type="other")
+    room = Room(project_id=project.id, name="Kitchen", room_type="kitchen", length_m=4, width_m=3)
+    foreign_room = Room(project_id=foreign.id, name="Foreign room", room_type="other", length_m=3, width_m=3)
     stage = Stage(project_id=project.id, name="Paint")
     foreign_stage = Stage(project_id=foreign.id, name="Foreign stage")
     plan = FloorPlan(project_id=project.id, name="Plan", image_key="plans/local.jpg")
