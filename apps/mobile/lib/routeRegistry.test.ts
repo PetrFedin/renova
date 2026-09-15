@@ -3,6 +3,7 @@ import { assertRouteRegistryInvariants, menuRoutes, MAX_MORE_MENU_ITEMS, RENOVA_
 import { MAX_HEADER_MORE_ITEMS } from '../constants/osSections';
 import { buildSecondaryNavigation } from './navigation/navigationPolicy';
 import { DOCK_DEFAULT } from '../constants/dockBar';
+import './mutationLifecycleInventory.contract.test';
 
 assertRouteRegistryInvariants();
 
