@@ -37,8 +37,8 @@ async def _fixture(db):
     )
     db.add_all([project, foreign_project])
     await db.flush()
-    room = Room(project_id=project.id, name="Kitchen", room_type="kitchen")
-    foreign_room = Room(project_id=foreign_project.id, name="Foreign", room_type="other")
+    room = Room(project_id=project.id, name="Kitchen", room_type="kitchen", length_m=4, width_m=3)
+    foreign_room = Room(project_id=foreign_project.id, name="Foreign", room_type="other", length_m=3, width_m=3)
     db.add_all([room, foreign_room])
     await db.commit()
     return customer, project, room, foreign_room
