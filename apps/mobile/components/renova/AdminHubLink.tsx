@@ -9,8 +9,8 @@ export function AdminHubLink() {
 
   return (
     <>
+      <PrimaryButton title="Operations Center" variant="outline" onPress={() => nav.href('/(contractor)/admin-dashboard')} />
       <PrimaryButton title="Админ: статистика" variant="outline" onPress={() => nav.href('/(contractor)/admin')} />
-      <PrimaryButton title="Админ: панель" variant="outline" onPress={() => nav.href('/(contractor)/admin-dashboard')} />
       <PrimaryButton title="Админ: статьи" variant="outline" onPress={() => nav.href('/(contractor)/articles-admin')} />
     </>
   );
