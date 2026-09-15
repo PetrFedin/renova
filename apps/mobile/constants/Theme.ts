@@ -45,6 +45,12 @@ export const RenovaTheme = {
 
     tabActive: '#1E293B',
     tabInactive: '#94A3B8',
+
+    /** @deprecated compatibility aliases; migrate call sites to canonical tokens above. */
+    textInverse: '#FFFFFF',
+    textSecondary: '#64748B',
+    accentSoft: '#DBEAFE',
+    dangerSoft: '#FEF2F2',
   },
 
   /** Сетка 4/8 — md=12, lg=16 */
