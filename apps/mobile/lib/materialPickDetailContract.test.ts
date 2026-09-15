@@ -1,4 +1,5 @@
 import './estimateLineLifecycle.contract.test';
+import './roomIntentRecovery.contract.test';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
