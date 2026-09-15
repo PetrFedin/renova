@@ -6,8 +6,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api, ProjectDetail, ProjectSummary, User, UserRole } from '@/lib/api';
 import { pickPrimaryDemoProject } from '@/lib/pickPrimaryDemoProject';
 import { resolveActiveProjectId } from '@/lib/resolveActiveProjectId';
-import { API_BASE } from '@/lib/api/client';
+import { API_BASE, persistSessionTokens } from '@/lib/api/client';
 import { reportError } from '@/lib/reportError';
+import { beginSessionAuthority } from '@/lib/sessionAuthority';
 
 const KEYS = {
   projectId: 'renova_project_id',
@@ -137,9 +138,12 @@ export async function loadActiveProject(
   return p;
 }
 
-/** Fresh demo login; caller owns session authority + durable identity publication. */
+/** Fresh demo login: establish transport authority before any authenticated read. */
 export async function recoverDemoSession(role: UserRole): Promise<{ user: User; projects: ProjectSummary[] }> {
   const u = await api.demoLogin(role);
+  const authority = beginSessionAuthority(u.id);
+  const published = await persistSessionTokens(u.access_token, u.refresh_token, authority);
+  if (!published) throw new Error('session_generation_changed');
   const list = await listProjectsWithRetry(u.id, 4);
   return { user: u, projects: list };
 }
