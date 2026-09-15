@@ -26,6 +26,7 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/chatBusinessCommandTransport.test.mjs
+          node scripts/materialNeedsTransport.test.mjs
           node scripts/xmldomIntegrity.test.mjs
           git diff --exit-code -- package.json package-lock.json apps/mobile/package.json
       - name: Mobile runtime and persistence contracts
