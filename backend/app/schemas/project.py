@@ -223,4 +223,8 @@ class YookassaCheckoutIn(BaseModel):
 class YookassaCheckoutOut(BaseModel):
     demo: bool = False
     payment_id: str | None = None
+    yookassa_payment_id: str | None = None
     confirmation_url: str | None = None
+    status: str | None = None
+    error: str | None = None
+    message: str | None = None
