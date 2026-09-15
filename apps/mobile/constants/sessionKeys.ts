@@ -2,6 +2,9 @@
 export const SESSION_KEYS = {
   userId: 'renova_user_id',
   accessToken: 'renova_access_token',
+  refreshToken: 'renova_refresh_token',
+  /** Non-secret logical login id. A -> B -> A always receives a new value. */
+  sessionAuthorityId: 'renova_session_authority_id',
   projectId: 'renova_project_id',
   userRole: 'renova_user_role',
   pendingProjectPick: 'renova_pending_project_pick',
