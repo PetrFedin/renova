@@ -83,11 +83,13 @@ async def _prepare_needs(
     for line in lines:
         existing = (
             await db.execute(
-                select(MaterialPick.id).where(
+                select(MaterialPick.id)
+                .where(
                     MaterialPick.project_id == project.id,
                     MaterialPick.name == line.name,
                     MaterialPick.room_id == line.room_id,
                 )
+                .limit(1)
             )
         ).scalar_one_or_none()
         if existing:
