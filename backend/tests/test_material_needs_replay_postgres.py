@@ -75,6 +75,13 @@ async def _count(Session, model, *where) -> int:
         return int(await db.scalar(select(func.count()).select_from(model).where(*where)) or 0)
 
 
+def _project_outbox_filter(project_id: str):
+    return (
+        DomainOutbox.aggregate_type == generation.AGGREGATE_TYPE,
+        DomainOutbox.payload_json.contains(project_id),
+    )
+
+
 @pytest.mark.asyncio
 async def test_material_needs_same_key_postgres_race_creates_one_result(monkeypatch):
     from app.services import outbox_inline_dispatch
@@ -110,11 +117,7 @@ async def test_material_needs_same_key_postgres_race_creates_one_result(monkeypa
             ClientWriteRequest.project_id == project_id,
             ClientWriteRequest.scope == generation.SCOPE,
         ) == 1
-        assert await _count(
-            Session,
-            DomainOutbox,
-            DomainOutbox.aggregate_type == generation.AGGREGATE_TYPE,
-        ) == 1
+        assert await _count(Session, DomainOutbox, *_project_outbox_filter(project_id)) == 1
     finally:
         await engine.dispose()
 
@@ -167,11 +170,7 @@ async def test_material_needs_rechecks_revoked_contractor_after_lock_wait(monkey
             ClientWriteRequest.project_id == project_id,
             ClientWriteRequest.scope == generation.SCOPE,
         ) == 0
-        assert await _count(
-            Session,
-            DomainOutbox,
-            DomainOutbox.aggregate_type == generation.AGGREGATE_TYPE,
-        ) == 0
+        assert await _count(Session, DomainOutbox, *_project_outbox_filter(project_id)) == 0
     finally:
         await holder.close()
         await engine.dispose()
