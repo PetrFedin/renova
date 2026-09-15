@@ -141,6 +141,37 @@ async def lifecycle_map(
     return {row.estimate_line_id: row for row in rows}
 
 
+async def _lock_lifecycle(
+    db: AsyncSession,
+    line_id: str,
+) -> EstimateLineLifecycle | None:
+    query = select(EstimateLineLifecycle).where(
+        EstimateLineLifecycle.estimate_line_id == line_id
+    )
+    try:
+        query = query.with_for_update()
+    except Exception:
+        pass
+    return (await db.execute(query)).scalar_one_or_none()
+
+
+async def _lock_active_line(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    line_id: str,
+) -> EstimateLine | None:
+    query = select(EstimateLine).where(
+        EstimateLine.id == line_id,
+        EstimateLine.project_id == project_id,
+    )
+    try:
+        query = query.with_for_update()
+    except Exception:
+        pass
+    return (await db.execute(query)).scalar_one_or_none()
+
+
 async def ensure_line_lifecycle(
     db: AsyncSession,
     line: EstimateLine,
@@ -232,22 +263,21 @@ async def remove_line(
     if project.estimate_locked_at:
         raise ValueError("estimate_locked")
 
-    lifecycle = await db.get(EstimateLineLifecycle, line_id)
+    # Lock lifecycle first when present. This makes concurrent duplicate remove
+    # requests observe the committed tombstone instead of racing into a false 404.
+    lifecycle = await _lock_lifecycle(db, line_id)
     if lifecycle is not None and lifecycle.project_id != project_id:
         raise ValueError("estimate_line_not_found")
+    if lifecycle is not None and lifecycle.status == REMOVED:
+        return serialize_tombstone(lifecycle), True
 
-    query = select(EstimateLine).where(
-        EstimateLine.id == line_id,
-        EstimateLine.project_id == project_id,
-    )
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
-    line = (await db.execute(query)).scalar_one_or_none()
-
+    line = await _lock_active_line(db, project_id=project_id, line_id=line_id)
     if line is None:
-        if lifecycle is not None and lifecycle.status == REMOVED:
+        # A legacy row can lack lifecycle metadata until first touch. Re-read after
+        # the active-row lock path in case another request just committed removal.
+        if lifecycle is None:
+            lifecycle = await _lock_lifecycle(db, line_id)
+        if lifecycle is not None and lifecycle.project_id == project_id and lifecycle.status == REMOVED:
             return serialize_tombstone(lifecycle), True
         raise ValueError("estimate_line_not_found")
 
@@ -305,13 +335,15 @@ async def restore_line(
     if project.estimate_locked_at:
         raise ValueError("estimate_locked")
 
-    lifecycle = await db.get(EstimateLineLifecycle, line_id)
+    # Restore also serializes on the lifecycle row. Two retries therefore return
+    # one restored commercial row and one idempotent replay result.
+    lifecycle = await _lock_lifecycle(db, line_id)
     if lifecycle is None or lifecycle.project_id != project_id:
         raise ValueError("estimate_line_not_found")
     if lifecycle.origin == SYSTEM:
         raise _transition_error_for_system()
 
-    existing = await db.get(EstimateLine, line_id)
+    existing = await _lock_active_line(db, project_id=project_id, line_id=line_id)
     if lifecycle.status == ACTIVE:
         if existing is None:
             raise RuntimeError("estimate_line_active_missing")
