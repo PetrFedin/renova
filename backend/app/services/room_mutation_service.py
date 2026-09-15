@@ -6,10 +6,10 @@ from dataclasses import dataclass
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import EstimateLine, Project, Room, User, UserRole
+from app.models.entities import EstimateLine, Project, Room, User
 from app.services import outbox_service as outbox
+from app.services import room_authority_service as authority
 from app.services import room_service
-from app.services import team_service
 
 ROOM_CREATE_SCOPE = "room.create"
 _DIRECT_NULLABLE_FIELDS = frozenset({"room_type", "notes", "budget_alert_pct"})
@@ -22,17 +22,25 @@ class RoomMutationResult:
     changes: dict[str, dict[str, object]]
 
 
+async def _require_direct_creator(
+    db: AsyncSession,
+    *,
+    project: Project,
+    actor: User,
+) -> None:
+    """Standalone room creation remains a writable contractor-side operation."""
+    if not await authority.can_direct_create_room(db, project=project, actor=actor):
+        raise ValueError("room_direct_editor_forbidden")
+
+
 async def _require_direct_editor(
     db: AsyncSession,
     *,
     project: Project,
     actor: User,
 ) -> None:
-    """Customers must use Room Change; only writable contractor-side members edit directly."""
-    if actor.role != UserRole.contractor:
-        raise ValueError("room_direct_editor_forbidden")
-    mode, read_only = await team_service.project_access_mode(db, actor, project)
-    if mode != "contractor" or read_only:
+    """Use the same authority predicate exposed by the project read model."""
+    if not await authority.can_direct_edit_room(db, project=project, actor=actor):
         raise ValueError("room_direct_editor_forbidden")
 
 
@@ -172,7 +180,7 @@ async def create_room(
         replay_entity_id,
     )
 
-    await _require_direct_editor(db, project=project, actor=actor)
+    await _require_direct_creator(db, project=project, actor=actor)
     project_id = project.id
     actor_id = actor.id
     payload = _create_payload(data)
