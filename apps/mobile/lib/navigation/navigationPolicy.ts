@@ -52,7 +52,7 @@ export function resolveRegistryRedirect(
 }
 
 const HEADER_UTILITY_IDS = ['documents', 'inbox', 'approvals', 'activity'] as const;
-const HOME_MORE_IDS = ['documents', 'inbox', 'approvals', 'activity', 'manager-dashboard', 'reports'] as const;
+const HOME_MORE_IDS = ['documents', 'inbox', 'approvals', 'activity', 'manager-dashboard', 'reports', 'portfolio'] as const;
 const GUEST_IDS = new Set(['documents', 'inbox']);
 
 export function buildSecondaryNavigation(input: {
@@ -80,7 +80,9 @@ export function buildSecondaryNavigation(input: {
     if (input.role === 'contractor' && route.id === 'approvals') continue;
     if (route.status === 'wip' || route.redirectTarget || route.visibility === 'hidden') continue;
     if (allowed && !allowed.has(route.id)) continue;
-    if ((route.id === 'manager-dashboard' || route.id === 'reports') && input.phase !== 'complete') continue;
+    // Управленческая сводка и отчёты полезны уже во время активного ремонта.
+    // На setup они ещё не имеют достаточной фактической базы, поэтому не засоряем стартовый UX.
+    if ((route.id === 'manager-dashboard' || route.id === 'reports') && input.phase === 'setup') continue;
     seen.add(route.id);
     result.push(route);
   }
