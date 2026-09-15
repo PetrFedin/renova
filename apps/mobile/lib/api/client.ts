@@ -312,7 +312,8 @@ export async function refreshAccessToken(): Promise<boolean> {
   if (authority.sessionId && !authority.userId) throw sessionChangedError();
   if (_refreshInflight?.generation === authority.generation) return _refreshInflight.promise;
 
-  const promise = (async () => {
+  let promise!: Promise<boolean>;
+  promise = (async () => {
     try {
       const res = await fetch(`${API_BASE}/api/v1/auth/refresh`, {
         method: 'POST',
