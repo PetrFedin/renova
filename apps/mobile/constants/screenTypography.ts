@@ -51,6 +51,11 @@ export const screenTypography = StyleSheet.create({
   metric: { fontSize: 20, fontWeight: fw.bold, color: c.text },
   metricLabel: { fontSize: fs.tiny, fontWeight: fw.medium, color: c.textMuted, marginTop: 2 },
   empty: { fontSize: fs.bodySmall, fontWeight: fw.regular, color: c.textMuted, lineHeight: 18 },
+
+  /** @deprecated compatibility aliases for existing surfaces. */
+  title: { fontSize: fs.h1, fontWeight: fw.bold, color: c.text },
+  body: { fontSize: fs.body, fontWeight: fw.regular, color: c.text },
+  caption: { fontSize: fs.caption, fontWeight: fw.regular, color: c.textMuted, lineHeight: 16 },
 });
 
 /** Плотный list без карточек — разделители, не border+shadow на каждой строке */
