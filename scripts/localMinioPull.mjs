@@ -17,6 +17,12 @@ const TRANSIENT_REGISTRY_PATTERNS = [
   /unexpected eof/i,
 ];
 
+export const CANONICAL_LOCAL_INFRA_SERVICES = Object.freeze([
+  'postgres',
+  'redis',
+  'minio',
+]);
+
 export function isTransientRegistryError(output) {
   const text = String(output ?? '');
   return TRANSIENT_REGISTRY_PATTERNS.some((pattern) => pattern.test(text));
@@ -55,19 +61,19 @@ function defaultRunner(args) {
 
 const defaultSleep = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs));
 
-export async function pullMinioWithRetry({
+export async function pullLocalInfrastructureWithRetry({
   projectName,
   envFile,
   composeFile,
-  maxAttempts = boundedInteger(process.env.RENOVA_MINIO_PULL_MAX_ATTEMPTS, 3, {
+  maxAttempts = boundedInteger(process.env.RENOVA_INFRA_PULL_MAX_ATTEMPTS, 3, {
     min: 1,
     max: 5,
-    name: 'RENOVA_MINIO_PULL_MAX_ATTEMPTS',
+    name: 'RENOVA_INFRA_PULL_MAX_ATTEMPTS',
   }),
-  delayMs = boundedInteger(process.env.RENOVA_MINIO_PULL_RETRY_DELAY_MS, 2000, {
+  delayMs = boundedInteger(process.env.RENOVA_INFRA_PULL_RETRY_DELAY_MS, 2000, {
     min: 0,
     max: 30000,
-    name: 'RENOVA_MINIO_PULL_RETRY_DELAY_MS',
+    name: 'RENOVA_INFRA_PULL_RETRY_DELAY_MS',
   }),
   runner = defaultRunner,
   sleep = defaultSleep,
@@ -87,7 +93,7 @@ export async function pullMinioWithRetry({
     '-f',
     composeFile,
     'pull',
-    'minio',
+    ...CANONICAL_LOCAL_INFRA_SERVICES,
   ];
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -96,20 +102,24 @@ export async function pullMinioWithRetry({
     if (result.stderr) writeStderr(String(result.stderr));
 
     if (result.status === 0) {
-      writeStdout(`[renova-dev] immutable MinIO pull succeeded on attempt ${attempt}/${maxAttempts}\n`);
-      return { attempts: attempt };
+      writeStdout(
+        `[renova-dev] canonical infrastructure pull succeeded on attempt ${attempt}/${maxAttempts}\n`,
+      );
+      return { attempts: attempt, services: [...CANONICAL_LOCAL_INFRA_SERVICES] };
     }
 
     const combined = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
     const transient = isTransientRegistryError(combined);
     const reason = transient ? 'transient registry transport failure' : 'non-transient pull failure';
-    writeStderr(`[renova-dev] MinIO pull attempt ${attempt}/${maxAttempts} failed: ${reason}\n`);
+    writeStderr(
+      `[renova-dev] infrastructure pull attempt ${attempt}/${maxAttempts} failed: ${reason}\n`,
+    );
 
     if (!transient || attempt === maxAttempts) {
       const error = new Error(
         transient
-          ? `immutable MinIO pull exhausted ${maxAttempts} attempts without changing source or digest`
-          : 'immutable MinIO pull failed with a non-transient error; no retry or fallback is permitted',
+          ? `canonical infrastructure pull exhausted ${maxAttempts} attempts without changing Compose image references`
+          : 'canonical infrastructure pull failed with a non-transient error; no retry or fallback is permitted',
       );
       error.exitCode = result.status || 2;
       error.attempts = attempt;
@@ -118,12 +128,12 @@ export async function pullMinioWithRetry({
     }
 
     writeStderr(
-      `[renova-dev] retrying the same immutable MinIO source after ${delayMs}ms; alternate registry/tag/digest fallback is forbidden\n`,
+      `[renova-dev] retrying the same canonical Compose image references after ${delayMs}ms; alternate registry/tag/digest fallback is forbidden\n`,
     );
     await sleep(delayMs);
   }
 
-  throw new Error('unreachable MinIO pull retry state');
+  throw new Error('unreachable infrastructure pull retry state');
 }
 
 function parseCli(argv) {
@@ -144,7 +154,7 @@ const invokedAsScript = process.argv[1] && import.meta.url === pathToFileURL(pro
 if (invokedAsScript) {
   try {
     const options = parseCli(process.argv.slice(2));
-    await pullMinioWithRetry(options);
+    await pullLocalInfrastructureWithRetry(options);
   } catch (error) {
     process.stderr.write(`[renova-dev] ERROR: ${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = Number.isInteger(error?.exitCode) ? error.exitCode : 2;
