@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
 
-import { isTransientRegistryError, pullMinioWithRetry } from './localMinioPull.mjs';
+import {
+  CANONICAL_LOCAL_INFRA_SERVICES,
+  isTransientRegistryError,
+  pullLocalInfrastructureWithRetry,
+} from './localMinioPull.mjs';
 
 const silent = () => {};
 const noSleep = async () => {};
@@ -14,6 +18,12 @@ const baseOptions = {
   writeStdout: silent,
   writeStderr: silent,
 };
+
+assert.deepEqual(
+  CANONICAL_LOCAL_INFRA_SERVICES,
+  ['postgres', 'redis', 'minio'],
+  'retry scope must remain limited to the canonical local infrastructure services',
+);
 
 for (const message of [
   'received unexpected HTTP status: 502 Bad Gateway',
@@ -43,10 +53,10 @@ for (const message of [
 {
   const calls = [];
   const results = [
-    { status: 1, stdout: '', stderr: 'received unexpected HTTP status: 502 Bad Gateway\n' },
-    { status: 0, stdout: 'minio Pulled\n', stderr: '' },
+    { status: 1, stdout: 'minio Pulled\n', stderr: 'redis Error received unexpected HTTP status: 502 Bad Gateway\n' },
+    { status: 0, stdout: 'postgres Pulled\nredis Pulled\nminio Pulled\n', stderr: '' },
   ];
-  const result = await pullMinioWithRetry({
+  const result = await pullLocalInfrastructureWithRetry({
     ...baseOptions,
     maxAttempts: 3,
     runner: (args) => {
@@ -55,15 +65,20 @@ for (const message of [
     },
   });
   assert.equal(result.attempts, 2, 'one transient registry failure must be retried once');
+  assert.deepEqual(result.services, ['postgres', 'redis', 'minio']);
   assert.equal(calls.length, 2);
   assert.deepEqual(calls[0], calls[1], 'retry must use exactly the same Docker Compose command');
-  assert.deepEqual(calls[0].slice(-2), ['pull', 'minio'], 'retry may pull only the canonical MinIO service');
+  assert.deepEqual(
+    calls[0].slice(-4),
+    ['pull', 'postgres', 'redis', 'minio'],
+    'retry may pull only the canonical local infrastructure services',
+  );
 }
 
 {
   let calls = 0;
   await assert.rejects(
-    pullMinioWithRetry({
+    pullLocalInfrastructureWithRetry({
       ...baseOptions,
       maxAttempts: 3,
       runner: () => {
@@ -84,7 +99,7 @@ for (const message of [
 {
   let calls = 0;
   await assert.rejects(
-    pullMinioWithRetry({
+    pullLocalInfrastructureWithRetry({
       ...baseOptions,
       maxAttempts: 3,
       runner: () => {
@@ -102,4 +117,4 @@ for (const message of [
   assert.equal(calls, 1, 'invalid/missing image truth must fail immediately without retry');
 }
 
-console.log('bounded immutable MinIO pull retry contract: OK');
+console.log('bounded canonical infrastructure pull retry contract: OK');
