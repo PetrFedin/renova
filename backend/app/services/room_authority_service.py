@@ -39,18 +39,40 @@ async def has_active_executor(db: AsyncSession, project: Project) -> bool:
     return participant_id is not None
 
 
+async def _contractor_can_write(
+    db: AsyncSession,
+    *,
+    project: Project,
+    actor: User,
+) -> bool:
+    if actor.role != UserRole.contractor or project.trashed_at is not None:
+        return False
+    mode, read_only = await team_service.project_access_mode(db, actor, project)
+    return mode == "contractor" and not read_only
+
+
+async def can_direct_create_room(
+    db: AsyncSession,
+    *,
+    project: Project,
+    actor: User,
+) -> bool:
+    """Room create remains contractor-scoped; GP1 customer rooms are created with the project."""
+    return await _contractor_can_write(db, project=project, actor=actor)
+
+
 async def can_direct_edit_room(
     db: AsyncSession,
     *,
     project: Project,
     actor: User,
 ) -> bool:
-    """One fail-closed predicate for the direct room mutation surface.
+    """One fail-closed predicate for the direct room update surface.
 
-    Customer-owner controls room geometry before execution is handed to any
-    active contractor principal. After that transition, the customer uses room
-    change requests. Contractor-side principals continue to follow the existing
-    project/team write-access contract.
+    Customer-owner controls existing room geometry before execution is handed to
+    any active contractor principal. After that transition, the customer uses
+    room change requests. Contractor-side principals continue to follow the
+    existing project/team write-access contract.
     """
     if project.trashed_at is not None:
         return False
@@ -61,11 +83,7 @@ async def can_direct_edit_room(
             and not await has_active_executor(db, project)
         )
 
-    if actor.role == UserRole.contractor:
-        mode, read_only = await team_service.project_access_mode(db, actor, project)
-        return mode == "contractor" and not read_only
-
-    return False
+    return await _contractor_can_write(db, project=project, actor=actor)
 
 
 async def describe_room_authority(
@@ -79,11 +97,8 @@ async def describe_room_authority(
         direct = False
     elif actor.role == UserRole.customer:
         direct = project.customer_id == actor.id and not active_executor
-    elif actor.role == UserRole.contractor:
-        mode, read_only = await team_service.project_access_mode(db, actor, project)
-        direct = mode == "contractor" and not read_only
     else:
-        direct = False
+        direct = await _contractor_can_write(db, project=project, actor=actor)
     return RoomAuthorityDescriptor(
         has_active_executor=active_executor,
         direct_edit_allowed=direct,
