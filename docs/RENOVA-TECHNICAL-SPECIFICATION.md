@@ -4,7 +4,7 @@
 **Язык:** русский
 **Дата текущей сверки:** 2026-09-08
 **Проверенный продуктовый срез:** `95dd4a8e117289df11e1300891490768c22f585f`
-**Текущий schema head в этой редакции:** `w22projectparticipants01`
+**Текущий schema head в этой редакции:** `w23estimatelifecycle01`
 **Текущий verification status:** `SOURCE AUDITED / BOUNDED CI EVIDENCE / FULL PRODUCT ACCEPTANCE INCOMPLETE`
 **Широкий production-запуск:** `BLOCKED_FOR_BROAD_PRODUCTION`
 
@@ -48,6 +48,7 @@
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
 | `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | Evidence versions |
 | `backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py` | `6de2c048fddc7bea5e385eaa80ca8d30fbe4eb3c` | Participants/scopes/audit |
+| `backend/alembic/versions/w23estimatelifecycle01_estimate_line_lifecycle.py` | `a7ed38714b678a00e871c7493ff6532d3b40ae35` | Reversible EstimateLine lifecycle/tombstone |
 | `docs/technical-spec/CHANGELOG-ROADMAP.md` | `7942b12961d967b39d1f77e98deccc0c301ad9e6` | Текущий план и историческая прослеживаемость |
 
 # 1. Назначение продукта и границы системы
@@ -60,7 +61,7 @@ Renova — iPhone-first управление реальным ремонтом, 
 
 Канон `PetrFedin/renova`: main→короткая ветка→PR→применимые проверки→merge. Старые develop/task-ветки не интеграционная база. `CLAUDE.md` и bootstrap Cursor правила указывают на AGENTS.
 
-Навигация: routeRegistry + реальные Expo routes. API: итоговый router + конкретные services. Данные: ORM + линейный Alembic graph, PostgreSQL authoritative. Текущий head `w22projectparticipants01`; w16legacystatus01→w17chatmessageenum01→w18nativeenumparity01→w19paymentevidence01→w20materialsupply01→w21materialprice01→w22projectparticipants01 — продолжение уже потреблённой истории, не инструкция переписывать старые миграции.
+Навигация: routeRegistry + реальные Expo routes. API: итоговый router + конкретные services. Данные: ORM + линейный Alembic graph, PostgreSQL authoritative. Текущий head `w23estimatelifecycle01`; w16legacystatus01→w17chatmessageenum01→w18nativeenumparity01→w19paymentevidence01→w20materialsupply01→w21materialprice01→w22projectparticipants01→w23estimatelifecycle01 — продолжение уже потреблённой истории, не инструкция переписывать старые миграции.
 
 Readiness: корневой PRODUCTION-READINESS.md и docs/production-readiness-evidence.json. При конфликте подтверждённого кода с документом исправляется конфликт, а не повышается статус по документу.
 

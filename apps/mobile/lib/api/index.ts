@@ -5,6 +5,7 @@ import { roomsApi } from './rooms';
 import { stagesApi } from './stages';
 import { paymentsApi } from './payments';
 import { estimateApi } from './estimate';
+import { estimateLifecycleApi } from './estimateLifecycle';
 import { receiptsApi } from './receipts';
 import { calendarApi } from './calendar';
 import { chatsApi } from './chats';
@@ -32,6 +33,7 @@ export const api = {
   ...stagesApi,
   ...paymentsApi,
   ...estimateApi,
+  ...estimateLifecycleApi,
   ...receiptsApi,
   ...calendarApi,
   ...chatsApi,
@@ -57,6 +59,12 @@ export { ApiError, isRateLimitError, req, cachedGet, invalidateProjectsCache, AP
 export * from './types';
 export type { PaymentEvidence, PaymentEvidenceStatus, PaymentEvidenceUploadIntent } from './payments';
 export type { SelectionItem } from './selections';
+export type {
+  EstimateLifecycleLine,
+  EstimateLifecycleSnapshot,
+  EstimateLineLifecycleStatus,
+  EstimateLineOrigin,
+} from './estimateLifecycle';
 export type {
   TechnicalQualityIssueInput,
   TechnicalSupervisionAssignment,

@@ -9,10 +9,20 @@ import { EstimateLineEditorCard } from '@/components/renova/estimate/EstimateLin
 type Props = {
   lines: EstimateLine[];
   canWrite: boolean;
+  removableIds?: ReadonlySet<string>;
+  removingId?: string | null;
   onPatch: (lineId: string, body: object) => Promise<void>;
+  onRemove?: (line: EstimateLine) => void;
 };
 
-export function EstimateEditorByRoom({ lines, canWrite, onPatch }: Props) {
+export function EstimateEditorByRoom({
+  lines,
+  canWrite,
+  removableIds,
+  removingId,
+  onPatch,
+  onRemove,
+}: Props) {
   const groups = useMemo(() => groupEstimateLinesByRoom(lines), [lines]);
   const [open, setOpen] = useState<Record<string, boolean>>(() => {
     const init: Record<string, boolean> = {};
@@ -37,7 +47,14 @@ export function EstimateEditorByRoom({ lines, canWrite, onPatch }: Props) {
             </Pressable>
             {expanded && g.lines.map((line) => (
               <View key={line.id} style={s.lineWrap}>
-                <EstimateLineEditorCard line={line} canWrite={canWrite} onPatch={onPatch} />
+                <EstimateLineEditorCard
+                  line={line}
+                  canWrite={canWrite}
+                  canRemove={Boolean(removableIds?.has(line.id))}
+                  removing={removingId === line.id}
+                  onPatch={onPatch}
+                  onRemove={onRemove}
+                />
               </View>
             ))}
           </View>

@@ -8,6 +8,7 @@ from app.models.entities import EstimateLine, User, UserRole
 from app.models.entities import Project
 from app.services.estimate_service import prepare_line, material_stats, update_line, lock_estimate, propose_estimate_lock, clear_estimate_proposal, get_estimate_lock_diff, import_estimate_csv
 from app.services.client_write_idempotency import IdempotencyConflict, commit_client_write, replay_entity_id
+from app.services import estimate_line_lifecycle_service as line_lifecycle
 
 router = APIRouter(prefix="/projects/{project_id}/estimate", tags=["estimate"])
 ESTIMATE_LINE_CREATE_SCOPE = "estimate_line.create"
@@ -23,10 +24,40 @@ def _idempotency_http_error() -> HTTPException:
     )
 
 
+def _line_lifecycle_http_error(error: Exception) -> HTTPException:
+    code = str(error)
+    if code == "estimate_line_not_found":
+        return HTTPException(404, detail={"code": code, "message": "Строка сметы не найдена"})
+    if code == "estimate_locked":
+        return HTTPException(
+            409,
+            detail={
+                "code": code,
+                "message": "Смета зафиксирована — изменения выполняются через доп. соглашение",
+            },
+        )
+    if code == "estimate_line_system_managed":
+        return HTTPException(
+            409,
+            detail={
+                "code": code,
+                "message": "Автоматическую строку нельзя убрать вручную — измените параметры помещения",
+            },
+        )
+    return HTTPException(
+        409,
+        detail={
+            "code": "estimate_line_lifecycle_inconsistent",
+            "message": "Состояние строки требует восстановления перед повторной операцией",
+        },
+    )
+
+
 class LinePatch(BaseModel):
     quantity_planned: float | None = None
     unit_price: float | None = None
     quantity_actual: float | None = None
+    notes: str | None = Field(default=None, max_length=2000)
 
 
 class LineCreate(BaseModel):
@@ -48,6 +79,17 @@ async def _require_estimate_editable(db, project_id: str):
         raise HTTPException(409, detail={"code": "estimate_locked", "message": "Смета зафиксирована — правки через изменение сметы (CO)"})
 
 
+@router.get("/lines/lifecycle")
+async def estimate_line_lifecycle(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Active rows plus reversible tombstones; readable by either project side."""
+    await require_project(db, project_id, user, write=False)
+    return await line_lifecycle.lifecycle_view(db, project_id)
+
+
 @router.patch("/lines/{line_id}")
 async def patch_line(
     project_id: str,
@@ -60,20 +102,82 @@ async def patch_line(
         raise HTTPException(403, "Только исполнитель редактирует смету")
     await require_project(db, project_id, user, write=True)
     await _require_estimate_editable(db, project_id)
-    target_id = (
+    target = (
         await db.execute(
-            select(EstimateLine.id).where(
+            select(EstimateLine).where(
                 EstimateLine.id == line_id,
                 EstimateLine.project_id == project_id,
             )
         )
     ).scalar_one_or_none()
-    if target_id is None:
+    if target is None:
         raise HTTPException(404, "Строка не найдена")
-    line = await update_line(db, target_id, **body.model_dump(exclude_none=True))
-    if not line:
-        raise HTTPException(404, "Строка не найдена")
-    return {"ok": True, "id": line.id}
+
+    lifecycle = await line_lifecycle.ensure_line_lifecycle(db, target)
+    data = body.model_dump(exclude_unset=True)
+    notes_present = "notes" in data
+    notes = data.pop("notes", None)
+    if notes_present:
+        text = str(notes).strip() if notes is not None else ""
+        target.notes = text or None
+
+    numeric_patch = {key: value for key, value in data.items() if value is not None}
+    if numeric_patch:
+        line = await update_line(db, target.id, **numeric_patch)
+        if not line:
+            raise HTTPException(404, "Строка не найдена")
+    else:
+        await db.commit()
+        await db.refresh(target)
+        line = target
+    return {
+        "ok": True,
+        **line_lifecycle.serialize_line(line, origin=lifecycle.origin),
+    }
+
+
+@router.post("/lines/{line_id}/remove")
+async def remove_estimate_line(
+    project_id: str,
+    line_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if user.role != UserRole.contractor:
+        raise HTTPException(403, detail={"code": "contractor_required"})
+    await require_project(db, project_id, user, write=True)
+    try:
+        line, replayed = await line_lifecycle.remove_line(
+            db,
+            project_id=project_id,
+            line_id=line_id,
+            actor_id=user.id,
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise _line_lifecycle_http_error(exc) from exc
+    return {"ok": True, "idempotent_replay": replayed, **line}
+
+
+@router.post("/lines/{line_id}/restore")
+async def restore_estimate_line(
+    project_id: str,
+    line_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if user.role != UserRole.contractor:
+        raise HTTPException(403, detail={"code": "contractor_required"})
+    await require_project(db, project_id, user, write=True)
+    try:
+        line, replayed = await line_lifecycle.restore_line(
+            db,
+            project_id=project_id,
+            line_id=line_id,
+            actor_id=user.id,
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise _line_lifecycle_http_error(exc) from exc
+    return {"ok": True, "idempotent_replay": replayed, **line}
 
 
 @router.post("/lines")
@@ -105,9 +209,16 @@ async def create_line(
         line = await db.get(EstimateLine, replay_id)
         if not line or line.project_id != project_id:
             raise HTTPException(409, detail={"code": "idempotency_target_missing"})
-        return {"ok": True, "id": line.id, "idempotent_replay": True}
+        lifecycle = await line_lifecycle.ensure_line_lifecycle(db, line, origin=line_lifecycle.MANUAL)
+        return {
+            "ok": True,
+            "id": line.id,
+            "origin": lifecycle.origin,
+            "idempotent_replay": True,
+        }
 
     line = await prepare_line(db, project_id, payload)
+    await line_lifecycle.ensure_line_lifecycle(db, line, origin=line_lifecycle.MANUAL)
     from app.services.budget_service import sync_project_budget_planned
     await sync_project_budget_planned(db, project_id)
     try:
@@ -126,7 +237,12 @@ async def create_line(
         line = await db.get(EstimateLine, entity_id)
         if not line:
             raise HTTPException(409, detail={"code": "idempotency_target_missing"})
-    return {"ok": True, "id": line.id, "idempotent_replay": not created}
+    return {
+        "ok": True,
+        "id": line.id,
+        "origin": line_lifecycle.MANUAL,
+        "idempotent_replay": not created,
+    }
 
 
 class EstimateCsvImport(BaseModel):
@@ -145,10 +261,35 @@ async def import_csv_lines(
         raise HTTPException(403, "Импорт сметы — только исполнитель")
     await require_project(db, project_id, user, write=True)
     await _require_estimate_editable(db, project_id)
+    before_ids = set(
+        (
+            await db.execute(
+                select(EstimateLine.id).where(EstimateLine.project_id == project_id)
+            )
+        ).scalars().all()
+    )
     try:
         result = await import_estimate_csv(db, project_id, body.csv_text)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+    if result.get("created"):
+        imported = list(
+            (
+                await db.execute(
+                    select(EstimateLine).where(
+                        EstimateLine.project_id == project_id,
+                        EstimateLine.id.not_in(before_ids) if before_ids else True,
+                    )
+                )
+            ).scalars().all()
+        )
+        for line in imported:
+            await line_lifecycle.ensure_line_lifecycle(
+                db,
+                line,
+                origin=line_lifecycle.IMPORTED,
+            )
+        await db.commit()
     return {"ok": True, **result}
 
 

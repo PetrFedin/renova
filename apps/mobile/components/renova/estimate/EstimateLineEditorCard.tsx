@@ -5,14 +5,18 @@ import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';
 import type { EstimateLine } from '@/lib/api';
 import { estimateLineSourceLabel } from '@/lib/domain/estimateFilters';
+import { PrimaryButton } from '@/components/renova/PrimaryButton';
 
 type Props = {
   line: EstimateLine;
   canWrite: boolean;
+  canRemove?: boolean;
+  removing?: boolean;
   onPatch: (lineId: string, body: object) => Promise<void>;
+  onRemove?: (line: EstimateLine) => void;
 };
 
-export function EstimateLineEditorCard({ line, canWrite, onPatch }: Props) {
+export function EstimateLineEditorCard({ line, canWrite, canRemove = false, removing = false, onPatch, onRemove }: Props) {
   const [open, setOpen] = useState(false);
   const [notes, setNotes] = useState(line.notes || '');
   const total = line.quantity_planned * line.unit_price;
@@ -61,6 +65,19 @@ export function EstimateLineEditorCard({ line, canWrite, onPatch }: Props) {
               if ((line.notes || '') !== notes.trim()) onPatch(line.id, { notes: notes.trim() || null });
             }}
           />
+          {canWrite && canRemove && onRemove ? (
+            <>
+              <Text style={s.removeHint}>Строка будет исключена из текущей сметы и бюджета, но останется в истории для восстановления.</Text>
+              <PrimaryButton
+                title="Убрать из сметы"
+                variant="dangerOutline"
+                compact
+                loading={removing}
+                disabled={removing}
+                onPress={() => onRemove(line)}
+              />
+            </>
+          ) : null}
         </View>
       )}
     </View>
@@ -135,4 +152,5 @@ const s = StyleSheet.create({
     textAlignVertical: 'top',
     backgroundColor: RenovaTheme.colors.surface,
   },
+  removeHint: { fontSize: 11, lineHeight: 16, color: RenovaTheme.colors.textMuted, marginTop: 4 },
 });

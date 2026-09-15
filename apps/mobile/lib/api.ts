@@ -4,6 +4,12 @@ export type * from './api/types';
 export type { PaymentEvidence, PaymentEvidenceStatus, PaymentEvidenceUploadIntent } from './api/payments';
 export type { SelectionItem } from './api/selections';
 export type {
+  EstimateLifecycleLine,
+  EstimateLifecycleSnapshot,
+  EstimateLineLifecycleStatus,
+  EstimateLineOrigin,
+} from './api/estimateLifecycle';
+export type {
   TechnicalQualityIssueInput,
   TechnicalSupervisionAssignment,
   TechnicalSupervisionAssignmentInput,

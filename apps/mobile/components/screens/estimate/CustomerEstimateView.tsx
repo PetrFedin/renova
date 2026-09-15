@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocalSearchParams, usePathname } from 'expo-router';
-import { ScrollView, StyleSheet, Alert } from 'react-native';
+import { ScrollView, StyleSheet, Alert, Text } from 'react-native';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
-import { api, ChangeOrder, MaterialStats } from '@/lib/api';
+import { api, ChangeOrder, MaterialStats, type EstimateLifecycleLine } from '@/lib/api';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { ObjectTabGuide } from '@/components/screens/object/ObjectTabGuide';
 import { OsHubTabs } from '@/components/renova/os/OsHubTabs';
@@ -14,7 +14,9 @@ import { EstimateSummaryLayer } from '@/components/screens/estimate/EstimateSumm
 import { EstimateChangesLayer } from '@/components/screens/estimate/EstimateChangesLayer';
 import { EstimateDetailLayer } from '@/components/screens/estimate/EstimateDetailLayer';
 import { EstimateDocumentsLayer } from '@/components/screens/estimate/EstimateDocumentsLayer';
+import { RemovedEstimateLinesPanel } from '@/components/renova/estimate/RemovedEstimateLinesPanel';
 import { screenLayout } from '@/constants/screenLayout';
+import { RenovaTheme } from '@/constants/Theme';
 import {
   ESTIMATE_LAYER_TABS,
   normalizeEstimateLayer,
@@ -36,6 +38,8 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
   const { user, activeProject, loadProject } = useRenova();
   const [stats, setStats] = useState<MaterialStats | null>(null);
   const [orders, setOrders] = useState<ChangeOrder[]>([]);
+  const [removedLines, setRemovedLines] = useState<EstimateLifecycleLine[]>([]);
+  const [lifecycleError, setLifecycleError] = useState(false);
   const [layer, setLayer] = useState<EstimateLayer>('summary');
   const [lineType, setLineType] = useState<EstimateLineTypeFilter>('all');
   const [category, setCategory] = useState<string | null>(null);
@@ -48,6 +52,15 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
     if (!user || !activeProject) return;
     api.materialStats(user.id, activeProject.id).then(setStats).catch(reportCatch('components.screens.estimate.CustomerEstimateView.1'));
     api.listChangeOrders(user.id, activeProject.id).then(setOrders).catch(reportCatch('components.screens.estimate.CustomerEstimateView.2'));
+    api.getEstimateLineLifecycle(user.id, activeProject.id)
+      .then((snapshot) => {
+        setRemovedLines(snapshot.removed);
+        setLifecycleError(false);
+      })
+      .catch((error) => {
+        setLifecycleError(true);
+        reportError('estimate.customer.lifecycle', error, { userId: user.id, projectId: activeProject.id });
+      });
     if (activeProject.estimate_lock_proposed_at && !activeProject.estimate_locked_at) {
       api.getEstimateLockDiff(user.id, activeProject.id).then(setLockDiff).catch((e) => { reportError('components.screens.estimate.CustomerEsti.LockDiff', e); setLockDiff(null); });
     } else {
@@ -124,7 +137,6 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
               await api.lockEstimate(user.id, activeProject.id);
               await loadProject(activeProject.id);
               await syncProjectSideEffects({ user, project: activeProject });
-              // W131: lock → договор / график
               alertEstimateLocked('customer');
             } catch (e: unknown) {
               if (isOfflineQueued(e)) {
@@ -163,15 +175,28 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
       )}
 
       {activeLayer === 'detail' && (
-        <EstimateDetailLayer
-          lines={allLines}
-          stats={stats}
-          lineType={lineType}
-          category={category}
-          onLineType={setLineType}
-          onCategory={setCategory}
-          showCategoryFilters={showEstimateCategoryFilters(detailLevel)}
-        />
+        <>
+          <EstimateDetailLayer
+            lines={allLines}
+            stats={stats}
+            lineType={lineType}
+            category={category}
+            onLineType={setLineType}
+            onCategory={setCategory}
+            showCategoryFilters={showEstimateCategoryFilters(detailLevel)}
+          />
+          {lifecycleError ? (
+            <Text style={styles.lifecycleWarning}>
+              История убранных строк сейчас не подтверждена. Текущая сумма сметы показана отдельно и не заменяется пустой историей.
+            </Text>
+          ) : (
+            <RemovedEstimateLinesPanel
+              lines={removedLines}
+              role="customer"
+              canRestore={false}
+            />
+          )}
+        </>
       )}
 
       {activeLayer === 'documents' && (
@@ -183,4 +208,5 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
 
 const styles = StyleSheet.create({
   wrap: { flex: 1 },
+  lifecycleWarning: { fontSize: 12, lineHeight: 17, color: RenovaTheme.colors.warningText, marginTop: 12 },
 });
