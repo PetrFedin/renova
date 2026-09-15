@@ -13,7 +13,7 @@ import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGua
 import { api, StageDetail, WorkSnapshot } from '@/lib/api';
 import { authHeaders, isRateLimitError } from '@/lib/api/client';
 import { compressUri } from '@/lib/compressImage';
-import { uploadMediaBlob } from '@/lib/mediaUpload';
+import { ProjectMediaUploadUnavailable, uploadMediaBlob } from '@/lib/mediaUpload';
 import { checklistForStage } from '@/lib/checklistTemplates';
 import { StageExpensePanel } from '@/components/renova/StageExpensePanel';
 import { StageEstimatePanel } from '@/components/renova/StageEstimatePanel';
@@ -112,21 +112,16 @@ export function StageDetailScreen() {
       const st = await api.getStage(user.id, activeProject.id, id);
       setStage(st);
     } catch (e) {
-      // 429 / сеть: оставляем предыдущий stage, не роняем экран (Uncaught)
       reportError(isRateLimitError(e) ? 'stage.reload.rate_limit' : 'stage.reload.getStage', e, { stageId: id });
       return;
     }
-    // Вторичные GET — с catch; при rate_limit не затираем UI fail-closed без нужды
     api.stageWorkflow(user.id, activeProject.id, id).then((w) => setWfChecks(w.checklist || [])).catch((e) => {
       reportError('components.screens.StageDetailScreen.WfChecks', e);
       if (!isRateLimitError(e)) setWfChecks([]);
     });
     api.stageBlocked(user.id, activeProject.id, id).then(setBlocked).catch((e) => {
       reportError('stage.blocked', e, { stageId: id });
-      // Fail-closed только при реальной ошибке доступа/сервера — не при 429
-      if (!isRateLimitError(e)) {
-        setBlocked({ blocked: true, depends_on: 'load_error' });
-      }
+      if (!isRateLimitError(e)) setBlocked({ blocked: true, depends_on: 'load_error' });
     });
     api.getContractGate(user.id, activeProject.id).then(setContractGate).catch((e) => {
       reportError('components.screens.StageDetailScreen.ContractGate', e);
@@ -157,7 +152,6 @@ export function StageDetailScreen() {
       : wfChecks.length
         ? wfChecks.every((c) => c.done)
         : CHECKLIST.every((c) => checks[c]);
-  // W68 #44: без фото результата кнопка неактивна
   const hasResultPhoto = (stage?.photos?.length ?? 0) > 0;
   const acceptBlocked = (CHECKLIST.length > 0 && !checklistComplete) || !hasResultPhoto;
   const exportChecks = wfChecks.length
@@ -193,7 +187,6 @@ export function StageDetailScreen() {
 
   const onAcceptPress = (qualityScore: number | null) => {
     if (!canWrite || acceptBlocked) return;
-    // Clarity V: всегда pre-confirm (паритет hub/portal), не только при пустом чеклисте
     const emptyChecklist = CHECKLIST.length === 0;
     showActionConfirm({
       title: emptyChecklist ? 'Принять без чеклиста?' : 'Принять этап?',
@@ -233,20 +226,10 @@ export function StageDetailScreen() {
         }
         return;
       }
-
-      // Comment is committed. Reconciliation must not turn success into failure.
       setComment('');
       setReplyTo(null);
-      try {
-        await reload();
-      } catch (error) {
-        reportError('components.screens.StageDetailScreen.CommentRefresh', error, { stageId: stage.id });
-      }
-      try {
-        await loadProject(activeProject.id);
-      } catch (error) {
-        reportError('components.screens.StageDetailScreen.CommentProjectRefresh', error, { stageId: stage.id });
-      }
+      try { await reload(); } catch (error) { reportError('components.screens.StageDetailScreen.CommentRefresh', error, { stageId: stage.id }); }
+      try { await loadProject(activeProject.id); } catch (error) { reportError('components.screens.StageDetailScreen.CommentProjectRefresh', error, { stageId: stage.id }); }
     } finally {
       setLoading(false);
     }
@@ -279,17 +262,10 @@ export function StageDetailScreen() {
         }
         const blob = await compressedResponse.blob();
         try {
-          const key = await uploadMediaBlob(
-            user.id,
-            activeProject.id,
-            blob,
-            'image/jpeg',
-          );
+          const key = await uploadMediaBlob(user.id, activeProject.id, blob, 'image/jpeg');
           await api.addStagePhoto(user.id, activeProject.id, stage.id, undefined, label, key);
         } catch (uploadError) {
-          // Local-storage development may not expose a PUT URL. The server-side
-          // base64 path still stores under project-media/{project_id}/... .
-          if (asset.base64) {
+          if (uploadError instanceof ProjectMediaUploadUnavailable && asset.base64) {
             await api.addStagePhoto(
               user.id,
               activeProject.id,
@@ -311,18 +287,8 @@ export function StageDetailScreen() {
         return;
       }
 
-      // Photo metadata is committed only after a successful storage PUT (or the
-      // explicit inline fallback). Refresh failures are separate telemetry.
-      try {
-        await reload();
-      } catch (error) {
-        reportError('components.screens.StageDetailScreen.PhotoRefresh', error, { stageId: stage.id });
-      }
-      try {
-        await loadProject(activeProject.id);
-      } catch (error) {
-        reportError('components.screens.StageDetailScreen.PhotoProjectRefresh', error, { stageId: stage.id });
-      }
+      try { await reload(); } catch (error) { reportError('components.screens.StageDetailScreen.PhotoRefresh', error, { stageId: stage.id }); }
+      try { await loadProject(activeProject.id); } catch (error) { reportError('components.screens.StageDetailScreen.PhotoProjectRefresh', error, { stageId: stage.id }); }
     } finally {
       setLoading(false);
     }
@@ -336,11 +302,7 @@ export function StageDetailScreen() {
 
   return (
     <>
-      <BackHeader
-        title={stage.name}
-        returnTo={returnTo}
-        subtitle={`${STAGE_STATUS_LABEL[stage.status] || stage.status}${isArchived ? ' · Архив' : ''}`}
-      />
+      <BackHeader title={stage.name} returnTo={returnTo} subtitle={`${STAGE_STATUS_LABEL[stage.status] || stage.status}${isArchived ? ' · Архив' : ''}`} />
       <ReadOnlyBanner />
       <ScrollView style={styles.wrap} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
         {isArchived && (
@@ -351,196 +313,44 @@ export function StageDetailScreen() {
             </Pressable>
           </View>
         )}
-
-        <StageDetailHero
-          stage={stage}
-          workSnap={workSnap}
-          isContractor={isContractor}
-          canWrite={canWrite}
-          blocked={blocked}
-          contractGate={contractGate}
-          userId={user.id}
-          projectId={activeProject.id}
-          onReload={reload}
-          onProjectReload={() => loadProject(activeProject.id)}
-          onSubmitStage={submitStage}
-        />
-
+        <StageDetailHero stage={stage} workSnap={workSnap} isContractor={isContractor} canWrite={canWrite} blocked={blocked} contractGate={contractGate} userId={user.id} projectId={activeProject.id} onReload={reload} onProjectReload={() => loadProject(activeProject.id)} onSubmitStage={submitStage} />
         {showAcceptance ? (
-          <StageDetailAcceptanceFold
-            stage={stage}
-            stageId={id!}
-            checklist={CHECKLIST}
-            wfChecks={wfChecks}
-            checks={checks}
-            setChecks={setChecks}
-            acceptBlocked={acceptBlocked}
-            canWrite={canWrite}
-            userId={user.id}
-            projectId={activeProject.id}
-            before={before}
-            after={after}
-            swipeOpen={swipeOpen}
-            setSwipeOpen={setSwipeOpen}
-            onAcceptPress={onAcceptPress}
-            onRejectPress={(qualityScore) => {
-              setRejectQualityScore(qualityScore);
-              setRejectOpen(true);
-            }}
-            onExportAcceptance={() => { onExportAcceptance().catch(reportCatch('stage.exportAcceptance')); }}
-            onReload={reload}
-          />
+          <StageDetailAcceptanceFold stage={stage} stageId={id!} checklist={CHECKLIST} wfChecks={wfChecks} checks={checks} setChecks={setChecks} acceptBlocked={acceptBlocked} canWrite={canWrite} userId={user.id} projectId={activeProject.id} before={before} after={after} swipeOpen={swipeOpen} setSwipeOpen={setSwipeOpen} onAcceptPress={onAcceptPress} onRejectPress={(qualityScore) => { setRejectQualityScore(qualityScore); setRejectOpen(true); }} onExportAcceptance={() => { onExportAcceptance().catch(reportCatch('stage.exportAcceptance')); }} onReload={reload} />
         ) : null}
-
-        <StageDetailPaymentBlock
-          stageId={stage.id}
-          stageStatus={stage.status}
-          stagePaymentAmount={stage.payment_amount}
-          userId={user.id}
-          projectId={activeProject.id}
-          role={role}
-          readOnly={readOnly}
-          stages={activeProject.stages || []}
-          onChanged={() => {
-            reload().catch((e) => reportError('stage.reload', e, { stageId: id }));
-            loadProject(activeProject.id).catch(reportCatch('stage.loadProject'));
-          }}
-        />
-
+        <StageDetailPaymentBlock stageId={stage.id} stageStatus={stage.status} stagePaymentAmount={stage.payment_amount} userId={user.id} projectId={activeProject.id} role={role} readOnly={readOnly} stages={activeProject.stages || []} onChanged={() => { reload().catch((e) => reportError('stage.reload', e, { stageId: id })); loadProject(activeProject.id).catch(reportCatch('stage.loadProject')); }} />
         <StageDetailAccordion title="Фото до / после" summary={`${stage.photos.length} фото`}>
           <View style={styles.photoBtns}>
             <PrimaryButton disabled={!canWrite || loading} title="До работ" variant="outline" onPress={() => { void onAddPhoto('До работ'); }} />
             <PrimaryButton disabled={!canWrite || loading} title="После работ" variant="outline" onPress={() => { void onAddPhoto('После работ'); }} />
           </View>
-          {[{ title: 'До', list: before }, { title: 'После', list: after }, { title: 'Прочие', list: other }].map(
-            ({ title, list }) =>
-              list.length > 0 && (
-                <View key={title}>
-                  <Text style={styles.subSection}>{title}</Text>
-                  {list.map((p) => (
-                    <View key={p.id} style={styles.photoRow}>
-                      {p.image_url ? (
-                        <Image source={{ uri: p.image_url, headers: authHeaders(user.id) }} style={styles.img} />
-                      ) : null}
-                      <Text>{p.caption || 'Фото'} · {p.created_at.slice(0, 10)}</Text>
-                    </View>
-                  ))}
+          {[{ title: 'До', list: before }, { title: 'После', list: after }, { title: 'Прочие', list: other }].map(({ title, list }) => list.length > 0 && (
+            <View key={title}>
+              <Text style={styles.subSection}>{title}</Text>
+              {list.map((p) => (
+                <View key={p.id} style={styles.photoRow}>
+                  {p.image_url ? <Image source={{ uri: p.image_url, headers: authHeaders(user.id) }} style={styles.img} /> : null}
+                  <Text>{p.caption || 'Фото'} · {p.created_at.slice(0, 10)}</Text>
                 </View>
-              ),
-          )}
-        </StageDetailAccordion>
-
-        <StageDetailAccordion title="Расходы и смета" summary="Детализация по этапу">
-          <StageExpensePanel
-            userId={user.id}
-            projectId={activeProject.id}
-            project={activeProject}
-            role={role}
-            stageId={stage.id}
-            stageName={stage.name}
-            roomIds={stage.room_ids}
-            readOnly={!canWrite}
-          />
-          <StageEstimatePanel
-            lines={activeProject.estimate_lines || []}
-            rooms={activeProject.rooms || []}
-            roomIds={stage.room_ids}
-            estimateHref={objectTabHref(role, 'estimate')}
-            role={role}
-            returnTo={`/stage/${stage.id}`}
-          />
-        </StageDetailAccordion>
-
-        <StageDetailAccordion title="Комментарии" summary={`${stage.comments.length} сообщ.`}>
-          {isContractor && (
-            <View style={styles.tplRow}>
-              {TEMPLATES.map((t) => (
-                <Pressable key={t} style={styles.tpl} onPress={() => { void onAddComment(t); }}>
-                  <Text style={styles.tplT}>{t}</Text>
-                </Pressable>
               ))}
             </View>
-          )}
-          {stage.comments.map((c) => (
-            <Pressable key={c.id} style={styles.comment} onPress={() => setReplyTo(c.text)}>
-              <Text style={styles.commentRole}>{c.author_role === 'contractor' ? 'Исполнитель' : 'Заказчик'}</Text>
-              {renderComment(c.text)}
-              <CommentReactions id={c.id} stageId={stage.id} counts={reactCounts[c.id]} />
-              <Text style={styles.meta}>{c.created_at.slice(0, 16).replace('T', ' ')}</Text>
-            </Pressable>
           ))}
-          {replyTo ? (
-            <Text style={styles.meta}>
-              Ответ на: {replyTo.slice(0, 40)}… <Text onPress={() => setReplyTo(null)}>✕</Text>
-            </Text>
-          ) : null}
-          <TextInput
-            editable={canWrite}
-            style={styles.input}
-            placeholder="Комментарий…"
-            value={comment}
-            onChangeText={setComment}
-            multiline
-          />
+        </StageDetailAccordion>
+        <StageDetailAccordion title="Расходы и смета" summary="Детализация по этапу">
+          <StageExpensePanel userId={user.id} projectId={activeProject.id} project={activeProject} role={role} stageId={stage.id} stageName={stage.name} roomIds={stage.room_ids} readOnly={!canWrite} />
+          <StageEstimatePanel lines={activeProject.estimate_lines || []} rooms={activeProject.rooms || []} roomIds={stage.room_ids} estimateHref={objectTabHref(role, 'estimate')} role={role} returnTo={`/stage/${stage.id}`} />
+        </StageDetailAccordion>
+        <StageDetailAccordion title="Комментарии" summary={`${stage.comments.length} сообщ.`}>
+          {isContractor && <View style={styles.tplRow}>{TEMPLATES.map((t) => <Pressable key={t} style={styles.tpl} onPress={() => { void onAddComment(t); }}><Text style={styles.tplT}>{t}</Text></Pressable>)}</View>}
+          {stage.comments.map((c) => <Pressable key={c.id} style={styles.comment} onPress={() => setReplyTo(c.text)}><Text style={styles.commentRole}>{c.author_role === 'contractor' ? 'Исполнитель' : 'Заказчик'}</Text>{renderComment(c.text)}<CommentReactions id={c.id} stageId={stage.id} counts={reactCounts[c.id]} /><Text style={styles.meta}>{c.created_at.slice(0, 16).replace('T', ' ')}</Text></Pressable>)}
+          {replyTo ? <Text style={styles.meta}>Ответ на: {replyTo.slice(0, 40)}… <Text onPress={() => setReplyTo(null)}>✕</Text></Text> : null}
+          <TextInput editable={canWrite} style={styles.input} placeholder="Комментарий…" value={comment} onChangeText={setComment} multiline />
           <PrimaryButton disabled={!canWrite || loading} title="Отправить" onPress={() => { void onAddComment(); }} />
         </StageDetailAccordion>
-
-        <StageDetailAccordion title="История решений" summary="Смета · сроки · согласования">
-          <DecisionHistoryPanel
-            userId={user.id}
-            projectId={activeProject.id}
-            stageId={stage.id}
-            compact
-            returnTo={returnTo}
-          />
-        </StageDetailAccordion>
-
-        <StageDetailAccordion title="Связанные разделы" summary="Этапы · бюджет · чат">
-          <StageDetailLinks
-            role={role}
-            user={user}
-            project={activeProject}
-            stage={stage}
-            stageId={id!}
-            canWrite={canWrite}
-            onRoomsChanged={reload}
-          />
-        </StageDetailAccordion>
-
-        {workSnap ? (
-          <StageDetailAccordion title="Прогресс" summary={`${workSnap.percent_complete}%`}>
-            <Text style={styles.meta}>
-              Работ: {workSnap.works_done ?? workSnap.checklist_progress?.done ?? 0}/{workSnap.works_total ?? workSnap.checklist_progress?.total ?? 0}
-              {' · '}материалы {workSnap.materials_count}
-              {workSnap.overdue_days ? ` · +${workSnap.overdue_days} дн.` : ''}
-            </Text>
-            {workSnap.budget ? (
-              <Text style={styles.meta}>
-                Бюджет: {formatRub(workSnap.budget.planned)} · факт {formatRub(workSnap.budget.spent)}
-              </Text>
-            ) : null}
-          </StageDetailAccordion>
-        ) : null}
+        <StageDetailAccordion title="История решений" summary="Смета · сроки · согласования"><DecisionHistoryPanel userId={user.id} projectId={activeProject.id} stageId={stage.id} compact returnTo={returnTo} /></StageDetailAccordion>
+        <StageDetailAccordion title="Связанные разделы" summary="Этапы · бюджет · чат"><StageDetailLinks role={role} user={user} project={activeProject} stage={stage} stageId={id!} canWrite={canWrite} onRoomsChanged={reload} /></StageDetailAccordion>
+        {workSnap ? <StageDetailAccordion title="Прогресс" summary={`${workSnap.percent_complete}%`}><Text style={styles.meta}>Работ: {workSnap.works_done ?? workSnap.checklist_progress?.done ?? 0}/{workSnap.works_total ?? workSnap.checklist_progress?.total ?? 0}{' · '}материалы {workSnap.materials_count}{workSnap.overdue_days ? ` · +${workSnap.overdue_days} дн.` : ''}</Text>{workSnap.budget ? <Text style={styles.meta}>Бюджет: {formatRub(workSnap.budget.planned)} · факт {formatRub(workSnap.budget.spent)}</Text> : null}</StageDetailAccordion> : null}
       </ScrollView>
-
-      <RejectStageModal
-        visible={rejectOpen}
-        stageName={stage.name}
-        onClose={() => setRejectOpen(false)}
-        onConfirm={async (reason) => {
-          setRejectOpen(false);
-          try {
-            await rejectStage(stage.id, reason, { qualityScore: rejectQualityScore });
-            await reload();
-          } catch (e: unknown) {
-            if (isOfflineQueued(e)) {
-              notifyOfflineQueued('Отклонение');
-            } else {
-              Alert.alert('Ошибка', 'Не удалось вернуть этап на доработку');
-            }
-          }
-        }}
-      />
+      <RejectStageModal visible={rejectOpen} stageName={stage.name} onClose={() => setRejectOpen(false)} onConfirm={async (reason) => { setRejectOpen(false); try { await rejectStage(stage.id, reason, { qualityScore: rejectQualityScore }); await reload(); } catch (e: unknown) { if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение'); else Alert.alert('Ошибка', 'Не удалось вернуть этап на доработку'); } }} />
     </>
   );
 }
