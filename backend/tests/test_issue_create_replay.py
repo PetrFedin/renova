@@ -56,6 +56,8 @@ async def count(db, model, *where):
 async def test_issue_create_replay_conflict_and_distinct_equal_intents(issue_db):
     db = issue_db
     _customer, contractor, project = await seed(db)
+    contractor_id = contractor.id
+    project_id = project.id
     payload = {
         "title": "Crack near window",
         "description": "same visible values",
@@ -71,58 +73,62 @@ async def test_issue_create_replay_conflict_and_distinct_equal_intents(issue_db)
     first, replayed = await issue_create.create_issue(
         db,
         project=project,
-        user_id=contractor.id,
+        user_id=contractor_id,
         client_request_id="issue-response-loss-001",
         payload=payload,
     )
     assert replayed is False
+    first_id = first.id
 
     second, replayed = await issue_create.create_issue(
         db,
         project=project,
-        user_id=contractor.id,
+        user_id=contractor_id,
         client_request_id="issue-response-loss-001",
         payload=payload,
     )
     assert replayed is True
-    assert second.id == first.id
-    assert await count(db, ProjectIssue, ProjectIssue.project_id == project.id) == 1
+    assert second.id == first_id
+    assert await count(db, ProjectIssue, ProjectIssue.project_id == project_id) == 1
     assert await count(
         db,
         ClientWriteRequest,
-        ClientWriteRequest.project_id == project.id,
+        ClientWriteRequest.project_id == project_id,
         ClientWriteRequest.scope == issue_create.SCOPE,
     ) == 1
     assert await count(
         db,
         DomainOutbox,
         DomainOutbox.aggregate_type == "project_issue",
-        DomainOutbox.aggregate_id == first.id,
+        DomainOutbox.aggregate_id == first_id,
     ) == 2
 
     with pytest.raises(IdempotencyConflict, match="idempotency_conflict"):
         await issue_create.create_issue(
             db,
             project=project,
-            user_id=contractor.id,
+            user_id=contractor_id,
             client_request_id="issue-response-loss-001",
             payload={**payload, "description": "changed intent"},
         )
 
+    project_after_conflict = await db.get(Project, project_id)
+    assert project_after_conflict is not None
+
     third, replayed = await issue_create.create_issue(
         db,
-        project=project,
-        user_id=contractor.id,
+        project=project_after_conflict,
+        user_id=contractor_id,
         client_request_id="issue-response-loss-002",
         payload=payload,
     )
     assert replayed is False
-    assert third.id != first.id
-    assert await count(db, ProjectIssue, ProjectIssue.project_id == project.id) == 2
+    assert third.id != first_id
+    assert await count(db, ProjectIssue, ProjectIssue.project_id == project_id) == 2
     assert await count(
         db,
         ClientWriteRequest,
-        ClientWriteRequest.project_id == project.id,
+        ClientWriteRequest.project_id == project_id,
         ClientWriteRequest.scope == issue_create.SCOPE,
     ) == 2
     assert await count(db, DomainOutbox, DomainOutbox.aggregate_type == "project_issue") == 4
