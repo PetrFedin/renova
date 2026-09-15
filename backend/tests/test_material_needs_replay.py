@@ -73,8 +73,8 @@ async def test_material_needs_replay_returns_original_snapshot_after_estimate_ch
     assert await _count(
         db,
         DomainOutbox,
-        DomainOutbox.project_id == project.id if hasattr(DomainOutbox, "project_id") else DomainOutbox.aggregate_type == generation.AGGREGATE_TYPE,
-    ) >= 1
+        DomainOutbox.aggregate_type == generation.AGGREGATE_TYPE,
+    ) == 1
 
     db.add(
         EstimateLine(
