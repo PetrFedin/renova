@@ -9,6 +9,7 @@ import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { api } from '@/lib/api';
+import { authHeaders } from '@/lib/api/client';
 import type { ProjectIssue } from '@/lib/api/types';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
@@ -80,6 +81,7 @@ function IssueCard({
   focused,
   waitingHint,
   role,
+  userId,
 }: {
   item: ProjectIssue;
   actions: IssueTransitionAction[];
@@ -91,11 +93,13 @@ function IssueCard({
   focused?: boolean;
   waitingHint?: string | null;
   role: OsRole;
+  userId: string;
 }) {
   const isClosed = item.status === 'closed';
   const tone = severityTone(item.severity);
   const isWarranty = (item.title || '').startsWith('[Гарантия]');
   const dateLabel = dueLabel(item.due_at);
+  const photoUrl = mediaUrl(item.photo_url);
 
   return (
     <View style={[styles.issueCard, isClosed && styles.closedCard, focused && styles.focusedCard]}>
@@ -114,8 +118,8 @@ function IssueCard({
       </View>
 
       {item.description ? <Text style={styles.issueText}>{item.description}</Text> : null}
-      {mediaUrl(item.photo_url) ? (
-        <Image source={{ uri: mediaUrl(item.photo_url)! }} style={styles.issuePhoto} resizeMode="cover" />
+      {photoUrl ? (
+        <Image source={{ uri: photoUrl, headers: authHeaders(userId) }} style={styles.issuePhoto} resizeMode="cover" />
       ) : null}
 
       {waitingHint ? <Text style={styles.waitingHint}>{waitingHint}</Text> : null}
@@ -374,6 +378,7 @@ export function QualityControlScreen() {
         busy={busy}
         waitingHint={issueWaitingHint(item.status, role, isWarranty)}
         role={role}
+        userId={user.id}
       />
     );
   };
