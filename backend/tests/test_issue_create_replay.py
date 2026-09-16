@@ -132,3 +132,83 @@ async def test_issue_create_replay_conflict_and_distinct_equal_intents(issue_db)
         ClientWriteRequest.scope == issue_create.SCOPE,
     ) == 2
     assert await count(db, DomainOutbox, DomainOutbox.aggregate_type == "project_issue") == 4
+
+
+@pytest.mark.asyncio
+async def test_issue_create_rolls_back_entire_effect_set_when_outbox_prepare_fails(issue_db, monkeypatch):
+    db = issue_db
+    _customer, contractor, project = await seed(db)
+    contractor_id = contractor.id
+    project_id = project.id
+    payload = {
+        "title": "Atomic rollback crack",
+        "description": "no partial issue/evidence set may survive",
+        "room_id": None,
+        "stage_id": None,
+        "severity": "high",
+        "floor_plan_id": None,
+        "x_pct": None,
+        "y_pct": None,
+        "photo_key": None,
+    }
+
+    original_enqueue = issue_create.outbox.enqueue
+    calls = 0
+
+    async def fail_second_enqueue(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("synthetic_outbox_prepare_failure")
+        return await original_enqueue(*args, **kwargs)
+
+    monkeypatch.setattr(issue_create.outbox, "enqueue", fail_second_enqueue)
+    with pytest.raises(RuntimeError, match="synthetic_outbox_prepare_failure"):
+        await issue_create.create_issue(
+            db,
+            project=project,
+            user_id=contractor_id,
+            client_request_id="issue-atomic-failure-001",
+            payload=payload,
+        )
+
+    assert await count(db, ProjectIssue, ProjectIssue.project_id == project_id) == 0
+    assert await count(
+        db,
+        ClientWriteRequest,
+        ClientWriteRequest.project_id == project_id,
+        ClientWriteRequest.scope == issue_create.SCOPE,
+    ) == 0
+    assert await count(
+        db,
+        DomainOutbox,
+        DomainOutbox.aggregate_type == "project_issue",
+    ) == 0
+
+    # The failed attempt must not poison the idempotency key or leave the
+    # transaction/lock unusable. Restoring delivery preparation and retrying
+    # the exact same intent creates one fresh canonical effect set.
+    monkeypatch.setattr(issue_create.outbox, "enqueue", original_enqueue)
+    project_after_failure = await db.get(Project, project_id)
+    assert project_after_failure is not None
+    issue, replayed = await issue_create.create_issue(
+        db,
+        project=project_after_failure,
+        user_id=contractor_id,
+        client_request_id="issue-atomic-failure-001",
+        payload=payload,
+    )
+    assert replayed is False
+    assert await count(db, ProjectIssue, ProjectIssue.project_id == project_id) == 1
+    assert await count(
+        db,
+        ClientWriteRequest,
+        ClientWriteRequest.project_id == project_id,
+        ClientWriteRequest.scope == issue_create.SCOPE,
+    ) == 1
+    assert await count(
+        db,
+        DomainOutbox,
+        DomainOutbox.aggregate_type == "project_issue",
+        DomainOutbox.aggregate_id == issue.id,
+    ) == 2
