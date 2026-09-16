@@ -20,6 +20,7 @@ def _postgres_url() -> str:
     value = os.environ.get("CALENDAR_IMPORT_POSTGRES_URL", "").strip()
     if not value:
         pytest.skip("CALENDAR_IMPORT_POSTGRES_URL is only set by dedicated PostgreSQL workflow")
+    assert value.startswith("postgresql+asyncpg://"), "calendar import race proof must use real PostgreSQL"
     return value
 
 
@@ -108,10 +109,30 @@ async def _count(Session, model, *where) -> int:
 
 
 @pytest.mark.asyncio
-async def test_calendar_import_same_key_postgres_race_never_drifts_to_second_stage():
+async def test_calendar_import_same_key_postgres_race_never_drifts_to_second_stage(monkeypatch):
     engine = create_async_engine(_postgres_url())
     Session = async_sessionmaker(engine, expire_on_commit=False)
     actor_id, _contractor_id, project_id, first_id, second_id = await _seed(Session)
+
+    # Prove two independent DB sessions reach the production serialization
+    # boundary before either can acquire the Project row lock. A plain gather()
+    # can execute sequentially and is not sufficient physical race evidence.
+    ready = 0
+    guard = asyncio.Lock()
+    both_ready = asyncio.Event()
+    release = asyncio.Event()
+    original_lock = import_svc._lock_project
+
+    async def synchronized_lock(db, locked_project_id):
+        nonlocal ready
+        async with guard:
+            ready += 1
+            if ready == 2:
+                both_ready.set()
+        await asyncio.wait_for(release.wait(), timeout=10)
+        return await original_lock(db, locked_project_id)
+
+    monkeypatch.setattr(import_svc, "_lock_project", synchronized_lock)
 
     async def run_one():
         async with Session() as db:
@@ -123,8 +144,15 @@ async def test_calendar_import_same_key_postgres_race_never_drifts_to_second_sta
                 content=_ics(),
             )
 
+    first_task = asyncio.create_task(run_one())
+    second_task = asyncio.create_task(run_one())
     try:
-        first_result, second_result = await asyncio.gather(run_one(), run_one())
+        await asyncio.wait_for(both_ready.wait(), timeout=10)
+        release.set()
+        first_result, second_result = await asyncio.wait_for(
+            asyncio.gather(first_task, second_task),
+            timeout=15,
+        )
         replay_flags = sorted([first_result[1], second_result[1]])
         assert replay_flags == [False, True]
         assert first_result[0] == second_result[0] == {
@@ -147,13 +175,19 @@ async def test_calendar_import_same_key_postgres_race_never_drifts_to_second_sta
             ClientWriteRequest,
             ClientWriteRequest.project_id == project_id,
             ClientWriteRequest.scope == import_svc.SCOPE,
+            ClientWriteRequest.request_id == "calendar-import-pg-race-001",
         ) == 1
     finally:
+        release.set()
+        for task in (first_task, second_task):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(first_task, second_task, return_exceptions=True)
         await engine.dispose()
 
 
 @pytest.mark.asyncio
-async def test_calendar_import_rechecks_revoked_contractor_after_project_lock_wait():
+async def test_calendar_import_rechecks_revoked_contractor_after_project_lock_wait(monkeypatch):
     engine = create_async_engine(_postgres_url())
     Session = async_sessionmaker(engine, expire_on_commit=False)
     actor_id, contractor_id, project_id, first_id, second_id = await _seed(
@@ -162,6 +196,14 @@ async def test_calendar_import_rechecks_revoked_contractor_after_project_lock_wa
     )
 
     holder = Session()
+    reached_project_lock = asyncio.Event()
+    original_lock = import_svc._lock_project
+
+    async def observable_lock(db, locked_project_id):
+        reached_project_lock.set()
+        return await original_lock(db, locked_project_id)
+
+    monkeypatch.setattr(import_svc, "_lock_project", observable_lock)
     try:
         locked_project = (
             await holder.execute(
@@ -180,15 +222,19 @@ async def test_calendar_import_rechecks_revoked_contractor_after_project_lock_wa
                 )
 
         task = asyncio.create_task(blocked_import())
-        await asyncio.sleep(0.15)
-        assert not task.done()
+        await asyncio.wait_for(reached_project_lock.wait(), timeout=10)
+
+        # Reaching the production lock call is not enough: prove it is actually
+        # blocked while the revoker owns the PostgreSQL row lock.
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(asyncio.shield(task), timeout=0.25)
 
         assert locked_project.contractor_id == contractor_id
         locked_project.contractor_id = None
         await holder.commit()
 
         with pytest.raises(HTTPException) as denied:
-            await task
+            await asyncio.wait_for(task, timeout=10)
         assert denied.value.status_code == 403
 
         async with Session() as db:
@@ -205,5 +251,10 @@ async def test_calendar_import_rechecks_revoked_contractor_after_project_lock_wa
             ClientWriteRequest.scope == import_svc.SCOPE,
         ) == 0
     finally:
+        if 'task' in locals() and not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        if holder.in_transaction():
+            await holder.rollback()
         await holder.close()
         await engine.dispose()
