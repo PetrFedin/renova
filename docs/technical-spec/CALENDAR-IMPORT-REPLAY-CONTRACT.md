@@ -48,8 +48,8 @@ All selected Stage rows come from a `Stage.project_id == URL project_id` query b
 - same request ID + changed canonical content raises `idempotency_conflict`;
 - response loss after commit cannot move an unmatched event from the first empty stage to the next empty stage;
 - concurrent same-key imports serialize on the project lock and produce one ledger entry and one canonical stage mapping;
-- a failure after in-memory Stage mutation but before the ledger/transaction commit rolls back every staged date/UID change and leaves no ledger row;
-- after that transient pre-commit failure is removed, retrying the exact same request ID/content must complete once and create exactly one ledger entry.
+- rollback qualification must first force the dirty Stage rows through real SQL UPDATE statements inside the open transaction, then inject failure before ledger/transaction commit; rollback must restore every date/UID and leave no ledger row;
+- after that transient post-flush/pre-commit failure is removed, retrying the exact same request ID/content must complete once and create exactly one ledger entry.
 
 The compact replay result is encoded in `ClientWriteRequest.entity_id`; no new schema or response-snapshot table is required.
 
@@ -74,7 +74,7 @@ Other deterministic HTTP 4xx responses are authoritative and must not be convert
 
 Before this slice is called qualified on an exact head:
 
-- SQLite explicitly executes the canonical replay/changed-payload conflict scenario and the rollback-then-same-intent-retry scenario;
+- SQLite explicitly executes canonical replay/changed-payload conflict plus post-SQL-flush rollback and same-intent recovery;
 - migrated PostgreSQL explicitly executes the same-key physical serialization scenario and the revoke-while-waiting authority-recheck scenario;
 - the mandatory Calendar integrity workflow emits JUnit and requires all four exact calendar-import testcase names; any missing, skipped, failing or erroring required testcase fails qualification;
 - actual production mobile transport/restart harness is invoked directly from mandatory core CI and proves exact-body/request-ID persistence across lost response, corrupt-2xx ambiguity, restart and queue flush; deterministic 4xx must not queue, 429/5xx/status-0 must queue, storage failure must fail closed, and two separate equal-visible imports must mint distinct request IDs;
