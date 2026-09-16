@@ -143,12 +143,16 @@ async def test_calendar_import_failure_rolls_back_all_stage_changes_and_ledger(d
         ]
     )
 
-    async def fail_before_commit(*_args, **_kwargs):
-        raise RuntimeError("synthetic_before_commit")
+    async def fail_after_stage_flush(db_arg, *_args, **_kwargs):
+        # Force the dirty Stage rows through real SQL UPDATE statements inside
+        # the still-open transaction, then fail before the request ledger can
+        # commit. This proves database rollback, not merely ORM state discard.
+        await db_arg.flush()
+        raise RuntimeError("synthetic_after_stage_flush")
 
-    monkeypatch.setattr(import_svc, "commit_client_write", fail_before_commit)
+    monkeypatch.setattr(import_svc, "commit_client_write", fail_after_stage_flush)
 
-    with pytest.raises(RuntimeError, match="synthetic_before_commit"):
+    with pytest.raises(RuntimeError, match="synthetic_after_stage_flush"):
         await import_svc.import_ical(
             db,
             project_id=project_id,
@@ -172,8 +176,8 @@ async def test_calendar_import_failure_rolls_back_all_stage_changes_and_ledger(d
     ) == 0
 
     # Recovery must be retryable with the exact same logical intent after the
-    # transient pre-commit failure. A rollback that only leaves zero rows is
-    # insufficient if the same request cannot subsequently complete once.
+    # transient post-flush/pre-commit failure. Zero residual rows alone are not
+    # sufficient proof if the same request cannot subsequently complete once.
     monkeypatch.setattr(import_svc, "commit_client_write", original_commit_client_write)
     retry_result, replayed = await import_svc.import_ical(
         db,
