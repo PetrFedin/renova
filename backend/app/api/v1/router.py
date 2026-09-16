@@ -31,6 +31,7 @@ from app.api.v1 import technical_supervision_schedule
 from app.api.v1 import warranty
 from app.api.v1 import issue_creation_integrity
 from app.api.v1 import chat_business_command_integrity
+from app.api.v1 import chat_thread_creation_integrity
 from app.api.v1 import (
     auth, activity, scratchpad, chat_inbox, work_orders, work_acceptances,
     budget_planner, purchases, documents, esign, ocr_worker, automation_worker, os, reports, marketplace, design_packages,
@@ -154,9 +155,11 @@ _CHAT_BUSINESS_COMMAND_ROUTES: set[RouteSignature] = {
     ("/projects/{project_id}/chats/{thread_id}/messages/{message_id}/task", "POST"),
     ("/projects/{project_id}/chats/{thread_id}/invoice", "POST"),
 }
-_remove_replaced_routes(chats.router, _TECHNICAL_SUPERVISION_CHAT_ROUTES | _CHAT_BUSINESS_COMMAND_ROUTES)
+_CHAT_THREAD_CREATION_ROUTES: set[RouteSignature] = {("/projects/{project_id}/chats", "POST")}
+_remove_replaced_routes(chats.router, _TECHNICAL_SUPERVISION_CHAT_ROUTES | _CHAT_BUSINESS_COMMAND_ROUTES | _CHAT_THREAD_CREATION_ROUTES)
 api_router.include_router(technical_supervision_chat.router)
 api_router.include_router(chat_business_command_integrity.router)
+api_router.include_router(chat_thread_creation_integrity.router)
 api_router.include_router(chats.router)
 api_router.include_router(payment_disputes.router)
 _PAYMENT_HISTORY_ROUTES: set[RouteSignature] = {("/projects/{project_id}/payments", "GET")}
