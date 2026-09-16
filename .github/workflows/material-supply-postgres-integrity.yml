@@ -7,11 +7,14 @@ on:
       - "backend/app/api/v1/purchases.py"
       - "backend/app/models/material_supply.py"
       - "backend/app/services/dependency_service.py"
+      - "backend/app/services/material_need_generation_service.py"
       - "backend/app/services/material_pick_service.py"
       - "backend/app/services/material_supply_service.py"
       - "backend/app/services/purchase_create_service.py"
       - "backend/app/services/purchase_service.py"
       - "backend/alembic/versions/w20materialsupply01_material_supply_truth.py"
+      - "backend/tests/test_material_needs_replay.py"
+      - "backend/tests/test_material_needs_replay_postgres.py"
       - "backend/tests/test_material_supply_truth_integrity.py"
       - "backend/tests/test_material_supply_postgres_integrity.py"
       - "apps/mobile/components/renova/MaterialPickList.tsx"
@@ -22,6 +25,7 @@ on:
       - "apps/mobile/lib/domain/materialSupply.test.ts"
       - "apps/mobile/lib/domain/procurementNextAction.ts"
       - "docs/technical-spec/MATERIAL-SUPPLY-CONTRACT.md"
+      - "docs/technical-spec/MATERIAL-NEEDS-REPLAY-CONTRACT.md"
       - ".github/workflows/material-supply-postgres-integrity.yml"
   pull_request:
     paths:
@@ -29,11 +33,14 @@ on:
       - "backend/app/api/v1/purchases.py"
       - "backend/app/models/material_supply.py"
       - "backend/app/services/dependency_service.py"
+      - "backend/app/services/material_need_generation_service.py"
       - "backend/app/services/material_pick_service.py"
       - "backend/app/services/material_supply_service.py"
       - "backend/app/services/purchase_create_service.py"
       - "backend/app/services/purchase_service.py"
       - "backend/alembic/versions/w20materialsupply01_material_supply_truth.py"
+      - "backend/tests/test_material_needs_replay.py"
+      - "backend/tests/test_material_needs_replay_postgres.py"
       - "backend/tests/test_material_supply_truth_integrity.py"
       - "backend/tests/test_material_supply_postgres_integrity.py"
       - "apps/mobile/components/renova/MaterialPickList.tsx"
@@ -44,6 +51,7 @@ on:
       - "apps/mobile/lib/domain/materialSupply.test.ts"
       - "apps/mobile/lib/domain/procurementNextAction.ts"
       - "docs/technical-spec/MATERIAL-SUPPLY-CONTRACT.md"
+      - "docs/technical-spec/MATERIAL-NEEDS-REPLAY-CONTRACT.md"
       - ".github/workflows/material-supply-postgres-integrity.yml"
 
 concurrency:
@@ -70,7 +78,7 @@ jobs:
       DATABASE_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova
       MATERIAL_SUPPLY_POSTGRES_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova
       PUBLIC_BASE_URL: https://ci-staging.example.com
-      SECRET_KEY: ci-staging-secret-key-32chars!!
+      SECRET_KEY: material-supply-ci-${{ github.sha }}
       ALLOW_CREATE_ALL: "false"
       ALLOW_DEMO_SEED: "false"
       PYTHONUNBUFFERED: "1"
@@ -92,7 +100,65 @@ jobs:
         run: poetry run alembic upgrade head
       - name: Run material supply behavioral contracts
         working-directory: backend
-        run: poetry run pytest -q tests/test_material_supply_truth_integrity.py
-      - name: Run material supply PostgreSQL truth
+        run: |
+          set -euo pipefail
+          poetry run pytest -q \
+            tests/test_material_supply_truth_integrity.py \
+            tests/test_material_needs_replay.py \
+            --junitxml=material-supply-behavioral-results.xml
+          poetry run python - <<'PY'
+          import xml.etree.ElementTree as ET
+
+          root = ET.parse('material-supply-behavioral-results.xml').getroot()
+          cases = root.findall('.//testcase')
+          assert cases, 'material supply behavioral qualification must execute tests'
+          assert not root.findall('.//skipped'), 'skipped behavioral tests are not qualification evidence'
+          assert not root.findall('.//failure') and not root.findall('.//error')
+          material_needs = {
+              case.get('name')
+              for case in cases
+              if case.get('classname', '').endswith('test_material_needs_replay')
+          }
+          required = {
+              'test_material_needs_replay_returns_original_snapshot_after_estimate_changes',
+              'test_material_needs_rolls_back_picks_outbox_and_ledger_when_outbox_prepare_fails',
+          }
+          assert required <= material_needs, 'both exact material-needs semantic/atomicity scenarios must execute'
+          PY
+      - name: Run material supply PostgreSQL truth and recovery
         working-directory: backend
-        run: poetry run pytest -vv --tb=short tests/test_material_supply_postgres_integrity.py
+        run: |
+          set -euo pipefail
+          poetry run pytest -vv --tb=short \
+            tests/test_material_supply_postgres_integrity.py \
+            tests/test_material_needs_replay_postgres.py \
+            --junitxml=material-supply-postgres-results.xml
+          poetry run python - <<'PY'
+          import xml.etree.ElementTree as ET
+
+          root = ET.parse('material-supply-postgres-results.xml').getroot()
+          cases = root.findall('.//testcase')
+          assert cases, 'material supply PostgreSQL qualification must execute tests'
+          assert not root.findall('.//skipped'), 'skipped PostgreSQL tests are not qualification evidence'
+          assert not root.findall('.//failure') and not root.findall('.//error')
+          material_needs_pg = {
+              case.get('name')
+              for case in cases
+              if case.get('classname', '').endswith('test_material_needs_replay_postgres')
+          }
+          required = {
+              'test_material_needs_same_key_postgres_race_creates_one_result',
+              'test_material_needs_rechecks_revoked_contractor_after_lock_wait',
+          }
+          assert required <= material_needs_pg, 'both exact material-needs PostgreSQL scenarios must execute'
+          PY
+      - name: Retain material supply qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: material-supply-postgres-qualification
+          path: |
+            backend/material-supply-behavioral-results.xml
+            backend/material-supply-postgres-results.xml
+          if-no-files-found: error
+          retention-days: 14
