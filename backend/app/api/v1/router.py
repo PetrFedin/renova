@@ -4,6 +4,7 @@ from app.api.v1 import portal_acceptance_decisions
 from app.api.v1 import portal_change_order_decisions
 from app.api.v1 import account_lifecycle
 from app.api.v1 import document_lifecycle
+from app.api.v1 import document_creation_integrity
 from app.api.v1 import selections
 from app.api.v1 import bank_statements
 from app.api.v1 import expense_mutations
@@ -87,12 +88,16 @@ api_router.include_router(stages_ext.router)
 api_router.include_router(project_checklists.router)
 api_router.include_router(checklist_templates.router)
 api_router.include_router(stage_reactions.router)
-_DOCUMENT_LIFECYCLE_ROUTES: set[RouteSignature] = {
-    ("/projects/{project_id}/documents/{document_id}/sign", "POST"), ("/projects/{project_id}/documents/{document_id}/archive", "POST"),
-    ("/projects/{project_id}/documents/{document_id}/restore", "POST"), ("/projects/{project_id}/documents/{document_id}", "DELETE"),
+_DOCUMENT_REPLACED_ROUTES: set[RouteSignature] = {
+    ("/projects/{project_id}/documents", "POST"),
+    ("/projects/{project_id}/documents/{document_id}/sign", "POST"),
+    ("/projects/{project_id}/documents/{document_id}/archive", "POST"),
+    ("/projects/{project_id}/documents/{document_id}/restore", "POST"),
+    ("/projects/{project_id}/documents/{document_id}", "DELETE"),
     ("/projects/{project_id}/documents/{document_id}/legal-hold", "POST"),
 }
-_remove_replaced_routes(documents.router, _DOCUMENT_LIFECYCLE_ROUTES)
+_remove_replaced_routes(documents.router, _DOCUMENT_REPLACED_ROUTES)
+api_router.include_router(document_creation_integrity.router)
 api_router.include_router(document_lifecycle.router)
 api_router.include_router(documents.router)
 api_router.include_router(esign.router)
