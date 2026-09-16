@@ -19,6 +19,7 @@ def _postgres_url() -> str:
     value = os.environ.get("MATERIAL_SUPPLY_POSTGRES_URL", "").strip()
     if not value:
         pytest.skip("MATERIAL_SUPPLY_POSTGRES_URL is only set by dedicated PostgreSQL workflow")
+    assert value.startswith("postgresql+asyncpg://"), "material-needs race proof must use real PostgreSQL"
     return value
 
 
@@ -94,6 +95,26 @@ async def test_material_needs_same_key_postgres_race_creates_one_result(monkeypa
     Session = async_sessionmaker(engine, expire_on_commit=False)
     actor_id, _contractor_id, project_id = await _seed(Session)
 
+    # Both physical sessions must reach the serialization boundary before
+    # either is allowed to acquire the PostgreSQL project row lock. This
+    # prevents a merely sequential gather() from being mistaken for race proof.
+    ready = 0
+    guard = asyncio.Lock()
+    both_ready = asyncio.Event()
+    release = asyncio.Event()
+    original_lock = generation._lock_project
+
+    async def synchronized_lock(db, locked_project_id):
+        nonlocal ready
+        async with guard:
+            ready += 1
+            if ready == 2:
+                both_ready.set()
+        await asyncio.wait_for(release.wait(), timeout=10)
+        return await original_lock(db, locked_project_id)
+
+    monkeypatch.setattr(generation, "_lock_project", synchronized_lock)
+
     async def run_one():
         async with Session() as db:
             return await generation.generate_from_estimate(
@@ -103,8 +124,15 @@ async def test_material_needs_same_key_postgres_race_creates_one_result(monkeypa
                 client_request_id="material-needs-pg-race-001",
             )
 
+    first_task = asyncio.create_task(run_one())
+    second_task = asyncio.create_task(run_one())
     try:
-        first, second = await asyncio.gather(run_one(), run_one())
+        await asyncio.wait_for(both_ready.wait(), timeout=10)
+        release.set()
+        first, second = await asyncio.wait_for(
+            asyncio.gather(first_task, second_task),
+            timeout=15,
+        )
         snapshots = [first[0], second[0]]
         replay_flags = sorted([first[1], second[1]])
         assert replay_flags == [False, True]
@@ -117,8 +145,30 @@ async def test_material_needs_same_key_postgres_race_creates_one_result(monkeypa
             ClientWriteRequest.project_id == project_id,
             ClientWriteRequest.scope == generation.SCOPE,
         ) == 1
-        assert await _count(Session, DomainOutbox, *_project_outbox_filter(project_id)) == 1
+
+        async with Session() as db:
+            request_row = (
+                await db.execute(
+                    select(ClientWriteRequest).where(
+                        ClientWriteRequest.project_id == project_id,
+                        ClientWriteRequest.scope == generation.SCOPE,
+                        ClientWriteRequest.request_id == "material-needs-pg-race-001",
+                    )
+                )
+            ).scalar_one()
+            assert request_row.entity_id != generation.ZERO_RESULT_ID
+            assert await db.scalar(
+                select(func.count()).select_from(DomainOutbox).where(
+                    DomainOutbox.aggregate_type == generation.AGGREGATE_TYPE,
+                    DomainOutbox.aggregate_id == request_row.entity_id,
+                )
+            ) == 1
     finally:
+        release.set()
+        for task in (first_task, second_task):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(first_task, second_task, return_exceptions=True)
         await engine.dispose()
 
 
@@ -135,6 +185,14 @@ async def test_material_needs_rechecks_revoked_contractor_after_lock_wait(monkey
     actor_id, contractor_id, project_id = await _seed(Session, contractor_actor=True)
 
     holder = Session()
+    reached_project_lock = asyncio.Event()
+    original_lock = generation._lock_project
+
+    async def observable_lock(db, locked_project_id):
+        reached_project_lock.set()
+        return await original_lock(db, locked_project_id)
+
+    monkeypatch.setattr(generation, "_lock_project", observable_lock)
     try:
         locked_project = (
             await holder.execute(
@@ -152,15 +210,19 @@ async def test_material_needs_rechecks_revoked_contractor_after_lock_wait(monkey
                 )
 
         task = asyncio.create_task(blocked_generate())
-        await asyncio.sleep(0.15)
-        assert not task.done()
+        await asyncio.wait_for(reached_project_lock.wait(), timeout=10)
+
+        # The task reached the production lock call but must remain physically
+        # blocked while the revoker owns the PostgreSQL row lock.
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(asyncio.shield(task), timeout=0.25)
 
         assert locked_project.contractor_id == contractor_id
         locked_project.contractor_id = None
         await holder.commit()
 
         with pytest.raises(HTTPException) as denied:
-            await task
+            await asyncio.wait_for(task, timeout=10)
         assert denied.value.status_code == 403
 
         assert await _count(Session, MaterialPick, MaterialPick.project_id == project_id) == 0
@@ -172,5 +234,10 @@ async def test_material_needs_rechecks_revoked_contractor_after_lock_wait(monkey
         ) == 0
         assert await _count(Session, DomainOutbox, *_project_outbox_filter(project_id)) == 0
     finally:
+        if 'task' in locals() and not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        if holder.in_transaction():
+            await holder.rollback()
         await holder.close()
         await engine.dispose()
