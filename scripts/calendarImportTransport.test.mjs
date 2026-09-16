@@ -84,6 +84,7 @@ const ok = (value = { ok: true, parsed: 1, updated_stages: 1, replayed: false })
 const invoke = h => h.api.importIcal('actor-A', 'project-A', content);
 let scenarios = 0;
 
+// Lost response after server acceptance; restart must replay exact first bytes.
 {
   const server = new Map();
   const storage = new Map();
@@ -133,8 +134,20 @@ for (const status of [429, 500, 502, 503]) {
   scenarios += 1;
 }
 
+// Production req() normalizes a fetch failure to transport status 0; the
+// calendar producer must then preserve the exact original body durably.
 {
   const h = harness({ network: async () => { throw new TypeError('Failed to fetch'); } });
+  await assert.rejects(invoke(h), /offline_queued/);
+  assert.equal((await h.queue.getQueue()).length, 1);
+  assert.equal((await h.queue.getQueue())[0].body, h.requests[0].body);
+  scenarios += 1;
+}
+
+// A 2xx response with unreadable JSON is response ambiguity too: the server
+// may already have committed the import, so retry must retain the same ID/body.
+{
+  const h = harness({ network: async () => new Response('{broken', { status: 200 }) });
   await assert.rejects(invoke(h), /offline_queued/);
   assert.equal((await h.queue.getQueue()).length, 1);
   assert.equal((await h.queue.getQueue())[0].body, h.requests[0].body);
@@ -153,6 +166,21 @@ for (const status of [429, 500, 502, 503]) {
   const result = await invoke(success);
   assert.equal(result.updated_stages, 1);
   assert.equal((await success.queue.getQueue()).length, 0);
+  scenarios += 1;
+}
+
+// Two deliberate imports of the same visible ICS file are separate user
+// intents. Request identity must be minted per invocation, not content-derived.
+{
+  const success = harness({ network: async () => ok() });
+  await invoke(success);
+  await invoke(success);
+  assert.equal(success.requests.length, 2);
+  const firstId = JSON.parse(success.requests[0].body).client_request_id;
+  const secondId = JSON.parse(success.requests[1].body).client_request_id;
+  assert.ok(firstId);
+  assert.ok(secondId);
+  assert.notEqual(firstId, secondId);
   scenarios += 1;
 }
 
