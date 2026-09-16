@@ -1,298 +1,374 @@
 # RENOVA — Product Completion Board
 
-**Status:** P0 governance / execution board  
-**Tracking:** #463  
-**Evidence cut:** canonical `main` = `e5c6ee44c0f684b14037e77948dbcb630fd41896` (2026-09-08)  
-**Purpose:** convert the existing RENOVA capability graph into closed end-to-end lifecycles and a deterministic final integration order. This document adds no product feature, provider, route, state machine or user hub.
+**Статус:** ACTIVE / AUTHORITATIVE EXECUTION BOARD  
+**Tracking:** #463 / PR #464  
+**Дата последней полной сверки:** 2026-09-16  
+**Канонический `main` на момент сверки:** `e5c6ee44c0f684b14037e77948dbcb630fd41896`  
+**Schema head канонического `main`:** `w22projectparticipants01`  
+**Цель:** одна честная карта того, что уже интегрировано, что доказано только на exact candidate, что частично, что заблокировано и что делать следующим.
+
+Этот Board — оперативный слой живого ТЗ. `docs/RENOVA-TECHNICAL-SPECIFICATION.md` остаётся системным паспортом и продуктовым контрактом; `PRODUCT-COMPLETION-MANDATE.md` остаётся каталогом мандатных задач A1–E4 и их acceptance; `GOLDEN-PATHS.md` определяет GP1–GP8; этот документ определяет **текущий фактический статус и порядок интеграции на основании реального `main`, открытых PR и evidence**.
+
+Если статический план конфликтует с более новым подтверждённым P0/evidence, порядок меняется здесь и в `CHANGELOG-ROADMAP.md`; acceptance-критерий при этом не ослабляется.
+
+---
 
 ## 0. Completion invariant
 
-RENOVA is PRODUCT COMPLETE only when every applicable product path closes this lifecycle without a truth break:
+RENOVA является PRODUCT COMPLETE только когда применимый пользовательский путь замыкается без разрыва истины:
 
-`create → authoritative read → update/transition → second-side visibility → linked calculation/read-model reconciliation → cancel/business reversal → restore/reconcile → offline/response-loss safe retry → account/session isolation → closeout → historical evidence/warranty`.
+`создал → authoritative read → изменил/перевёл → вторая сторона увидела → связанные расчёты/модели пересчитались → ошибся/отменил → восстановил/согласовал → потерял ответ/сеть → безопасно повторил → сменил аккаунт/проект → чужое не утекло → завершил объект → история/документы/гарантия сохранились`.
 
-A rendered screen, reachable route, source inventory, isolated unit test or isolated PR does not by itself close that lifecycle.
+Наличие экрана, кнопки, endpoint, enum, `200 OK`, unit test, source inventory или отдельного зелёного PR само по себе не закрывает lifecycle.
 
-### Status vocabulary — the only five readiness states
+### Единственные допустимые readiness states
 
 | Status | Meaning |
 |---|---|
-| `PROVEN` | Required behavior is present on canonical `main` and exact-main evidence proves the requested cell on the required runtime/layer. |
-| `CANDIDATE PROVEN` | Exact-head candidate evidence proves that bounded cell, but the candidate is not integrated into canonical `main`. |
-| `PARTIAL` | Capability exists or a subset is covered, but the requested cell/lifecycle is not fully proven. |
-| `BLOCKED` | A source-confirmed defect or prerequisite prevents a safe completion claim. |
-| `FUTURE EXTERNAL` | Intentionally outside simulated-provider PRODUCT COMPLETE and requires later real provider/infrastructure/native-distribution evidence. |
+| `PROVEN` | Поведение интегрировано в канонический `main` и доказано на требуемом exact-main runtime/layer. |
+| `CANDIDATE PROVEN` | Exact-head кандидат доказывает только заявленный bounded-контур, но ещё не интегрирован в `main`. |
+| `PARTIAL` | Capability существует или часть цепочки проверена, но полный результат/негативные сценарии не доказаны. |
+| `BLOCKED` | Известный дефект/зависимость/отсутствующий gate не позволяет безопасно принять результат. |
+| `FUTURE EXTERNAL` | Внутренний контракт может быть готов, но итог требует реальной внешней среды/provider/device/administrative evidence. |
 
-Open-PR evidence can never be `PROVEN`. Two independently green PRs on different bases do not compose into one green product SHA.
+**Open PR никогда не становится `PROVEN`.** Два зелёных PR на разных bases не складываются в один зелёный продуктовый SHA.
 
-## 1. Board model
+---
 
-The conceptual board is:
+## 1. Правило актуальности и источники истины
 
-`M01–M12 × GP1–GP8 × 26 mutation surfaces × role × layer × outcome × main/candidate`.
+Перед любой новой задачей или изменением приоритета агент обязан сверить, в указанном порядке:
 
-A literal Cartesian dump would contain thousands of meaningless combinations. The canonical board is normalized into joined tables:
+1. текущий `main` SHA и migration head;
+2. открытые P0/P1 issues;
+3. открытые/draft/stacked PR, их base/head SHA и зависимости;
+4. последние применимые CI runs и exact-head artifacts;
+5. deployed/review smoke, если задача касается доступного пользователю стенда;
+6. `PRODUCTION-READINESS.md` и readiness evidence;
+7. этот Board;
+8. master-ТЗ;
+9. `CHANGELOG-ROADMAP.md`;
+10. применимые domain/calculation/screen contracts.
 
-1. **Mode Board** — M01–M12.
-2. **Golden Path Board** — GP1–GP8.
-3. **Mutation Board** — the exact 26 mutating mobile API surfaces discovered by #431 / PR #432.
-4. **Layer Integrity Board** — UI/API/PostgreSQL/Redis/MinIO/Worker cross-cutting proof.
-5. **Candidate Evidence Ledger** — what can legitimately be called `CANDIDATE PROVEN`.
-6. **Final Integration DAG** — the bounded merge/requalification order.
+### Freshness rule
 
-The Mutation Board carries Mode/GP/role/layer applicability. Joining those keys with the first two tables yields every applicable product cell without inventing a sixth `N/A` readiness state.
+- Evidence привязано к **точному SHA**.
+- После rebase/merge/change SHA старое evidence не переносится автоматически.
+- Если документ говорит «готово», а runtime/CI говорит иначе, статус немедленно понижается до фактически доказанного.
+- Если новый P0 выше текущей работы по security/data/money/recovery risk, execution order пересчитывается; старый roadmap не имеет права удерживать более низкий приоритет.
+- Любой PR, который меняет behavior, evidence или readiness хотя бы одной строки M/GP/F/Wave, обновляет этот Board в той же logical change либо явно пишет `Board status unchanged` с обоснованием.
 
-Roles: `C` = customer; `K` = contractor/principal/team actor as authorized; `A` = admin/operator; `V` = viewer/portal actor.  
-Layers: `UI`, `API`, `PG` = PostgreSQL, `Redis`, `MinIO`, `Worker`.
+### Priority resolver
 
-Outcome columns are distinct:
-- **Normal** — authorized mutation + authoritative read-after-write.
-- **Error** — wrong role/object/version/payload/provider state fails closed with typed behavior and no partial write.
-- **Offline** — no-network/timeout path retains the exact intended mutation or fails explicitly; stale cached truth is not relabeled as fresh.
-- **Retry** — response-loss/restart/repeated intent converges idempotently; changed payload conflicts where required.
-- **Reverse** — cancel/delete/reject/rework/archive/restore/reconcile lifecycle where the domain supports it.
-- **Linked** — second side, derived calculations/read models, audit/outbox/worker and related facts converge to the committed business truth.
+1. Security / cross-project or cross-account isolation / destructive money corruption.
+2. Atomicity / exactly-once / response-loss / rollback / reversal.
+3. Session / account / offline / cache truth.
+4. Financial / calculation / reconciliation truth.
+5. Canonical browser/native navigation and accessibility blockers.
+6. Lifecycle closure / multi-party scope.
+7. Human usability / friction / terminology.
+8. External production readiness.
+9. New product capabilities — только после core closure либо отдельного owner decision.
 
-## 2. Mode Board — M01–M12
+---
 
-The mode vocabulary follows the governed scenario model introduced by #365/#366. Because #366 is still an open documentation candidate at this evidence cut, this Board adopts the vocabulary but does not import any runtime readiness claim from that PR.
+## 2. Текущая общая правда
 
-| Mode | Required closed chain | Main | Best candidate | Completion state | Dominant gap |
-|---|---|---|---|---|---|
-| M01 Self-managed | object → estimate → self-plan/work → materials → expenses/docs → closeout | `PARTIAL` | `PARTIAL` | `PARTIAL` | No one-SHA API + mobile-web proof through recovery and closeout. |
-| M02 One contractor | invite/lead → participant → work → acceptance → money/docs → warranty | `PARTIAL` | `PARTIAL` | `PARTIAL` | Bounded slices exist, but the whole one-contractor lifecycle is not connected. |
-| M03 Multi-contractor | independent principals → scoped work/finance/docs/chat → customer aggregate truth | `BLOCKED` | `BLOCKED` | `BLOCKED` | #300, #344, #345. |
-| M04 Contractor with team | principal commercial authority → subordinate execution → no payee/contract leakage | `PARTIAL` | `PARTIAL` | `PARTIAL` | Team behavior exists, but commercial-vs-execution authority is not closed across all domains. |
-| M05 Direct invite | invite → identity/accept → participant/scope → ordinary project lifecycle | `PARTIAL` | `PARTIAL` | `PARTIAL` | Invite failure/recovery/role lifecycle is not qualified end-to-end. |
-| M06 Marketplace conversion | lead → quotes → choose → atomic participant conversion → project lifecycle | `BLOCKED` | `BLOCKED` | `BLOCKED` | #300/#344/#345 prevent final scoped participant truth. |
-| M07 Technical supervision | assign supervisor → inspect/evidence → issue/remediation → customer decision | `PARTIAL` | `PARTIAL` | `PARTIAL` | No complete role-rights E2E proof. |
-| M08 Viewer/guest | bounded share/read → revoke → stale-link denial | `PARTIAL` | `PARTIAL` | `PARTIAL` | Revocation/file/session lifecycle is not closed. |
-| M09 Portal-token | bounded token → canonical action → replay/revoke/expiry | `PARTIAL` | `PARTIAL` | `PARTIAL` | Portal slices exist; no complete token lifecycle. |
-| M10 Closed/warranty | complete → archive/export → warranty → historical responsibility → claim closure | `BLOCKED` | `BLOCKED` | `BLOCKED` | #319 plus disconnected closeout/warranty history. |
-| M11 Unstable network | offline/cache → exact intent → response-loss replay → reconcile | `BLOCKED` | `BLOCKED` | `BLOCKED` | #316 and #317 remain open despite bounded recovery candidates. |
-| M12 Account switch | A request/queue/cache → logout/B → no A publication/execution → A2 isolation | `BLOCKED` | `BLOCKED` | `BLOCKED` | #315; #428 proves only a bounded server logout-revoke slice. |
+| Контур | Статус | Фактическая граница доказательства |
+|---|---|---|
+| Канонический `main` | `PARTIAL` | `e5c6ee44…`; продукт широк, но несколько более новых bounded fixes существуют только в открытых кандидатах. |
+| Broad production | `BLOCKED` | Security/data/recovery/session/finance/browser/native/external gates не закрыты на одном SHA. |
+| M01–M12 | `PARTIAL/BLOCKED` | Ни один полный mode lifecycle не доказан end-to-end на текущем `main`. |
+| GP1–GP8 | `PARTIAL/BLOCKED` | Ни один GP не может быть повышен до `PROVEN`; интегрированный GP1 #458 ещё не квалифицирован. |
+| Review role/project entry | `CANDIDATE PROVEN` | Deployed run `35084701908`: четыре role×project entry сценария прошли. |
+| Deployed mutation proof | `CANDIDATE PROVEN` | В том же run `deployed-mutation-proof` = SUCCESS. Это не полный UI-E2E. |
+| Deployed product browser | `BLOCKED` | Chromium и WebKit product jobs FAILED; Chromium: 4 passed / 6 failed. |
+| Реальные providers | `FUTURE EXTERNAL` | Live payments/SMS/e-sign/FNS/Kontur/Goskey не выдаются за внутреннюю product-complete evidence. |
 
-**Mode result:** no M01–M12 mode is `PROVEN` under the strict full-lifecycle contract on the current canonical `main`.
+### Review/browser defects, подтверждённые run `35084701908`
 
-## 3. Golden Path Board — GP1–GP8
+1. Customer: переход в `Управленческая сводка` не дал ожидаемого visible destination state.
+2. Contractor: после Budget не найден ожидаемый entry `Рыночная оценка` по текущему browser contract.
+3. Customer shell: overlay перехватывает pointer events и блокирует `Главная`.
+4. Customer Object: вкладка `Комнаты` не выставляет ожидаемый `aria-selected="true"`.
+5. Contractor shell: возврат Home не восстанавливает `os-home-ready`.
+6. Contractor Object: `Комнаты` не доступна/не видна по текущему contract.
 
-`GOLDEN-PATHS.md` requires every GP in both API and mobile-web form on canonical PostgreSQL + Redis + MinIO + API + Worker with simulated providers. At this evidence cut the canonical `main` does not carry the required connected GP1–GP8 completion suites; A1/#337 and D1/#357 remain the governing delivery gates. An isolated lifecycle PR therefore cannot promote a Golden Path to `PROVEN`.
+На review branch установка зависимостей в этом deployed run сообщала `22 vulnerabilities (15 moderate, 7 high)`. Это truth именно review lineage; отдельно #372 имеет квалифицированный bounded dependency candidate, но он не делает #367 автоматически безопасным.
 
-| GP | Roles | Layers | Normal | Error | Offline | Retry | Reverse | Linked | Integrated candidate | Final gate | Dominant evidence/gap |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| GP1 Object → Rooms → Estimate → Budget | C, K | UI, API, PG, Redis | `PARTIAL` | `PARTIAL` | `BLOCKED` | `BLOCKED` | `PARTIAL` | `PARTIAL` | `BLOCKED` | `BLOCKED` | #458 says chain verification pending; #457 and #448 are bounded candidates; #412 still pending. |
-| GP2 Marketplace → Quotes → Selection → Executor | C, K1, K2 | UI, API, PG, Redis, Worker | `BLOCKED` | `BLOCKED` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `BLOCKED` | `BLOCKED` | `BLOCKED` | #300/#344/#345; #429 is client foundation, not full participant adoption. |
-| GP3 Stages + Calendar → WorkOrder → Evidence → Progress | C, K1, K2 | UI, API, PG, Redis, MinIO, Worker | `BLOCKED` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `PARTIAL` | `PARTIAL` | `BLOCKED` | `BLOCKED` | #344, #421/#424, #451/#452, #316, #375. |
-| GP4 Acceptance → Rework → Portal Acceptance → Warranty | C, K, V | UI, API, PG, Redis, MinIO, Worker | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `BLOCKED` | Acceptance pieces exist; portal/rework/warranty/closeout are not one connected proof. |
-| GP5 Invoice → Payment → Receipt → Expense → Dispute/Refund | C, K, A | UI, API, PG, Redis, Worker | `BLOCKED` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `BLOCKED` | A3/A4, #318, #316/#317. #322 proves only bounded chat command atomicity/replay. |
-| GP6 Material → Approval → Purchase → Delivery → Receipt | C, K | UI, API, PG, Redis, Worker | `PARTIAL` | `PARTIAL` | `BLOCKED` | `BLOCKED` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `BLOCKED` | #460 is a bounded material-needs candidate; broader purchase/supply/reversal remains. |
-| GP7 Documents → Versions → E-sign → Archive/Export | C, K | UI, API, PG, MinIO, Worker | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `BLOCKED` | #320 native authenticated delivery; no complete version/sign/export mobile-web chain. |
-| GP8 Chat → Inbox/Push → Read Truth → Reminder | C, K | UI, API, PG, Redis, MinIO, Worker | `PARTIAL` | `PARTIAL` | `BLOCKED` | `BLOCKED` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `BLOCKED` | #315/#316/#317; #322/#385/#387 bounded; #392 thread creation still pending. |
+**Следствие:** review stand пригоден для ограниченного ознакомления и evidence, но не является acceptance-ready и тем более production-ready.
 
-**Golden Path result:** no GP can be promoted until one exact integrated SHA contains its prerequisites and both its API and mobile-web suites are green.
+---
 
-## 4. Mutation Board — exact 26 mutating surfaces
+## 3. Mode Board — M01–M12
 
-The executable inventory in #431 / PR #432 discovers **26** mutating mobile API modules. It classifies **25 business-domain modules** and separately permits one transport mutation in `client.ts`: `/api/v1/auth/refresh`. The Board mirrors that inventory one-for-one; it does not invent a 26th business object.
+| Mode | Required closed chain | Main | Best candidate | Dominant gap |
+|---|---|---|---|---|
+| M01 Self-managed | object → estimate → plan/work → materials → expenses/docs → closeout | `PARTIAL` | `PARTIAL` | Нет one-SHA lifecycle через recovery/closeout. |
+| M02 One contractor | invite/lead → participant → work → acceptance → money/docs → warranty | `PARTIAL` | `PARTIAL` | Bounded slices не собраны в один lifecycle. |
+| M03 Multi-contractor | principals → scoped work/finance/docs/chat → customer aggregate | `BLOCKED` | `BLOCKED` | #300/#344/#345. |
+| M04 Contractor with team | principal commercial authority → subordinate execution | `PARTIAL` | `PARTIAL` | Commercial/execution authority не закрыта во всех domains. |
+| M05 Direct invite | invite → identity → participant/scope → ordinary lifecycle | `PARTIAL` | `PARTIAL` | Invite/revoke/recovery не квалифицированы целиком. |
+| M06 Marketplace | lead → quotes → choose → participant conversion → lifecycle | `BLOCKED` | `BLOCKED` | Multi-contractor participant truth. |
+| M07 Technical supervision | supervisor → inspect → issue → remediation → decision | `PARTIAL` | `PARTIAL` | Нет полного role-rights E2E. |
+| M08 Viewer/guest | bounded share/read → revoke → stale-link denial | `PARTIAL` | `PARTIAL` | Revocation/file/session lifecycle. |
+| M09 Portal-token | token → canonical action → replay/revoke/expiry | `PARTIAL` | `PARTIAL` | Нет полного token lifecycle. |
+| M10 Closed/warranty | complete → archive/export → warranty → claim closure | `BLOCKED` | `BLOCKED` | #319 + disconnected closeout/warranty/history. |
+| M11 Unstable network | offline/cache → exact intent → response-loss replay → reconcile | `BLOCKED` | `PARTIAL` | #316/#317; несколько bounded candidates уже доказаны, family-wide closure нет. |
+| M12 Account switch | A work → logout/B → no A publication/replay → A2 | `BLOCKED` | `BLOCKED` | #315; #428 только logout revoke. |
 
-| ID | Surface | Roles | Modes / GPs | Layers | Main Normal | Cand Normal | Main Error | Cand Error | Main Offline | Cand Offline | Main Retry | Cand Retry | Main Reverse | Cand Reverse | Main Linked | Cand Linked | Evidence boundary |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| F01 | `admin.ts` — team/invite/subscription/operator-admin mutations | K, A | M02–M07 / cross-GP | UI, API, PG, Redis, Worker | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | Existing admin/team/subscription flows are not one role/lifecycle proof; operator-only surfaces must remain operator-only. |
-| F02 | `auth.ts` — OTP/session/login/logout identity mutations | C, K, A | M01–M12 / all GP entry | UI, API, PG, Redis | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `PARTIAL` | `CANDIDATE PROVEN` | `BLOCKED` | `BLOCKED` | #428 proves bounded server logout revocation only; #315 still blocks generation/account-switch isolation. |
-| F03 | `calendar.ts` — calendar/stage dates/iCalendar | C, K | M01–M07 / GP3 | UI, API, PG, Redis, Worker | `BLOCKED` | `PARTIAL` | `BLOCKED` | `CANDIDATE PROVEN` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | #421 is fixed by bounded #424 candidate; #422/#461 atomic iCalendar replay remains pending exact qualification. |
-| F04 | `chats.ts` — threads/messages/reactions/tasks/invoices | C, K | M02–M12 / GP5, GP8 | UI, API, PG, Redis, MinIO, Worker | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `BLOCKED` | `PARTIAL` | `BLOCKED` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | #322/#385/#387 prove bounded replay slices; #392 and #317 prevent family-wide closure. |
-| F05 | `design.ts` — design packages/submit/decision/version | C, K | M01–M05 / GP1, GP7 | UI, API, PG, MinIO, Worker | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | #413/#414 response-loss candidate remains pending; #315/#320 affect native/file boundaries. |
-| F06 | `documents.ts` — documents/e-sign/version/export | C, K | M01–M10 / GP4, GP7 | UI, API, PG, MinIO, Worker | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | No one-SHA create→version→sign→export→revoke/native lifecycle; #320 is a confirmed delivery gap. |
-| F07 | `estimate.ts` — estimate lines/decisions/Change Orders/budget linkage | C, K | M01–M06 / GP1, GP5, GP6 | UI, API, PG, Worker | `BLOCKED` | `PARTIAL` | `BLOCKED` | `PARTIAL` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `PARTIAL` | `CANDIDATE PROVEN` | `PARTIAL` | `CANDIDATE PROVEN` | #457 proves bounded draft-line remove/restore + budget restoration; #448 proves bounded Change Order conflict/decision; #412 and #375/#444 remain. |
-| F08 | `floor.ts` — floor plans/pins/furniture | C, K | M01–M03 / GP1 | UI, API, PG, MinIO | `BLOCKED` | `PARTIAL` | `BLOCKED` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | Cross-project binding #377; #380/#441 are bounded binding candidates, not full lifecycle proof. |
-| F09 | `issues.ts` — punch/quality issue lifecycle | C, K, A as authorized | M02–M10 / GP3, GP4 | UI, API, PG, MinIO, Worker | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | #417/#418/#459 recovery qualification is not yet final on integrated main. |
-| F10 | `market.ts` — leads/quotes/selection/conversion | C, K | M02–M06 / GP2 | UI, API, PG, Redis, Worker | `PARTIAL` | `PARTIAL` | `BLOCKED` | `BLOCKED` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `BLOCKED` | `BLOCKED` | Final conversion must create scoped participant truth; #300/#344/#345 remain open. |
-| F11 | `materials.ts` — needs/picks/purchases/supply/prices | C, K | M01–M07 / GP6 | UI, API, PG, Redis, Worker | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `BLOCKED` | `PARTIAL` | `BLOCKED` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | #460 proves bounded material-needs response-loss on stacked lineage; broader family plus #317 remain. |
-| F12 | `misc.ts` — viewers/portal/approvals/general mutations | C, K, V | M02–M10 / GP4, GP7 | UI, API, PG, Redis, Worker | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | Portal/viewer bounded slices do not close revoke/expiry/session/native lifecycle. |
-| F13 | `notifications.ts` — notification read/action/dismiss | C, K, A | M02–M12 / GP2–GP8 | UI, API, PG, Redis, Worker | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | Canonical source entity and session generation must remain authoritative; #315 affects cross-account publication. |
-| F14 | `os.ts` — workspace/profile/dashboard OS mutations | C, K | M01–M12 / cross-GP | UI, API, PG, Redis | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | Analytics/read models remain subject to participant, finance and session truth; #431 marks some latent analytics EXPOSE_AFTER_FIX. |
-| F15 | `payments.ts` — payment/evidence/dispute/refund | C, K, A | M02–M12 / GP5 | UI, API, PG, Redis, Worker | `BLOCKED` | `PARTIAL` | `BLOCKED` | `PARTIAL` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `PARTIAL` | `BLOCKED` | `PARTIAL` | `BLOCKED` | `PARTIAL` | A3/A4 simulated payment lifecycle and #318 finance truth remain; #322 invoice command explicitly does not create provider/Expense truth. |
-| F16 | `projects.ts` — create/edit/participant/assignment/archive/trash/restore/purge | C, K, A | M01–M12 / GP1–GP8 | UI, API, PG, Worker | `PARTIAL` | `PARTIAL` | `BLOCKED` | `PARTIAL` | `BLOCKED` | `PARTIAL` | `BLOCKED` | `PARTIAL` | `BLOCKED` | `PARTIAL` | `BLOCKED` | `BLOCKED` | #434 is bounded reversible lifecycle evidence; #319 blocks purge; #300/#344/#345 block participant/sibling truth. |
-| F17 | `receipts.ts` — receipt/expense/reverify/delete | C, K, A | M01–M12 / GP5, GP6 | UI, API, PG, Redis, Worker | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `PARTIAL` | `PARTIAL` | `BLOCKED` | `PARTIAL` | #317 transport/cache truth and #318/#379 financial fact truth; #381/#382 are bounded candidates. |
-| F18 | `rooms.ts` — room create/edit/change request/archive/restore | C, K | M01–M06 / GP1, GP6 | UI, API, PG, Worker | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `BLOCKED` | `PARTIAL` | `BLOCKED` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | #438/#440 provide bounded room candidates; connected room authority + derived facts remain #458 pending. |
-| F19 | `scratchpad.ts` — create/edit/delete/promote | C, K | M01–M08 / secondary | UI, API, PG | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | Contextual capability exists; no connected lifecycle proof is recorded at this cut. |
-| F20 | `selections.ts` — finish/material selections and decisions | C, K | M01–M07 / GP6 | UI, API, PG, Worker | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | #415/#416 response-loss candidate remains pending qualification. |
-| F21 | `stages.ts` — stages/status/comments/reactions/progress | C, K | M01–M10 / GP3, GP4 | UI, API, PG, Redis, MinIO, Worker | `BLOCKED` | `PARTIAL` | `BLOCKED` | `CANDIDATE PROVEN` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | #424/#452 prove bounded child-resource ACL; #404 stage-comment replay remains pending. |
-| F22 | `technicalSupervision.ts` — supervisor assignment/inspection/quality | C, K, A/supervisor | M07 / GP4 | UI, API, PG, MinIO, Worker | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | No full assignment→finding→remediation→customer-decision proof. |
-| F23 | `workAcceptances.ts` — submit/accept/return/rework | C, K, V | M02–M10 / GP4 | UI, API, PG, Worker | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | Acceptance contracts are prerequisites, but warranty/portal/retry/full GP4 are not one-SHA proven. |
-| F24 | `workOrders.ts` — create/edit/transition | C, K | M01–M07 / GP3 | UI, API, PG, Redis, Worker | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | Direct-create response-loss remains #316/#383; #383 qualification is pending. |
-| F25 | `workSchedule.ts` — schedule/items/submit/decision | C, K | M01–M07 / GP3 | UI, API, PG, Redis, Worker | `BLOCKED` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | #420 plus #316 replay policy; no bounded qualified candidate at this cut. |
-| F26 | `client.ts` — transport/session refresh mutation owner | C, K, A | M01–M12 / all GPs | UI, API, Redis | `BLOCKED` | `PARTIAL` | `BLOCKED` | `PARTIAL` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `PARTIAL` | `CANDIDATE PROVEN` | `BLOCKED` | `BLOCKED` | This is infrastructure, not a business family. #315 blocks generation/A→B→A isolation; #317 blocks transport/cache truth; #428 proves only server logout revocation. |
+---
 
-### 4.1 Count invariant
+## 4. Golden Path Board — GP1–GP8
 
-The business modules are exactly:
+| GP | Result | Main | Best candidate | Dominant blocker |
+|---|---|---|---|---|
+| GP1 | Project → Rooms → Estimate → Budget | `BLOCKED` | `PARTIAL` | #458 pending; #457/#448 bounded; #412 create recovery ещё PARTIAL; browser shell. |
+| GP2 | Marketplace → Quotes → Contractor | `BLOCKED` | `BLOCKED` | #300/#344/#345; #429 только client foundation. |
+| GP3 | Stages → Schedule → WorkOrder → Evidence → Progress | `BLOCKED` | `PARTIAL` | participant scope, #316, calendar/object binding, browser/mobile E2E. |
+| GP4 | Acceptance → Rework → Portal → Warranty | `PARTIAL` | `PARTIAL` | closeout/warranty/portal/session не соединены. |
+| GP5 | Invoice → Payment → Receipt → Expense → Refund | `BLOCKED` | `PARTIAL` | simulated payment lifecycle, finance truth, replay/offline. |
+| GP6 | Material → Approval → Purchase → Delivery → Receipt | `PARTIAL` | `PARTIAL` | #460 material-needs proven bounded; purchase/delivery/return/finance family остаётся. |
+| GP7 | Document → Version → Sign → Export/Archive | `BLOCKED` | `PARTIAL` | #320 native delivery, retention, provider/legal truth. |
+| GP8 | Chat → Inbox/Push → Read → Reminder | `PARTIAL` | `PARTIAL` | #315/#316/#317; #322 strong bounded, chat thread/stage-comment family не полностью integrated. |
 
-`admin, auth, calendar, chats, design, documents, estimate, floor, issues, market, materials, misc, notifications, os, payments, projects, receipts, rooms, scratchpad, selections, stages, technicalSupervision, workAcceptances, workOrders, workSchedule`.
+**Promotion rule:** GP становится `PROVEN` только когда его API + mobile-web сценарии зелёные на одном exact integrated SHA на canonical PostgreSQL + Redis + MinIO + API + Worker. Отдельные component/surface tests GP не повышают.
 
-That is **25 business modules**. Adding `client.ts` produces the executable scanner total of **26 mutating modules**. Participant scope is part of `projects.ts`; room-derived calculation is part of `rooms.ts`; neither is double-counted as a new mutation family.
+---
 
-## 5. Layer Integrity Board
+## 5. Mutation Board — exact 26 mutating mobile surfaces
 
-This table prevents a UI-green path from masking a backend/storage/worker truth break. It is cross-cutting; family-specific applicability remains in section 4.
+Источник inventory: #431 / PR #432. Это **25 business modules + `client.ts` transport/session owner**. Нельзя подменять этот executable inventory произвольными 26 объектами.
 
-| Layer | Main Normal | Main Error | Main Offline | Main Retry | Main Reverse | Candidate best state | Dominant gate |
-|---|---|---|---|---|---|---|---|
-| UI | `PARTIAL` | `PARTIAL` | `BLOCKED` | `BLOCKED` | `PARTIAL` | `PARTIAL` | #315/#317 plus missing connected mobile-web GP suites. |
-| API | `PARTIAL` | `BLOCKED` | `BLOCKED` | `BLOCKED` | `PARTIAL` | `PARTIAL` | Object binding, participant scope, idempotency inventory. |
-| PG | `PARTIAL` | `PARTIAL` | `PARTIAL` | `BLOCKED` | `PARTIAL` | `PARTIAL` | Transaction/ledger races, purge graph, finance facts, multi-contractor scope. |
-| Redis | `PARTIAL` | `PARTIAL` | `BLOCKED` | `BLOCKED` | `PARTIAL` | `PARTIAL` | Queue/cache/session provenance and account generation. |
-| MinIO | `BLOCKED` | `BLOCKED` | `PARTIAL` | `PARTIAL` | `BLOCKED` | `PARTIAL` | #455/#456 candidates, #320 native delivery, #319 purge/storage cleanup. |
-| Worker | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | `PARTIAL` | Outbox/provider/reconciliation must be proven inside connected GPs, not only by source presence. |
+Для каждой поверхности при окончательной приёмке применимая цепочка:
 
-No layer is currently globally `PROVEN`; a layer may still contain individually proven lower-level tests, but the Board deliberately measures complete product behavior.
+`intent → create/transition → authoritative read → counterpart read → linked recalculation/effect → validation/ACL error → offline/timeout → commit+lost response → same-intent retry → changed-payload conflict → competing write → reversal/cancel → history → account/project switch`.
 
-## 6. Cross-cutting integrity gates
+| ID | Surface | Main | Best candidate | Current boundary |
+|---|---|---|---|---|
+| F01 | `admin.ts` | `PARTIAL` | `PARTIAL` | Team/invite/subscription/operator paths не один lifecycle. |
+| F02 | `auth.ts` | `BLOCKED` | `PARTIAL` | #428 logout revoke bounded; #315 generation isolation open. |
+| F03 | `calendar.ts` | `BLOCKED` | `PARTIAL` | #424 child binding bounded-proven; #461 iCal atomic/replay evidence pending. |
+| F04 | `chats.ts` | `BLOCKED` | `PARTIAL` | #322 task/invoice bounded-proven; #385/#387 strong stacked slices; #392 remains PARTIAL; #317. |
+| F05 | `design.ts` | `PARTIAL` | `CANDIDATE PROVEN` | #414 bounded design create replay proven; submit/decision/file lifecycle not closed. |
+| F06 | `documents.ts` | `BLOCKED` | `PARTIAL` | No one-SHA version/sign/export/native lifecycle; #320. |
+| F07 | `estimate.ts` | `BLOCKED` | `PARTIAL` | #444 binding, #448 Change Order, #457 reversible removal bounded-proven; #412 create replay remains PARTIAL. |
+| F08 | `floor.ts` | `BLOCKED` | `PARTIAL` | #441 still PARTIAL until required PostgreSQL evidence/integration. |
+| F09 | `issues.ts` | `PARTIAL` | `CANDIDATE PROVEN` | #418/#459 bounded issue-create replay proven; transitions/close/reversal family not closed. |
+| F10 | `market.ts` | `BLOCKED` | `BLOCKED` | Final conversion/sibling scope depends #300/#344/#345. |
+| F11 | `materials.ts` | `BLOCKED` | `CANDIDATE PROVEN` | #460/#465 bounded material-needs replay proven; broader purchase/supply/reversal + #317 remain. |
+| F12 | `misc.ts` | `PARTIAL` | `PARTIAL` | Viewer/portal/revoke/expiry not one lifecycle. |
+| F13 | `notifications.ts` | `PARTIAL` | `PARTIAL` | Source entity + #315 cross-account publication truth. |
+| F14 | `os.ts` | `PARTIAL` | `PARTIAL` | Analytics/read models depend participant/finance/session truth. |
+| F15 | `payments.ts` | `BLOCKED` | `PARTIAL` | Payment/provider/expense/refund lifecycle not fully connected; #322 invoice is not payment truth. |
+| F16 | `projects.ts` | `BLOCKED` | `PARTIAL` | #434 reversible lifecycle bounded; #319 purge, #300 participant scope. |
+| F17 | `receipts.ts` | `BLOCKED` | `PARTIAL` | #317 and finance/material actual truth; #382 formula candidate does not close receipt family. |
+| F18 | `rooms.ts` | `PARTIAL` | `PARTIAL` | #438/#440 bounded; connected authority/derived truth pending #458. |
+| F19 | `scratchpad.ts` | `PARTIAL` | `PARTIAL` | No connected lifecycle evidence. |
+| F20 | `selections.ts` | `PARTIAL` | `CANDIDATE PROVEN` | #416 bounded selection-create replay proven; propose/approve/reject side effects still not family-wide proven. |
+| F21 | `stages.ts` | `BLOCKED` | `PARTIAL` | #452 child ACL bounded-proven; #404 replay remains PARTIAL. |
+| F22 | `technicalSupervision.ts` | `PARTIAL` | `PARTIAL` | assignment→finding→remediation→decision not closed. |
+| F23 | `workAcceptances.ts` | `PARTIAL` | `PARTIAL` | Acceptance exists; portal/warranty/offline/retry not one proof. |
+| F24 | `workOrders.ts` | `BLOCKED` | `PARTIAL` | #383 bounded evidence but not comparable integrated qualification. |
+| F25 | `workSchedule.ts` | `BLOCKED` | `BLOCKED` | #420/#316 replay policy; no qualified full family. |
+| F26 | `client.ts` | `BLOCKED` | `PARTIAL` | Infrastructure owner; #315/#317 global blockers, #387 is only bounded queue-dedupe prerequisite. |
 
-| Gate | Main | Candidate | Promotion condition |
+---
+
+## 6. Exact-candidate evidence ledger
+
+### `CANDIDATE PROVEN` — bounded evidence only
+
+| Candidate | Exact-head / evidence boundary | Что реально доказано | Что НЕ доказано |
 |---|---|---|---|
-| Protected-main / required-check bootstrap | `BLOCKED` | `CANDIDATE PROVEN` | Owner integrate/requalify #425; separately verify live ruleset #247. |
-| Backend image fixed HIGHs | `BLOCKED` | `CANDIDATE PROVEN` | Refresh/requalify #389 on resulting main. |
-| JS dependency fixed advisories | `BLOCKED` | `CANDIDATE PROVEN` | Refresh/requalify #372 on resulting main. |
-| Required PR-context scheduling | `BLOCKED` | `CANDIDATE PROVEN` | Refresh/requalify #437 after #425. |
-| Registry pull reliability | `PARTIAL` | `PARTIAL` | Finish exact #450 qualification, then refresh onto main. |
-| Session/account generation fence | `BLOCKED` | `BLOCKED` | Close #315 with delayed A→B→A, storage, navigation, cache and queue tests. |
-| Offline mutation identity/atomicity | `BLOCKED` | `PARTIAL` | Finish #316 inventory; no unsafe queued create/toggle remains. |
-| Transport enqueue + cache provenance | `BLOCKED` | `BLOCKED` | Close #317 after replay-sensitive mutations are safe. |
-| Participant/sibling scope isolation | `BLOCKED` | `BLOCKED` | #300 + #344 + #345, including customer aggregate and sibling negatives. |
-| Finance/budget/material fact truth | `BLOCKED` | `PARTIAL` | Integrate/requalify #381/#382 with affected producers; no plan→fact fallback. |
-| Object/project/media binding | `BLOCKED` | `PARTIAL` | Integrate binding/media chain (#444, #380/#441, #455/#456) on one main lineage. |
-| Calendar/stage child scope | `BLOCKED` | `PARTIAL` | Integrate/requalify #424/#452, then qualify #461. |
-| Project purge/retention/storage graph | `BLOCKED` | `BLOCKED` | Close #319 on physical PostgreSQL plus storage retention/cleanup outcomes. |
-| Native authenticated file delivery | `BLOCKED` | `BLOCKED` | Close #320 with session fence, save/share, cancellation and ACL tests. |
-| Golden Path executable suites | `BLOCKED` | `BLOCKED` | #337 + D1/#357: GP1–GP8 API and mobile-web green on one exact SHA. |
-| Simulated payment-provider lifecycle | `BLOCKED` | `BLOCKED` | A3/A4 through the same webhook/domain path used by the product. |
-| Simulated fiscal/NPD slice | `PARTIAL` | `CANDIDATE PROVEN` | Refresh/requalify #426; this alone is not a GP5/GP6 completion claim. |
-| Real staging/artifact promotion | `FUTURE EXTERNAL` | `FUTURE EXTERNAL` | #233 after internal PRODUCT COMPLETE. |
-| Production backup/restore/PITR | `FUTURE EXTERNAL` | `FUTURE EXTERNAL` | #234 after managed infrastructure exists. |
-| External observability/alert delivery | `FUTURE EXTERNAL` | `FUTURE EXTERNAL` | #235 with ingestion + alert delivery + ACK evidence. |
-| Real YooKassa/FNS/Kontur/Goskey/retail/bank activation | `FUTURE EXTERNAL` | `FUTURE EXTERNAL` | Separate provider qualification; never faked inside simulated PRODUCT COMPLETE. |
+| #425 | `9984e7bf…` | required-check/bootstrap + canonical local runtime source | Product recovery/UX, live ruleset. |
+| #389 | `a32c554…` on #425 lineage | fixed PCRE2 backend-image gate | npm, product behavior. |
+| #372 | `6d6ef7e…` on #425 lineage | bounded npm lock remediation | review #367 lineage и future dependencies. |
+| #437 | `5c2a6bb…` on #425 lineage | required PR-context scheduling | live repository settings. |
+| #450 | `ed8b602…` on #425 lineage | bounded canonical registry-pull retry | External registry uptime. |
+| #424 | `a21f76a…` | calendar stage child/project binding | iCal atomicity/replay. |
+| #452 | `709c2d0…` | stage reaction child binding | reaction offline replay family. |
+| #444 | `bc52758…` | estimate-line PATCH path/object binding | create/reversal/full estimate. |
+| #455 | `0859c47…` | project-media current project ACL | chat-media/thread ACL, purge/native. |
+| #456 | `bbebaa9…` on #455 | chat attachment current thread ACL | storage retention/native export. |
+| #322 | `582fd727…`; qualified merge context `76d63052…` | chat invoice/task atomic command + safe replay | all #316 mutations, #315/#317, provider/payment truth. |
+| #414 | `54025fb…` stacked | design-package create response-loss/replay primitive | submit/approve/reject/native file lifecycle. |
+| #416 | `ddf7c208…` stacked | selection create response-loss/replay primitive | decision/material side effects family. |
+| #418/#459 | candidate `4b93a0de…`; CI `35097643070` | issue-create atomic replay + PG authority/race + mobile restart | issue transition/escalate/close. |
+| #460/#465 | candidate `83199215…`; CI `35099288980`; PG `35099289096` | material-needs atomic replay + PG authority/race + mobile restart | procurement lifecycle. |
+| #448 | `2df6e660…` | Change Order approve/reject/replay/conflict and linked budget/document effects | GP1/full finance. |
+| #457 | `c8120c17…`; candidate schema `w23estimatelifecycle01` | reversible estimate-line remove/restore on qualification base | canonical-main schema remains w22; GP1 not promoted. |
+| #382 | `953a821…` | sum-preserving period allocation + unavailable category fact | whole finance ledger/provider lifecycle. |
+| #426 | bounded candidate | simulated fiscal/NPD ports | real FNS/NPD and GP5/GP6. |
+| #367 deployed | `0d58416…`, run `35084701908` | role/project entry + deployed mutation proof | full browser UX; Chromium/WebKit are red. |
 
-## 7. Candidate Evidence Ledger
+### `PARTIAL` / still blocked despite useful evidence
 
-A candidate can promote only the bounded cells its exact-head evidence actually proves. It must be refreshed and rerun after prerequisites land.
+- #383 direct WorkOrder replay — PG evidence useful, integrated comparable qualification absent.
+- #385 chat reaction replay — useful stacked evidence; family and integration remain.
+- #387 intent-aware offline dedupe — important prerequisite, not global #316/#317 closure.
+- #392 chat-thread replay — raw-stack count mismatch; remains PARTIAL.
+- #404 stage-comment replay — bounded evidence, remains PARTIAL pending refreshed integration.
+- #412 estimate-line create replay — bounded PG/mobile evidence, remains PARTIAL pending #322 integration/requalification.
+- #441 floor-plan child binding — required PostgreSQL qualification not fully wired at reported cut.
+- #461 iCalendar atomic/replay — exact-head evidence pending.
+- #458 integrated GP1 — explicitly `Chain verified: Pending`.
+- #408 truthful materials mutation outcome UX — design/source repair exists, exact qualification must be read before promotion.
+- #391/#393/#395/#397/#403/#405/#407/#410/#411 — bounded UX/accessibility/navigation candidates; old-base or pending evidence, not product-complete claims.
+- #429 participant API client — foundation only, no full participant UX/scope adoption.
+- #428 logout revoke — one session slice only.
 
-### Exact bounded candidates already carrying strong evidence
+---
 
-- #425 — CI/governance bootstrap.
-- #389 — backend image PCRE2 remediation on #425 lineage.
-- #372 — bounded npm lock remediation on #425 lineage.
-- #437 — required-context scheduling on #425 lineage.
-- #424 — calendar/stage-date project binding.
-- #452 — stage-reaction project/stage/comment binding.
-- #381 — explicit material actual zero truth.
-- #382 — budget-period conservation + unavailable portfolio fact.
-- #322 — chat invoice/task atomicity + replay.
-- #385 — chat reaction replay on #322 lineage.
-- #387 — intent-aware offline queue dedupe on #322 lineage.
-- #448 — Change Order decision/replay/terminal-conflict lifecycle.
-- #455 — project-media ACL.
-- #456 — chat-media ACL on #455 lineage.
-- #457 — draft estimate-line remove/restore lifecycle.
-- #460 — material-needs response-loss safety on #322 lineage.
+## 7. Integration DAG — текущий порядок
 
-### Useful candidates that remain `PARTIAL`/`BLOCKED` at this cut
+### Wave 0 — trustworthy integration foundation
 
-- #450 — registry retry exact qualification incomplete.
-- #461 — iCalendar exact-head evidence pending.
-- #458 — connected GP1 explicitly reports `Chain verified: Pending`; no GP1 promotion.
-- #434/#438/#440 — project/room lifecycle slices, not final GP1 proof.
-- #383 — direct WorkOrder recovery qualification pending.
-- #392 — chat-thread replay qualification pending.
-- #404 — stage-comment replay qualification pending.
-- #412 — estimate-line create response-loss qualification pending.
-- #414 — design-package create response-loss qualification pending.
-- #416 — selection create response-loss qualification pending.
-- #418/#459 — issue-create recovery qualification pending/integration-only.
-- #429 — participant API client foundation only; no screen/scope adoption.
-- #428 — server logout revoke only; #315 still blocks session generation.
-- #367 — review/demo entry correctness, not product-completion proof.
-- #366/#432 — governance/source inventory; documentation/source classification cannot promote runtime E2E cells.
+1. Owner review/merge **#425**.
+2. Rebase/requalify on resulting `main`: **#389**, **#372**, **#437**, **#450**.
+3. Проверить/исправить live repository protection/ruleset under **#247**; source CI не заменяет admin evidence.
+4. После каждого merge пересчитать downstream base/head и не переносить stale CI.
 
-## 8. Final Integration DAG — no scope expansion
+### Wave 1 — security/data authority
 
-Every step below retires existing `BLOCKED`/`PARTIAL` cells. It introduces no new product domain or user hub.
+5. Rebase/requalify **#444**, **#424**, **#452**, затем floor child binding **#441** после обязательного PG proof.
+6. Rebase/requalify **#455 → #456**.
+7. Выполнить sibling/cross-project negative scan для estimate/media/documents/finance/chat/materials/work/schedule; новые confirmed P0 поднимаются в эту Wave.
+8. Rebase/requalify finance truth candidates **#381/#382** и связанные producers; explicit zero ≠ missing.
 
-### Wave 0 — make integration evidence trustworthy
+### Wave 2 — replay/atomicity
 
-1. Owner review/integrate **#425**: protected-main CI bootstrap and canonical runtime source.
-2. Refresh onto the resulting `main`, exact requalify, then owner review **#389** and **#372**.
-3. Refresh/requalify **#437** required-context scheduling.
-4. Finish exact qualification of **#450** registry retry; integrate only if the refreshed candidate is green.
-5. Apply and verify live branch/ruleset settings under **#247**; repository settings are not replaced by green source CI.
+9. Refresh/review/integrate **#322** первым — это prerequisite recovery tree.
+10. Rebase exact #322 children на новый `main`; ни один raw stacked count не считается интеграцией.
+11. Early cross-cutting recovery: **#387**, затем mutation-specific slices.
+12. Интегрировать только после exact qualification: #385, #383, #392, #404, #412, #414, #416, #418, #460; затем квалифицировать #461.
+13. Повторить executable #431 inventory и закрыть **#316 только когда ни одна reachable mutation не остаётся unsafe**.
 
-### Wave 1 — security and data truth before wider replay
+### Wave 3 — global session/offline/cache
 
-6. Refresh/requalify object-binding chain: **#444**, **#380/#441**, **#424**, **#452**.
-7. Refresh/requalify file authority chain: **#455** then **#456**.
-8. Refresh/requalify finance truth: **#381** then **#382**, including affected producers/read models.
+14. Закрыть **#315**: generation fence для request/token/storage/navigation/cache/inbox/queue/files; A→B→A и project1→project2.
+15. Закрыть **#317**: transport taxonomy, durable enqueue reachability, per-resource cache provenance/as-of.
+16. Airplane/restart/reconnect + delayed-response + account-switch matrix по всем queued families.
 
-### Wave 2 — replay and atomicity foundation
+### Wave 4 — first connected lifecycle / GP1
 
-9. Refresh/requalify **#322** first; it is the prerequisite for its stacked recovery tree.
-10. Rebase each #322 child onto resulting `main`; integrate only exact-qualified bounded deltas. Cross-cutting early order: **#387** then **#385**.
-11. Finish/qualify known response-loss identities without widening scope: **#383, #392, #404, #412, #414, #416, #418/#459, #460**.
-12. After #424 and the recovery base are integrated, finish exact qualification of **#461** iCalendar atomic import.
-13. Re-run the complete **#316** mutation inventory. No reachable offline create/toggle/split transaction may remain unsafe.
+17. Requalify #434 project lifecycle.
+18. Requalify #438/#440 rooms and consume server authority in UI.
+19. Integrate #444/#412/#457 estimate lifecycle + #448 Change Order + #382 budget truth on same lineage.
+20. Пересобрать **#458** и доказать GP1 API + mobile-web на одном SHA.
+21. Не переходить к «полировке GP1» пока linked budget/second-side/retry/reversal не сходятся.
 
-### Wave 3 — global session/offline correctness
+### Wave 5 — participants / GP2 / GP3
 
-14. Close **#315** session-generation/account/project/cache/queue/file fencing, including delayed A→B→A.
-15. Close **#317** central transport classification and cache provenance after replay-sensitive mutations are safe.
-16. Re-run account-switch + offline/restart suites across every queued family.
-
-### Wave 4 — close GP1 as the first connected lifecycle
-
-17. Refresh/requalify **#434** reversible project lifecycle.
-18. Refresh/requalify **#438/#440** room create/request/lifecycle and consume server room authority in UI.
-19. Integrate **#457** estimate-line reversal and **#448** Change Order lifecycle on current main.
-20. Rebuild **#458** on that integrated line, include qualified estimate-line create recovery (#412), and add the connected API + mobile-web GP1 suite.
-21. GP1 changes state only when the same exact SHA proves project→room→estimate→budget→second-side/derived truth→reversal→retry.
-
-### Wave 5 — independent participants before GP2/GP3
-
-22. Finish **#300/#344** ProjectParticipant scope adoption across stages, schedule, work orders, chat, notifications, documents, materials, expenses and payee visibility.
-23. Finish **#345/#429** participant UX/client wiring and direct/marketplace transitions.
-24. Run mandatory two/three-independent-contractor sibling negatives and customer aggregate reads.
-25. Connect GP2 and GP3 API + mobile-web suites only after the above is green.
+22. Закрыть **#300/#344/#345** across stages/schedule/workorders/chat/notifications/documents/materials/expenses/payee.
+23. Завершить participant UX после #429; не оставлять API-only capability как готовый продукт.
+24. Two/three-contractor sibling negatives + customer aggregate truth.
+25. Connect GP2 and GP3 API + mobile-web.
 
 ### Wave 6 — lifecycle closure edges
 
-26. Close **#319** governed permanent purge/retention/storage cleanup.
-27. Close **#320** canonical authenticated native file save/share after #315.
-28. Complete M07 supervisor, M08 viewer/revoke, M09 portal-token and M10 warranty/history through existing services; no new hubs.
-29. Finish already-mandated simulated-provider tasks (A3/A4 and remaining simulated adapters) without real-provider activation.
-30. Build/reconcile C1 controlled realistic data after participant/provider truth is integrated.
+26. **#319** purge/retention/storage full graph.
+27. **#320** authenticated native file save/share после #315.
+28. Unified closeout → archive/history → warranty → warranty closure.
+29. M07 supervisor, M08 viewer/revoke, M09 portal-token.
+30. Simulated provider lifecycle A3/A4/remaining adapters только для internal PRODUCT COMPLETE; real providers не активировать автоматически.
 
-### Wave 7 — one integrated PRODUCT COMPLETE candidate
+### Wave 7 — Human Usability Closure
 
-31. Finish A1/#337 executable GP files where absent; documentation may not make a test green.
-32. Run **GP1–GP8 API + mobile-web** on one exact integrated SHA using canonical PostgreSQL + Redis + MinIO + API + Worker and simulated providers.
-33. Run M01–M12 dispositions, including M11 response-loss and M12 A→B→A.
-34. Run role/ACL negatives, error paths, reversal/recovery, native/file paths and finance/read-model reconciliation.
-35. D1/#357 and D2/#358 close only from those results; E3/#362 publishes the same evidence rather than a separate readiness opinion.
+Эта Wave не расширяет feature scope. Она удаляет трение и неоднозначность после/параллельно P0 integrity там, где изменения не маскируют truth defects.
 
-## 9. PRODUCT COMPLETE exit gate
+31. Customer Home: `статус → нужно решить → 7 дней → план/факт/прогноз → главный риск`.
+32. Contractor Home: `сегодня → просрочено → заблокировано → ждёт заказчика → готово к сдаче → деньги`.
+33. Стабильная top-level navigation; автоматическое phase-driven переставление Dock не должно ломать learned positions.
+34. Object: `Комнаты / Смета / Чертежи и дизайн / Данные объекта`; setup-readiness checklist только до готовности.
+35. Estimate обеим ролям: `Сводка / Позиции / Изменения / Документы`; user-facing Change Order = `Дополнительные работы`.
+36. Stage = aggregate container: задачи, материалы, сроки, деньги, фото, issues, next action.
+37. Materials lifecycle: `Нужно → Согласовано → Заказано → Доставлено`; **approved ≠ ordered**. Allowance показывать как понятный лимит/дельту бюджета.
+38. Schedule views: `Сегодня / 2 недели / Весь ремонт`; задержка всегда объясняет причину.
+39. Inbox = единый attention center; Approvals = detail; Chat = context/source, не второй source of truth.
+40. Unified acceptance/issue/warranty cards; явные role actions (`Сдать этап`, `Принять`, `Вернуть`, `Исправлено`, `Подтвердить исправление`).
+41. Documents: `Проект / Финансы / Приёмка и гарантия / Архив`; 1С/bank/iCal/technical export — advanced integrations.
+42. Contextual quick actions, не перегруженный глобальный FAB.
+43. Полный accessibility/navigation pass: focus, aria-selected, screen reader, keyboard, modal cleanup, 44×44, disabled/busy, contrast, no color-only state.
+44. Role-by-role friction retirement: clicks to first useful action, screen hops, manual fields, hidden gestures, remembered context.
 
-A PRODUCT COMPLETE claim is allowed only when all of the following hold simultaneously on one exact integrated SHA:
+### Wave 8 — one immutable PRODUCT COMPLETE candidate
 
-1. Every applicable critical Board cell is `PROVEN`; no critical cell remains `PARTIAL` or `BLOCKED`.
-2. GP1–GP8 are green in API and mobile-web form on canonical PostgreSQL + Redis + MinIO + API + Worker with simulated providers.
-3. M01–M12 have explicit tested disposition; M03, M11 and M12 are not waived.
-4. Every replay-sensitive mutation has stable identity/version fencing before first retry; same intent converges and changed payload conflicts where required.
-5. Customer/contractor/admin/portal authority is checked on the authoritative object before mutation and after relevant lock waits.
-6. Every committed business mutation reconciles second-side visibility, linked calculations/read models, audit/outbox and worker effects without treating refresh failure as rollback.
-7. Business reversal and restore/reconcile preserve audit/history; archive, trash and purge remain distinct.
-8. Session/account switch prevents stale network/cache/storage/queue/file publication across generations.
-9. Multi-contractor sibling isolation and customer aggregate views are proven.
-10. Financial plan/revised/committed/actual/payment/receipt/refund states do not substitute for one another; unknown remains unknown.
-11. Project/chat/document media bytes share the current authority boundary of their owning business object.
-12. Candidate evidence is rerun after every prerequisite integration; stale old-base PR results are not counted as integrated truth.
-13. Production-only external items may remain `FUTURE EXTERNAL`, but they are never represented as operational.
+45. GP1–GP8 API + mobile-web на canonical PostgreSQL + Redis + MinIO + API + Worker.
+46. Customer×contractor concurrent run.
+47. Slow network/offline/response-loss/conflict/reversal/account-switch run.
+48. Browser matrix Chromium + WebKit 100% green; ключевые native iOS/Android paths green.
+49. Deterministic review seed минимум из active и near-closeout объектов.
+50. Exact SHA freezes; любое изменение создаёт новый candidate и требует affected requalification.
+51. Release Evidence Pack = Board + GP results + mutation inventory + calculations + security + migrations + restore + device/browser + provider truth + known external limitations.
 
-After this gate passes, remaining `FUTURE EXTERNAL` work is deployment/provider qualification rather than completion of the internal RENOVA product graph.
+### Wave 9 — external production qualification
+
+52. Persistent staging / exact artifact promotion.
+53. Managed backup/PITR restore drill and measured RPO/RTO.
+54. Observability alert→delivery→ACK→recovery.
+55. Load/ramp/spike/soak.
+56. Independent security/pentest/legal/privacy.
+57. Real provider acceptance only for approved release scope.
+58. Controlled pilot/support/incident runbook.
+
+---
+
+## 8. Как выбирать следующую работу
+
+На старте каждого прохода:
+
+1. Обновить evidence cut.
+2. Выбрать первую Wave с `BLOCKED` P0, которую реально можно продвинуть без незакрытого prerequisite.
+3. Внутри Wave выбрать самый маленький bounded контур, который закрывает lifecycle cell, а не добавляет экран/файл.
+4. Если dependency требует owner merge/review — не обходить её; брать независимую задачу того же или более высокого риска.
+5. После exact CI обновить candidate status.
+6. После merge обновить main status и заставить descendants rebase/requalify.
+7. Если новая находка делает прежний план неверным — изменить план, а не защищать старую очередь.
+
+**На текущем evidence cut следующий integration-critical шаг — owner review/merge #425.** После него — rebase/requalification #389/#372/#437/#450; затем Wave 1 security/data authority. Recovery tree #322 остаётся P0, но его безопасная интеграция должна происходить на уже восстановленном trusted main lineage.
+
+---
+
+## 9. Что не считается прогрессом
+
+Не повышают readiness сами по себе:
+
+- новый экран/кнопка/endpoint;
+- скрытие failing assertion;
+- изменение expected value на текущее отображаемое значение;
+- success одного браузера вместо required matrix;
+- SQLite вместо требуемого PostgreSQL race proof;
+- source existence вместо user result;
+- candidate на stale base;
+- simulated provider, названный production;
+- cache, выданный за fresh;
+- отсутствие ошибки, выданное за успешный commit;
+- «0» вместо unknown;
+- merge foundation, выданный за закрытие parent cross-domain issue.
+
+---
+
+## 10. Final PRODUCT COMPLETE gate
+
+Claim разрешён только когда одновременно на одном exact integrated SHA:
+
+1. Нет открытых launch-blocking P0 product/security/data defects.
+2. GP1–GP8 = `PROVEN` API + mobile-web.
+3. M01–M12 имеют tested disposition; M03/M11/M12 не waived.
+4. Все critical mutation surfaces имеют normal/error/retry/reversal/session evidence.
+5. Same-intent response-loss не дублирует бизнес-факт; changed intent конфликтует там, где требуется.
+6. Authority проверяется на canonical object и после lock wait, где применимо.
+7. Second-side visibility, calculations, audit/outbox/worker effects сходятся после commit.
+8. Session/account switch не публикует/исполняет старый account/project truth.
+9. Multi-contractor sibling isolation + customer aggregate proven.
+10. Plan/revised/obligation/actual/payment/receipt/refund/unknown не подменяют друг друга.
+11. Media/document bytes наследуют current authority owning object/thread.
+12. Archive/trash/restore/purge и closeout/warranty/history доказаны.
+13. Chromium/WebKit + required native paths green.
+14. Migrations + backup/restore required internal evidence green.
+15. Candidate evidence rerun after every prerequisite integration.
+16. `FUTURE EXTERNAL` явно остаётся внешним и не изображается operational.
+17. Release evidence привязан к immutable SHA; после изменения SHA статус пересчитывается.
+
+После этого оставшееся `FUTURE EXTERNAL` — уже deployment/provider qualification, а не незакрытый внутренний продукт RENOVA.
