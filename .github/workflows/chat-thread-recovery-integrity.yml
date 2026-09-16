@@ -9,6 +9,7 @@ on:
       - 'backend/tests/test_chat_thread_creation_idempotency.py'
       - 'backend/tests/test_chat_thread_route_registration.py'
       - 'apps/mobile/lib/api/chats.ts'
+      - 'apps/mobile/lib/api/chatThreadRecovery.test.ts'
       - 'apps/mobile/lib/api/failurePolicy.ts'
       - '.github/workflows/chat-thread-recovery-integrity.yml'
   push:
@@ -18,6 +19,7 @@ on:
       - 'backend/app/api/v1/chats.py'
       - 'backend/app/api/v1/router.py'
       - 'apps/mobile/lib/api/chats.ts'
+      - 'apps/mobile/lib/api/chatThreadRecovery.test.ts'
       - '.github/workflows/chat-thread-recovery-integrity.yml'
 
 concurrency:
@@ -46,3 +48,7 @@ jobs:
         run: pytest -q tests/test_chat_thread_creation_idempotency.py tests/test_chat_thread_route_registration.py
       - name: Mobile chat contract typecheck
         run: npm run typecheck:mobile
+      - name: Mobile response-loss preserves first ChatThread command identity
+        run: |
+          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
+          npx tsx apps/mobile/lib/api/chatThreadRecovery.test.ts
