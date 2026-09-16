@@ -59,6 +59,7 @@ jobs:
           }
           required = {
               'test_calendar_import_replays_original_mapping_and_conflicts_on_changed_content',
+              'test_calendar_import_uidless_event_preserves_local_ical_uid',
               'test_calendar_import_failure_rolls_back_all_stage_changes_and_ledger',
           }
           missing = required - cases.keys()
