@@ -1,6 +1,7 @@
 /** API: chats */
 import {req, cachedGet, API_BASE, ApiError, authHeaders} from './client';
 import { shouldQueueReplaySafeMutation } from './failurePolicy';
+import { createClientRequestId } from '@/lib/clientRequestId';
 import type { ChatDetail, ChatMessage, ChatThread, User } from './types';
 import { submitChatCommand, type ChatTaskInput, type ChatInvoiceInput } from './chatCommands';
 
@@ -41,13 +42,18 @@ export const chatsApi = {
   chatInbox: (userId: string) => req<ChatThread[]>(`/api/v1/chats/inbox`, {}, userId),
   chatUnreadTotal: (userId: string) => req<{ count: number }>(`/api/v1/chats/unread-total`, {}, userId),
   createChat: async (userId: string, projectId: string, title: string, topic?: string) => {
-    const body = JSON.stringify({ title, topic });
+    const path = `/api/v1/projects/${projectId}/chats`;
+    const body = JSON.stringify({
+      title,
+      topic,
+      client_request_id: createClientRequestId('chat-thread'),
+    });
     try {
-      return await req<ChatThread>(`/api/v1/projects/${projectId}/chats`, { method: 'POST', body }, userId);
-    } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      return await req<ChatThread>(path, { method: 'POST', body }, userId);
+    } catch (error) {
+      if (!shouldQueueReplaySafeMutation(error)) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({ path: `/api/v1/projects/${projectId}/chats`, method: 'POST', body, userId });
+      await enqueue({ path, method: 'POST', body, userId });
       throw new Error('offline_queued');
     }
   },
