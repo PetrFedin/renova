@@ -124,6 +124,24 @@ async def test_calendar_import_replays_original_mapping_and_conflicts_on_changed
 @pytest.mark.asyncio
 async def test_calendar_import_failure_rolls_back_all_stage_changes_and_ledger(db, monkeypatch):
     user_id, project_id, first_id, second_id = await _seed(db)
+    original_commit_client_write = import_svc.commit_client_write
+    request_id = "calendar-import-rollback-001"
+    content = "\n".join(
+        [
+            "BEGIN:VCALENDAR",
+            "BEGIN:VEVENT",
+            "UID:external-a",
+            "SUMMARY:External A",
+            "DTSTART;VALUE=DATE:20261001",
+            "END:VEVENT",
+            "BEGIN:VEVENT",
+            "UID:external-b",
+            "SUMMARY:External B",
+            "DTSTART;VALUE=DATE:20261002",
+            "END:VEVENT",
+            "END:VCALENDAR",
+        ]
+    )
 
     async def fail_before_commit(*_args, **_kwargs):
         raise RuntimeError("synthetic_before_commit")
@@ -135,23 +153,8 @@ async def test_calendar_import_failure_rolls_back_all_stage_changes_and_ledger(d
             db,
             project_id=project_id,
             user_id=user_id,
-            client_request_id="calendar-import-rollback-001",
-            content="\n".join(
-                [
-                    "BEGIN:VCALENDAR",
-                    "BEGIN:VEVENT",
-                    "UID:external-a",
-                    "SUMMARY:External A",
-                    "DTSTART;VALUE=DATE:20261001",
-                    "END:VEVENT",
-                    "BEGIN:VEVENT",
-                    "UID:external-b",
-                    "SUMMARY:External B",
-                    "DTSTART;VALUE=DATE:20261002",
-                    "END:VEVENT",
-                    "END:VCALENDAR",
-                ]
-            ),
+            client_request_id=request_id,
+            content=content,
         )
 
     first = await db.get(Stage, first_id, populate_existing=True)
@@ -167,3 +170,34 @@ async def test_calendar_import_failure_rolls_back_all_stage_changes_and_ledger(d
             ClientWriteRequest.scope == import_svc.SCOPE,
         )
     ) == 0
+
+    # Recovery must be retryable with the exact same logical intent after the
+    # transient pre-commit failure. A rollback that only leaves zero rows is
+    # insufficient if the same request cannot subsequently complete once.
+    monkeypatch.setattr(import_svc, "commit_client_write", original_commit_client_write)
+    retry_result, replayed = await import_svc.import_ical(
+        db,
+        project_id=project_id,
+        user_id=user_id,
+        client_request_id=request_id,
+        content=content,
+    )
+    assert replayed is False
+    assert retry_result == {"ok": True, "parsed": 2, "updated_stages": 2}
+
+    first = await db.get(Stage, first_id, populate_existing=True)
+    second = await db.get(Stage, second_id, populate_existing=True)
+    assert first is not None and second is not None
+    assert first.planned_start == date(2026, 10, 1)
+    assert first.ical_uid == "external-a"
+    assert second.planned_start == date(2026, 10, 2)
+    assert second.ical_uid == "external-b"
+    assert await db.scalar(
+        select(func.count())
+        .select_from(ClientWriteRequest)
+        .where(
+            ClientWriteRequest.project_id == project_id,
+            ClientWriteRequest.scope == import_svc.SCOPE,
+            ClientWriteRequest.request_id == request_id,
+        )
+    ) == 1
