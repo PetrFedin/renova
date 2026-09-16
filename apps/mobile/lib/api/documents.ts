@@ -25,6 +25,16 @@ type ProjectDocumentCreateInput = {
   client_request_id?: string;
 };
 
+type ProjectDocumentUploadFields = {
+  title?: string;
+  document_type?: string;
+  notes?: string;
+  stage_id?: string;
+  payment_id?: string;
+  /** Retain this only when a caller deliberately retries the same selected file command. */
+  client_request_id?: string;
+};
+
 export const documentsApi = {
   listProjectDocuments: (userId: string, projectId: string) =>
     req<ProjectDocumentsResponse>(`/api/v1/projects/${projectId}/documents`, {}, userId),
@@ -139,24 +149,39 @@ export const documentsApi = {
     userId: string,
     projectId: string,
     file: { uri: string; name: string; type: string },
-    fields?: { title?: string; document_type?: string; notes?: string },
+    fields?: ProjectDocumentUploadFields,
   ) => {
-    const form = new FormData();
-    form.append('file', file as unknown as Blob);
-    if (fields?.title) form.append('title', fields.title);
-    if (fields?.document_type) form.append('document_type', fields.document_type);
-    if (fields?.notes) form.append('notes', fields.notes);
+    const requestId = fields?.client_request_id ?? createClientRequestId('document-upload');
+    const path = `/api/v1/projects/${projectId}/documents/upload`;
+    const buildForm = () => {
+      const form = new FormData();
+      form.append('file', file as unknown as Blob);
+      if (fields?.title) form.append('title', fields.title);
+      if (fields?.document_type) form.append('document_type', fields.document_type);
+      if (fields?.notes) form.append('notes', fields.notes);
+      if (fields?.stage_id) form.append('stage_id', fields.stage_id);
+      if (fields?.payment_id) form.append('payment_id', fields.payment_id);
+      form.append('client_request_id', requestId);
+      return form;
+    };
+    const send = () => req(path, {
+      method: 'POST',
+      body: buildForm() as unknown as BodyInit,
+    } as RequestInit, userId);
+
     try {
-      return await req(`/api/v1/projects/${projectId}/documents/upload`, {
-        method: 'POST',
-        body: form as unknown as BodyInit,
-      } as RequestInit, userId);
-    } catch (e) {
-      // Upload cannot be queued offline — explicit user-facing block
-      if (!(e instanceof ApiError) || e.status >= 500) {
+      return await send();
+    } catch (firstError) {
+      if (!shouldQueueReplaySafeMutation(firstError)) throw firstError;
+      // Bounded response-loss recovery: the backend maps this exact request ID
+      // and content checksum to one document/blob, so one immediate replay is safe.
+      try {
+        return await send();
+      } catch (retryError) {
+        if (!shouldQueueReplaySafeMutation(retryError)) throw retryError;
+        // Binary bodies are never persisted in the JSON offline queue.
         throw new Error(OFFLINE_UPLOAD_BLOCKED);
       }
-      throw e;
     }
   },
 
