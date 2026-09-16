@@ -123,3 +123,46 @@ async def test_reaction_preserves_unrelated_message_metadata(db):
     assert meta["custom"] == {"keep": True}
     assert meta["reactions"]["ok"] == [s.customer]
     assert meta["reactions"]["✅"] == [s.contractor]
+
+
+@pytest.mark.asyncio
+async def test_precommit_failure_rolls_back_sql_reaction_and_same_intent_retries(db, monkeypatch):
+    s = await seed(db)
+    original_commit = reactions.commit_client_write
+
+    async def fail_after_sql_flush(session, **_kwargs):
+        # Force the dirty ChatMessage.meta_json UPDATE to reach SQL before the
+        # synthetic failure. Passing this test therefore proves database rollback,
+        # not merely that an in-memory mutation never flushed.
+        await session.flush()
+        raise RuntimeError("reaction_precommit_failure")
+
+    monkeypatch.setattr(reactions, "commit_client_write", fail_after_sql_flush)
+    args = dict(
+        project_id=s.project,
+        thread_id=s.thread,
+        message_id=s.source,
+        user_id=s.contractor,
+        client_request_id="reaction-rollback-retry-001",
+        emoji="🧪",
+    )
+
+    with pytest.raises(RuntimeError, match="reaction_precommit_failure"):
+        await reactions.apply_reaction_intent(db, **args)
+
+    message = (
+        await db.execute(
+            select(ChatMessage)
+            .where(ChatMessage.id == s.source)
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
+    meta = json.loads(message.meta_json)
+    assert "🧪" not in meta.get("reactions", {})
+    assert meta["reactions"]["ok"] == [s.customer]
+    assert await _request_count(db, s.project) == 0
+
+    monkeypatch.setattr(reactions, "commit_client_write", original_commit)
+    retried = await reactions.apply_reaction_intent(db, **args)
+    assert retried["🧪"] == [s.contractor]
+    assert await _request_count(db, s.project) == 1
