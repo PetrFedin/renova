@@ -122,8 +122,20 @@ for (const status of [429, 500, 502, 503]) {
   scenarios += 1;
 }
 
+// A real fetch failure is normalized by production req() to transport status 0;
+// the material producer must then preserve the exact original bytes durably.
 {
   const h = harness({ network: async () => { throw new TypeError('Failed to fetch'); } });
+  await assert.rejects(invoke(h), /offline_queued/);
+  assert.equal((await h.queue.getQueue()).length, 1);
+  assert.equal((await h.queue.getQueue())[0].body, h.requests[0].body);
+  scenarios += 1;
+}
+
+// A 2xx response with an unreadable body is also response ambiguity: the
+// server may already have committed, so replay must retain the same identity.
+{
+  const h = harness({ network: async () => new Response('{broken', { status: 200 }) });
   await assert.rejects(invoke(h), /offline_queued/);
   assert.equal((await h.queue.getQueue()).length, 1);
   assert.equal((await h.queue.getQueue())[0].body, h.requests[0].body);
@@ -142,6 +154,22 @@ for (const status of [429, 500, 502, 503]) {
   const result = await invoke(success);
   assert.equal(result.count, 1);
   assert.equal((await success.queue.getQueue()).length, 0);
+  scenarios += 1;
+}
+
+// Two deliberate user actions with identical visible inputs are independent
+// intents. The producer must mint a new identity per invocation, not derive it
+// from project or estimate values.
+{
+  const success = harness({ network: async () => ok() });
+  await invoke(success);
+  await invoke(success);
+  assert.equal(success.requests.length, 2);
+  const firstId = JSON.parse(success.requests[0].body).client_request_id;
+  const secondId = JSON.parse(success.requests[1].body).client_request_id;
+  assert.ok(firstId);
+  assert.ok(secondId);
+  assert.notEqual(firstId, secondId);
   scenarios += 1;
 }
 
