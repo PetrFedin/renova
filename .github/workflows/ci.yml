@@ -97,6 +97,7 @@ jobs:
             tests/test_chat_thread_only_mobile_inbox_contract.py \
             tests/test_chat_business_commands.py \
             tests/test_chat_business_commands_postgres.py \
+            tests/test_issue_create_replay.py \
             tests/test_issue_create_replay_postgres.py \
             --junitxml=chat-command-results.xml
           poetry run python - <<'PY'
@@ -108,8 +109,24 @@ jobs:
           assert not root.findall('.//failure') and not root.findall('.//error')
           chat_races = [c for c in cases if c.get('classname', '').endswith('test_chat_business_commands_postgres')]
           assert len(chat_races) >= 6, 'all six physical PostgreSQL chat scenarios must execute'
-          issue_races = [c for c in cases if c.get('classname', '').endswith('test_issue_create_replay_postgres')]
-          assert len(issue_races) >= 2, 'both issue-create physical PostgreSQL scenarios must execute'
+          issue_semantic = {
+              c.get('name') for c in cases
+              if c.get('classname', '').endswith('test_issue_create_replay')
+          }
+          required_issue_semantic = {
+              'test_issue_create_replay_conflict_and_distinct_equal_intents',
+              'test_issue_create_rolls_back_entire_effect_set_when_outbox_prepare_fails',
+          }
+          assert required_issue_semantic <= issue_semantic, 'both issue semantic/atomicity scenarios must execute'
+          issue_pg = {
+              c.get('name') for c in cases
+              if c.get('classname', '').endswith('test_issue_create_replay_postgres')
+          }
+          required_issue_pg = {
+              'test_issue_same_key_postgres_race_creates_one_issue_and_effect_set',
+              'test_issue_create_rechecks_revoked_contractor_after_postgres_lock_wait',
+          }
+          assert required_issue_pg <= issue_pg, 'both exact issue-create PostgreSQL scenarios must execute'
           PY
       - name: Retain chat command and PostgreSQL qualification
         if: always()
