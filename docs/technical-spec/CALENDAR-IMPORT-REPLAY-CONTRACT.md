@@ -6,7 +6,7 @@ Status: P0 recovery contract for #422, child of #316. This slice is stacked on #
 
 `POST /projects/{project_id}/calendar/import` imports one iCalendar payload as one logical client intent.
 
-`client_request_id` is minted before the first send. The same serialized request body, including the original ICS content and request ID, must survive offline queue persistence and application restart.
+`client_request_id` is minted before the first send. The same serialized request body, including the original ICS content and request ID, must survive offline queue persistence and application restart. Two separate user invocations with identical visible ICS content are separate intents and must receive different request IDs.
 
 ## Canonical payload
 
@@ -42,13 +42,14 @@ Fallback allocation is resolved against the original snapshot plus stages alread
 
 All selected Stage rows come from a `Stage.project_id == URL project_id` query before mutation. A foreign stage ID is never an input to the import write path.
 
-## Replay semantics
+## Replay and rollback semantics
 
 - same user/project/request ID + same canonical ICS payload returns the original `{parsed, updated_stages}` result without reapplying mapping;
 - same request ID + changed canonical content raises `idempotency_conflict`;
 - response loss after commit cannot move an unmatched event from the first empty stage to the next empty stage;
 - concurrent same-key imports serialize on the project lock and produce one ledger entry and one canonical stage mapping;
-- a synthetic failure before ledger commit rolls back every staged date/UID change and leaves no ledger row.
+- a failure after in-memory Stage mutation but before the ledger/transaction commit rolls back every staged date/UID change and leaves no ledger row;
+- after that transient pre-commit failure is removed, retrying the exact same request ID/content must complete once and create exactly one ledger entry.
 
 The compact replay result is encoded in `ClientWriteRequest.entity_id`; no new schema or response-snapshot table is required.
 
@@ -56,11 +57,14 @@ The compact replay result is encoded in `ClientWriteRequest.entity_id`; no new s
 
 Because project-lock acquisition can block, write authority is re-read after the lock is acquired. If an assigned contractor is revoked while waiting, the import fails with 403 and persists no Stage mutation or replay ledger.
 
+Qualification must observe the production lock path. A `gather()` or fixed sleep alone is not physical-concurrency evidence: the same-key race must prove two independent sessions reach the project-lock boundary before release, and the revocation scenario must prove the importer remains blocked while another transaction owns the PostgreSQL Project row lock before authority is removed.
+
 ## Mobile retry policy
 
 After server replay safety exists, mobile queues the exact serialized request for:
 
 - normalized transport/status `0` failures;
+- ambiguous successful transport where the 2xx response body is unreadable and server commit may already have happened;
 - HTTP 429;
 - HTTP 5xx.
 
@@ -70,10 +74,11 @@ Other deterministic HTTP 4xx responses are authoritative and must not be convert
 
 Before this slice is called qualified on an exact head:
 
-- SQLite proves canonical replay, changed-payload conflict and full rollback;
-- migrated PostgreSQL proves same-key concurrency cannot drift to a second stage;
-- migrated PostgreSQL proves revoke-while-waiting is revalidated after the project lock;
-- actual mobile transport/restart proof preserves the exact body and request ID across response loss, restart and queue flush;
-- full core backend/mobile/Playwright/Alembic gates remain green.
+- SQLite explicitly executes the canonical replay/changed-payload conflict scenario and the rollback-then-same-intent-retry scenario;
+- migrated PostgreSQL explicitly executes the same-key physical serialization scenario and the revoke-while-waiting authority-recheck scenario;
+- the mandatory Calendar integrity workflow emits JUnit and requires all four exact calendar-import testcase names; any missing, skipped, failing or erroring required testcase fails qualification;
+- actual production mobile transport/restart harness is invoked directly from mandatory core CI and proves exact-body/request-ID persistence across lost response, corrupt-2xx ambiguity, restart and queue flush; deterministic 4xx must not queue, 429/5xx/status-0 must queue, storage failure must fail closed, and two separate equal-visible imports must mint distinct request IDs;
+- full core backend/mobile/Playwright/Alembic gates remain green;
+- qualification artifacts retain the calendar log and behavioral/PostgreSQL JUnit files for inspection.
 
 This contract does not close #316, #317, G04/G05 or GP1-GP8, and it does not replace the separate #424 cross-project stage-date mutation security fix.
