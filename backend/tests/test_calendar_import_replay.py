@@ -31,6 +31,20 @@ def _ics(*, uid: str = "external-event-1", summary: str = "External event", ymd:
     )
 
 
+def _ics_without_uid(*, summary: str = "External event", ymd: str = "20261003") -> str:
+    return "\r\n".join(
+        [
+            "BEGIN:VCALENDAR",
+            "VERSION:2.0",
+            "BEGIN:VEVENT",
+            f"SUMMARY:{summary}",
+            f"DTSTART;VALUE=DATE:{ymd}",
+            "END:VEVENT",
+            "END:VCALENDAR",
+        ]
+    )
+
+
 async def _seed(db):
     customer = User(
         id=_id("ical-customer"),
@@ -118,6 +132,45 @@ async def test_calendar_import_replays_original_mapping_and_conflicts_on_changed
         )
     ) == 1
     second = await db.get(Stage, second_id, populate_existing=True)
+    assert second is not None and second.planned_start is None
+
+
+@pytest.mark.asyncio
+async def test_calendar_import_uidless_event_preserves_local_ical_uid(db):
+    user_id, project_id, first_id, second_id = await _seed(db)
+    content = _ics_without_uid()
+    request_id = "calendar-import-uidless-001"
+
+    result, replayed = await import_svc.import_ical(
+        db,
+        project_id=project_id,
+        user_id=user_id,
+        client_request_id=request_id,
+        content=content,
+    )
+    assert replayed is False
+    assert result == {"ok": True, "parsed": 1, "updated_stages": 1}
+
+    first = await db.get(Stage, first_id, populate_existing=True)
+    second = await db.get(Stage, second_id, populate_existing=True)
+    assert first is not None and second is not None
+    assert first.planned_start == date(2026, 10, 3)
+    assert first.planned_end == date(2026, 10, 3)
+    assert first.ical_uid == f"renova-{first_id}@app"
+    assert second.planned_start is None and second.ical_uid is None
+
+    replay_result, replayed = await import_svc.import_ical(
+        db,
+        project_id=project_id,
+        user_id=user_id,
+        client_request_id=request_id,
+        content=content.replace("\r\n", "\n"),
+    )
+    assert replayed is True
+    assert replay_result == result
+    first = await db.get(Stage, first_id, populate_existing=True)
+    second = await db.get(Stage, second_id, populate_existing=True)
+    assert first is not None and first.ical_uid == f"renova-{first_id}@app"
     assert second is not None and second.planned_start is None
 
 
