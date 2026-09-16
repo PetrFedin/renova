@@ -104,7 +104,7 @@ for (const token of [
   'atomicity/recovery',
   'session/offline/cache',
   'Human Usability Closure',
-  'one-SHA internal acceptance',
+  'final internal PRODUCT COMPLETE candidate',
 ]) {
   assert.ok(roadmap.includes(token), `roadmap missing priority/integration token: ${token}`);
 }
