@@ -1,64 +1,310 @@
 # Renova — mandatory end-to-end specification governance
 
-**Status:** ACTIVE / AUTHORITATIVE ANNEX
-**Parent dossier:** `docs/RENOVA-TECHNICAL-SPECIFICATION.md`
-**Effective from:** 2026-08-29. **Current reconciliation:** 2026-09-08.
+**Status:** ACTIVE / AUTHORITATIVE ANNEX  
+**Parent dossier:** `docs/RENOVA-TECHNICAL-SPECIFICATION.md`  
+**Operational board:** `docs/technical-spec/PRODUCT-COMPLETION-BOARD.md`  
+**Effective from:** 2026-08-29  
+**Current reconciliation:** 2026-09-16
 
-This is mandatory specification governance, not optional process guidance. The prior full version is retained in `history/END-TO-END-GOVERNANCE-before-2026-09-08.md`; its old ordered next-step list is historical.
+Это обязательное governance ТЗ, а не рекомендация. Его задача — не дать коду, плану и фактической доказанности разойтись.
+
+---
 
 ## 1. Same-change specification rule
 
-Every change to behavior, architecture, data, API, migrations, runtime, background work, security/ACL, UX, calculations, providers, recovery, CI/release gates or evidence must update the living specification or its relevant governed annex in the same logical change. Green code with stale specification is incomplete.
+Любое изменение behavior, architecture, data, API, migration, runtime, background work, security/ACL, UX, calculation, provider, recovery, CI/release gate или evidence обязано в той же logical change:
 
-## 2. Mandatory gap scan
+1. обновить соответствующий domain/spec annex;
+2. обновить Completion Board, если меняется статус M/GP/F/Wave;
+3. обновить roadmap, если меняется dependency/order;
+4. либо явно написать `Board/Roadmap status unchanged` и почему.
 
-Trace the whole affected path before editing: dead ends; broken entity/event/screen links; duplicate routes/calculations/state machines; stale legacy writers; missing transaction/idempotency/concurrency; missing loading/empty/error/stale/retry/recovery; role/ACL mismatch; schema/ORM drift; false equivalence of local/CI/staging/production; fields without real producers/consumers; outbox ambiguity; user journeys without a terminal result; documentation describing obsolete behavior.
+Green code + stale specification = incomplete change.
 
-Confirmed P0/P1 findings must be fixed or recorded in the dossier/roadmap with a specific issue, responsible engineering role, acceptance test and evidence boundary. Do not leave them only in chat. A missing test is not automatically a missing implementation; a source-confirmed defect is not automatically a production incident.
+---
 
-## 3. End-to-end continuity
+## 2. Mandatory pre-task reconciliation
 
-Where applicable:
+До правки кода/ТЗ агент обязан получить текущую реальность:
 
-`entry/navigation -> authorization -> input/schema -> service -> transaction -> authoritative DB -> outbox/provider -> reconciliation -> API read model -> UI/file outcome -> retry/recovery -> audit/evidence`.
+1. canonical `main` SHA;
+2. Alembic head;
+3. open P0/P1 issues;
+4. open/draft/stacked PR, exact heads, bases и dependencies;
+5. last applicable CI runs;
+6. deployed/browser/native evidence, если затрагивается user surface;
+7. production readiness;
+8. Completion Board;
+9. master spec + roadmap;
+10. affected contracts/calculation/screen catalogs.
 
-The unit of acceptance is a user's complete business result, including failure paths. Neither an isolated API nor a visible button completes it. Planned capability must not be removed or called complete merely because a safe unavailable state exists.
+Нельзя продолжать сохранённый старый план по памяти, если репозиторий уже изменился.
 
-## 4. Canonical authority
+### 2.1. Evidence freshness
 
-Navigation: registry+router. Data: ORM+linear migrations+PostgreSQL. Money: explicit source/recognition ledger. Background: DomainOutbox+worker. Readiness: root readiness Markdown+JSON. Engineering: AGENTS. Product contract: current master+governed annexes.
+- Evidence принадлежит exact SHA.
+- Rebase/change/merge создаёт новый qualification obligation.
+- Stale old-base green не переносится на новый candidate.
+- Если старый документ оптимистичнее нового runtime evidence — статус понижается немедленно.
+- Если новый P0 выше текущей задачи по risk — порядок пересчитывается.
 
-Historical snapshots are preserved for traceability, not used as current readiness or current migration headers. Source hashes bind what was inspected; they do not prove functional correctness. Current master schema header, readiness header/JSON and actual graph must agree. A head mentioned elsewhere or a permanent PENDING REVERIFY is not a substitute.
+---
 
-## 5. Merge gate
+## 3. Mandatory gap scan
 
-Before merging verify same-change spec, recorded gaps, one authority per concept, complete affected chain, negative/replay/concurrency tests, applicable exact-candidate CI, truthful external-not-verified boundaries and current blocker state. Preserve review gates and do not bypass main protection. Do not change unrelated feature ownership while refreshing a stale PR.
+Перед реализацией пройти всю affected chain:
 
-### 5.1 Draft-transition recovery
+`entry/navigation → authorization → input/schema → service → transaction → authoritative DB → outbox/provider/storage → reconciliation → API read → second side → UI/file → retry/recovery/reversal → audit/history`.
 
-A tooling failure does not permit direct push to main. If tooling cannot change a qualified Draft to Ready: record the blocker, keep the old Draft open until a bounded successor exists, branch from the qualified lineage, open a non-draft successor to the same base, obtain fresh exact-head qualification, merge only the qualified successor, then mark the old Draft superseded with evidence links. No stale-CI reuse or unrelated scope increase.
+Искать:
 
-## 6. Post-merge reconciliation
+- dead ends;
+- broken entity/event/screen links;
+- duplicate writers/routes/calculations;
+- stale legacy path;
+- missing transaction/idempotency/version fence;
+- missing lock-time authority recheck;
+- response-loss ambiguity;
+- split commit;
+- loading/empty/error/stale/conflict/offline confusion;
+- session/account/project leakage;
+- child-resource IDOR;
+- schema/ORM drift;
+- plan/fact/zero/unknown substitution;
+- provider simulation passed as live;
+- missing cancel/reversal/restore;
+- hidden action discoverability;
+- documentation that describes obsolete behavior.
 
-Close only issues whose full acceptance is satisfied on main. Update readiness only for actual evidence changes. Refresh dependent PRs from canonical main and requalify after changes. A foundation merge does not close a cross-domain product issue. An old workflow result remains evidence for its exact candidate, not a new universal certificate.
+Confirmed P0/P1 создаёт issue/board row с acceptance/evidence boundary. Он не остаётся только в чате.
 
-## 7. Current ordered integration state
+---
 
-- #288 local runtime foundation and #289 documentation reconciliation are merged.
-- #290 repository logical restore is merged; managed PITR/DR remains #234.
-- #292 ordinary incoming chat atomicity is merged; task/invoice/offline replay remain #316/#317 and external storage #238.
-- #295 warranty creation and #297 manual evidence are merged; do not treat #287 or #265 as unfinished merely from old documents.
-- #309/#310 material/start truth, #311 price provenance and #312 participant foundation are merged.
-- #313 participant management/atomic marketplace conversion merged as65ddb7e59e6bcb23473b1017686cd3adbd882187 after qualification ofae8a0750bb6cc788c9e93a1f85a7355f3b180380.
-- #314 mobile quoted-lead wizard recovery merged as95dd4a8e117289df11e1300891490768c22f585f after qualification of6e88a1d15883964b1c3f4f0a0f203fb6ef2f0817.
-- #300 remains OPEN for full independent-contractor scoped domains/mobile/E2E, not merely its foundation.
+## 4. Unit of acceptance
 
-Current product priorities from the source audit: #316 and #315; then safe transport/cache #317, analytics #318, purge lifecycle #319, native exports #320 and truthful interactions #305; then bounded #300 adoption. Follow `CHANGELOG-ROADMAP.md` and `PRODUCT-COMPLETENESS-AUDIT-2026-09-08.md` for acceptance and ownership.
+Единица приёмки — полный business result.
 
-External main protection/staging #247/#233, observability #235/#283, managed DR #234, capacity #236, provider recovery #238, security #256/#257/#237 and pilot #241 retain independent evidence requirements and may progress in parallel.
+Где применимо:
 
-#282/#284/#286/#287 are historical implementation/process lineage, not PRs to merge again. #283 is a separate stale draft to refresh; an emission probe cannot prove external alert delivery.
+`create → authoritative read → counterpart visibility → update/transition → linked calculation → error/ACL → offline → commit+lost-response → retry → conflict → reversal → restore/reconcile → account switch → terminal history`.
 
-## 8. Product-wide acceptance evidence
+Изолированный endpoint/кнопка/unit-test не завершает chain.
 
-G01–G10 in the full audit cover standalone repair, single contractor, independent contractors, unstable network, account changes, financial reconciliation, documents, handover/lifecycle, incidents and device/accessibility. Register requirement→entry/role→service/entity→test→run/artifact. Clearly label source-only inspection, bounded CI, new execution and external verification. A static screen inventory must not be reported as execution of every action.
+---
+
+## 5. Canonical authority hierarchy
+
+- Engineering policy: `AGENTS.md`.
+- Product/system contract: master spec.
+- Current factual execution order: Completion Board.
+- Task acceptance catalogue: Product Completion Mandate.
+- Golden Paths: `GOLDEN-PATHS.md`.
+- Navigation: route registry + actual routes.
+- API: final router composition + canonical service.
+- Data: ORM + linear Alembic + PostgreSQL.
+- Money: explicit ledger/source-of-fact rules.
+- Background: DomainOutbox + worker.
+- Readiness: root readiness Markdown/JSON.
+
+При конфликте static task order и нового confirmed risk, **acceptance mandate сохраняется, execution order пересчитывается по Board**.
+
+---
+
+## 6. Priority resolver
+
+Использовать только этот порядок риска:
+
+1. Security / cross-project/account isolation / money corruption.
+2. Atomicity / exactly-once / response-loss / reversal.
+3. Session / offline / cache provenance.
+4. Calculation / reconciliation truth.
+5. Browser/native navigation/accessibility correctness.
+6. Lifecycle/multi-party closure.
+7. Human usability/friction/terminology.
+8. External production readiness.
+9. New capability.
+
+### 6.1. Dependency-aware choice
+
+Если самая высокая задача заблокирована owner merge/external admin action:
+
+- blocker не обходится;
+- выбирается независимая задача того же или более высокого класса риска;
+- нельзя перескочить к новой feature только потому, что P0 ждёт review.
+
+---
+
+## 7. Merge gate
+
+До merge обязательно проверить:
+
+- one authority per concept;
+- exact current base/head;
+- same-change spec;
+- no hidden confirmed gaps;
+- applicable negative/replay/concurrency tests;
+- no test deletion/expected-value rewrite without proven contract change;
+- no stale candidate evidence;
+- no provider-mode truth weakening;
+- no main-protection bypass;
+- removal proof where required;
+- no unrelated scope expansion.
+
+### 7.1. Stacked candidate rule
+
+Stacked PR может быть `CANDIDATE PROVEN` только для bounded primitive на exact qualification context. После prerequisite merge он обязан:
+
+1. rebase/refresh onto resulting main;
+2. rerun applicable exact-head checks;
+3. resolve conflicts without reverting newer security/data contracts;
+4. only then become merge-eligible.
+
+Raw stacked aggregate test counts не называются comparable integrated evidence, если bases различаются.
+
+### 7.2. Draft-transition/tooling failure
+
+Tooling failure не разрешает push main. При невозможности перевести qualified Draft в Ready:
+
+- зафиксировать blocker;
+- не self-merge;
+- при необходимости создать bounded successor from qualified lineage;
+- получить fresh exact-head evidence;
+- old draft пометить superseded после безопасной замены.
+
+---
+
+## 8. Post-merge reconciliation
+
+После каждого merge:
+
+1. получить новый `main` SHA/head;
+2. проверить migration/readiness agreement;
+3. повысить только реально интегрированные bounded cells;
+4. rebase/requalify descendants;
+5. пересчитать next Wave task;
+6. закрыть issue только если полный acceptance issue выполнен;
+7. обновить review/deployed evidence, если merge затрагивает стенд.
+
+Foundation merge никогда автоматически не закрывает parent cross-domain problem.
+
+---
+
+## 9. Current integration order
+
+Подробности и номера — Completion Board / roadmap.
+
+Текущий порядок:
+
+1. trusted integration foundation (#425 → #389/#372/#437/#450 + #247 live settings);
+2. security/data authority (#444/#424/#452/#441, #455→#456, finance facts);
+3. replay/atomicity (#322 prerequisite → remaining #316 tree → #461);
+4. session/offline/cache (#315/#317);
+5. connected GP1;
+6. multi-contractor + GP2/GP3;
+7. purge/native/closeout/warranty/provider simulated closure;
+8. Human Usability Closure;
+9. one-SHA GP1–GP8 internal acceptance;
+10. external production qualification.
+
+Эта последовательность меняется только при новом evidence/prerequisite, а не по желанию сделать более заметную функцию.
+
+---
+
+## 10. Deployed/user-surface evidence rule
+
+Если существует public/review stand, source/CI не заменяет browser behavior.
+
+Для current review на 2026-09-16 известен красный full product smoke: Chromium 4/10, WebKit failed. Поэтому UI/navigation/accessibility нельзя считать завершёнными только по green API/runtime tests.
+
+Каждый deployed finding классифицируется:
+
+- PRODUCT_DEFECT;
+- TEST_INFRA_DEFECT;
+- STALE_CONTRACT — только с доказательством изменения продуктового контракта;
+- EXTERNAL/ENVIRONMENT blocker.
+
+Нельзя переписывать assertion под текущее отображаемое значение без доказательства STALE_CONTRACT.
+
+---
+
+## 11. Calculation truth governance
+
+Для любого derived KPI:
+
+- exact inputs;
+- grain;
+- missing/null semantics;
+- zero semantics;
+- units/currency;
+- timezone/as-of;
+- rounding/conservation;
+- reversal/refund;
+- source drill-down;
+- tests.
+
+Unknown ≠ zero. Plan ≠ actual. Invoice ≠ payment. Approved ≠ ordered.
+
+CALCULATION-REGISTRY и affected UI/API обязаны меняться совместно.
+
+---
+
+## 12. UX governance
+
+UX не может скрывать integrity defect. После P0 foundation Human Usability Closure должен уменьшать трение, но не создавать вторую business truth.
+
+Основные принципы:
+
+- task-oriented UI;
+- one primary action;
+- stable navigation;
+- explicit actor/next action;
+- consequence before approval;
+- chat as context, not source of truth;
+- Inbox as attention queue;
+- progressive disclosure;
+- truthful loading/error/stale/offline/conflict;
+- accessibility as correctness.
+
+---
+
+## 13. Provider/external evidence
+
+Simulator может закрывать внутренний GP только если это прямо предусмотрено mandate/GOLDEN-PATHS. Он не является production provider evidence.
+
+Real provider, managed DR, external alert delivery, load, pentest, legal/privacy и pilot сохраняют `FUTURE EXTERNAL` до фактического внешнего доказательства.
+
+---
+
+## 14. Documentation Definition of Done
+
+Документация считается синхронизированной, если:
+
+- master header отражает real canonical schema;
+- Board отражает current main/candidate evidence;
+- roadmap отражает dependency order;
+- domain contract отражает changed behavior;
+- PR body имеет truthful baseline/after/evidence boundary;
+- readiness не завышена;
+- historical snapshots не используются как current truth.
+
+Нельзя писать «готово», если реально только source exists; нельзя писать «не реализовано», если доказано, что функция существует, но не квалифицирована. Правильный статус в последнем случае — `PARTIAL`.
+
+---
+
+## 15. Final acceptance governance
+
+PRODUCT COMPLETE claim допустим только по одному immutable SHA и одному evidence pack. После изменения SHA affected evidence переисполняется.
+
+Обязательны:
+
+- GP1–GP8;
+- M01–M12 dispositions;
+- mutation/recovery inventory;
+- role/ACL negatives;
+- calculation reconciliation;
+- browser/native acceptance;
+- migration/restore;
+- closeout/warranty/history;
+- explicit external limitations.
+
+Отдельное мнение автора/агента не является release verdict.
