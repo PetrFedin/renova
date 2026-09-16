@@ -7,6 +7,7 @@ from app.api.v1 import document_lifecycle
 from app.api.v1 import document_creation_integrity
 from app.api.v1 import document_upload_integrity
 from app.api.v1 import room_change_creation_integrity
+from app.api.v1 import waste_order_creation_integrity
 from app.api.v1 import selections
 from app.api.v1 import bank_statements
 from app.api.v1 import expense_mutations
@@ -65,6 +66,9 @@ api_router.include_router(material_price_sync.router)
 api_router.include_router(materials.router)
 api_router.include_router(selections.router)
 api_router.include_router(approvals.router)
+_WASTE_ORDER_CREATION_ROUTES: set[RouteSignature] = {("/projects/{project_id}/waste-orders", "POST")}
+_remove_replaced_routes(waste_orders.router, _WASTE_ORDER_CREATION_ROUTES)
+api_router.include_router(waste_order_creation_integrity.router)
 api_router.include_router(waste_orders.router)
 api_router.include_router(floor_plans.router)
 api_router.include_router(work_types.router)
