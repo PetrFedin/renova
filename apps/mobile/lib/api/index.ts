@@ -8,6 +8,7 @@ import { estimateApi } from './estimate';
 import { receiptsApi } from './receipts';
 import { calendarApi } from './calendar';
 import { chatsApi } from './chats';
+import { chatReactionIntentsApi } from './chatReactionIntents';
 import { notificationsApi } from './notifications';
 import { osApi } from './os';
 import { materialsApi } from './materials';
@@ -35,6 +36,9 @@ export const api = {
   ...receiptsApi,
   ...calendarApi,
   ...chatsApi,
+  // Replace legacy replay-unsafe reaction toggle client while preserving the
+  // public api.reactChatMessage call used by ChatThreadView.
+  ...chatReactionIntentsApi,
   ...notificationsApi,
   ...osApi,
   ...materialsApi,

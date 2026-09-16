@@ -59,7 +59,7 @@ jobs:
       CHAT_MESSAGE_POSTGRES_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5436/renova_chat_integrity
       CHAT_COMMAND_POSTGRES_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5436/renova_chat_integrity
       PUBLIC_BASE_URL: http://127.0.0.1:8100
-      SECRET_KEY: ci-secret-key-at-least-16
+      SECRET_KEY: "ci-${{ github.sha }}"
       ALLOW_CREATE_ALL: "true"
       ALLOW_DEMO_SEED: "false"
       PYTHONHASHSEED: "0"
@@ -95,6 +95,8 @@ jobs:
             tests/test_chat_thread_only_mobile_capabilities_contract.py \
             tests/test_chat_thread_only_mobile_inbox_contract.py \
             tests/test_chat_business_commands.py \
+            tests/test_chat_reaction_intent.py \
+            tests/test_chat_reaction_route_composition.py \
             tests/test_chat_business_commands_postgres.py \
             --junitxml=chat-command-results.xml
           poetry run python - <<'PY'
@@ -105,7 +107,20 @@ jobs:
           assert not root.findall('.//skipped'), 'skipped tests are not qualification evidence'
           assert not root.findall('.//failure') and not root.findall('.//error')
           races = [c for c in cases if c.get('classname', '').endswith('test_chat_business_commands_postgres')]
-          assert len(races) >= 6, 'all six physical PostgreSQL scenarios must execute'
+          assert len(races) >= 7, 'all physical PostgreSQL chat-command/reaction scenarios must execute'
+          names = {c.get('name') for c in cases}
+          required_reaction = {
+              'test_response_loss_replay_does_not_toggle_reaction_twice',
+              'test_second_real_tap_has_new_identity_and_can_remove_reaction',
+              'test_same_key_changed_emoji_conflicts_without_second_toggle',
+              'test_reaction_preserves_unrelated_message_metadata',
+              'test_precommit_failure_rolls_back_sql_reaction_and_same_intent_retries',
+              'test_one_replay_safe_chat_reaction_route_is_composed',
+              'test_reaction_waits_for_task_link_and_preserves_both_json_fields',
+              'test_same_reaction_intent_contends_then_replays_without_second_toggle',
+          }
+          missing = sorted(required_reaction - names)
+          assert not missing, f'missing mandatory chat reaction qualification cases: {missing}'
           PY
       - name: Retain chat command and PostgreSQL qualification
         if: always()
@@ -123,7 +138,7 @@ jobs:
       ENVIRONMENT: test
       DATABASE_URL: sqlite+aiosqlite:///./project-create-tests.db
       PUBLIC_BASE_URL: http://127.0.0.1:8100
-      SECRET_KEY: ci-secret-key-at-least-16
+      SECRET_KEY: "ci-${{ github.sha }}"
       ALLOW_CREATE_ALL: "true"
       ALLOW_DEMO_SEED: "true"
       PYTHONHASHSEED: "0"
@@ -160,7 +175,7 @@ jobs:
       ENVIRONMENT: test
       DATABASE_URL: sqlite+aiosqlite:///./acceptance-decision-tests.db
       PUBLIC_BASE_URL: http://127.0.0.1:8100
-      SECRET_KEY: ci-secret-key-at-least-16
+      SECRET_KEY: "ci-${{ github.sha }}"
       ALLOW_CREATE_ALL: "true"
       ALLOW_DEMO_SEED: "true"
       PYTHONHASHSEED: "0"
@@ -197,7 +212,7 @@ jobs:
       ENVIRONMENT: test
       DATABASE_URL: sqlite+aiosqlite:///./stage-mutation-tests.db
       PUBLIC_BASE_URL: http://127.0.0.1:8100
-      SECRET_KEY: ci-secret-key-at-least-16
+      SECRET_KEY: "ci-${{ github.sha }}"
       ALLOW_CREATE_ALL: "true"
       ALLOW_DEMO_SEED: "true"
       PYTHONHASHSEED: "0"
@@ -234,7 +249,7 @@ jobs:
       ENVIRONMENT: test
       DATABASE_URL: sqlite+aiosqlite:///./team-lifecycle-tests.db
       PUBLIC_BASE_URL: http://127.0.0.1:8100
-      SECRET_KEY: ci-secret-key-at-least-16
+      SECRET_KEY: "ci-${{ github.sha }}"
       ALLOW_CREATE_ALL: "true"
       ALLOW_DEMO_SEED: "true"
       PYTHONHASHSEED: "0"
@@ -281,7 +296,7 @@ jobs:
       ENVIRONMENT: test
       DATABASE_URL: sqlite+aiosqlite:///./ci-tests.db
       PUBLIC_BASE_URL: http://127.0.0.1:8100
-      SECRET_KEY: ci-secret-key-at-least-16
+      SECRET_KEY: "ci-${{ github.sha }}"
       ALLOW_CREATE_ALL: "true"
       ALLOW_DEMO_SEED: "true"
       PYTHONHASHSEED: "0"
@@ -332,7 +347,7 @@ jobs:
           ENVIRONMENT: staging
           DATABASE_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova
           PUBLIC_BASE_URL: https://ci-staging.example.com
-          SECRET_KEY: ci-staging-signing-key-at-least-32-bytes
+          SECRET_KEY: "ci-staging-${{ github.sha }}"
           ALLOW_CREATE_ALL: "false"
           ALLOW_DEMO_SEED: "false"
         run: poetry run python -m alembic upgrade head
