@@ -75,7 +75,7 @@ for (const state of ['PROVEN', 'CANDIDATE PROVEN', 'PARTIAL', 'BLOCKED', 'FUTURE
   assert.ok(board.includes(`\`${state}\``), `completion board missing readiness state: ${state}`);
 }
 
-const modeIds = [...board.matchAll(/^\| \*\*M(\d{2})\b/gm)].map((m) => Number(m[1]));
+const modeIds = [...board.matchAll(/^\| M(\d{2})\b/gm)].map((m) => Number(m[1]));
 assert.deepEqual(modeIds, Array.from({ length: 12 }, (_, i) => i + 1), `completion board must contain exact M01-M12 rows; got ${modeIds.join(',')}`);
 
 const gpIds = [...board.matchAll(/^\| GP(\d) \|/gm)].map((m) => Number(m[1]));
