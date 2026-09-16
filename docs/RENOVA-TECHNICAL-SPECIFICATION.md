@@ -19,9 +19,9 @@
 - `technical-spec/PRODUCT-COMPLETION-MANDATE.md` — каталог completion tasks/acceptance;
 - `technical-spec/CALCULATION-REGISTRY.md` — формулы и источники;
 - `technical-spec/SCREEN-CONTRACT-CATALOG.md` — экраны/состояния;
-- `technical-spec/SCREEN-SOURCE-SNAPSHOT.md` — machine-bound source snapshot;
+- `technical-spec/SCREEN-SOURCE-SNAPSHOT.md` — machine-bound screen source snapshot;
 - `technical-spec/END-TO-END-GOVERNANCE.md` — правила сопровождения и пересчёта приоритета;
-- `PRODUCT-COMPLETENESS-AUDIT-2026-09-08.md` — базовый аудит; новые findings ведутся через Board/issues/PR evidence.
+- `technical-spec/PRODUCT-COMPLETENESS-AUDIT-2026-09-08.md` — базовый аудит; новые findings ведутся через Board/issues/PR evidence.
 
 ---
 
@@ -43,7 +43,7 @@ RENOVA должна быть не набором функций, а доказа
 - `BLOCKED` — есть конкретный blocker/prerequisite;
 - `FUTURE EXTERNAL` — требуется внешняя production/provider/device/admin evidence.
 
-`VERIFIED SOURCE` и `CI GREEN` сами по себе не эквивалентны `PROVEN` пользовательского результата.
+**VERIFIED** означает подтверждение заявленного source/contract, но не автоматически полный пользовательский результат. **PENDING REVERIFY** означает, что SHA/base изменился после предыдущего evidence. **TBD / UNVERIFIED** означает отсутствие достаточного доказательства. Эти термины не повышают readiness выше фактического Board status.
 
 ## 0.2. Evidence hierarchy
 
@@ -77,7 +77,7 @@ RENOVA должна быть не набором функций, а доказа
 
 ---
 
-# 1. Назначение продукта
+# 1. Назначение продукта и границы системы
 
 RENOVA — iPhone-first, но не iPhone-only, система управления реальным ремонтом для заказчика, исполнителей и связанных ролей.
 
@@ -132,33 +132,7 @@ Completion Board ведёт режимы M01–M12:
 
 ---
 
-# 3. Репозиторий и source of truth
-
-Канон: `PetrFedin/renova` → `main` → bounded branch → PR → exact-head applicable checks → owner review/merge → descendants rebase/requalify.
-
-Нельзя использовать старую feature/develop branch как новую интеграционную базу только потому, что на ней больше функций.
-
-Авторитетные уровни:
-
-- navigation — `routeRegistry` + реальные Expo routes;
-- API — итоговая router composition + canonical service;
-- data — ORM + линейный Alembic + PostgreSQL;
-- async — DomainOutbox + worker;
-- cache/coordination — Redis по явному контракту;
-- private files — S3-compatible/MinIO с object authority;
-- money — явные plan/obligation/actual/payment/evidence/refund concepts;
-- readiness — `PRODUCTION-READINESS.md` + machine evidence;
-- execution order — Completion Board.
-
-### Schema truth
-
-Canonical `main` на этом срезе: `w22projectparticipants01`.
-
-PR #457 квалифицировался на отдельной composition base с candidate head `w23estimatelifecycle01`. Это **candidate schema evidence**, а не текущий schema head `main`; до merge/requalification он не должен появляться как current master head.
-
----
-
-# 4. Runtime architecture
+# 3. Runtime architecture
 
 Целевая topology:
 
@@ -170,7 +144,21 @@ PR #457 квалифицировался на отдельной composition bas
 
 Один immutable backend image должен использоваться для соответствующих runtime roles. API replica заменяема без потери committed business truth.
 
-Canonical local runtime должен поднимать PostgreSQL + Redis + MinIO + migrations/preflight + API + Worker; local success не называется staging/production success.
+Canonical local runtime — Compose project `renova-local`. Он должен поднимать PostgreSQL + Redis + MinIO + migrations/preflight + API + Worker; local success не называется staging/production success.
+
+Основные локальные команды остаются частью engineering contract:
+
+```bash
+npm run dev -- doctor
+npm run dev -- bootstrap
+RENOVA_DEV_NO_EXPO=1 npm run dev
+npm run dev -- check
+npm run dev -- seed
+npm run dev -- test-focused
+npm run dev -- test-full
+npm run dev -- logs
+npm run dev -- stop
+```
 
 На текущем integration path:
 
@@ -184,7 +172,7 @@ Canonical local runtime должен поднимать PostgreSQL + Redis + Min
 
 ---
 
-# 5. Data/domain model
+# 4. Data/domain model — системная карта
 
 | Контур | Основные сущности | Неподменяемая истина |
 |---|---|---|
@@ -203,9 +191,17 @@ Canonical local runtime должен поднимать PostgreSQL + Redis + Min
 
 Любая новая durable entity обязана входить в ACL, export/retention/purge, backup/restore и history/evidence contracts.
 
+### Schema truth
+
+Canonical `main` на этом срезе: `w22projectparticipants01`.
+
+Интегрированный historical chain включает, в частности, `w16legacystatus01` → `w17chatmessageenum01` → `w18nativeenumparity01` → последующие revisions до текущего `w22projectparticipants01`.
+
+PR #457 квалифицировался на отдельной composition base с candidate head `w23estimatelifecycle01`. Это **candidate schema evidence**, а не текущий schema head `main`; до merge/requalification он не должен появляться как current master head.
+
 ---
 
-# 6. Transaction, idempotency, recovery
+# 5. Transaction, idempotency, outbox и provider boundary
 
 Целевой invariant одной бизнес-операции:
 
@@ -233,9 +229,23 @@ Canonical local runtime должен поднимать PostgreSQL + Redis + Min
 
 а не «не сохранено».
 
+### Outbox/provider
+
+DomainOutbox/worker должны обеспечивать deterministic intent → claim/lease/fencing → effect → reconciliation → done/terminal/DLQ. Timeout внешнего provider-а не превращается ни в выдуманный успех, ни в слепой повтор.
+
 ### Current recovery truth
 
 #322, #414, #416, #418/#459, #460/#465 и ряд других PR дают сильные bounded replay primitives. Но #316 как family-wide проблема остаётся открытой. #383/#392/#404/#412 всё ещё не имеют достаточной integrated comparable qualification. #315/#317 остаются cross-cutting blockers.
+
+---
+
+# 6. API composition
+
+Канонический `/api/v1` объединяет auth/projects/rooms/estimate/budget, stages/work-orders/schedules, materials/purchases/selections, payments/receipts/bank, documents/e-sign/warranty, chat/notifications/automation, technical-supervision, marketplace и operator/admin.
+
+Точная inventory эффективных методов определяется итоговой router composition, а не просто наличием decorator-а. Critical command имеет input/output schema, current actor/resource ACL, missing/null semantics, conflict/provider-pending semantics и replay contract.
+
+GET не должен скрыто изменять business truth. Compatibility path не должен сохранять старую мутацию только потому, что новый canonical route уже существует.
 
 ---
 
@@ -334,9 +344,11 @@ Unknown нельзя сохранять/показывать как 0 или к�
 
 `summary → category → record → authoritative source/evidence`.
 
+Детальные формулы и source hashes ведутся в `technical-spec/CALCULATION-REGISTRY.md`.
+
 ---
 
-# 10. Основные продуктовые цепочки
+# 10. Основные business flows и связи
 
 ## 10.1. Новый объект
 
@@ -432,7 +444,7 @@ Warranty Claim — одна canonical entity для обеих ролей с р�
 
 ---
 
-# 11. Mobile information architecture
+# 11. Mobile information architecture and navigation
 
 Цель — стабильная карта, а не phase-driven перестановка navigation.
 
@@ -447,32 +459,79 @@ Canonical concepts:
 
 При ограничении Dock до пяти destinations позиция должна быть предсказуемой; Schedule остаётся prominent и не теряется как второстепенный смысл.
 
-## Object
+## 11.1. Canonical route registry inventory
 
-- Комнаты;
-- Смета;
-- **Чертежи и дизайн** вместо неоднозначного `План`;
-- Данные объекта.
+Это source-level inventory, а не обещание полной пользовательской приёмки каждого route.
 
-## Repair
+| ID | Назначение |
+|---|---|
+| home | Главная |
+| object | Объект |
+| repair | Ремонт/работы |
+| budget | Деньги |
+| calendar | Сроки |
+| chat | Сообщения |
+| manager-dashboard | Управленческая сводка |
+| finance-center | Финансовый центр/redirect |
+| control | Контроль/приёмка |
+| quality-control | Контроль качества |
+| work-acceptance | Приёмка работ |
+| work-schedule | График работ |
+| documents | Документы |
+| approvals | Согласования/detail |
+| notifications | Уведомления/redirect |
+| inbox | Единая очередь внимания |
+| scan-receipt | Сканирование чека |
+| stage | Деталь этапа |
+| materials-procurement | Материалы/закупки |
+| selections | Выбор материалов |
+| warranty-claim | Гарантийное обращение |
+| design | Чертежи/дизайн |
+| conflicts | Offline/conflict resolution |
+| portfolio | Портфель проектов |
+| scratchpad | Черновик |
+| budget-planner | Планировщик бюджета |
+| checklist-templates | Шаблоны чек-листов |
+| guide | Справка |
+| activity | История/архив |
+| portal | Portal-token flow |
+| reports | Отчёты |
+| project-analytics | Аналитика/redirect |
 
-- Этапы;
-- Приёмка;
-- Материалы;
-- Выбор материалов.
+Каждый deep link обязан заново проверять current session/role/project/entity authority.
 
-## Budget
+## 11.2. Hub source keys → user labels
 
-Customer labels:
+Текущие internal keys сохраняются до отдельной bounded migration; user-facing terminology может быть улучшено без подмены source contract.
 
-- План–факт;
-- Расходы;
-- Оплаты;
-- Отклонения.
+### Object
 
-Contractor labels могут различаться по полномочиям, но underlying truth одна.
+| key | user-facing target |
+|---|---|
+| `rooms` | Комнаты |
+| `estimate` | Смета |
+| `plan` | Чертежи и дизайн |
+| `profile` | Данные объекта |
 
-## Schedule
+### Repair
+
+| key | user-facing target |
+|---|---|
+| `works` | Этапы |
+| `control` | Приёмка |
+| `materials` | Материалы |
+| `selections` | Выбор материалов |
+
+### Budget
+
+| key | user-facing target |
+|---|---|
+| `summary` | План–факт |
+| `expenses` | Расходы/затраты |
+| `payments` | Оплаты/поступления |
+| `deviations` | Отклонения |
+
+## 11.3. Schedule
 
 - Сегодня;
 - 2 недели;
@@ -509,7 +568,23 @@ Advanced manager/report tools не должны вытеснять основн�
 
 ---
 
-# 13. UX outcome contract
+# 13. UI design system — exact source tokens and UX outcome contract
+
+Source-level values на текущем canonical cut:
+
+| Token | Значение |
+|---|---|
+| primary | `#334155` |
+| accent | `#2563EB` |
+
+Minimum touch target: **44 px**.
+
+```text
+display 32
+hero    24
+h1      22
+body    14
+```
 
 Каждый важный object/card/action отвечает:
 
@@ -529,87 +604,7 @@ Advanced manager/report tools не должны вытеснять основн�
 
 ---
 
-# 14. Accessibility and browser navigation
-
-Минимум:
-
-- 44×44 touch target;
-- focus order;
-- screen reader labels;
-- `aria-selected`/roles;
-- keyboard on web;
-- modal focus and cleanup;
-- disabled/busy semantics;
-- back/canonical parent;
-- status not by color only;
-- reduced motion;
-- long Russian copy/text scaling;
-- iOS/Android safe area.
-
-Deployed run `35084701908` доказал, что этот gate ещё не закрыт: overlay блокировал dock, tab selected semantics нарушались, customer/contractor navigation имела несколько failures. Поэтому accessibility/navigation сейчас — correctness gate, а не косметика.
-
----
-
-# 15. Documents and files
-
-User-facing structure:
-
-1. Проект;
-2. Финансы;
-3. Приёмка и гарантия;
-4. Архив.
-
-1С/bank/iCal/technical export → `Экспорт и интеграции`.
-
-#320 закрывается только при authenticated file outcome на web/iOS/Android с:
-
-- current session fence;
-- actual bytes/content;
-- native save/share;
-- cancellation;
-- cleanup;
-- error state;
-- revoked ACL.
-
-Metadata classification не называется OCR содержимого. In-app signature не называется автоматически юридически равной внешней квалифицированной подписи.
-
----
-
-# 16. Provider boundary
-
-Внешняя capability работает через port/adapter/simulator, а domain code не должен зависеть от конкретного provider-а.
-
-Internal product-complete допускает simulated providers там, где это закреплено GP/mandate. Production/staging не должны silently использовать simulator.
-
-#426 bounded-proves simulated fiscal/NPD capability. Payment simulator A3/A4 и остальные required simulated lifecycles должны пройти GP path. Real YooKassa/FNS/NPD/Kontur/Goskey/SMS/e-sign — отдельная external qualification.
-
----
-
-# 17. Review/demo environment
-
-Public review stand используется для product inspection, но не заменяет canonical local/runtime acceptance.
-
-Последняя проверенная deployed evidence:
-
-- role/project entry: проходит 4/4;
-- mutation/recovery deployed proof: SUCCESS;
-- Chromium product smoke: 4/10 pass, 6 fail;
-- WebKit product smoke: FAIL.
-
-Известные browser blockers ведутся в Completion Board. Пока они есть, стенд нельзя описывать как «всё работает».
-
-Review seed должен быть deterministic и включать минимум:
-
-- active project с estimate/change/stages/materials/purchase/receipt/payment/chat/acceptance/issue/docs;
-- near-closeout project с acceptance/final money/closeout/warranty/history.
-
-Demo provider state никогда не выдаётся за production state.
-
----
-
-# 18. Tests and acceptance
-
-Тип evidence и его предел:
+# 14. Tests and verification matrix
 
 | Evidence | Доказывает | Не доказывает |
 |---|---|---|
@@ -646,6 +641,84 @@ Demo provider state никогда не выдаётся за production state.
 - cancel/reversal;
 - archive/restore;
 - durable history/evidence.
+
+---
+
+# 15. Независимые критические PR-контуры и evidence classes
+
+Open PR не становится `PROVEN`. Текущая детальная ledger находится в Completion Board.
+
+Ключевые актуальные линии:
+
+- #425 → #389/#372/#437/#450: trusted integration/runtime/dependency lineage;
+- #444/#424/#452/#441 и #455→#456: object authority / ACL;
+- #322 и descendants: replay/atomicity;
+- #315/#317: global session/offline/cache;
+- #382: finance/calculation truth;
+- #448/#457/#458: estimate/change/GP1 lifecycle;
+- #300/#344/#345/#429: multi-contractor;
+- #319/#320: purge/native-file lifecycle;
+- #367: deployed review evidence, но не canonical integration base.
+
+Historical #282/#283/#284/#286/#287 остаются traceability lineage, а не текущими задачами для повторного merge.
+
+---
+
+# 16. Known gaps / improvement backlog
+
+Текущий backlog не определяется возрастом issue. Он пересчитывается Completion Board по risk/dependency.
+
+На текущем evidence cut:
+
+1. trusted integration foundation;
+2. security/data authority;
+3. replay/atomicity;
+4. session/offline/cache;
+5. financial truth;
+6. connected GP1;
+7. multi-contractor GP2/GP3;
+8. lifecycle edges;
+9. Human Usability Closure;
+10. one-SHA internal acceptance;
+11. external production qualification.
+
+Новые крупные features, dashboards, AI flows или provider integrations не обгоняют core closure без отдельного решения владельца.
+
+---
+
+# 17. Traceability matrix
+
+| Требование | Authority / contract | Текущий blocker/evidence class |
+|---|---|---|
+| Session/account | client/session/offline contracts | #315/#317; BLOCKED |
+| Project create/lifecycle | canonical project services | #434/#319; PARTIAL/BLOCKED |
+| Participant/scope | ProjectParticipant + scope contracts | #300/#344/#345; BLOCKED |
+| Estimate/change | Estimate/ChangeOrder contracts | #444/#412/#448/#457/#458 |
+| Execution | Stage/WorkOrder/schedule | #452/#383/#404/#461 + #316 |
+| Materials | selection/material/purchase/receipt | #416/#460 + broader procurement PARTIAL |
+| Finance | calculation registry + payment/expense truth | #382 + GP5 BLOCKED |
+| Chat/inbox | chat/request identity/inbox | #322 + #315/#316/#317 |
+| Documents/files | document/version/storage/native | #320 + provider/retention |
+| Acceptance/warranty | acceptance/issue/warranty | #418 + closeout lifecycle |
+| UI/screens | screen catalog + routeRegistry | deployed #367 browser failures |
+| Production | readiness evidence | FUTURE EXTERNAL + internal blockers |
+
+---
+
+# 18. Documentation Definition of Done
+
+Документация считается синхронизированной, когда:
+
+1. master schema header совпадает с actual Alembic graph/readiness;
+2. source snapshot rows совпадают с current tracked blobs;
+3. Board отражает current main/candidate/deployed evidence;
+4. roadmap отражает dependency order;
+5. mandate сохраняет acceptance без stale fixed ordering;
+6. affected domain/calculation/screen contract обновлён;
+7. PR body содержит exact evidence boundary;
+8. historical snapshots не используются как current verdict.
+
+Запрещено закрывать issue по ограниченному foundation, выдавать audit/source presence за runtime test, сохранять unknown как 0, обозначать unavailable capability как DONE или переносить старый green на новый SHA.
 
 ---
 
@@ -716,8 +789,6 @@ Demo provider state никогда не выдаётся за production state.
 35. real providers;
 36. pilot/operations.
 
-Новые крупные features, dashboards, AI flows или integrations не имеют приоритета над этой closure queue без отдельного решения владельца.
-
 ---
 
 # 20. Final Definition of Done
@@ -742,3 +813,37 @@ RENOVA может называться готовой внутренне тол�
 После любого изменения exact SHA affected evidence пересчитывается. **Старый green не является сертификатом нового кода.**
 
 Документ считается актуальным только вместе с `PRODUCT-COMPLETION-BOARD.md`; если их статусы расходятся, до reconciliation используется более консервативный фактически доказанный статус.
+
+---
+
+# 21. Machine-verifiable source snapshot
+
+Эта таблица связывает living master с конкретными source blobs. Она не доказывает runtime correctness; её задача — не позволить source изменить без явной reconciliation документации.
+
+| Source | Blob SHA | Назначение |
+|---|---|---|
+| `AGENTS.md` | `767d38e76d04209e609bbe7173a2c448cfc5fa00` | Engineering policy |
+| `backend/app/api/v1/router.py` | `8663e5b54289b133c5a2ff30af0533cfee93dfb6` | API composition |
+| `backend/app/models/entities.py` | `f2e63f316fa8c9b2012894ae4e496dc76a73a3a1` | Domain entities/enums |
+| `backend/app/main.py` | `223e83b13f96398eefe997275ac6f41fa44bfbcf` | API lifespan/runtime |
+| `backend/app/services/seed_demo.py` | `c62ba920130a7ba7f6e2bd0a54e63feadce5c6cd` | Development seed |
+| `backend/scripts/verify_orm_schema_parity.py` | `ba08d0681df301f446b3adbf811ad9367eeb24b9` | ORM/schema parity |
+| `backend/scripts/verify_current_migration_schema.py` | `13e63544564b41a13c52f9437b9bfbdfa290913b` | Migration invariants |
+| `apps/mobile/lib/routeRegistry.ts` | `0c9a386486f61cd1a284d8bd7fc99368b557232f` | Canonical navigation registry |
+| `apps/mobile/constants/Theme.ts` | `6e66c4bf0db8c9d1b8c4a2d0355311145ca43b20` | Theme/touch geometry |
+| `apps/mobile/constants/typography.ts` | `8a96b7f290944ac2c566c0f1791c1f60ab90c68a` | Typography |
+| `apps/mobile/constants/screenTypography.ts` | `f91c9a659a1ab8603ae4d82eb46d76754627b5bb` | Screen typography |
+| `apps/mobile/constants/uiTokens.ts` | `ca2d8e9e03f56efb058041ad8a81c04d15c7a8a0` | UI tokens |
+| `apps/mobile/constants/screenLayout.ts` | `0165f3c86d829311e91ac17b875c23ccaefab12b` | Screen layout |
+| `apps/mobile/components/renova/os/OsHubTabs.tsx` | `f480067b06c750623e4091fe0db128c877e3fb37` | Hub tabs |
+| `apps/mobile/components/screens/OsObjectHubScreen.tsx` | `3082b1bf59cbf420d403ed82b35bbc2e78697728` | Object hub |
+| `apps/mobile/components/screens/OsRepairHubScreen.tsx` | `5fe0e6229ad4cc82462ea4cfc1f7d213c7687305` | Repair hub |
+| `apps/mobile/components/screens/OsBudgetHubScreen.tsx` | `4e0e8267d68b600cf0d8bdf716a4c8eddaa3bcbd` | Budget hub |
+| `apps/mobile/constants/budgetTabs.ts` | `d02c05560176535e130d76960c2b67691bcbb3b7` | Budget tabs |
+| `.cursor/rules/renova-design-system.mdc` | `2f48e46f5b348b8cbc3a370615a5a5e93d93421f` | Design rules |
+| `package.json` | `4c95fcf89d7e29f1c464a7db2c7aa4c85335fe11` | Root commands/test entrypoints |
+| `.github/workflows/local-runtime-integrity.yml` | `3ae00fa13be960bf7acba71c8cfa41134d35e16f` | Local runtime proof |
+| `backend/alembic/versions/w16legacystatus01_legacy_status_enum_parity.py` | `d2137f2b87c1ac6f679093331bd034aff17c8188` | Legacy enum parity |
+| `backend/alembic/versions/w17chatmessageenum01_chat_message_enum_parity.py` | `0537268c85e26b7a607d36f967a3402b8bba53c4` | Chat enum parity |
+| `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum parity |
+| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `a42fcb11d80bb8ca7f0f4358c9131bd3d0a22788` | Current dependency-aware roadmap |
