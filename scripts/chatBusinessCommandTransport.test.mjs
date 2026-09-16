@@ -25,6 +25,7 @@ function transpile(source, filename) {
 // Negative control: the harness must reject invalid code, never suppress diagnostics.
 assert.throws(() => transpile('export const broken = ;', 'invalid-canary.ts'), /TS\d+:/);
 let scenarios = 0;
+let reactionScenarios = 0;
 
 function harness({ storage = new Map(), network, failStorage = false } = {}) {
   const requests = [];
@@ -163,12 +164,14 @@ for (const kind of ['invoice', 'task']) {
   assert.equal(server.size, 1, 'reaction restart replay must retain the original intent identity');
   assert.equal(restart.requests[0].body, first.requests[0].body);
   scenarios += 1;
+  reactionScenarios += 1;
 
   for (const status of [400, 401, 403, 404, 409, 422]) {
     const h = harness({ network: async () => new Response(JSON.stringify({ detail: 'validation_failed' }), { status }) });
     await assert.rejects(invokeReaction(h), error => error.status === status);
     assert.equal((await h.queue.getQueue()).length, 0, `reaction authoritative ${status} must not queue`);
     scenarios += 1;
+    reactionScenarios += 1;
   }
   for (const status of [429, 500, 502, 503]) {
     const h = harness({ network: async () => new Response(JSON.stringify({ detail: 'temporary' }), { status }) });
@@ -176,6 +179,7 @@ for (const kind of ['invoice', 'task']) {
     const body = JSON.parse((await h.queue.getQueue())[0].body);
     assert.ok(body.client_request_id.startsWith('chat-reaction-'));
     scenarios += 1;
+    reactionScenarios += 1;
   }
   const corrupt = harness({ network: async () => new Response('{broken', { status: 200 }) });
   await assert.rejects(invokeReaction(corrupt), /offline_queued/);
@@ -188,6 +192,24 @@ for (const kind of ['invoice', 'task']) {
   assert.equal(JSON.stringify(reactionResult.reactions), JSON.stringify({ '🔥': ['actor-A'] }));
   assert.equal((await success.queue.getQueue()).length, 0);
   scenarios += 3;
+  reactionScenarios += 3;
 }
 
-console.log(`Chat command/reaction actual transport queue contracts OK (${scenarios} scenarios; TypeScript ${ts.version}; diagnostic rejection canary passed; external providers disabled)`);
+// Two deliberate equal-visible taps are distinct user intents. The mobile layer
+// must mint a fresh business identity for each call rather than dedupe by payload.
+{
+  const h = harness({ network: async () => ok({ reactions: { '🔥': ['actor-A'] } }) });
+  await invokeReaction(h);
+  await invokeReaction(h);
+  assert.equal(h.requests.length, 2);
+  const firstId = JSON.parse(h.requests[0].body).client_request_id;
+  const secondId = JSON.parse(h.requests[1].body).client_request_id;
+  assert.ok(firstId.startsWith('chat-reaction-'));
+  assert.ok(secondId.startsWith('chat-reaction-'));
+  assert.notEqual(firstId, secondId, 'separate equal-visible reaction taps require distinct intent IDs');
+  scenarios += 1;
+  reactionScenarios += 1;
+}
+
+assert.equal(reactionScenarios, 15, 'all mandatory reaction transport/retry scenarios must execute');
+console.log(`Chat command/reaction actual transport queue contracts OK (${scenarios} scenarios; reaction=${reactionScenarios}; TypeScript ${ts.version}; diagnostic rejection canary passed; external providers disabled)`);
