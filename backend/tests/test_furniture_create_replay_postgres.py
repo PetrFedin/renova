@@ -58,24 +58,26 @@ async def _seed(Session, *, contractor_actor: bool = False):
                 contractor_id=contractor_id,
             )
         )
-        db.add(
-            Room(
-                id=room_id,
-                project_id=project_id,
-                name="Living room",
-                room_type="living",
-                length_m=4,
-                width_m=3,
-            )
+        await db.flush()
+        db.add_all(
+            [
+                Room(
+                    id=room_id,
+                    project_id=project_id,
+                    name="Living room",
+                    room_type="living",
+                    length_m=4,
+                    width_m=3,
+                ),
+                FloorPlan(
+                    id=plan_id,
+                    project_id=project_id,
+                    name="Plan",
+                    image_key="tests/furniture-pg.png",
+                ),
+            ]
         )
-        db.add(
-            FloorPlan(
-                id=plan_id,
-                project_id=project_id,
-                name="Plan",
-                image_key="tests/furniture-pg.png",
-            )
-        )
+        await db.flush()
         await db.commit()
     return (contractor_id if contractor_actor else customer_id), contractor_id, project_id, room_id, plan_id
 
