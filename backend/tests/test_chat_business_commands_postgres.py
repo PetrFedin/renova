@@ -11,7 +11,12 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.models.entities import ChatMessage, Payment, Project, WorkOrder
 from app.models.client_write_request import ClientWriteRequest
-from app.services import chat_business_commands as commands, chat_message_mutation as messages, chat_service
+from app.services import (
+    chat_business_commands as commands,
+    chat_message_mutation as messages,
+    chat_reaction_intent as reaction_intents,
+    chat_service,
+)
 from app.services.client_write_idempotency import IdempotencyConflict
 from test_chat_business_commands import seed, invoice, task, count
 
@@ -154,7 +159,6 @@ async def test_reaction_waits_for_task_link_and_preserves_both_json_fields(postg
         await asyncio.wait_for(release.wait(), 10)
         return await original(*args, **kwargs)
     monkeypatch.setattr(commands, "commit_client_write", pause_commit)
-    # WS for this legacy reaction runs only after commit; no provider is activated.
     from app.api.v1 import ws
     async def no_broadcast(*args, **kwargs):
         return None
@@ -169,7 +173,15 @@ async def test_reaction_waits_for_task_link_and_preserves_both_json_fields(postg
             await db.get(ChatMessage, s.source)
             pid = await db.scalar(text("SELECT pg_backend_pid()"))
             started.set()
-            return await chat_service.toggle_reaction(db, s.source, s.contractor, "yes")
+            return await reaction_intents.apply_reaction_intent(
+                db,
+                project_id=s.project,
+                thread_id=s.thread,
+                message_id=s.source,
+                user_id=s.contractor,
+                client_request_id="reaction-task-overlap-001",
+                emoji="yes",
+            )
     creator = asyncio.create_task(create())
     reaction = None
     try:
@@ -186,9 +198,91 @@ async def test_reaction_waits_for_task_link_and_preserves_both_json_fields(postg
             assert meta["linked_task_id"] == work_id
             assert meta["reactions"]["yes"] == [s.contractor]
             assert meta["reactions"]["ok"] == [s.customer]
+            assert await count(
+                db,
+                ClientWriteRequest,
+                ClientWriteRequest.scope == reaction_intents.REACTION_SCOPE,
+                ClientWriteRequest.project_id == s.project,
+            ) == 1
     finally:
         release.set()
         jobs = [job for job in (creator, reaction) if job is not None]
+        for job in jobs:
+            if not job.done():
+                job.cancel()
+        await asyncio.gather(*jobs, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_same_reaction_intent_contends_then_replays_without_second_toggle(postgres, monkeypatch):
+    engine, Session, s = postgres
+    held, release, second_started = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    original_commit = reaction_intents.commit_client_write
+    entered = 0
+    second_pid = None
+
+    async def pause_first_commit(*args, **kwargs):
+        nonlocal entered
+        entered += 1
+        if entered == 1:
+            held.set()
+            await asyncio.wait_for(release.wait(), 10)
+        return await original_commit(*args, **kwargs)
+
+    monkeypatch.setattr(reaction_intents, "commit_client_write", pause_first_commit)
+    from app.api.v1 import ws
+    async def no_broadcast(*args, **kwargs):
+        return None
+    monkeypatch.setattr(ws, "broadcast", no_broadcast)
+
+    async def invoke(db):
+        return await reaction_intents.apply_reaction_intent(
+            db,
+            project_id=s.project,
+            thread_id=s.thread,
+            message_id=s.source,
+            user_id=s.contractor,
+            client_request_id="reaction-postgres-replay-001",
+            emoji="🔥",
+        )
+
+    async def first():
+        async with Session() as db:
+            return await invoke(db)
+
+    async def second():
+        nonlocal second_pid
+        async with Session() as db:
+            second_pid = await db.scalar(text("SELECT pg_backend_pid()"))
+            second_started.set()
+            return await invoke(db)
+
+    first_job = asyncio.create_task(first())
+    second_job = None
+    try:
+        await asyncio.wait_for(held.wait(), 10)
+        second_job = asyncio.create_task(second())
+        await asyncio.wait_for(second_started.wait(), 5)
+        await assert_blocked(engine, second_pid)
+        release.set()
+        first_result = await asyncio.wait_for(first_job, 10)
+        second_result = await asyncio.wait_for(second_job, 10)
+        assert first_result["🔥"] == [s.contractor]
+        assert second_result["🔥"] == [s.contractor]
+        async with Session() as db:
+            source = await db.get(ChatMessage, s.source)
+            meta = chat_service._parse_meta(source.meta_json)
+            assert meta["reactions"]["🔥"] == [s.contractor]
+            assert meta["reactions"]["ok"] == [s.customer]
+            assert await count(
+                db,
+                ClientWriteRequest,
+                ClientWriteRequest.scope == reaction_intents.REACTION_SCOPE,
+                ClientWriteRequest.project_id == s.project,
+            ) == 1
+    finally:
+        release.set()
+        jobs = [job for job in (first_job, second_job) if job is not None]
         for job in jobs:
             if not job.done():
                 job.cancel()
