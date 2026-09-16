@@ -48,12 +48,13 @@ Outbox dispatch occurs only after commit and is best-effort. A process/network f
 
 ## Required evidence
 
-- `backend/tests/test_issue_create_replay.py`: replay, payload conflict, equal-visible-values/different-intent semantics, one effect set.
-- `backend/tests/test_issue_create_replay_postgres.py`: two physical PostgreSQL sessions reach the project-lock boundary concurrently; after release they must collapse to one issue, one request ledger row, and one activity + recipient-notification effect set, with one creator and one replay result.
-- The same PostgreSQL module holds the project row lock in a separate revoker session, revokes the contractor assignment while a stale creator waits, and proves the creator then receives 403 with zero issue/ledger/outbox rows.
-- The PostgreSQL tests are imported by the already-required migrated PostgreSQL recovery gate so a skipped generic SQLite run is never treated as race evidence.
-- `scripts/issueTransport.test.mjs`: actual `req` + production issues API + AsyncStorage queue + restart flush; exact first-attempt bytes, deterministic 4xx behavior, 429/5xx/status-0 response ambiguity, persistence failure, and explicit/new intent IDs.
-- The transport script is invoked from `scripts/chatBusinessCommandTransport.test.mjs`, which is already required by the mobile CI job.
+- `backend/tests/test_issue_create_replay.py` is an explicit input of the required recovery job. The JUnit guard requires both exact semantic cases: replay/conflict/equal-visible-distinct-intent behavior and the negative atomic rollback/retry scenario.
+- `backend/tests/test_issue_create_replay_postgres.py` is an explicit input of the migrated PostgreSQL recovery job. The JUnit guard requires both exact PostgreSQL cases by testcase name and rejects skips, failures, and errors.
+- The first PostgreSQL case starts two physical sessions at the project-lock boundary and proves same-key collapse to one issue, one request-ledger row, one activity + recipient-notification effect set, with one creator and one replay result.
+- The second PostgreSQL case holds the project row lock in a separate revoker session, revokes contractor assignment while a stale creator waits, and proves the creator then receives 403 with no new issue, ledger, or issue outbox effect. Because the migrated PostgreSQL database is intentionally reused by the recovery job, the outbox assertion is a before/after delta rather than an invalid global-empty-table assumption.
+- `scripts/issueTransport.test.mjs` executes actual `req` + production issues API + AsyncStorage queue + restart flush; it proves exact first-attempt bytes, deterministic 4xx behavior, 429/5xx/status-0 response ambiguity, persistence failure, and explicit/new intent IDs.
+- `scripts/issueTransport.test.mjs` is invoked directly as its own command by the required `mobile-contracts` job. It must not depend on being imported by a chat or unrelated transport harness.
+- The recovery job validates named testcases from JUnit rather than treating source-file presence, aggregate test counts, or unrelated green CI as issue-create qualification evidence.
 
 ## Relationship to #317
 
