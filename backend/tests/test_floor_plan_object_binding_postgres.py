@@ -23,8 +23,13 @@ from app.models.entities import (
 def _postgres_url() -> str:
     value = os.environ.get("FLOOR_OBJECT_BINDING_POSTGRES_URL", "").strip()
     if not value:
-        pytest.skip("FLOOR_OBJECT_BINDING_POSTGRES_URL is only set by the dedicated PostgreSQL workflow")
+        pytest.skip("FLOOR_OBJECT_BINDING_POSTGRES_URL is only set by the migrated PostgreSQL qualification job")
+    assert value.startswith("postgresql+asyncpg://")
     return value
+
+
+def _furniture(request_id: str, **kwargs) -> api.FurnitureCreateIn:
+    return api.FurnitureCreateIn(client_request_id=request_id, **kwargs)
 
 
 @pytest.mark.asyncio
@@ -116,7 +121,11 @@ async def test_floor_object_binding_is_fail_closed_on_postgres():
         with pytest.raises(HTTPException) as foreign_room_furniture:
             await api.create_furniture(
                 project_a.id,
-                api.FurnitureIn(room_id=room_b.id, name="Foreign room chair"),
+                _furniture(
+                    f"floor-pg-foreign-room-{suffix}",
+                    room_id=room_b.id,
+                    name="Foreign room chair",
+                ),
                 user=customer,
                 db=db,
             )
@@ -125,7 +134,11 @@ async def test_floor_object_binding_is_fail_closed_on_postgres():
         with pytest.raises(HTTPException) as foreign_plan_furniture:
             await api.create_furniture(
                 project_a.id,
-                api.FurnitureIn(floor_plan_id=plan_b.id, name="Foreign plan chair"),
+                _furniture(
+                    f"floor-pg-foreign-plan-{suffix}",
+                    floor_plan_id=plan_b.id,
+                    name="Foreign plan chair",
+                ),
                 user=customer,
                 db=db,
             )
@@ -151,7 +164,8 @@ async def test_floor_object_binding_is_fail_closed_on_postgres():
 
         own_furniture = await api.create_furniture(
             project_a.id,
-            api.FurnitureIn(
+            _furniture(
+                f"floor-pg-own-{suffix}",
                 room_id=room_a.id,
                 floor_plan_id=plan_a.id,
                 name="Own chair",
@@ -161,6 +175,7 @@ async def test_floor_object_binding_is_fail_closed_on_postgres():
             user=customer,
             db=db,
         )
+        assert own_furniture["replayed"] is False
         furniture = (
             await db.execute(
                 select(FurnitureItem).where(FurnitureItem.id == own_furniture["id"])
