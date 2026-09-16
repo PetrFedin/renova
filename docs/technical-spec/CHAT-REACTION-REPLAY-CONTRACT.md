@@ -23,6 +23,8 @@ user tap
 → response / exact offline replay
 ```
 
+Any exception before the canonical commit must roll the session back. A failure after the reaction UPDATE has reached SQL but before the request ledger/business commit must leave neither the reaction nor a request mapping persisted, and the exact same intent must remain safe to retry once.
+
 ## Replay invariant
 
 Identity is:
@@ -54,19 +56,36 @@ The idempotency mapping is re-checked **after** the row lock. This is mandatory:
 
 The legacy reaction handler remains in `chats.py` only as historical implementation code, but its route signature is removed during router composition. The canonical `/react` route is supplied by `chat_reaction_intents.router`, so there is one active POST writer for this path.
 
+## Fail-closed qualification wiring
+
+A green aggregate chat job is not reaction evidence by itself.
+
+The mandatory chat qualification job must:
+
+1. explicitly list `test_chat_reaction_intent.py`, `test_chat_reaction_route_composition.py` and the migrated PostgreSQL chat command file;
+2. reject every skip/failure/error in its JUnit;
+3. require by exact testcase name the replay, changed-payload, deliberate-second-intent, metadata-preservation, post-SQL-flush rollback/retry and route-composition behavioral cases;
+4. require by exact testcase name both PostgreSQL reaction cases: task-link/reaction shared-JSON contention and same-key reaction replay contention;
+5. invoke the production mobile `chatBusinessCommandTransport.test.mjs` directly;
+6. make that harness fail unless all 15 mandatory reaction transport/retry scenarios execute, including distinct request IDs for two equal-visible intentional taps.
+
+Removing the reaction scenarios while leaving invoice/task tests green must therefore make qualification fail.
+
 ## Exact source bindings
 
 | Source | Blob SHA | Contract |
 |---|---|---|
 | `backend/app/api/v1/router.py` | `dda6fdda08440b0612b861d0c650674918bbc924` | removes legacy reaction route and includes canonical replacement |
 | `backend/app/api/v1/chat_reaction_intents.py` | `0ac0fcd84b669ff6ec681f59657664b0a561af4b` | ACL + required request identity + 409 mapping |
-| `backend/app/services/chat_reaction_intent.py` | `f7becfd86948865d2ae020d39731844cb487be11` | row lock, replay check, one toggle/intent, atomic request mapping |
+| `backend/app/services/chat_reaction_intent.py` | `592f9cc011b716f2b3ea4569df1fa81764519ad5` | row lock, replay check, one toggle/intent, explicit pre-commit rollback |
 | `apps/mobile/lib/api/chatReactionIntents.ts` | `f6487dc30226b5233bef052024862a57c214ae15` | stable first intent + safe queue classification |
-| `backend/tests/test_chat_reaction_intent.py` | `0969f1b9227fde342e4fc810a4dc8f0893dc3ac2` | same/same replay, changed payload, second intent, metadata preservation |
+| `backend/tests/test_chat_reaction_intent.py` | `559103846045bea074edca8dbec2727d7409a54b` | replay/conflict/distinct intent/metadata + post-SQL-flush rollback/retry |
 | `backend/tests/test_chat_business_commands_postgres.py` | `6be9debc599758403f80a5a5133fdc5941732b05` | physical task/reaction and same-key reaction row-lock contention |
-| `scripts/chatBusinessCommandTransport.test.mjs` | `446e9e96e4b55990498532d102aa0d1e63ad27aa` | actual req → queue → restart → flush response-loss proof |
+| `backend/tests/test_chat_reaction_route_composition.py` | `395a496a39ed18460699e23b4b1b61e942edf0d8` | exactly one active replay-safe POST writer |
+| `scripts/chatBusinessCommandTransport.test.mjs` | `23c22325fe9431b7a691277e74a5b5b55b83514a` | direct req → queue → restart → flush + 15-scenario reaction fail-closed proof |
+| `.github/workflows/ci.yml` | `49f889b064fd3d1914191d1f823f61ac11e8c9ef` | explicit reaction inputs and exact-name JUnit qualification |
 
-These hashes are candidate traceability only until the exact branch head passes required CI.
+These hashes are candidate traceability only until the exact branch/qualification head passes required CI.
 
 ## Acceptance
 
@@ -76,16 +95,19 @@ Before merge eligibility:
 2. changed emoji under the same key conflicts without a second toggle;
 3. a new request key can intentionally remove the reaction;
 4. unrelated `linked_task_id`, existing reactions and custom metadata survive;
-5. physical PostgreSQL waiter is observed through `pg_blocking_pids` and then replays without toggling twice;
-6. task-link vs reaction PostgreSQL contention preserves both JSON fields;
-7. mobile lost-response/restart uses identical first bytes and identity;
-8. mobile 4xx does not queue; permitted ambiguous failures do; storage failure is not reported as queued success;
-9. technical-spec integrity, mobile typecheck/contracts, full backend and PostgreSQL migration are green.
+5. a failure after the reaction UPDATE is flushed but before commit rolls the reaction back and the same intent then retries successfully exactly once;
+6. physical PostgreSQL waiter is observed through `pg_blocking_pids` and then replays without toggling twice;
+7. task-link vs reaction PostgreSQL contention preserves both JSON fields;
+8. mobile lost-response/restart uses identical first bytes and identity;
+9. mobile 4xx does not queue; permitted ambiguous failures do; storage failure is not reported as queued success;
+10. two separate equal-visible mobile taps mint different request identities;
+11. JUnit exact-name guards and the mobile reaction scenario counter make omission of the required reaction proof a hard CI failure;
+12. technical-spec integrity, mobile typecheck/contracts, full backend and PostgreSQL migration are green on a directly comparable qualification context.
 
 ## Residual #316 blockers
 
-- payload-equality `offlineQueue.dedupeExactJobs()`;
-- create-style queued POSTs without stable business intent identity;
+- payload-equality `offlineQueue.dedupeExactJobs()` until #387 is requalified;
+- create-style queued POSTs without stable business intent identity or comparable proof;
 - transition/setter replay contracts still marked `REQUIRES` in the recovery inventory;
 - #317 centralized transport classification;
 - #315 session-generation isolation and G04/G05 controlled-runtime evidence.
