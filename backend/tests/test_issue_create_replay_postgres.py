@@ -141,6 +141,17 @@ async def test_issue_create_rechecks_revoked_contractor_after_postgres_lock_wait
     await _disable_inline_dispatch(monkeypatch)
     _customer_id, contractor_id, project_id = await _seed(Session, name="Issue revoke race")
 
+    # This dedicated gate deliberately reuses one migrated PostgreSQL database
+    # across several recovery tests. Capture the pre-existing outbox count so
+    # this test proves that the revoked attempt adds no new project-issue
+    # evidence instead of incorrectly assuming an empty global table.
+    async with Session() as baseline_db:
+        project_issue_outboxes_before = await baseline_db.scalar(
+            select(func.count()).select_from(DomainOutbox).where(
+                DomainOutbox.aggregate_type == "project_issue"
+            )
+        )
+
     payload = {
         "title": "Must not survive revoked access",
         "description": "authority changes while creator waits",
@@ -206,6 +217,6 @@ async def test_issue_create_rechecks_revoked_contractor_after_postgres_lock_wait
             select(func.count()).select_from(DomainOutbox).where(
                 DomainOutbox.aggregate_type == "project_issue"
             )
-        ) == 0
+        ) == project_issue_outboxes_before
 
     await engine.dispose()
