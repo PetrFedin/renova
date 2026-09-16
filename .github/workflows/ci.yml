@@ -22,10 +22,11 @@ jobs:
         run: npm run typecheck:mobile
       - name: Mobile domain and UI contracts
         run: npm run mobile:test
-      - name: Actual chat command transport and XML consumer contracts
+      - name: Actual chat and issue transport contracts and XML consumer contracts
         run: |
           set -euo pipefail
           node scripts/chatBusinessCommandTransport.test.mjs
+          node scripts/issueTransport.test.mjs
           node scripts/xmldomIntegrity.test.mjs
           git diff --exit-code -- package.json package-lock.json apps/mobile/package.json
       - name: Mobile runtime and persistence contracts
