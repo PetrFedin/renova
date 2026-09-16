@@ -23,14 +23,14 @@ project row lock
 -> parse canonical ICS payload
 -> SELECT only stages belonging to the URL project FOR UPDATE
 -> compute complete event-to-stage mapping from the immutable pre-mutation snapshot
--> apply all mapped dates and external ical_uid values in memory
+-> apply all mapped dates and external/local ical_uid values in memory
 -> persist ClientWriteRequest result ledger
 -> one database commit
 ```
 
 No per-stage commit is allowed inside import.
 
-## Mapping semantics
+## Mapping and stage-identity semantics
 
 For each parsed event, matching preserves the legacy priority:
 
@@ -41,6 +41,8 @@ For each parsed event, matching preserves the legacy priority:
 Fallback allocation is resolved against the original snapshot plus stages already consumed earlier in the same import. Explicit UID/title matches may still target a previously matched stage, preserving the legacy last-explicit-event-wins behavior without allowing replay to drift to another fallback stage.
 
 All selected Stage rows come from a `Stage.project_id == URL project_id` query before mutation. A foreign stage ID is never an input to the import write path.
+
+Atomic import must preserve the legacy `stage_svc.update_stage_dates()` identity invariant that existed before this refactor: if a mapped external event has no UID and the Stage has no existing `ical_uid`, the Stage receives `renova-{stage.id}@app`. An external UID still replaces/sets the Stage `ical_uid` exactly as before. This keeps UID-less imported stages stable for subsequent Renova iCalendar export while avoiding the old per-stage commits.
 
 ## Replay and rollback semantics
 
@@ -74,9 +76,9 @@ Other deterministic HTTP 4xx responses are authoritative and must not be convert
 
 Before this slice is called qualified on an exact head:
 
-- SQLite explicitly executes canonical replay/changed-payload conflict plus post-SQL-flush rollback and same-intent recovery;
+- SQLite explicitly executes canonical replay/changed-payload conflict, UID-less local-`ical_uid` preservation, plus post-SQL-flush rollback and same-intent recovery;
 - migrated PostgreSQL explicitly executes the same-key physical serialization scenario and the revoke-while-waiting authority-recheck scenario;
-- the mandatory Calendar integrity workflow emits JUnit and requires all four exact calendar-import testcase names; any missing, skipped, failing or erroring required testcase fails qualification;
+- the mandatory Calendar integrity workflow emits JUnit and requires all five exact calendar-import testcase names (three behavioral, two PostgreSQL); any missing, skipped, failing or erroring required testcase fails qualification;
 - actual production mobile transport/restart harness is invoked directly from mandatory core CI and proves exact-body/request-ID persistence across lost response, corrupt-2xx ambiguity, restart and queue flush; deterministic 4xx must not queue, 429/5xx/status-0 must queue, storage failure must fail closed, and two separate equal-visible imports must mint distinct request IDs;
 - full core backend/mobile/Playwright/Alembic gates remain green;
 - qualification artifacts retain the calendar log and behavioral/PostgreSQL JUnit files for inspection.
