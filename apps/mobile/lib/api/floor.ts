@@ -1,5 +1,6 @@
 /** API: floor */
 import { req, cachedGet, API_BASE, ApiError } from './client';
+import { createClientRequestId } from '@/lib/clientRequestId';
 import type { FloorPlan, FurnitureItem, WasteOrder } from './types';
 export const floorApi = {
   listFloorPlans: (userId: string, projectId: string) => req<FloorPlan[]>(`/api/v1/projects/${projectId}/floor-plans`, {}, userId),
@@ -17,7 +18,31 @@ export const floorApi = {
     }
   },
   listFurniture: (userId: string, projectId: string, roomId?: string) => req<FurnitureItem[]>(`/api/v1/projects/${projectId}/furniture${roomId ? `?room_id=${roomId}` : ''}`, {}, userId),
-  createFurniture: (userId: string, projectId: string, body: object) => req(`/api/v1/projects/${projectId}/furniture`, { method: 'POST', body: JSON.stringify(body) }, userId),
+  createFurniture: async (userId: string, projectId: string, body: object) => {
+    const input = body as Record<string, unknown> & { client_request_id?: string };
+    const requestBody = {
+      ...input,
+      client_request_id: input.client_request_id ?? createClientRequestId('furniture'),
+    };
+    const serialized = JSON.stringify(requestBody);
+    try {
+      return await req<FurnitureItem & { replayed: boolean }>(
+        `/api/v1/projects/${projectId}/furniture`,
+        { method: 'POST', body: serialized },
+        userId,
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 429) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/furniture`,
+        method: 'POST',
+        body: serialized,
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
   moveFurniture: async (userId: string, projectId: string, itemId: string, x_pct: number, y_pct: number) => {
     const body = { x_pct, y_pct };
     try {
