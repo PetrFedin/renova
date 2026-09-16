@@ -60,13 +60,17 @@ async def test_estimate_patch_binds_line_to_authorized_path_project(db):
         quantity_actual=0,
         unit_price=200,
     )
+    project_a_id = project_a.id
+    project_b_id = project_b.id
+    line_a_id = line_a.id
+    line_b_id = line_b.id
     db.add_all([contractor, customer_a, customer_b, project_a, project_b, line_a, line_b])
     await db.commit()
 
     with pytest.raises(HTTPException) as denied:
         await api.patch_line(
-            project_a.id,
-            line_b.id,
+            project_a_id,
+            line_b_id,
             api.LinePatch(unit_price=999),
             user=contractor,
             db=db,
@@ -81,13 +85,13 @@ async def test_estimate_patch_binds_line_to_authorized_path_project(db):
     assert project_b.budget_planned == 600
 
     own = await api.patch_line(
-        project_a.id,
-        line_a.id,
+        project_a_id,
+        line_a_id,
         api.LinePatch(unit_price=150),
         user=contractor,
         db=db,
     )
-    assert own == {"ok": True, "id": line_a.id}
+    assert own == {"ok": True, "id": line_a_id}
     await db.refresh(line_a)
     await db.refresh(project_a)
     await db.refresh(project_b)
