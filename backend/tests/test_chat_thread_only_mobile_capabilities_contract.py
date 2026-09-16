@@ -1,5 +1,9 @@
 from pathlib import Path
 
+from test_design_package_replay_postgres import (
+    test_design_same_key_postgres_race_creates_one_version_and_activity,
+)
+
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
