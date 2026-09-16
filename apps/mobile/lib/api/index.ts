@@ -3,6 +3,7 @@ import { authApi } from './auth';
 import { projectsApi } from './projects';
 import { roomsApi } from './rooms';
 import { stagesApi } from './stages';
+import { stageContentApi } from './stageContent';
 import { paymentsApi } from './payments';
 import { estimateApi } from './estimate';
 import { receiptsApi } from './receipts';
@@ -31,6 +32,9 @@ export const api = {
   ...projectsApi,
   ...roomsApi,
   ...stagesApi,
+  // Must remain after stagesApi: these methods replace legacy create paths
+  // with #316 replay-safe command identities and deterministic photo storage.
+  ...stageContentApi,
   ...paymentsApi,
   ...estimateApi,
   ...receiptsApi,
