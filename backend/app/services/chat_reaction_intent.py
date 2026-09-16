@@ -56,57 +56,64 @@ async def apply_reaction_intent(
     _validate_request_id(client_request_id)
     payload = _payload(thread_id=thread_id, message_id=message_id, emoji=emoji)
 
-    message = (
-        await db.execute(
-            select(ChatMessage)
-            .where(ChatMessage.id == message_id, ChatMessage.thread_id == thread_id)
-            .with_for_update()
-            .execution_options(populate_existing=True)
+    try:
+        message = (
+            await db.execute(
+                select(ChatMessage)
+                .where(ChatMessage.id == message_id, ChatMessage.thread_id == thread_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
+        if message is None:
+            raise ValueError("reaction_message_missing")
+
+        replay = await replay_entity_id(
+            db,
+            scope=REACTION_SCOPE,
+            project_id=project_id,
+            user_id=user_id,
+            request_id=client_request_id,
+            payload=payload,
         )
-    ).scalar_one_or_none()
-    if message is None:
-        raise ValueError("reaction_message_missing")
+        if replay:
+            if replay != message_id:
+                raise RuntimeError("reaction_replay_corrupt")
+            current = _reactions(message)
+            await db.commit()  # release row lock without another toggle
+            return current
 
-    replay = await replay_entity_id(
-        db,
-        scope=REACTION_SCOPE,
-        project_id=project_id,
-        user_id=user_id,
-        request_id=client_request_id,
-        payload=payload,
-    )
-    if replay:
-        if replay != message_id:
-            raise RuntimeError("reaction_replay_corrupt")
-        current = _reactions(message)
-        await db.commit()  # release row lock without another toggle
-        return current
+        meta = chat_service._parse_meta(message.meta_json)
+        reactions: dict[str, list[str]] = meta.setdefault("reactions", {})
+        users = reactions.setdefault(emoji, [])
+        if user_id in users:
+            users.remove(user_id)
+            if not users:
+                reactions.pop(emoji, None)
+        else:
+            users.append(user_id)
+        message.meta_json = chat_service._dump_meta(meta)
 
-    meta = chat_service._parse_meta(message.meta_json)
-    reactions: dict[str, list[str]] = meta.setdefault("reactions", {})
-    users = reactions.setdefault(emoji, [])
-    if user_id in users:
-        users.remove(user_id)
-        if not users:
-            reactions.pop(emoji, None)
-    else:
-        users.append(user_id)
-    message.meta_json = chat_service._dump_meta(meta)
-
-    created, canonical_message_id = await commit_client_write(
-        db,
-        scope=REACTION_SCOPE,
-        project_id=project_id,
-        user_id=user_id,
-        request_id=client_request_id,
-        payload=payload,
-        entity_id=message.id,
-    )
-    if not created:
-        canonical = await db.get(ChatMessage, canonical_message_id)
-        if canonical is None or canonical.thread_id != thread_id:
-            raise RuntimeError("reaction_replay_corrupt")
-        return _reactions(canonical)
+        created, canonical_message_id = await commit_client_write(
+            db,
+            scope=REACTION_SCOPE,
+            project_id=project_id,
+            user_id=user_id,
+            request_id=client_request_id,
+            payload=payload,
+            entity_id=message.id,
+        )
+        if not created:
+            canonical = await db.get(ChatMessage, canonical_message_id)
+            if canonical is None or canonical.thread_id != thread_id:
+                raise RuntimeError("reaction_replay_corrupt")
+            return _reactions(canonical)
+    except BaseException:
+        # A pre-commit failure must not leave the SQL-updated reaction visible to
+        # a caller that reuses this session. The exact same intent may then retry
+        # from the authoritative pre-intent state.
+        await db.rollback()
+        raise
 
     # The business write is committed. WebSocket delivery is acceleration only;
     # polling/reload is the durable fallback and a broadcast failure must not make
