@@ -75,15 +75,26 @@ for (const state of ['PROVEN', 'CANDIDATE PROVEN', 'PARTIAL', 'BLOCKED', 'FUTURE
   assert.ok(board.includes(`\`${state}\``), `completion board missing readiness state: ${state}`);
 }
 
-const modeIds = [...board.matchAll(/^\| M(\d{2})\b/gm)].map((m) => Number(m[1]));
+function sectionBetween(text, start, end) {
+  const startIndex = text.indexOf(start);
+  const endIndex = text.indexOf(end, startIndex + start.length);
+  assert.ok(startIndex >= 0 && endIndex > startIndex, `unable to isolate section ${start}`);
+  return text.slice(startIndex, endIndex);
+}
+
+const modeSection = sectionBetween(board, '## 3. Mode Board — M01–M12', '## 4. Golden Path Board — GP1–GP8');
+const gpSection = sectionBetween(board, '## 4. Golden Path Board — GP1–GP8', '## 5. Mutation Board — exact 26 mutating mobile surfaces');
+const mutationSection = sectionBetween(board, '## 5. Mutation Board — exact 26 mutating mobile surfaces', '## 6. Exact-candidate evidence ledger');
+
+const modeIds = [...modeSection.matchAll(/^\| M(\d{2})\b/gm)].map((m) => Number(m[1]));
 assert.deepEqual(modeIds, Array.from({ length: 12 }, (_, i) => i + 1), `completion board must contain exact M01-M12 rows; got ${modeIds.join(',')}`);
 
-const gpIds = [...board.matchAll(/^\| GP(\d) \|/gm)].map((m) => Number(m[1]));
+const gpIds = [...gpSection.matchAll(/^\| GP(\d) \|/gm)].map((m) => Number(m[1]));
 assert.deepEqual(gpIds, Array.from({ length: 8 }, (_, i) => i + 1), `completion board must contain exact GP1-GP8 rows; got ${gpIds.join(',')}`);
 
-const mutationIds = [...board.matchAll(/^\| F(\d{2}) \|/gm)].map((m) => Number(m[1]));
+const mutationIds = [...mutationSection.matchAll(/^\| F(\d{2}) \|/gm)].map((m) => Number(m[1]));
 assert.deepEqual(mutationIds, Array.from({ length: 26 }, (_, i) => i + 1), `completion board must contain exact F01-F26 mutation rows; got ${mutationIds.join(',')}`);
-assert.ok(board.includes('25 business modules + `client.ts` transport/session owner'), 'completion board must preserve #431 exact 25+client mutation inventory semantics');
+assert.ok(mutationSection.includes('25 business modules + `client.ts` transport/session owner'), 'completion board must preserve #431 exact 25+client mutation inventory semantics');
 
 for (let wave = 0; wave <= 9; wave += 1) {
   assert.ok(roadmap.includes(`### Wave ${wave}`), `roadmap missing dependency-aware Wave ${wave}`);
