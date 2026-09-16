@@ -32,6 +32,12 @@ def _furniture(request_id: str, **kwargs) -> api.FurnitureCreateIn:
     return api.FurnitureCreateIn(client_request_id=request_id, **kwargs)
 
 
+async def _fresh_user(db, user_id: str) -> User:
+    user = await db.get(User, user_id, populate_existing=True)
+    assert user is not None
+    return user
+
+
 @pytest.mark.asyncio
 async def test_floor_object_binding_is_fail_closed_on_postgres():
     engine = create_async_engine(_postgres_url())
@@ -95,84 +101,91 @@ async def test_floor_object_binding_is_fail_closed_on_postgres():
         db.add_all([customer, project_a, project_b, room_a, room_b, plan_a, plan_b, pin_b])
         await db.commit()
 
+        customer_id = customer.id
+        project_a_id = project_a.id
+        room_a_id, room_b_id = room_a.id, room_b.id
+        plan_a_id, plan_b_id = plan_a.id, plan_b.id
+        pin_b_id = pin_b.id
+
         with pytest.raises(HTTPException) as foreign_pin:
             await api.move_pin(
-                project_a.id,
-                plan_a.id,
-                pin_b.id,
+                project_a_id,
+                plan_a_id,
+                pin_b_id,
                 api.PinPatch(x_pct=88, y_pct=91),
                 user=customer,
                 db=db,
             )
         assert foreign_pin.value.status_code == 404
-        await db.refresh(pin_b)
-        assert (pin_b.x_pct, pin_b.y_pct) == (17, 23)
+        foreign_pin_row = await db.get(FloorPlanPin, pin_b_id, populate_existing=True)
+        assert foreign_pin_row is not None
+        assert (foreign_pin_row.x_pct, foreign_pin_row.y_pct) == (17, 23)
 
         with pytest.raises(HTTPException) as foreign_room_pin:
             await api.upsert_pin(
-                project_a.id,
-                plan_a.id,
-                api.PinIn(room_id=room_b.id, x_pct=11, y_pct=22, label="foreign"),
-                user=customer,
+                project_a_id,
+                plan_a_id,
+                api.PinIn(room_id=room_b_id, x_pct=11, y_pct=22, label="foreign"),
+                user=await _fresh_user(db, customer_id),
                 db=db,
             )
         assert foreign_room_pin.value.status_code == 404
 
         with pytest.raises(HTTPException) as foreign_room_furniture:
             await api.create_furniture(
-                project_a.id,
+                project_a_id,
                 _furniture(
                     f"floor-pg-foreign-room-{suffix}",
-                    room_id=room_b.id,
+                    room_id=room_b_id,
                     name="Foreign room chair",
                 ),
-                user=customer,
+                user=await _fresh_user(db, customer_id),
                 db=db,
             )
         assert foreign_room_furniture.value.status_code == 404
 
         with pytest.raises(HTTPException) as foreign_plan_furniture:
             await api.create_furniture(
-                project_a.id,
+                project_a_id,
                 _furniture(
                     f"floor-pg-foreign-plan-{suffix}",
-                    floor_plan_id=plan_b.id,
+                    floor_plan_id=plan_b_id,
                     name="Foreign plan chair",
                 ),
-                user=customer,
+                user=await _fresh_user(db, customer_id),
                 db=db,
             )
         assert foreign_plan_furniture.value.status_code == 404
 
         own_pin = await api.upsert_pin(
-            project_a.id,
-            plan_a.id,
-            api.PinIn(room_id=room_a.id, x_pct=20, y_pct=30, label="own"),
-            user=customer,
+            project_a_id,
+            plan_a_id,
+            api.PinIn(room_id=room_a_id, x_pct=20, y_pct=30, label="own"),
+            user=await _fresh_user(db, customer_id),
             db=db,
         )
         moved_pin = await api.move_pin(
-            project_a.id,
-            plan_a.id,
+            project_a_id,
+            plan_a_id,
             own_pin["id"],
             api.PinPatch(x_pct=40, y_pct=50),
-            user=customer,
+            user=await _fresh_user(db, customer_id),
             db=db,
         )
         assert moved_pin["x_pct"] == 40
         assert moved_pin["y_pct"] == 50
 
         own_furniture = await api.create_furniture(
-            project_a.id,
+            project_a_id,
             _furniture(
                 f"floor-pg-own-{suffix}",
-                room_id=room_a.id,
-                floor_plan_id=plan_a.id,
+                room_id=room_a_id,
+                floor_plan_id=plan_a_id,
                 name="Own chair",
                 x_pct=10,
                 y_pct=15,
             ),
-            user=customer,
+            user=await _fresh_user(db, customer_id),
             db=db,
         )
         assert own_furniture["replayed"] is False
@@ -181,8 +194,8 @@ async def test_floor_object_binding_is_fail_closed_on_postgres():
                 select(FurnitureItem).where(FurnitureItem.id == own_furniture["id"])
             )
         ).scalar_one()
-        assert furniture.project_id == project_a.id
-        assert furniture.room_id == room_a.id
-        assert furniture.floor_plan_id == plan_a.id
+        assert furniture.project_id == project_a_id
+        assert furniture.room_id == room_a_id
+        assert furniture.floor_plan_id == plan_a_id
 
     await engine.dispose()
