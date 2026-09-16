@@ -75,6 +75,10 @@ async def seed_two_projects(db):
     return customer, project_a, project_b, room_a, room_b, plan_a, plan_b, pin_b
 
 
+async def _furniture_body(request_id: str, **kwargs):
+    return api.FurnitureCreateIn(client_request_id=request_id, **kwargs)
+
+
 @pytest.mark.asyncio
 async def test_move_pin_cannot_cross_project_or_plan_boundary(db):
     customer, project_a, _, room_a, _, plan_a, _, pin_b = await seed_two_projects(db)
@@ -146,7 +150,11 @@ async def test_furniture_references_are_project_scoped_and_same_project_refs_wor
     with pytest.raises(HTTPException) as foreign_room:
         await api.create_furniture(
             project_a.id,
-            api.FurnitureIn(room_id=room_b.id, name="Foreign room chair"),
+            await _furniture_body(
+                "floor-binding-foreign-room",
+                room_id=room_b.id,
+                name="Foreign room chair",
+            ),
             user=customer,
             db=db,
         )
@@ -155,7 +163,11 @@ async def test_furniture_references_are_project_scoped_and_same_project_refs_wor
     with pytest.raises(HTTPException) as foreign_plan:
         await api.create_furniture(
             project_a.id,
-            api.FurnitureIn(floor_plan_id=plan_b.id, name="Foreign plan chair"),
+            await _furniture_body(
+                "floor-binding-foreign-plan",
+                floor_plan_id=plan_b.id,
+                name="Foreign plan chair",
+            ),
             user=customer,
             db=db,
         )
@@ -164,7 +176,8 @@ async def test_furniture_references_are_project_scoped_and_same_project_refs_wor
     with pytest.raises(HTTPException) as mixed_refs:
         await api.create_furniture(
             project_a.id,
-            api.FurnitureIn(
+            await _furniture_body(
+                "floor-binding-mixed-refs",
                 room_id=room_a.id,
                 floor_plan_id=plan_b.id,
                 name="Mixed refs chair",
@@ -182,7 +195,8 @@ async def test_furniture_references_are_project_scoped_and_same_project_refs_wor
 
     created = await api.create_furniture(
         project_a.id,
-        api.FurnitureIn(
+        await _furniture_body(
+            "floor-binding-own-chair",
             room_id=room_a.id,
             floor_plan_id=plan_a.id,
             name="Own chair",
@@ -201,6 +215,7 @@ async def test_furniture_references_are_project_scoped_and_same_project_refs_wor
         )
     ).scalar_one()
     assert created["id"] == furniture_id
+    assert created["replayed"] is False
 
     moved = await api.move_furniture(
         project_a.id,
