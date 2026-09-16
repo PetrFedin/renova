@@ -9,12 +9,26 @@ concurrency:
 jobs:
   calendar-contracts:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+        env:
+          POSTGRES_USER: renova
+          POSTGRES_PASSWORD: renova
+          POSTGRES_DB: renova_calendar_integrity
+        ports: ["5438:5432"]
+        options: >-
+          --health-cmd "pg_isready -U renova -d renova_calendar_integrity"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       ENVIRONMENT: test
       DATABASE_URL: sqlite+aiosqlite:///./calendar-integrity-tests.db
+      CALENDAR_IMPORT_POSTGRES_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5438/renova_calendar_integrity
       PUBLIC_BASE_URL: http://127.0.0.1:8100
-      SECRET_KEY: ci-secret-key-at-least-16
+      SECRET_KEY: calendar-integrity-${{ github.sha }}
       ALLOW_CREATE_ALL: "true"
       ALLOW_DEMO_SEED: "true"
       PYTHONHASHSEED: "0"
@@ -26,17 +40,78 @@ jobs:
       - name: Calendar read mutation ACL and replay contracts
         working-directory: backend
         run: |
-          set -o pipefail
+          set -euo pipefail
           timeout 300s poetry run pytest -vv -s --tb=short \
             tests/test_calendar_integrity.py \
             tests/test_calendar_mutation_integrity.py \
             tests/test_calendar_revoked_access.py \
+            tests/test_calendar_import_replay.py \
+            --junitxml=calendar-integrity-behavioral.xml \
             2>&1 | tee calendar-integrity-contracts.log
+          poetry run python - <<'PY'
+          import xml.etree.ElementTree as ET
+
+          root = ET.parse('calendar-integrity-behavioral.xml').getroot()
+          cases = {
+              case.get('name'): case
+              for case in root.findall('.//testcase')
+              if case.get('classname', '').endswith('test_calendar_import_replay')
+          }
+          required = {
+              'test_calendar_import_replays_original_mapping_and_conflicts_on_changed_content',
+              'test_calendar_import_uidless_event_preserves_local_ical_uid',
+              'test_calendar_import_failure_rolls_back_all_stage_changes_and_ledger',
+          }
+          missing = required - cases.keys()
+          assert not missing, f'missing exact calendar import behavioral evidence: {sorted(missing)}'
+          for name in required:
+              case = cases[name]
+              assert case.find('skipped') is None, f'{name} was skipped'
+              assert case.find('failure') is None, f'{name} failed'
+              assert case.find('error') is None, f'{name} errored'
+          PY
+      - name: Upgrade calendar PostgreSQL recovery database
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5438/renova_calendar_integrity
+        run: poetry run alembic upgrade head
+      - name: Calendar import PostgreSQL race and revocation contracts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          timeout 240s poetry run pytest -vv -s --tb=short \
+            tests/test_calendar_import_replay_postgres.py \
+            --junitxml=calendar-import-postgres.xml \
+            2>&1 | tee -a calendar-integrity-contracts.log
+          poetry run python - <<'PY'
+          import xml.etree.ElementTree as ET
+
+          root = ET.parse('calendar-import-postgres.xml').getroot()
+          cases = {
+              case.get('name'): case
+              for case in root.findall('.//testcase')
+              if case.get('classname', '').endswith('test_calendar_import_replay_postgres')
+          }
+          required = {
+              'test_calendar_import_same_key_postgres_race_never_drifts_to_second_stage',
+              'test_calendar_import_rechecks_revoked_contractor_after_project_lock_wait',
+          }
+          missing = required - cases.keys()
+          assert not missing, f'missing exact calendar import PostgreSQL evidence: {sorted(missing)}'
+          for name in required:
+              case = cases[name]
+              assert case.find('skipped') is None, f'{name} was skipped'
+              assert case.find('failure') is None, f'{name} failed'
+              assert case.find('error') is None, f'{name} errored'
+          PY
       - name: Upload calendar integrity diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: calendar-integrity-contract-diagnostics
-          path: backend/calendar-integrity-contracts.log
+          path: |
+            backend/calendar-integrity-contracts.log
+            backend/calendar-integrity-behavioral.xml
+            backend/calendar-import-postgres.xml
           if-no-files-found: warn
           retention-days: 14
