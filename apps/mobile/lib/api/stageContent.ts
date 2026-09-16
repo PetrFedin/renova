@@ -14,8 +14,7 @@ async function submitPhotoMetadata(
     storage_key?: string;
     client_request_id: string;
   },
-  *,
-  allowMetadataQueue: boolean,
+  options: { allowMetadataQueue: boolean },
 ) {
   const path = `/api/v1/projects/${projectId}/stages/${stageId}/photos`;
   const serialized = JSON.stringify(body);
@@ -39,7 +38,7 @@ async function submitPhotoMetadata(
       }
     }
 
-    if (!allowMetadataQueue) throw new Error(OFFLINE_UPLOAD_BLOCKED);
+    if (!options.allowMetadataQueue) throw new Error(OFFLINE_UPLOAD_BLOCKED);
     const { enqueue } = await import('@/lib/offlineQueue');
     await enqueue({ path, method: 'POST', body: serialized, userId });
     throw new Error('offline_queued');
@@ -125,8 +124,8 @@ export const stageContentApi = {
    * - the same presigned storage key is PUT at most twice;
    * - after ambiguous PUT, metadata attach acts as a storage existence probe;
    * - binary is never persisted in the JSON offline queue.
-   * Returns null only when this environment has no presigned upload URL, so the
-   * caller may use the deterministic inline fallback with the SAME request ID.
+   * Returns inline_required only when this environment has no presigned upload
+   * URL, so the caller may use deterministic inline fallback with the SAME ID.
    */
   uploadStagePhoto: async (
     userId: string,
@@ -147,20 +146,13 @@ export const stageContentApi = {
     }
 
     const putOutcome = await putPresignedPhoto(up.upload_url, blob);
-    try {
-      const result = await submitPhotoMetadata(
-        userId,
-        projectId,
-        stageId,
-        { storage_key: up.key, caption, client_request_id: requestId },
-        { allowMetadataQueue: putOutcome === 'confirmed' },
-      );
-      return { kind: 'attached' as const, result };
-    } catch (error) {
-      // If PUT outcome was ambiguous, a 409 stage_photo_blob_missing proves the
-      // object is absent. Any other deterministic server result remains honest;
-      // transport ambiguity is not queued because storage existence is unknown.
-      throw error;
-    }
+    const result = await submitPhotoMetadata(
+      userId,
+      projectId,
+      stageId,
+      { storage_key: up.key, caption, client_request_id: requestId },
+      { allowMetadataQueue: putOutcome === 'confirmed' },
+    );
+    return { kind: 'attached' as const, result };
   },
 };
