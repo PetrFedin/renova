@@ -6,6 +6,7 @@ from app.api.v1 import account_lifecycle
 from app.api.v1 import document_lifecycle
 from app.api.v1 import document_creation_integrity
 from app.api.v1 import document_upload_integrity
+from app.api.v1 import room_change_creation_integrity
 from app.api.v1 import selections
 from app.api.v1 import bank_statements
 from app.api.v1 import expense_mutations
@@ -154,6 +155,9 @@ api_router.include_router(projects.router)
 api_router.include_router(technical_supervision.router)
 api_router.include_router(technical_supervision_actions.router)
 api_router.include_router(rooms.router)
+_ROOM_CHANGE_CREATION_ROUTES: set[RouteSignature] = {("/projects/{project_id}/room-change-requests", "POST")}
+_remove_replaced_routes(room_requests.router, _ROOM_CHANGE_CREATION_ROUTES)
+api_router.include_router(room_change_creation_integrity.router)
 api_router.include_router(room_requests.router)
 api_router.include_router(calendar_integrity.router)
 api_router.include_router(calendar_mutations.router)
