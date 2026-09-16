@@ -8,6 +8,7 @@ from app.api.v1 import document_creation_integrity
 from app.api.v1 import document_upload_integrity
 from app.api.v1 import room_change_creation_integrity
 from app.api.v1 import waste_order_creation_integrity
+from app.api.v1 import stage_content_creation_integrity
 from app.api.v1 import selections
 from app.api.v1 import bank_statements
 from app.api.v1 import expense_mutations
@@ -87,9 +88,12 @@ _STAGE_MUTATION_ROUTES: set[RouteSignature] = {
     ("/projects/{project_id}/stages/{stage_id}/ready", "POST"), ("/projects/{project_id}/stages/{stage_id}/dates", "PATCH"),
     ("/projects/{project_id}/stages/{stage_id}/rooms", "PATCH"), ("/projects/{project_id}/stages/{stage_id}/work-type", "PATCH"),
     ("/projects/{project_id}/stages/{stage_id}/depends", "PATCH"), ("/projects/{project_id}/dependencies/sync", "POST"),
+    ("/projects/{project_id}/stages/{stage_id}/comments", "POST"),
+    ("/projects/{project_id}/stages/{stage_id}/photos", "POST"),
 }
 _remove_replaced_routes(stages_ext.router, _STAGE_MUTATION_ROUTES)
 api_router.include_router(stage_mutations.router)
+api_router.include_router(stage_content_creation_integrity.router)
 api_router.include_router(stages_ext.router)
 api_router.include_router(project_checklists.router)
 api_router.include_router(checklist_templates.router)
