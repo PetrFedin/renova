@@ -1,6 +1,23 @@
 /** API: floor */
 import { req, cachedGet, API_BASE, ApiError } from './client';
+import { shouldQueueReplaySafeMutation } from './failurePolicy';
+import { createClientRequestId } from '@/lib/clientRequestId';
 import type { FloorPlan, FurnitureItem, WasteOrder } from './types';
+
+async function submitReplaySafeWasteTransition(
+  userId: string,
+  path: string,
+) {
+  try {
+    return await req(path, { method: 'POST' }, userId);
+  } catch (error) {
+    if (!shouldQueueReplaySafeMutation(error)) throw error;
+    const { enqueue } = await import('@/lib/offlineQueue');
+    await enqueue({ path, method: 'POST', body: '{}', userId });
+    throw new Error('offline_queued');
+  }
+}
+
 export const floorApi = {
   listFloorPlans: (userId: string, projectId: string) => req<FloorPlan[]>(`/api/v1/projects/${projectId}/floor-plans`, {}, userId),
   createFloorPlan: (userId: string, projectId: string, body: object) => req<FloorPlan>(`/api/v1/projects/${projectId}/floor-plans`, { method: 'POST', body: JSON.stringify(body) }, userId),
@@ -31,62 +48,29 @@ export const floorApi = {
   },
   listWasteOrders: (userId: string, projectId: string) => req<WasteOrder[]>(`/api/v1/projects/${projectId}/waste-orders`, {}, userId),
   createWasteOrder: async (userId: string, projectId: string, body: object) => {
+    const requestBody = {
+      ...(body as Record<string, unknown>),
+      client_request_id:
+        (body as { client_request_id?: string }).client_request_id
+        ?? createClientRequestId('waste-order'),
+    };
+    const payload = JSON.stringify(requestBody);
+    const path = `/api/v1/projects/${projectId}/waste-orders`;
     try {
-      return await req<WasteOrder>(
-        `/api/v1/projects/${projectId}/waste-orders`,
-        { method: 'POST', body: JSON.stringify(body) },
-        userId,
-      );
-    } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      return await req<WasteOrder>(path, { method: 'POST', body: payload }, userId);
+    } catch (error) {
+      if (!shouldQueueReplaySafeMutation(error)) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({
-        path: `/api/v1/projects/${projectId}/waste-orders`,
-        method: 'POST',
-        body: JSON.stringify(body),
-        userId,
-      });
+      await enqueue({ path, method: 'POST', body: payload, userId });
       throw new Error('offline_queued');
     }
   },
-  requestWasteOrder: async (userId: string, projectId: string, id: string) => {
-    try {
-      return await req(`/api/v1/projects/${projectId}/waste-orders/${id}/request`, { method: 'POST' }, userId);
-    } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
-      const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({
-        path: `/api/v1/projects/${projectId}/waste-orders/${id}/request`,
-        method: 'POST',
-        body: '{}',
-        userId,
-      });
-      throw new Error('offline_queued');
-    }
-  },
-  approveWasteOrder: async (userId: string, projectId: string, id: string) => {
-    try {
-      return await req(`/api/v1/projects/${projectId}/waste-orders/${id}/approve`, { method: 'POST' }, userId);
-    } catch (e) {
-      if (e instanceof ApiError) throw e;
-      const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({ path: `/api/v1/projects/${projectId}/waste-orders/${id}/approve`, method: 'POST', body: '{}', userId });
-      throw new Error('offline_queued');
-    }
-  },
-  completeWasteOrder: async (userId: string, projectId: string, id: string) => {
-    try {
-      return await req(`/api/v1/projects/${projectId}/waste-orders/${id}/complete`, { method: 'POST' }, userId);
-    } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
-      const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({
-        path: `/api/v1/projects/${projectId}/waste-orders/${id}/complete`,
-        method: 'POST',
-        body: '{}',
-        userId,
-      });
-      throw new Error('offline_queued');
-    }
-  },
+  requestWasteOrder: (userId: string, projectId: string, id: string) =>
+    submitReplaySafeWasteTransition(userId, `/api/v1/projects/${projectId}/waste-orders/${id}/request`),
+  approveWasteOrder: (userId: string, projectId: string, id: string) =>
+    submitReplaySafeWasteTransition(userId, `/api/v1/projects/${projectId}/waste-orders/${id}/approve`),
+  rejectWasteOrder: (userId: string, projectId: string, id: string) =>
+    submitReplaySafeWasteTransition(userId, `/api/v1/projects/${projectId}/waste-orders/${id}/reject`),
+  completeWasteOrder: (userId: string, projectId: string, id: string) =>
+    submitReplaySafeWasteTransition(userId, `/api/v1/projects/${projectId}/waste-orders/${id}/complete`),
 };
