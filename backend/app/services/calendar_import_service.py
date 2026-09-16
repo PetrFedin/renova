@@ -202,6 +202,12 @@ async def import_ical(
             stage.planned_end = assignment.event_date
             if assignment.uid:
                 stage.ical_uid = assignment.uid
+            elif not stage.ical_uid:
+                # Preserve the legacy update_stage_dates invariant while
+                # keeping the whole import inside one transaction: a stage
+                # that receives a date from a UID-less external event still
+                # needs a stable Renova-local iCalendar identity for export.
+                stage.ical_uid = f"renova-{stage.id}@app"
 
         result_id = _encode_result(len(events), len(assignments))
         created, canonical_result_id = await commit_client_write(
