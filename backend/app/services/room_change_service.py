@@ -56,8 +56,14 @@ async def create_request(
     room_id: str,
     message: str,
     payload: dict | None = None,
+    commit: bool = True,
 ) -> RoomChangeRequest:
-    """Create a project-scoped request and notify assigned executors atomically."""
+    """Create a project-scoped request and prepare executor evidence atomically.
+
+    ``commit=False`` lets the API bind the request, outbox evidence and a client
+    idempotency ledger into the same transaction. Legacy/internal callers keep
+    the historical commit+dispatch behavior by default.
+    """
     if actor.id != project.customer_id:
         raise ValueError("room_change_customer_required")
     room = (
@@ -125,6 +131,10 @@ async def create_request(
                 "return_to": "/(contractor)/(tabs)/home",
             },
         )
+
+    if not commit:
+        return request
+
     try:
         await db.commit()
     except BaseException:

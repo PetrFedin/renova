@@ -3,6 +3,7 @@ import { authApi } from './auth';
 import { projectsApi } from './projects';
 import { roomsApi } from './rooms';
 import { stagesApi } from './stages';
+import { stageContentApi } from './stageContent';
 import { paymentsApi } from './payments';
 import { estimateApi } from './estimate';
 import { receiptsApi } from './receipts';
@@ -19,6 +20,7 @@ import { floorApi } from './floor';
 import { marketApi } from './market';
 import { designApi } from './design';
 import { adminApi } from './admin';
+import { adminOperationsApi } from './adminOperations';
 import { scratchpadApi } from './scratchpad';
 import { workScheduleApi } from './workSchedule';
 import { miscApi } from './misc';
@@ -30,6 +32,9 @@ export const api = {
   ...projectsApi,
   ...roomsApi,
   ...stagesApi,
+  // Must remain after stagesApi: these methods replace legacy create paths
+  // with #316 replay-safe command identities and deterministic photo storage.
+  ...stageContentApi,
   ...paymentsApi,
   ...estimateApi,
   ...receiptsApi,
@@ -46,6 +51,7 @@ export const api = {
   ...marketApi,
   ...designApi,
   ...adminApi,
+  ...adminOperationsApi,
   ...scratchpadApi,
   ...workScheduleApi,
   ...miscApi,
@@ -57,6 +63,13 @@ export { ApiError, isRateLimitError, req, cachedGet, invalidateProjectsCache, AP
 export * from './types';
 export type { PaymentEvidence, PaymentEvidenceStatus, PaymentEvidenceUploadIntent } from './payments';
 export type { SelectionItem } from './selections';
+export type {
+  ProviderReconciliationIndex,
+  ProviderReconciliationItem,
+  SubscriptionRefundReview,
+  SubscriptionRefundReviewIndex,
+  SubscriptionRefundResolutionAction,
+} from './adminOperations';
 export type {
   TechnicalQualityIssueInput,
   TechnicalSupervisionAssignment,

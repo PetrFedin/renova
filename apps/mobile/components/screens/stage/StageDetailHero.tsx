@@ -23,7 +23,8 @@ type Props = {
   userId: string;
   projectId: string;
   onReload: () => Promise<void>;
-  onProjectReload: () => Promise<void>;
+  /** Reconciliation callers may expose a richer project-load outcome. */
+  onProjectReload: () => Promise<unknown>;
   onSubmitStage: (stageId: string) => Promise<void>;
 };
 

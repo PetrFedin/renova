@@ -1,0 +1,47 @@
+name: Work schedule recovery integrity
+
+on:
+  pull_request:
+    paths:
+      - 'backend/app/api/v1/project_work_schedule.py'
+      - 'backend/app/services/project_work_schedule_service.py'
+      - 'backend/app/services/schedule_item_transitions.py'
+      - 'backend/tests/test_work_schedule_create_idempotency.py'
+      - 'apps/mobile/lib/api/workSchedule.ts'
+      - 'apps/mobile/lib/api/failurePolicy.ts'
+      - '.github/workflows/work-schedule-recovery-integrity.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'backend/app/api/v1/project_work_schedule.py'
+      - 'backend/app/services/project_work_schedule_service.py'
+      - 'backend/app/services/schedule_item_transitions.py'
+      - 'apps/mobile/lib/api/workSchedule.ts'
+      - '.github/workflows/work-schedule-recovery-integrity.yml'
+
+concurrency:
+  group: work-schedule-recovery-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  work-schedule-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+      - name: Install workspace dependencies
+        run: npm ci
+      - name: Work schedule replay and transition regression
+        working-directory: backend
+        run: pytest -q tests/test_work_schedule_create_idempotency.py
+      - name: Mobile schedule contract typecheck
+        run: npm run typecheck:mobile

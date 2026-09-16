@@ -1,5 +1,6 @@
 /** P2.2: selections tracker API — W109 offline queue for field propose/approve */
 import { req, ApiError } from './client';
+import { createClientRequestId } from '@/lib/clientRequestId';
 
 export type SelectionItem = {
   id: string;
@@ -18,6 +19,7 @@ export type SelectionItem = {
   approved_at: string | null;
   created_at: string | null;
   over_allowance?: boolean;
+  idempotent_replay?: boolean;
 };
 
 async function withOffline<T>(
@@ -58,14 +60,22 @@ export const selectionsApi = {
     shop_url?: string | null;
     shop_name?: string | null;
     notes?: string | null;
-  }) =>
-    withOffline(
-      () => req<SelectionItem>(`/api/v1/projects/${projectId}/selections`, { method: 'POST', body: JSON.stringify(body) }, userId),
+    client_request_id?: string;
+  }) => {
+    // P0 #316: stable identity exists before transport and survives response loss.
+    const requestBody = {
+      ...body,
+      client_request_id: body.client_request_id ?? createClientRequestId('selection'),
+    };
+    const serialized = JSON.stringify(requestBody);
+    return withOffline(
+      () => req<SelectionItem>(`/api/v1/projects/${projectId}/selections`, { method: 'POST', body: serialized }, userId),
       `/api/v1/projects/${projectId}/selections`,
       'POST',
-      JSON.stringify(body),
+      serialized,
       userId,
-    ),
+    );
+  },
   proposeSelection: (userId: string, projectId: string, id: string) =>
     withOffline(
       () => req<SelectionItem>(`/api/v1/projects/${projectId}/selections/${id}/propose`, { method: 'POST', body: '{}' }, userId),

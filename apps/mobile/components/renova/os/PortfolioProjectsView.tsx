@@ -105,23 +105,31 @@ export function PortfolioProjectsView() {
     void Promise.all(
       selectedProjects.map(async (p) => {
         try {
-          return { projectId: p.id, value: await api.budgetBreakdown(user.id, p.id), failed: false } as const;
+          // Category actuals must come from the canonical confirmed Expense ledger.
+          // If either plan breakdown or ledger is unavailable, exclude the project
+          // from category totals and surface the partial-data warning instead of
+          // manufacturing zero variance.
+          const [breakdown, expenses] = await Promise.all([
+            api.budgetBreakdown(user.id, p.id),
+            api.osExpenses(user.id, p.id, 'confirmed'),
+          ]);
+          return { projectId: p.id, value: { breakdown, expenses }, failed: false } as const;
         } catch (error) {
-          reportError('portfolio.budgetBreakdown', error, { projectId: p.id });
+          reportError('portfolio.budgetFacts', error, { projectId: p.id });
           return { projectId: p.id, value: null, failed: true } as const;
         }
       }),
     )
       .then((results) => {
         if (cancelled) return;
-        const rows = results
+        const sources = results
           .filter((result) => !result.failed && result.value !== null)
           .map((result) => result.value!);
-        setCategories(aggregatePortfolioBudgetBreakdowns(rows));
+        setCategories(aggregatePortfolioBudgetBreakdowns(sources));
         setCategoryUnknownCount(results.filter((result) => result.failed).length);
       })
       .catch((error) => {
-        reportError('portfolio.budgetBreakdown.aggregate', error);
+        reportError('portfolio.budgetFacts.aggregate', error);
         if (!cancelled) {
           setCategories([]);
           setCategoryUnknownCount(selectedProjects.length);

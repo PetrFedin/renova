@@ -51,7 +51,6 @@ export function BudgetPeriodDetailSection(props: Props) {
 
   const periodPlanned = plannedShareForPeriod(planned, period, projectStart, projectEnd);
   const periodSpent = sumRows(filterRowsByPeriod(rows, period));
-  const limit = customerLimit && customerLimit > 0 ? customerLimit : planned;
   const limitShare = customerLimit
     ? plannedShareForPeriod(customerLimit, period, projectStart, projectEnd)
     : periodPlanned;
@@ -68,6 +67,7 @@ export function BudgetPeriodDetailSection(props: Props) {
           : formatRub(remaining);
 
   const buckets = buildPeriodBuckets(rows, period, planned, projectStart, projectEnd);
+  const estimatedPlan = period !== 'all';
 
   return (
     <View style={s.wrap}>
@@ -81,13 +81,20 @@ export function BudgetPeriodDetailSection(props: Props) {
           {focus === 'left' && overrun > 0
             ? `Перерасход ${formatRub(overrun)} от лимита`
             : focus === 'plan'
-              ? `Доля плана сметы за период`
+              ? estimatedPlan
+                ? 'Оценочная доля плана по календарным дням периода'
+                : 'План сметы за весь проект'
               : focus === 'fact'
-                ? `Траты за период · всего ${formatRub(spentTotal)}`
+                ? `Подтверждённые траты за период · всего ${formatRub(spentTotal)}`
                 : focus === 'forecast'
                   ? 'Прогноз на конец проекта'
                   : `Лимит периода ${formatRub(limitShare)}`}
         </Text>
+        {estimatedPlan ? (
+          <Text style={s.estimateNote}>
+            План периода распределён равномерно по календарным дням, пока нет отдельного поэтапного финансового графика. Это оценка, а не подтверждённый график затрат.
+          </Text>
+        ) : null}
         {customerLimit ? (
           <Text style={s.limit}>Ваш лимит: {formatRub(customerLimit)} · смета {formatRub(planned)}</Text>
         ) : null}
@@ -105,7 +112,9 @@ export function BudgetPeriodDetailSection(props: Props) {
                 </Text>
               </View>
               {b.planned > 0 ? (
-                <Text style={s.bucketMeta}>план ~{formatRub(b.planned)} · {b.rows.length} операций</Text>
+                <Text style={s.bucketMeta}>
+                  {b.plannedIsEstimate ? 'оценка плана' : 'план'} ~{formatRub(b.planned)} · {b.rows.length} операций
+                </Text>
               ) : (
                 <Text style={s.bucketMeta}>{b.rows.length} операций</Text>
               )}
@@ -133,7 +142,7 @@ export function BudgetPeriodDetailSection(props: Props) {
           {buckets.map((b) => (
             <View key={b.key} style={s.bucket}>
               <Text style={s.bucketLabel}>{b.label}</Text>
-              <Text style={s.bucketVal}>~{formatRub(b.planned)}</Text>
+              <Text style={s.bucketVal}>{b.plannedIsEstimate ? '~' : ''}{formatRub(b.planned)}</Text>
             </View>
           ))}
         </>
@@ -156,6 +165,7 @@ const s = StyleSheet.create({
   hero: { marginBottom: 12, paddingVertical: 8 },
   heroVal: { ...screenTypography.metric, color: RenovaTheme.colors.primary },
   heroSub: { ...screenTypography.listMeta, marginTop: 4, lineHeight: 17 },
+  estimateNote: { ...screenTypography.listMeta, marginTop: 6, lineHeight: 17 },
   limit: { ...screenTypography.listTitle, fontSize: 12, marginTop: 6 },
   section: { ...screenTypography.section, marginBottom: 8, marginTop: 4 },
   bucket: {

@@ -1,6 +1,9 @@
 /** API: chats */
 import {req, cachedGet, API_BASE, ApiError, authHeaders} from './client';
+import { shouldQueueReplaySafeMutation } from './failurePolicy';
+import { createClientRequestId } from '@/lib/clientRequestId';
 import type { ChatDetail, ChatMessage, ChatThread, User } from './types';
+import { submitChatCommand, type ChatTaskInput, type ChatInvoiceInput } from './chatCommands';
 
 export type ChatInviteDeliveryStatus =
   | 'not_queued'
@@ -39,13 +42,18 @@ export const chatsApi = {
   chatInbox: (userId: string) => req<ChatThread[]>(`/api/v1/chats/inbox`, {}, userId),
   chatUnreadTotal: (userId: string) => req<{ count: number }>(`/api/v1/chats/unread-total`, {}, userId),
   createChat: async (userId: string, projectId: string, title: string, topic?: string) => {
-    const body = JSON.stringify({ title, topic });
+    const path = `/api/v1/projects/${projectId}/chats`;
+    const body = JSON.stringify({
+      title,
+      topic,
+      client_request_id: createClientRequestId('chat-thread'),
+    });
     try {
-      return await req<ChatThread>(`/api/v1/projects/${projectId}/chats`, { method: 'POST', body }, userId);
-    } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      return await req<ChatThread>(path, { method: 'POST', body }, userId);
+    } catch (error) {
+      if (!shouldQueueReplaySafeMutation(error)) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({ path: `/api/v1/projects/${projectId}/chats`, method: 'POST', body, userId });
+      await enqueue({ path, method: 'POST', body, userId });
       throw new Error('offline_queued');
     }
   },
@@ -83,29 +91,27 @@ export const chatsApi = {
     { method: 'POST', body: JSON.stringify(body) },
     userId,
   ),
-  /** W115: реакции в чате — очередь офлайн */
+  /** Replay-safe desired reaction state; never a toggle command. */
   reactChatMessage: async (
     userId: string,
     projectId: string,
     threadId: string,
     messageId: string,
     emoji: string,
+    reacted: boolean,
   ) => {
+    const path = `/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/react`;
+    const body = JSON.stringify({ emoji, reacted });
     try {
-      return await req<{ reactions: Record<string, string[]> }>(
-        `/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/react`,
-        { method: 'POST', body: JSON.stringify({ emoji }) },
+      return await req<{ reactions: Record<string, string[]>; reacted: boolean; changed: boolean }>(
+        path,
+        { method: 'POST', body },
         userId,
       );
-    } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+    } catch (error) {
+      if (!shouldQueueReplaySafeMutation(error)) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({
-        path: `/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/react`,
-        method: 'POST',
-        body: JSON.stringify({ emoji }),
-        userId,
-      });
+      await enqueue({ path, method: 'POST', body, userId });
       throw new Error('offline_queued');
     }
   },
@@ -135,57 +141,19 @@ export const chatsApi = {
       throw new Error('offline_queued');
     }
   },
-  /** W114: задача из чата → работы/календарь — очередь офлайн */
-  taskFromChatMessage: async (
-    userId: string,
-    projectId: string,
-    threadId: string,
-    messageId: string,
-    body: { title: string; assignee_id?: string; due_at?: string; work_type?: string },
-  ) => {
-    try {
-      return await req<ChatMessage>(
-        `/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/task`,
-        { method: 'POST', body: JSON.stringify(body) },
-        userId,
-      );
-    } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
-      const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({
-        path: `/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/task`,
-        method: 'POST',
-        body: JSON.stringify(body),
-        userId,
-      });
-      throw new Error('offline_queued');
-    }
-  },
-  /** W110: счёт из чата — очередь офлайн (связь chat → payment) */
-  invoiceFromChat: async (
-    userId: string,
-    projectId: string,
-    threadId: string,
-    body: { title: string; amount: number; payment_type?: string },
-  ) => {
-    try {
-      return await req<ChatMessage>(
-        `/api/v1/projects/${projectId}/chats/${threadId}/invoice`,
-        { method: 'POST', body: JSON.stringify(body) },
-        userId,
-      );
-    } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
-      const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({
-        path: `/api/v1/projects/${projectId}/chats/${threadId}/invoice`,
-        method: 'POST',
-        body: JSON.stringify(body),
-        userId,
-      });
-      throw new Error('offline_queued');
-    }
-  },
+  /** One task command, retained first-request identity through offline replay. */
+  taskFromChatMessage: (
+    userId: string, projectId: string, threadId: string, messageId: string,
+    body: ChatTaskInput,
+  ) => submitChatCommand(
+    userId, `/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/task`, body,
+  ),
+  /** One pending invoice + one message; never provider checkout/settlement. */
+  invoiceFromChat: (
+    userId: string, projectId: string, threadId: string, body: ChatInvoiceInput,
+  ) => submitChatCommand(
+    userId, `/api/v1/projects/${projectId}/chats/${threadId}/invoice`, body,
+  ),
   /** Read receipt is cursor-bound and never means "read through request time". */
   markChatRead: async (
     userId: string,
@@ -265,6 +233,7 @@ export const chatsApi = {
     reply_to_id?: string,
   ) => {
     const client_request_id = newChatClientRequestId();
+    const path = `/api/v1/projects/${projectId}/chats/${threadId}/messages`;
     const body = JSON.stringify({
       client_request_id,
       text,
@@ -273,20 +242,11 @@ export const chatsApi = {
       reply_to_id,
     });
     try {
-      return await req<ChatMessage>(
-        `/api/v1/projects/${projectId}/chats/${threadId}/messages`,
-        { method: 'POST', body },
-        userId,
-      );
-    } catch (e) {
-      if (e instanceof ApiError) throw e;
+      return await req<ChatMessage>(path, { method: 'POST', body }, userId);
+    } catch (error) {
+      if (!shouldQueueReplaySafeMutation(error)) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({
-        path: `/api/v1/projects/${projectId}/chats/${threadId}/messages`,
-        method: 'POST',
-        body,
-        userId,
-      });
+      await enqueue({ path, method: 'POST', body, userId });
       throw new Error('offline_queued');
     }
   },

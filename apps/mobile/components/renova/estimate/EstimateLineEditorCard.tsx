@@ -44,9 +44,9 @@ export function EstimateLineEditorCard({ line, canWrite, onPatch }: Props) {
           {!isWork && (
             <FieldRow
               label="Факт расход"
-              value={String(line.quantity_actual || line.quantity_planned)}
+              value={String(line.quantity_actual ?? line.quantity_planned)}
               editable={canWrite}
-              onCommit={(v) => onPatch(line.id, { quantity_actual: parseFloat(v) || 0 })}
+              onCommit={(v) => onPatch(line.id, { quantity_actual: Number.isFinite(parseFloat(v)) ? parseFloat(v) : 0 })}
             />
           )}
           <Text style={s.notesLabel}>Заметка / доп. информация</Text>

@@ -16,6 +16,11 @@ import {
 } from '@/lib/offlineQueueStorage';
 import { authHeaders } from '@/lib/api/client';
 import { reportError } from '@/lib/reportError';
+import {
+  captureSessionAuthority,
+  currentSessionIdForUser,
+  isCurrentSessionOwner,
+} from '@/lib/sessionAuthority';
 
 const KEY = 'renova_offline_queue';
 /** Legacy keys from parallel outbox stacks — migrate once into KEY. */
@@ -28,6 +33,8 @@ export type OfflineJob = {
   method: string;
   body: string;
   userId: string;
+  /** Logical login provenance. A -> B -> A must not replay the first A job automatically. */
+  sessionId?: string;
   ts: number;
   id: string;
   attempts?: number;
@@ -44,7 +51,7 @@ export type OfflineJob = {
 
 type OfflineJobInput = Omit<
   OfflineJob,
-  'ts' | 'id' | 'attempts' | 'blocked' | 'conflict' | 'lastError' | 'nextAttemptAt' | 'lastAttemptAt' | 'version'
+  'sessionId' | 'ts' | 'id' | 'attempts' | 'blocked' | 'conflict' | 'lastError' | 'nextAttemptAt' | 'lastAttemptAt' | 'version'
 >;
 
 export type OfflineFlushResult = {
@@ -110,6 +117,12 @@ function normalizeJob(raw: Record<string, unknown>, allowGeneratedIdentity = fal
       : typeof raw.user_id === 'string'
         ? raw.user_id
         : '';
+  const sessionId =
+    typeof raw.sessionId === 'string' && raw.sessionId.length > 0
+      ? raw.sessionId
+      : typeof raw.session_id === 'string' && raw.session_id.length > 0
+        ? raw.session_id
+        : undefined;
 
   const id =
     typeof raw.id === 'string' && raw.id.length > 0
@@ -127,6 +140,7 @@ function normalizeJob(raw: Record<string, unknown>, allowGeneratedIdentity = fal
     method,
     body,
     userId,
+    sessionId,
     ts,
     id,
     attempts: typeof raw.attempts === 'number' ? raw.attempts : typeof raw.retries === 'number' ? raw.retries : 0,
@@ -180,8 +194,6 @@ async function migrateLegacyQueues(existing: OfflineJob[]): Promise<OfflineJob[]
     ? [...byId.values()].sort((a, b) => a.ts - b.ts)
     : existing;
 
-  // Persist the canonical copy before deleting any legacy storage. If this write
-  // fails, all source keys remain untouched and the caller sees a real error.
   if (changed) {
     await AsyncStorage.setItem(KEY, JSON.stringify(merged));
   }
@@ -190,8 +202,6 @@ async function migrateLegacyQueues(existing: OfflineJob[]): Promise<OfflineJob[]
     try {
       await AsyncStorage.removeItem(key);
     } catch (error) {
-      // Canonical data is already durable; failed cleanup is observable but must
-      // not make a healthy queue unavailable or risk deleting user mutations.
       reportError('offline.legacyQueue.cleanup', error, { storageKey: key });
     }
   }
@@ -238,21 +248,30 @@ export async function getQueueStatus(): Promise<OfflineQueueStatus> {
 }
 
 async function emitQueueChanged(): Promise<void> {
-  // W93: баннер/статус очереди без focus (dynamic import — без цикла offline↔queue)
   try {
     const { notifyOfflineFlush } = await import('@/lib/offline/flushBus');
     notifyOfflineFlush();
   } catch (error) {
-    // The queue mutation is already durable; notify failure must be visible without
-    // turning a committed offline operation into a false mutation failure.
     reportError('offline.queueChanged.notify', error);
   }
 }
 
+function legacySessionlessQueueAllowed(): boolean {
+  const authority = captureSessionAuthority();
+  if (authority.sessionId) return false;
+  const env = (process.env.EXPO_PUBLIC_APP_ENV || process.env.APP_ENV || 'development').toLowerCase();
+  return env === 'development' || env === 'test';
+}
+
 function buildQueuedJob(job: OfflineJobInput): OfflineJob {
   const ts = Date.now();
+  const sessionId = currentSessionIdForUser(job.userId) ?? undefined;
+  if (!sessionId && !legacySessionlessQueueAllowed()) {
+    throw new Error('offline_session_authority_missing');
+  }
   return {
     ...job,
+    sessionId,
     ts,
     id: `${ts}-${Math.random().toString(36).slice(2)}`,
     attempts: 0,
@@ -260,6 +279,11 @@ function buildQueuedJob(job: OfflineJobInput): OfflineJob {
     conflict: false,
     version: 0,
   };
+}
+
+function jobOwnedByCurrentSession(job: OfflineJob): boolean {
+  if (job.sessionId) return isCurrentSessionOwner(job.userId, job.sessionId);
+  return legacySessionlessQueueAllowed();
 }
 
 async function appendJob(job: OfflineJobInput): Promise<{ item: OfflineJob; length: number }> {
@@ -278,7 +302,6 @@ export async function enqueue(job: OfflineJobInput): Promise<number> {
   return result.length;
 }
 
-/** Enqueue and return the exact committed item without a racy follow-up list read. */
 export async function enqueueJob(job: OfflineJobInput): Promise<OfflineJob> {
   const result = await appendJob(job);
   await emitQueueChanged();
@@ -320,7 +343,6 @@ export async function retryJob(id: string): Promise<boolean> {
   return updated;
 }
 
-/** Atomically record a failed attempt against the latest canonical queue. */
 export async function markJobFailed(
   id: string,
   message: string,
@@ -348,7 +370,6 @@ export async function markJobFailed(
   return updated;
 }
 
-/** Explicit destructive clear. Corrupt/unreadable storage is never overwritten. */
 export async function clearQueue(): Promise<number> {
   const removed = await withQueueLock(async () => {
     const queue = await getQueueUnlocked();
@@ -360,10 +381,6 @@ export async function clearQueue(): Promise<number> {
   return removed;
 }
 
-/**
- * Update only one conflict body against the latest queue snapshot.
- * This prevents a stale screen snapshot from overwriting jobs enqueued in parallel.
- */
 export async function updateJobBody(id: string, body: string): Promise<boolean> {
   const updated = await withQueueLock(async () => {
     const queue = await getQueueUnlocked();
@@ -384,13 +401,13 @@ export async function updateJobBody(id: string, body: string): Promise<boolean> 
   return updated;
 }
 
-/** Remove only exact duplicate mutations from the latest locked queue. */
+/** Legacy exact-body cleanup remains until #386/#387 is integrated. Session is part of the boundary. */
 export async function dedupeExactJobs(): Promise<number> {
   const removed = await withQueueLock(async () => {
     const queue = await getQueueUnlocked();
     const seen = new Set<string>();
     const next = queue.filter((job) => {
-      const signature = JSON.stringify([job.userId, job.method, job.path, job.body]);
+      const signature = JSON.stringify([job.userId, job.sessionId, job.method, job.path, job.body]);
       if (seen.has(signature)) return false;
       seen.add(signature);
       return true;
@@ -433,6 +450,10 @@ async function flushOnce(apiBase: string): Promise<OfflineFlushResult> {
       deferred += 1;
       continue;
     }
+    if (!jobOwnedByCurrentSession(job)) {
+      deferred += 1;
+      continue;
+    }
 
     const expectedVersion = job.version ?? 0;
     try {
@@ -446,6 +467,13 @@ async function flushOnce(apiBase: string): Promise<OfflineFlushResult> {
         body: job.body,
       });
 
+      // Logout/login may happen while fetch is in flight. Do not consume or mutate
+      // the old job based on a response belonging to an obsolete local authority.
+      if (!jobOwnedByCurrentSession(job)) {
+        deferred += 1;
+        continue;
+      }
+
       const errorText = response.ok
         ? ''
         : await response.text().catch((error: unknown) => {
@@ -456,6 +484,10 @@ async function flushOnce(apiBase: string): Promise<OfflineFlushResult> {
             });
             return '';
           });
+      if (!jobOwnedByCurrentSession(job)) {
+        deferred += 1;
+        continue;
+      }
       const message = errorText || (response.ok ? 'ok' : `HTTP ${response.status}`);
       const attemptedAt = Date.now();
       const retryAfterMs = parseRetryAfterMs(response.headers.get('Retry-After'), attemptedAt);
@@ -521,6 +553,10 @@ async function flushOnce(apiBase: string): Promise<OfflineFlushResult> {
         },
       });
     } catch (error) {
+      if (!jobOwnedByCurrentSession(job)) {
+        deferred += 1;
+        continue;
+      }
       failed += 1;
       const attemptedAt = Date.now();
       const message = error instanceof Error
@@ -572,13 +608,6 @@ async function flushOnce(apiBase: string): Promise<OfflineFlushResult> {
   };
 }
 
-/**
- * Replay queue against API.
- * - 2xx → remove
- * - 409 → conflict, manual retry only
- * - permanent 4xx → block (no auto retry)
- * - 5xx / network / temp 4xx → exponential backoff, block after MAX_ATTEMPTS
- */
 export function flush(apiBase: string): Promise<OfflineFlushResult> {
   if (activeFlush) return activeFlush;
   activeFlush = flushOnce(apiBase).finally(() => {

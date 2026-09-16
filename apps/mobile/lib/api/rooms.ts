@@ -1,5 +1,7 @@
 /** API: rooms */
 import { req, cachedGet, API_BASE, OFFLINE_ROOMS, ApiError } from './client';
+import { shouldQueueReplaySafeMutation } from './failurePolicy';
+import { createClientRequestId } from '@/lib/clientRequestId';
 import type { Room, RoomChangeRequest, RoomSnapshot, User } from './types';
 
 function roomCacheKey(projectId: string, archived: boolean | undefined): string {
@@ -96,32 +98,42 @@ export const roomsApi = {
   listRoomChangeRequests: (userId: string, projectId: string) =>
     req<RoomChangeRequest[]>(`/api/v1/projects/${projectId}/room-change-requests`, {}, userId),
   createRoomChangeRequest: async (userId: string, projectId: string, body: object) => {
+    const requestBody = {
+      ...(body as Record<string, unknown>),
+      client_request_id:
+        (body as { client_request_id?: string }).client_request_id
+        ?? createClientRequestId('room-change'),
+    };
+    const payload = JSON.stringify(requestBody);
+    const path = `/api/v1/projects/${projectId}/room-change-requests`;
     try {
-      return await req(`/api/v1/projects/${projectId}/room-change-requests`, { method: 'POST', body: JSON.stringify(body) }, userId);
-    } catch (e) {
-      if (e instanceof ApiError) throw e;
+      return await req(path, { method: 'POST', body: payload }, userId);
+    } catch (error) {
+      if (!shouldQueueReplaySafeMutation(error)) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({ path: `/api/v1/projects/${projectId}/room-change-requests`, method: 'POST', body: JSON.stringify(body), userId });
+      await enqueue({ path, method: 'POST', body: payload, userId });
       throw new Error('offline_queued');
     }
   },
   approveRoomChange: async (userId: string, projectId: string, reqId: string) => {
+    const path = `/api/v1/projects/${projectId}/room-change-requests/${reqId}/approve`;
     try {
-      return await req(`/api/v1/projects/${projectId}/room-change-requests/${reqId}/approve`, { method: 'POST' }, userId);
-    } catch (e) {
-      if (e instanceof ApiError) throw e;
+      return await req(path, { method: 'POST' }, userId);
+    } catch (error) {
+      if (!shouldQueueReplaySafeMutation(error)) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({ path: `/api/v1/projects/${projectId}/room-change-requests/${reqId}/approve`, method: 'POST', body: '{}', userId });
+      await enqueue({ path, method: 'POST', body: '{}', userId });
       throw new Error('offline_queued');
     }
   },
   rejectRoomChange: async (userId: string, projectId: string, reqId: string) => {
+    const path = `/api/v1/projects/${projectId}/room-change-requests/${reqId}/reject`;
     try {
-      return await req(`/api/v1/projects/${projectId}/room-change-requests/${reqId}/reject`, { method: 'POST' }, userId);
-    } catch (e) {
-      if (e instanceof ApiError) throw e;
+      return await req(path, { method: 'POST' }, userId);
+    } catch (error) {
+      if (!shouldQueueReplaySafeMutation(error)) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({ path: `/api/v1/projects/${projectId}/room-change-requests/${reqId}/reject`, method: 'POST', body: '{}', userId });
+      await enqueue({ path, method: 'POST', body: '{}', userId });
       throw new Error('offline_queued');
     }
   },

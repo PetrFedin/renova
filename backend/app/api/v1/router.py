@@ -4,10 +4,16 @@ from app.api.v1 import portal_acceptance_decisions
 from app.api.v1 import portal_change_order_decisions
 from app.api.v1 import account_lifecycle
 from app.api.v1 import document_lifecycle
+from app.api.v1 import document_creation_integrity
+from app.api.v1 import document_upload_integrity
+from app.api.v1 import room_change_creation_integrity
+from app.api.v1 import waste_order_creation_integrity
+from app.api.v1 import stage_content_creation_integrity
 from app.api.v1 import selections
 from app.api.v1 import bank_statements
 from app.api.v1 import expense_mutations
 from app.api.v1 import material_price_sync
+from app.api.v1 import material_needs_integrity
 from app.api.v1 import payment_disputes
 from app.api.v1 import payment_history
 from app.api.v1 import payment_checkout_integrity
@@ -28,6 +34,10 @@ from app.api.v1 import technical_supervision_actions
 from app.api.v1 import technical_supervision_chat
 from app.api.v1 import technical_supervision_schedule
 from app.api.v1 import warranty
+from app.api.v1 import issue_creation_integrity
+from app.api.v1 import chat_business_command_integrity
+from app.api.v1 import chat_thread_creation_integrity
+from app.api.v1 import chat_reaction_integrity
 from app.api.v1 import (
     auth, activity, scratchpad, chat_inbox, work_orders, work_acceptances,
     budget_planner, purchases, documents, esign, ocr_worker, automation_worker, os, reports, marketplace, design_packages,
@@ -57,6 +67,9 @@ api_router.include_router(material_price_sync.router)
 api_router.include_router(materials.router)
 api_router.include_router(selections.router)
 api_router.include_router(approvals.router)
+_WASTE_ORDER_CREATION_ROUTES: set[RouteSignature] = {("/projects/{project_id}/waste-orders", "POST")}
+_remove_replaced_routes(waste_orders.router, _WASTE_ORDER_CREATION_ROUTES)
+api_router.include_router(waste_order_creation_integrity.router)
 api_router.include_router(waste_orders.router)
 api_router.include_router(floor_plans.router)
 api_router.include_router(work_types.router)
@@ -75,19 +88,28 @@ _STAGE_MUTATION_ROUTES: set[RouteSignature] = {
     ("/projects/{project_id}/stages/{stage_id}/ready", "POST"), ("/projects/{project_id}/stages/{stage_id}/dates", "PATCH"),
     ("/projects/{project_id}/stages/{stage_id}/rooms", "PATCH"), ("/projects/{project_id}/stages/{stage_id}/work-type", "PATCH"),
     ("/projects/{project_id}/stages/{stage_id}/depends", "PATCH"), ("/projects/{project_id}/dependencies/sync", "POST"),
+    ("/projects/{project_id}/stages/{stage_id}/comments", "POST"),
+    ("/projects/{project_id}/stages/{stage_id}/photos", "POST"),
 }
 _remove_replaced_routes(stages_ext.router, _STAGE_MUTATION_ROUTES)
 api_router.include_router(stage_mutations.router)
+api_router.include_router(stage_content_creation_integrity.router)
 api_router.include_router(stages_ext.router)
 api_router.include_router(project_checklists.router)
 api_router.include_router(checklist_templates.router)
 api_router.include_router(stage_reactions.router)
-_DOCUMENT_LIFECYCLE_ROUTES: set[RouteSignature] = {
-    ("/projects/{project_id}/documents/{document_id}/sign", "POST"), ("/projects/{project_id}/documents/{document_id}/archive", "POST"),
-    ("/projects/{project_id}/documents/{document_id}/restore", "POST"), ("/projects/{project_id}/documents/{document_id}", "DELETE"),
+_DOCUMENT_REPLACED_ROUTES: set[RouteSignature] = {
+    ("/projects/{project_id}/documents", "POST"),
+    ("/projects/{project_id}/documents/upload", "POST"),
+    ("/projects/{project_id}/documents/{document_id}/sign", "POST"),
+    ("/projects/{project_id}/documents/{document_id}/archive", "POST"),
+    ("/projects/{project_id}/documents/{document_id}/restore", "POST"),
+    ("/projects/{project_id}/documents/{document_id}", "DELETE"),
     ("/projects/{project_id}/documents/{document_id}/legal-hold", "POST"),
 }
-_remove_replaced_routes(documents.router, _DOCUMENT_LIFECYCLE_ROUTES)
+_remove_replaced_routes(documents.router, _DOCUMENT_REPLACED_ROUTES)
+api_router.include_router(document_creation_integrity.router)
+api_router.include_router(document_upload_integrity.router)
 api_router.include_router(document_lifecycle.router)
 api_router.include_router(documents.router)
 api_router.include_router(esign.router)
@@ -95,7 +117,10 @@ api_router.include_router(ocr_worker.router)
 api_router.include_router(automation_worker.router)
 _EXPENSE_MUTATION_ROUTES: set[RouteSignature] = {("/projects/{project_id}/os/expenses/{expense_id}", "PATCH"), ("/projects/{project_id}/os/expenses/{expense_id}", "DELETE")}
 _remove_replaced_routes(os.router, _EXPENSE_MUTATION_ROUTES)
+_ISSUE_CREATION_ROUTES: set[RouteSignature] = {("/projects/{project_id}/issues", "POST")}
+_remove_replaced_routes(os.router, _ISSUE_CREATION_ROUTES)
 api_router.include_router(expense_mutations.router)
+api_router.include_router(issue_creation_integrity.router)
 api_router.include_router(os.router)
 _PORTAL_CHANGE_ORDER_ROUTES: set[RouteSignature] = {("/portal/projects/{project_id}/change-orders/{order_id}/approve", "POST"), ("/portal/projects/{project_id}/change-orders/{order_id}/reject", "POST")}
 _PORTAL_ACCEPTANCE_ROUTES: set[RouteSignature] = {("/portal/projects/{project_id}/work-acceptances/{acceptance_id}/accept", "POST"), ("/portal/projects/{project_id}/work-acceptances/{acceptance_id}/return", "POST")}
@@ -138,14 +163,29 @@ api_router.include_router(projects.router)
 api_router.include_router(technical_supervision.router)
 api_router.include_router(technical_supervision_actions.router)
 api_router.include_router(rooms.router)
+_ROOM_CHANGE_CREATION_ROUTES: set[RouteSignature] = {("/projects/{project_id}/room-change-requests", "POST")}
+_remove_replaced_routes(room_requests.router, _ROOM_CHANGE_CREATION_ROUTES)
+api_router.include_router(room_change_creation_integrity.router)
 api_router.include_router(room_requests.router)
 api_router.include_router(calendar_integrity.router)
 api_router.include_router(calendar_mutations.router)
 api_router.include_router(calendar.router)
 api_router.include_router(chat_inbox.router)
 _TECHNICAL_SUPERVISION_CHAT_ROUTES: set[RouteSignature] = {("/projects/{project_id}/chats/{thread_id}/messages", "POST")}
-_remove_replaced_routes(chats.router, _TECHNICAL_SUPERVISION_CHAT_ROUTES)
+_CHAT_BUSINESS_COMMAND_ROUTES: set[RouteSignature] = {
+    ("/projects/{project_id}/chats/{thread_id}/messages/{message_id}/task", "POST"),
+    ("/projects/{project_id}/chats/{thread_id}/invoice", "POST"),
+}
+_CHAT_THREAD_CREATION_ROUTES: set[RouteSignature] = {("/projects/{project_id}/chats", "POST")}
+_CHAT_REACTION_ROUTES: set[RouteSignature] = {("/projects/{project_id}/chats/{thread_id}/messages/{message_id}/react", "POST")}
+_remove_replaced_routes(
+    chats.router,
+    _TECHNICAL_SUPERVISION_CHAT_ROUTES | _CHAT_BUSINESS_COMMAND_ROUTES | _CHAT_THREAD_CREATION_ROUTES | _CHAT_REACTION_ROUTES,
+)
 api_router.include_router(technical_supervision_chat.router)
+api_router.include_router(chat_business_command_integrity.router)
+api_router.include_router(chat_thread_creation_integrity.router)
+api_router.include_router(chat_reaction_integrity.router)
 api_router.include_router(chats.router)
 api_router.include_router(payment_disputes.router)
 _PAYMENT_HISTORY_ROUTES: set[RouteSignature] = {("/projects/{project_id}/payments", "GET")}
@@ -164,5 +204,8 @@ api_router.include_router(bank_statements.router)
 api_router.include_router(warranty.router)
 api_router.include_router(export.router)
 api_router.include_router(receipts.router)
+_MATERIAL_NEEDS_ROUTES: set[RouteSignature] = {("/projects/{project_id}/material-needs/from-estimate", "POST")}
+_remove_replaced_routes(purchases.router, _MATERIAL_NEEDS_ROUTES)
+api_router.include_router(material_needs_integrity.router)
 api_router.include_router(purchases.router)
 api_router.include_router(scratchpad.router)

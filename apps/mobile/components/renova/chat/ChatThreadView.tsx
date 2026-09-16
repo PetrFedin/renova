@@ -426,15 +426,16 @@ export function ChatThreadView({
             osRole={role}
             canOpenProjectActions={canViewProjectActions}
             onReact={async (emoji) => {
+              const desiredReacted = !(m.reactions?.[emoji] ?? []).includes(user.id);
               try {
-                await api.reactChatMessage(user.id, projectId, threadId, m.id, emoji);
+                await api.reactChatMessage(user.id, projectId, threadId, m.id, emoji, desiredReacted);
               } catch (e) {
                 if (isOfflineQueued(e)) {
                   notifyOfflineQueued('Реакция');
                   return;
                 }
-                reportError('ChatThreadView.Reaction.Mutation', e, { threadId, projectId, messageId: m.id });
-                Alert.alert('Ошибка', 'Не удалось поставить реакцию');
+                reportError('ChatThreadView.Reaction.Mutation', e, { threadId, projectId, messageId: m.id, desiredReacted });
+                Alert.alert('Ошибка', 'Не удалось изменить реакцию');
                 return;
               }
               await refreshChatAfterCommit('Reaction');

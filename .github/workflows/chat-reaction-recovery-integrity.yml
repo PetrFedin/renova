@@ -1,0 +1,55 @@
+name: Chat reaction recovery integrity
+
+on:
+  pull_request:
+    paths:
+      - 'backend/app/api/v1/chat_reaction_integrity.py'
+      - 'backend/app/api/v1/chats.py'
+      - 'backend/app/api/v1/router.py'
+      - 'backend/tests/test_chat_reaction_state_integrity.py'
+      - 'apps/mobile/lib/api/chats.ts'
+      - 'apps/mobile/lib/api/chatReactionRecovery.test.ts'
+      - 'apps/mobile/components/renova/chat/ChatThreadView.tsx'
+      - 'apps/mobile/lib/api/failurePolicy.ts'
+      - '.github/workflows/chat-reaction-recovery-integrity.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'backend/app/api/v1/chat_reaction_integrity.py'
+      - 'backend/app/api/v1/router.py'
+      - 'backend/tests/test_chat_reaction_state_integrity.py'
+      - 'apps/mobile/lib/api/chats.ts'
+      - 'apps/mobile/lib/api/chatReactionRecovery.test.ts'
+      - 'apps/mobile/components/renova/chat/ChatThreadView.tsx'
+      - '.github/workflows/chat-reaction-recovery-integrity.yml'
+
+concurrency:
+  group: chat-reaction-recovery-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  chat-reaction-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+      - name: Install workspace dependencies
+        run: npm ci
+      - name: Backend desired-state and canonical-route integrity
+        working-directory: backend
+        run: pytest -q tests/test_chat_reaction_state_integrity.py
+      - name: Mobile typecheck
+        run: npm run typecheck:mobile
+      - name: Mobile offline replay retains desired reaction state
+        run: |
+          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
+          npx tsx apps/mobile/lib/api/chatReactionRecovery.test.ts
