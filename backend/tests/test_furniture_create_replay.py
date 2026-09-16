@@ -75,12 +75,16 @@ async def test_furniture_create_replays_original_conflicts_on_changed_payload_an
 
     monkeypatch.setattr(outbox_inline_dispatch, "dispatch_best_effort", no_dispatch)
     customer, project, room, plan = await _seed(db)
-    payload = _payload(room.id, plan.id)
+    customer_id = customer.id
+    project_id = project.id
+    room_id = room.id
+    plan_id = plan.id
+    payload = _payload(room_id, plan_id)
 
     first, replayed = await furniture_create.create_furniture(
         db,
-        project_id=project.id,
-        user_id=customer.id,
+        project_id=project_id,
+        user_id=customer_id,
         client_request_id="furniture-response-loss-001",
         payload=payload,
     )
@@ -89,8 +93,8 @@ async def test_furniture_create_replays_original_conflicts_on_changed_payload_an
 
     same, replayed = await furniture_create.create_furniture(
         db,
-        project_id=project.id,
-        user_id=customer.id,
+        project_id=project_id,
+        user_id=customer_id,
         client_request_id="furniture-response-loss-001",
         payload=payload,
     )
@@ -100,44 +104,47 @@ async def test_furniture_create_replays_original_conflicts_on_changed_payload_an
     with pytest.raises(IdempotencyConflict):
         await furniture_create.create_furniture(
             db,
-            project_id=project.id,
-            user_id=customer.id,
+            project_id=project_id,
+            user_id=customer_id,
             client_request_id="furniture-response-loss-001",
-            payload=_payload(room.id, plan.id, name="Changed sofa"),
+            payload=_payload(room_id, plan_id, name="Changed sofa"),
         )
 
     second, replayed = await furniture_create.create_furniture(
         db,
-        project_id=project.id,
-        user_id=customer.id,
+        project_id=project_id,
+        user_id=customer_id,
         client_request_id="furniture-response-loss-002",
         payload=payload,
     )
+    second_id = second.id
     assert replayed is False
-    assert second.id != first_id
+    assert second_id != first_id
 
-    assert await _count(db, FurnitureItem, FurnitureItem.project_id == project.id) == 2
+    assert await _count(db, FurnitureItem, FurnitureItem.project_id == project_id) == 2
     assert await _count(
         db,
         ClientWriteRequest,
-        ClientWriteRequest.project_id == project.id,
+        ClientWriteRequest.project_id == project_id,
         ClientWriteRequest.scope == furniture_create.SCOPE,
     ) == 2
     assert await _count(
         db,
         DomainOutbox,
         DomainOutbox.aggregate_type == "furniture",
-        DomainOutbox.payload_json.contains(project.id),
+        DomainOutbox.payload_json.contains(project_id),
     ) == 2
 
+    fresh_customer = await db.get(User, customer_id, populate_existing=True)
+    assert fresh_customer is not None
     with pytest.raises(HTTPException) as route_conflict:
         await api.create_furniture(
-            project.id,
+            project_id,
             api.FurnitureCreateIn(
-                **_payload(room.id, plan.id, name="Route conflict"),
+                **_payload(room_id, plan_id, name="Route conflict"),
                 client_request_id="furniture-response-loss-001",
             ),
-            user=customer,
+            user=fresh_customer,
             db=db,
         )
     assert route_conflict.value.status_code == 409
@@ -152,7 +159,11 @@ async def test_furniture_create_rolls_back_flushed_item_outbox_and_ledger_then_s
 
     monkeypatch.setattr(outbox_inline_dispatch, "dispatch_best_effort", no_dispatch)
     customer, project, room, plan = await _seed(db)
-    payload = _payload(room.id, plan.id)
+    customer_id = customer.id
+    project_id = project.id
+    room_id = room.id
+    plan_id = plan.id
+    payload = _payload(room_id, plan_id)
     original_enqueue = furniture_create.outbox.enqueue
 
     async def fail_after_item_flush(*_args, **_kwargs):
@@ -162,46 +173,47 @@ async def test_furniture_create_rolls_back_flushed_item_outbox_and_ledger_then_s
     with pytest.raises(RuntimeError, match="synthetic_outbox_prepare_failure"):
         await furniture_create.create_furniture(
             db,
-            project_id=project.id,
-            user_id=customer.id,
+            project_id=project_id,
+            user_id=customer_id,
             client_request_id="furniture-rollback-001",
             payload=payload,
         )
 
-    assert await _count(db, FurnitureItem, FurnitureItem.project_id == project.id) == 0
+    assert await _count(db, FurnitureItem, FurnitureItem.project_id == project_id) == 0
     assert await _count(
         db,
         ClientWriteRequest,
-        ClientWriteRequest.project_id == project.id,
+        ClientWriteRequest.project_id == project_id,
         ClientWriteRequest.scope == furniture_create.SCOPE,
     ) == 0
     assert await _count(
         db,
         DomainOutbox,
         DomainOutbox.aggregate_type == "furniture",
-        DomainOutbox.payload_json.contains(project.id),
+        DomainOutbox.payload_json.contains(project_id),
     ) == 0
 
     monkeypatch.setattr(furniture_create.outbox, "enqueue", original_enqueue)
     recovered, replayed = await furniture_create.create_furniture(
         db,
-        project_id=project.id,
-        user_id=customer.id,
+        project_id=project_id,
+        user_id=customer_id,
         client_request_id="furniture-rollback-001",
         payload=payload,
     )
+    recovered_id = recovered.id
     assert replayed is False
-    assert recovered.project_id == project.id
-    assert await _count(db, FurnitureItem, FurnitureItem.project_id == project.id) == 1
+    assert recovered_id
+    assert await _count(db, FurnitureItem, FurnitureItem.project_id == project_id) == 1
     assert await _count(
         db,
         ClientWriteRequest,
-        ClientWriteRequest.project_id == project.id,
+        ClientWriteRequest.project_id == project_id,
         ClientWriteRequest.scope == furniture_create.SCOPE,
     ) == 1
     assert await _count(
         db,
         DomainOutbox,
         DomainOutbox.aggregate_type == "furniture",
-        DomainOutbox.payload_json.contains(project.id),
+        DomainOutbox.payload_json.contains(project_id),
     ) == 1
