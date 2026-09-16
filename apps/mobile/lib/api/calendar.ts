@@ -1,11 +1,13 @@
 /** API: calendar — даты этапов в офлайн-очереди (график golden path) */
 import { req, cachedGet, ApiError } from './client';
 import type { CalendarData, OsScheduleSummary } from './types';
+import { createClientRequestId } from '@/lib/clientRequestId';
 
 export type IcalImportResult = {
   ok: boolean;
   parsed: number;
   updated_stages: number;
+  replayed: boolean;
 };
 
 export const calendarApi = {
@@ -45,9 +47,12 @@ export const calendarApi = {
     }
   },
 
-  /** W116: импорт ICS — очередь офлайн (метаданные; большой файл — online only через 4xx) */
+  /** W116: импорт ICS — response-loss-safe очередь с устойчивым business intent. */
   importIcal: async (userId: string, projectId: string, content: string) => {
-    const payload = JSON.stringify({ content });
+    const payload = JSON.stringify({
+      content,
+      client_request_id: createClientRequestId('calendar-import'),
+    });
     try {
       return await req<IcalImportResult>(
         `/api/v1/projects/${projectId}/calendar/import`,
@@ -55,7 +60,7 @@ export const calendarApi = {
         userId,
       );
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 429) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/calendar/import`,
