@@ -138,3 +138,68 @@ async def test_material_needs_replay_returns_original_snapshot_after_estimate_ch
         DomainOutbox,
         DomainOutbox.aggregate_type == generation.AGGREGATE_TYPE,
     ) == 2
+
+
+@pytest.mark.asyncio
+async def test_material_needs_rolls_back_picks_outbox_and_ledger_when_outbox_prepare_fails(db, monkeypatch):
+    """A failure after MaterialPick flush must leave no partial generation truth."""
+    from app.services import outbox_inline_dispatch
+
+    async def no_dispatch(*_args, **_kwargs):
+        return 0
+
+    monkeypatch.setattr(outbox_inline_dispatch, "dispatch_best_effort", no_dispatch)
+    customer, project = await _seed(db)
+    customer_id = customer.id
+    project_id = project.id
+    original_enqueue = generation.outbox.enqueue
+
+    async def fail_outbox_prepare(*_args, **_kwargs):
+        raise RuntimeError("synthetic_material_needs_outbox_prepare_failure")
+
+    monkeypatch.setattr(generation.outbox, "enqueue", fail_outbox_prepare)
+    with pytest.raises(RuntimeError, match="synthetic_material_needs_outbox_prepare_failure"):
+        await generation.generate_from_estimate(
+            db,
+            project_id=project_id,
+            user_id=customer_id,
+            client_request_id="material-needs-atomic-failure-001",
+        )
+
+    assert await _count(db, MaterialPick, MaterialPick.project_id == project_id) == 0
+    assert await _count(
+        db,
+        ClientWriteRequest,
+        ClientWriteRequest.project_id == project_id,
+        ClientWriteRequest.scope == generation.SCOPE,
+    ) == 0
+    assert await _count(
+        db,
+        DomainOutbox,
+        DomainOutbox.aggregate_type == generation.AGGREGATE_TYPE,
+    ) == 0
+
+    # The failed attempt must not poison the request identity. Restoring the
+    # durable-effect preparation and retrying the exact same intent produces
+    # one clean canonical generation/evidence set.
+    monkeypatch.setattr(generation.outbox, "enqueue", original_enqueue)
+    created, replayed = await generation.generate_from_estimate(
+        db,
+        project_id=project_id,
+        user_id=customer_id,
+        client_request_id="material-needs-atomic-failure-001",
+    )
+    assert replayed is False
+    assert [item["name"] for item in created] == ["Плитка"]
+    assert await _count(db, MaterialPick, MaterialPick.project_id == project_id) == 1
+    assert await _count(
+        db,
+        ClientWriteRequest,
+        ClientWriteRequest.project_id == project_id,
+        ClientWriteRequest.scope == generation.SCOPE,
+    ) == 1
+    assert await _count(
+        db,
+        DomainOutbox,
+        DomainOutbox.aggregate_type == generation.AGGREGATE_TYPE,
+    ) == 1
