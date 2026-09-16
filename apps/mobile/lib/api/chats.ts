@@ -91,29 +91,27 @@ export const chatsApi = {
     { method: 'POST', body: JSON.stringify(body) },
     userId,
   ),
-  /** W115: реакции в чате — очередь офлайн */
+  /** Replay-safe desired reaction state; never a toggle command. */
   reactChatMessage: async (
     userId: string,
     projectId: string,
     threadId: string,
     messageId: string,
     emoji: string,
+    reacted: boolean,
   ) => {
+    const path = `/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/react`;
+    const body = JSON.stringify({ emoji, reacted });
     try {
-      return await req<{ reactions: Record<string, string[]> }>(
-        `/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/react`,
-        { method: 'POST', body: JSON.stringify({ emoji }) },
+      return await req<{ reactions: Record<string, string[]>; reacted: boolean; changed: boolean }>(
+        path,
+        { method: 'POST', body },
         userId,
       );
-    } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+    } catch (error) {
+      if (!shouldQueueReplaySafeMutation(error)) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({
-        path: `/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/react`,
-        method: 'POST',
-        body: JSON.stringify({ emoji }),
-        userId,
-      });
+      await enqueue({ path, method: 'POST', body, userId });
       throw new Error('offline_queued');
     }
   },
