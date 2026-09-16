@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import select
 
 from app.api.v1 import estimate as api
 from app.models.entities import EstimateLine, LineType, Project, User, UserRole
@@ -77,12 +78,18 @@ async def test_estimate_patch_binds_line_to_authorized_path_project(db):
         )
     assert denied.value.status_code == 404
 
-    await db.refresh(line_b)
-    await db.refresh(project_a)
-    await db.refresh(project_b)
-    assert line_b.unit_price == 200
-    assert project_a.budget_planned == 200
-    assert project_b.budget_planned == 600
+    line_b_price = (
+        await db.execute(select(EstimateLine.unit_price).where(EstimateLine.id == line_b_id))
+    ).scalar_one()
+    project_a_budget = (
+        await db.execute(select(Project.budget_planned).where(Project.id == project_a_id))
+    ).scalar_one()
+    project_b_budget = (
+        await db.execute(select(Project.budget_planned).where(Project.id == project_b_id))
+    ).scalar_one()
+    assert line_b_price == 200
+    assert project_a_budget == 200
+    assert project_b_budget == 600
 
     own = await api.patch_line(
         project_a_id,
@@ -92,9 +99,16 @@ async def test_estimate_patch_binds_line_to_authorized_path_project(db):
         db=db,
     )
     assert own == {"ok": True, "id": line_a_id}
-    await db.refresh(line_a)
-    await db.refresh(project_a)
-    await db.refresh(project_b)
-    assert line_a.unit_price == 150
-    assert project_a.budget_planned == 300
-    assert project_b.budget_planned == 600
+
+    line_a_price = (
+        await db.execute(select(EstimateLine.unit_price).where(EstimateLine.id == line_a_id))
+    ).scalar_one()
+    project_a_budget = (
+        await db.execute(select(Project.budget_planned).where(Project.id == project_a_id))
+    ).scalar_one()
+    project_b_budget = (
+        await db.execute(select(Project.budget_planned).where(Project.id == project_b_id))
+    ).scalar_one()
+    assert line_a_price == 150
+    assert project_a_budget == 300
+    assert project_b_budget == 600
