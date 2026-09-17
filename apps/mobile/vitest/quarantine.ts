@@ -19,8 +19,13 @@
  *    literal that a later refactor renamed (`sync.w92` wants `if (synced > 0)`);
  *  - behavioural claims that may be real defects and need a human decision:
  *    `purchaseTransitionIntegrity` ("delivery increments inventory once"),
- *    `financialFormIntegrity`, `aggregateBudgetByPeriod` ("planned share"),
+ *    `aggregateBudgetByPeriod` ("planned share"),
  *    `materialPickLifecycleIntegrity`, `paymentEventHistoryIntegrity`.
+ *
+ * `financialFormIntegrity` left the list: all three of its failing assertions
+ * were literals a refactor had renamed. ManualExpenseForm's durable write
+ * boundary and post-commit refresh are both intact and stricter than the
+ * assertions described.
  *
  * Triage belongs in its own issue, not in the change that made them visible.
  */
@@ -28,7 +33,6 @@ export const QUARANTINED_MOBILE_TESTS: ReadonlyArray<readonly [string, string]> 
   ['apps/mobile/lib/chatThreadOpen.w100.test.ts', 'assertion helper threw (see file)'],
   ['apps/mobile/lib/domain/aggregateBudgetByPeriod.test.ts', 'Error: planned share'],
   ['apps/mobile/lib/domain/moreMenuA11y.w77.test.ts', 'Error: empty'],
-  ['apps/mobile/lib/financialFormIntegrity.test.ts', 'Error: manual expense durable write boundary'],
   ['apps/mobile/lib/journeyUnify.w101.test.ts', 'assertion helper threw (see file)'],
   ['apps/mobile/lib/journeyUnify.w107.test.ts', 'assertion helper threw (see file)'],
   ['apps/mobile/lib/journeyUnify.w111.test.ts', 'assertion helper threw (see file)'],
