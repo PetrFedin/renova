@@ -56,19 +56,25 @@ export const floorApi = {
   },
   listWasteOrders: (userId: string, projectId: string) => req<WasteOrder[]>(`/api/v1/projects/${projectId}/waste-orders`, {}, userId),
   createWasteOrder: async (userId: string, projectId: string, body: object) => {
+    const input = body as Record<string, unknown> & { client_request_id?: string };
+    const requestBody = {
+      ...input,
+      client_request_id: input.client_request_id ?? createClientRequestId('waste'),
+    };
+    const serialized = JSON.stringify(requestBody);
     try {
-      return await req<WasteOrder>(
+      return await req<WasteOrder & { replayed: boolean }>(
         `/api/v1/projects/${projectId}/waste-orders`,
-        { method: 'POST', body: JSON.stringify(body) },
+        { method: 'POST', body: serialized },
         userId,
       );
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 429) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/waste-orders`,
         method: 'POST',
-        body: JSON.stringify(body),
+        body: serialized,
         userId,
       });
       throw new Error('offline_queued');
