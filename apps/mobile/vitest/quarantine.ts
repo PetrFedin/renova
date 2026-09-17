@@ -18,9 +18,12 @@
  *  - rotted source-string assertions: the test greps the implementation for a
  *    literal that a later refactor renamed (`sync.w92` wants `if (synced > 0)`);
  *  - behavioural claims that may be real defects and need a human decision:
- *    `purchaseTransitionIntegrity` ("delivery increments inventory once"),
  *    `financialFormIntegrity`, `aggregateBudgetByPeriod` ("planned share"),
  *    `materialPickLifecycleIntegrity`, `paymentEventHistoryIntegrity`.
+ *
+ * `purchaseTransitionIntegrity` left the list: its literal drifted when
+ * `item.qty` gained an `or 0` guard. The "once" property it named is already
+ * asserted behaviourally in backend/tests/test_purchase_transition_integrity.py.
  *
  * Triage belongs in its own issue, not in the change that made them visible.
  */
@@ -47,7 +50,6 @@ export const QUARANTINED_MOBILE_TESTS: ReadonlyArray<readonly [string, string]> 
   ['apps/mobile/lib/paymentEventHistoryIntegrity.test.ts', 'AssertionError: History route must precede the legacy list route'],
   ['apps/mobile/lib/portalPayHonesty.w144.test.ts', 'assertion helper threw (see file)'],
   ['apps/mobile/lib/projectDataBus.w99.test.ts', 'Error: EstimateDocumentsLayer.tsx missing syncProjectSideEffects'],
-  ['apps/mobile/lib/purchaseTransitionIntegrity.test.ts', 'Error: delivery increments inventory once'],
   ['apps/mobile/lib/rateLimit.soft.test.ts', 'assertion helper threw (see file)'],
   ['apps/mobile/lib/useProjectDataReload.w95.test.ts', 'Error: DocumentsHub OCR should sync side effects'],
   ['apps/mobile/lib/useProjectDataReload.w98.test.ts', 'Error: expected W98 sync comment near task create'],
