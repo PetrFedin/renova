@@ -254,6 +254,10 @@ export function FloorPlanPanel({
           floor_level: floor,
         });
       } catch (error) {
+        if (isOfflineQueued(error)) {
+          notifyOfflineQueued('Планировка');
+          return;
+        }
         reportError('components.renova.FloorPlanPanel.uploadPlan', error, { projectId, floor });
         Alert.alert('Загрузка', 'Не удалось загрузить план');
         return;
