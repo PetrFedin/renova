@@ -1,4 +1,5 @@
 /** Единый push/replace для OS-маршрутов — строка или { pathname, params } */
+import { getCurrentOsRole } from '@/lib/currentOsRole';
 import { router } from 'expo-router';
 import { budgetTabHref, type OsRole, type OsTabRoute } from '@/constants/osSections';
 import { withReturnTo } from '@/lib/osReturnTo';
@@ -11,7 +12,14 @@ export { resolveOsDeepLink } from '@/lib/osDeepLink';
  * W110: строковый href → Expo route через resolvePushLink
  * (deep-link /stage, TAB_ALIASES, /control, finance-center — один SoT с пушами).
  */
-export function toOsRoute(target: OsNavHref, returnTo?: string, role: OsRole = 'customer'): OsTabRoute {
+export function toOsRoute(
+  target: OsNavHref,
+  returnTo?: string,
+  // Defaults to the role the app is actually in. The previous literal
+  // 'customer' silently routed a contractor into the customer route group on
+  // the 59 call sites that omit this argument.
+  role: OsRole = getCurrentOsRole(),
+): OsTabRoute {
   if (typeof target !== 'string') return target;
   const resolved = resolvePushLink(target, returnTo, role);
   if (resolved) {
@@ -31,7 +39,7 @@ function navigateOsRoute(route: OsTabRoute) {
 }
 
 /** Push с returnTo; role нужен для /control и short aliases */
-export function pushOsNav(target: OsNavHref, returnTo?: string, role: OsRole = 'customer') {
+export function pushOsNav(target: OsNavHref, returnTo?: string, role: OsRole = getCurrentOsRole()) {
   if (typeof target === 'string') {
     // resolvePushLink уже кладёт returnTo в params
     navigateOsRoute(toOsRoute(target, returnTo, role));
@@ -41,7 +49,7 @@ export function pushOsNav(target: OsNavHref, returnTo?: string, role: OsRole = '
   navigateOsRoute(returnTo ? withReturnTo(route, returnTo) : route);
 }
 
-export function replaceOsNav(target: OsNavHref, returnTo?: string, role: OsRole = 'customer') {
+export function replaceOsNav(target: OsNavHref, returnTo?: string, role: OsRole = getCurrentOsRole()) {
   if (typeof target === 'string') {
     const href = toOsRoute(target, returnTo, role);
     if (isOsTabPath(href.pathname)) {

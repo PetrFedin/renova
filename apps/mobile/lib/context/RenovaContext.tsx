@@ -1,4 +1,5 @@
 /** Глобальное состояние: пользователь, роль, активный проект */
+import { setCurrentOsRole } from '@/lib/currentOsRole';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { reportCatch, reportError } from '@/lib/reportError';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
@@ -193,6 +194,15 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
   const [apiReachable, setApiReachable] = useState(true);
   const [user, setUser] = useState<User | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
+
+  // Navigation helpers are plain functions called from event handlers, so they
+  // cannot read this context. Mirroring the role into a module value lets
+  // pushOsNav/replaceOsNav default to the role the app is actually in instead
+  // of the literal 'customer' — which silently routed contractors into the
+  // customer route group on the 59 call sites that omit the argument.
+  useEffect(() => {
+    setCurrentOsRole(user?.role ?? null);
+  }, [user?.role]);
   const [activeProject, setActiveProject] = useState<ProjectDetail | null>(null);
   const [projectResolving, setProjectResolving] = useState(false);
   const ensureAttemptKeyRef = useRef<string | null>(null);
