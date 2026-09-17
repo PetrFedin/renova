@@ -308,6 +308,14 @@ jobs:
           ALLOW_CREATE_ALL: "false"
           ALLOW_DEMO_SEED: "false"
         run: poetry run python -m alembic upgrade head
+      - name: Floor object binding PostgreSQL contract
+        if: success()
+        working-directory: backend
+        env:
+          FLOOR_OBJECT_BINDING_POSTGRES_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova
+        run: |
+          set -euo pipefail
+          poetry run pytest -q tests/test_floor_plan_object_binding_postgres.py
 
   playwright-api-and-ui:
     runs-on: ubuntu-latest
