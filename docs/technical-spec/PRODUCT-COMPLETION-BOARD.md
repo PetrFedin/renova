@@ -77,13 +77,14 @@ RENOVA является PRODUCT COMPLETE только когда примени�
 
 | Контур | Статус | Фактическая граница доказательства |
 |---|---|---|
-| Канонический `main` | `PARTIAL` | `e5c6ee44…`; сегодняшние security/governance исправления существуют только в открытых кандидатах. |
+| Канонический `main` | `PARTIAL` | `e5c6ee44…`; security/governance/finance исправления ниже существуют только в открытых кандидатах. |
 | Broad production | `BLOCKED` | Security/data/recovery/session/finance/browser/native/external gates не закрыты на одном SHA. |
 | M01–M12 | `PARTIAL/BLOCKED` | Ни один полный mode lifecycle не доказан end-to-end на текущем `main`. |
 | GP1–GP8 | `PARTIAL/BLOCKED` | Ни один GP не повышен до `PROVEN`; candidate slices не заменяют one-SHA lifecycle. |
 | Trusted integration foundation | `BLOCKED` | #425 source/check lineage квалифицирован; merge блокирует живое independent-review topology под #247. |
 | Required-check contamination | `CANDIDATE PROVEN` | Cancelled child-push suite на SHA #425 восстановлен 8/8; #437 предотвращает повторение на exact `63dd6b0…`. |
-| Wave-1 data authority | `PARTIAL` | #441 и #473 bounded-proven; #476 проходит exact-head qualification; другие P0 остаются candidate-only. |
+| Wave-1 data authority | `PARTIAL` | #441, #473, #476 и #479 bounded-proven; #481 остаётся подтверждённым GP3 authority blocker; другие P0 ещё candidate-only. |
+| Finance truth | `PARTIAL` | #381 explicit-zero и #382 period/unknown semantics bounded-proven; #318 остаётся открыт для ledger/reconciliation/GP1-GP5 truth. |
 | Review role/project entry | `CANDIDATE PROVEN` | Deployed run `35084701908`: четыре role×project entry сценария прошли. |
 | Deployed mutation proof | `CANDIDATE PROVEN` | В том же run `deployed-mutation-proof` = SUCCESS. Это не полный UI-E2E. |
 | Deployed product browser | `BLOCKED` | Chromium и WebKit product jobs FAILED; Chromium 4 passed / 6 failed. |
@@ -136,13 +137,13 @@ Review stand пригоден для ограниченного ознакомл
 
 | GP | Result | Main | Best candidate | Dominant blocker |
 |---|---|---|---|---|
-| GP1 | Project → Rooms → Estimate → Budget | `BLOCKED` | `PARTIAL` | #458 pending; #457/#448 bounded; create/recovery/browser shell. |
+| GP1 | Project → Rooms → Estimate → Budget | `BLOCKED` | `PARTIAL` | #458 pending; #457/#448 bounded; #318 ledger/reconciliation; browser shell. |
 | GP2 | Marketplace → Quotes → Contractor | `BLOCKED` | `BLOCKED` | #300/#344/#345; #429 foundation only. |
-| GP3 | Stages → Schedule → WorkOrder → Evidence → Progress | `BLOCKED` | `PARTIAL` | participant scope, #316, calendar/object authority, E2E. |
+| GP3 | Stages → Schedule → WorkOrder → Evidence → Progress | `BLOCKED` | `PARTIAL` | #481 work-schedule child/dependency authority; participant scope; #316; E2E. |
 | GP4 | Acceptance → Rework → Portal → Warranty | `PARTIAL` | `PARTIAL` | closeout/warranty/portal/session не соединены. |
-| GP5 | Invoice → Payment → Receipt → Expense → Refund | `BLOCKED` | `PARTIAL` | finance truth, replay/offline, provider boundary. |
+| GP5 | Invoice → Payment → Receipt → Expense → Refund | `BLOCKED` | `PARTIAL` | #318 ledger/reconciliation, replay/offline, provider boundary. |
 | GP6 | Material → Approval → Purchase → Delivery → Receipt | `PARTIAL` | `PARTIAL` | broader purchase/delivery/return/finance family. |
-| GP7 | Document → Version → Sign → Export/Archive | `BLOCKED` | `PARTIAL` | #473 fixes reference authority only; #320 native delivery, retention/provider truth remain. |
+| GP7 | Document → Version → Sign → Export/Archive | `BLOCKED` | `PARTIAL` | #473 authority bounded; #320 native delivery, retention/provider truth remain. |
 | GP8 | Chat → Inbox/Push → Read → Reminder | `PARTIAL` | `PARTIAL` | #315/#316/#317; #322 bounded only. |
 
 **Promotion rule:** GP = `PROVEN` только после API + mobile-web на одном exact integrated SHA с canonical PostgreSQL + Redis + MinIO + API + Worker и применимыми error/retry/reversal/session сценариями.
@@ -166,8 +167,8 @@ Review stand пригоден для ограниченного ознакомл
 | F05 | `design.ts` | `PARTIAL` | `CANDIDATE PROVEN` | #414 create replay bounded; full lifecycle open. |
 | F06 | `documents.ts` | `BLOCKED` | `CANDIDATE PROVEN` | #473 exact `80111fd…` proves Stage/Payment project binding + pre-storage reject; GP7/#320 remain. |
 | F07 | `estimate.ts` | `BLOCKED` | `PARTIAL` | #444/#448/#457 bounded; create/reversal/full estimate not integrated. |
-| F08 | `floor.ts` | `BLOCKED` | `CANDIDATE PROVEN` | #441 exact `a322e1e…` now has required migrated-PostgreSQL proof; not integrated. |
-| F09 | `issues.ts` | `BLOCKED` | `CANDIDATE PROVEN` | Existing #418 replay bounded; new #476 child-authority exact `3c178249…` is still PENDING at this cut. |
+| F08 | `floor.ts` | `BLOCKED` | `CANDIDATE PROVEN` | #441 exact `a322e1e…` has required migrated-PostgreSQL proof; not integrated. |
+| F09 | `issues.ts` | `BLOCKED` | `CANDIDATE PROVEN` | #418 replay + #476 exact `3c178249…` child authority are bounded on separate lineages; transition family remains open. |
 | F10 | `market.ts` | `BLOCKED` | `BLOCKED` | #300/#344/#345. |
 | F11 | `materials.ts` | `BLOCKED` | `CANDIDATE PROVEN` | #460/#465 material-needs replay bounded; broader procurement open. |
 | F12 | `misc.ts` | `PARTIAL` | `PARTIAL` | Viewer/portal/revoke/expiry not one lifecycle. |
@@ -178,12 +179,12 @@ Review stand пригоден для ограниченного ознакомл
 | F17 | `receipts.ts` | `BLOCKED` | `PARTIAL` | #317 + finance/material actual truth. |
 | F18 | `rooms.ts` | `PARTIAL` | `PARTIAL` | #438/#440 bounded; connected authority/GP1 pending. |
 | F19 | `scratchpad.ts` | `PARTIAL` | `PARTIAL` | Нет connected lifecycle evidence. |
-| F20 | `selections.ts` | `PARTIAL` | `CANDIDATE PROVEN` | #416 create replay bounded; decisions/side effects family open. |
+| F20 | `selections.ts` | `BLOCKED` | `CANDIDATE PROVEN` | #416 replay and #479 exact `07674479…` room/create+approve authority are separately bounded; combined replay+authority requalification still required. |
 | F21 | `stages.ts` | `BLOCKED` | `PARTIAL` | #452 child ACL bounded; replay family not closed. |
-| F22 | `technicalSupervision.ts` | `PARTIAL` | `PARTIAL` | assignment→finding→remediation→decision not closed. |
-| F23 | `workAcceptances.ts` | `PARTIAL` | `PARTIAL` | Portal/warranty/offline/retry not one proof. |
-| F24 | `workOrders.ts` | `BLOCKED` | `PARTIAL` | Direct replay evidence useful, integration incomplete. |
-| F25 | `workSchedule.ts` | `BLOCKED` | `BLOCKED` | Replay policy/qualification incomplete. |
+| F22 | `technicalSupervision.ts` | `PARTIAL` | `PARTIAL` | authority scan clean for finding child refs; assignment→finding→remediation→decision still not closed. |
+| F23 | `workAcceptances.ts` | `PARTIAL` | `PARTIAL` | authority scan clean; portal/warranty/offline/retry not one proof. |
+| F24 | `workOrders.ts` | `BLOCKED` | `PARTIAL` | Room/Stage authority already canonical; direct replay evidence useful, integration incomplete. |
+| F25 | `workSchedule.ts` | `BLOCKED` | `BLOCKED` | #481 confirms Stage/dependency same-project/same-schedule authority gap; dependency authoring contract needs bounded repair before GP3. |
 | F26 | `client.ts` | `BLOCKED` | `PARTIAL` | #315/#317 global blockers; bounded dedupe prerequisite only. |
 
 ---
@@ -206,20 +207,23 @@ Review stand пригоден для ограниченного ознакомл
 | #456 | `bbebaa9…` on #455 | chat attachment current thread ACL | storage retention/native export. |
 | #441 | `a322e1e…`; core `35209195920`; policy `35209450881` | floor-plan/pin/furniture project binding + migrated PostgreSQL contract executed SUCCESS | integration on trusted main/full floor lifecycle. |
 | #473 / #472 | `80111fd…`; core `35210301494`; backend `1093 passed / 18 skipped` | document Stage/Payment project binding; multipart rejects before file/storage; Playwright + PG migration green | GP7/native/retention/provider; integration. |
+| #476 / #474 | `3c178249…`; core `35210881697`; backend `1092 passed / 18 skipped` | Issue Room/Stage/FloorPlan project binding before issue/activity/notification; PG migration + Playwright green | full issue transition/replay integration. |
+| #479 / #478 | `07674479…`; core `35212204645`; backend `1093 passed / 18 skipped` | Selection Room binding at create and recheck before approve→MaterialPick; two regressions + PG migration + Playwright green | combined #416 replay+authority lineage; full selection/procurement lifecycle. |
 | #322 | `582fd727…`; qualified context `76d63052…` | chat invoice/task atomic command + safe replay | all #316, #315/#317, payment truth. |
 | #414 | `54025fb…` | design create replay primitive | full design/approval/file lifecycle. |
-| #416 | `ddf7c208…` | selection create replay primitive | decision/material side effects family. |
-| #418/#459 | `4b93a0de…`; CI `35097643070` | issue-create atomic replay + PG authority/race + restart | issue transition/close/escalate and new child-binding #476. |
+| #416 | `ddf7c208…` | selection create replay primitive | authority #479 not yet integrated into this replay lineage; decision/material side effects family open. |
+| #418/#459 | `4b93a0de…`; CI `35097643070` | issue-create atomic replay + PG authority/race + restart | #476 authority not combined; issue transition/close/escalate open. |
 | #460/#465 | `83199215…`; CI `35099288980`; PG `35099289096` | material-needs atomic replay + PG authority/race + restart | procurement lifecycle. |
 | #448 | `2df6e660…` | Change Order approve/reject/replay/conflict + linked effects | GP1/full finance. |
 | #457 | `c8120c17…`; candidate schema `w23estimatelifecycle01` | reversible estimate-line remove/restore | canonical main remains w22; GP1 not promoted. |
-| #382 | `953a821…` | sum-preserving period allocation + unavailable fact semantics | full finance ledger/provider lifecycle. |
+| #381 | `c1d3a46…`; core `34586237936`; backend `1095 passed / 18 skipped` | explicit `quantity_actual == 0` remains fact, not plan fallback | full #318 finance/reconciliation. |
+| #382 | `953a821…`; core `34699877471`; backend `1091 passed / 18 skipped` | sum-preserving period allocation; future/as-of semantics; unavailable actual != plan | ledger-backed category actuals, payment/refund/dispute/GP1-GP5 truth. |
 | #426 | bounded candidate | simulated fiscal/NPD ports | real providers/GP5/GP6. |
 | #367 deployed | `0d58416…`, run `35084701908` | role/project entry + mutation proof | full browser UX; Chromium/WebKit red. |
 
 ### `PARTIAL` / pending / blocked despite useful work
 
-- #476 / #474 issue child-reference binding — production-fix head `3c178249…`; exact core CI `35210881697` still completing at this cut, so **not promoted early**.
+- #481 work-schedule authority — confirmed on canonical main: `stage_id` and `depends_on_item_id` are copied without same-project/same-schedule binding. Dependency authoring is deeper than a one-line ACL check because replacement input has no stable local item identity; bounded contract must avoid validating a dependency to an item that the same update then deletes.
 - #383 WorkOrder replay — useful PG evidence; integrated comparable qualification absent.
 - #385 chat reaction replay — useful stacked evidence; family/integration remain.
 - #387 intent-aware queue dedupe — prerequisite, not global #316/#317 closure.
@@ -235,13 +239,27 @@ Review stand пригоден для ограниченного ознакомл
 
 ### Sibling security scan disposition
 
-- Documents Stage/Payment reference defect confirmed → #472/#473, bounded candidate proven.
-- Issues Room/Stage/FloorPlan reference defect confirmed → #474/#476, qualification pending at this evidence cut.
-- MaterialPick create: checked and already project-binds Room/analog references; no duplicate P0 created.
-- Purchases: project-scope MaterialPick lookup confirmed; no independent defect created from source scan.
-- Receipts: canonical integrity service already resolves Payment/Stage/Room against project.
-- Payments: Stage resolution already project-scoped.
-- Expense suspicion #477: **closed `not_planned` as false positive** after canonical router verification. `router.py` removes legacy OS PATCH/DELETE and installs `expense_mutations.router`; `expense_integrity_service` already validates Room/Stage project ownership and explicit-null semantics. This is evidence that raw legacy code presence is not enough to declare a runtime defect.
+Confirmed and bounded-proven:
+- Documents Stage/Payment reference defect → #472/#473.
+- Issues Room/Stage/FloorPlan reference defect → #474/#476.
+- Selection Room create/approve propagation defect → #478/#479.
+
+Confirmed and still blocked:
+- Work Schedule custom item Stage/dependency reference defect → #481; blocks GP3 schedule truth until same-project/same-schedule + atomic replacement contract is repaired and qualified.
+
+Checked and no duplicate P0 required:
+- MaterialPick create already project-binds Room/analog references.
+- Purchases resolve MaterialPick under the same project.
+- Receipts canonical integrity resolves Payment/Stage/Room against project.
+- Payments Stage resolution is project-scoped.
+- WorkOrder service binds Room/Stage to project before create/update.
+- Work Acceptance decision service binds Acceptance/Stage through project and re-locks before cascade.
+- Stage mutation service validates all Room IDs by project before idempotency/business commit.
+- Technical supervision validates Room/Stage/FloorPlan before finding/outbox commit and schedule review project ownership.
+- Room change request create/decision binds Room to project and lock-reads request by project before patch/estimate sync.
+- Expense suspicion #477 was **closed `not_planned` as false positive**: canonical router removes legacy OS PATCH/DELETE and installs `expense_mutations.router`; `expense_integrity_service` already validates Room/Stage project ownership and explicit-null semantics.
+
+This scan demonstrates the rule: raw source presence is insufficient; only the canonical registered runtime chain can create a readiness defect.
 
 ---
 
@@ -259,83 +277,86 @@ Review stand пригоден для ограниченного ознакомл
 
 ### Wave 1 — security/data authority
 
-6. Rebase/requalify **#444**, **#424**, **#452**, **#441** on trusted main; #441 now has mandatory PostgreSQL proof.
+6. Rebase/requalify **#444**, **#424**, **#452**, **#441** on trusted main.
 7. Rebase/requalify **#455 → #456**.
-8. Rebase/requalify **#473/#472 Documents authority**.
-9. Finish exact qualification **#476/#474 Issues authority**, then refresh on trusted main.
-10. Continue sibling/cross-project scan only against canonical registered runtime paths; confirmed P0 enters Wave 1, false positives are closed with evidence.
-11. Rebase/requalify finance truth **#381/#382** and producers; explicit zero ≠ missing.
+8. Rebase/requalify **#473/#472 Documents authority** and **#476/#474 Issues authority**.
+9. Rebase/requalify **#479/#478 Selection authority**; when replay candidate #416 is refreshed later, authority must precede replay business commit and combined evidence must be rerun.
+10. Resolve **#481 Work Schedule Stage/dependency authority** with a bounded atomic contract; do not invent a fake dependency identity merely to satisfy security assertions.
+11. Continue sibling/cross-project scan only against canonical registered runtime paths; confirmed P0 enters Wave 1, false positives are closed with evidence.
+12. Rebase/requalify finance truth **#381/#382** and producers; explicit zero ≠ missing and unknown ≠ zero/plan.
+13. Keep #318 open for ledger-backed category actuals, obligation/payment/refund/dispute reconciliation and connected GP1/GP5 proof.
 
 ### Wave 2 — replay/atomicity
 
-12. Refresh/review/integrate **#322** first as recovery-tree prerequisite.
-13. Rebase exact children; raw stacked test counts are not integration.
-14. Early cross-cutting recovery: **#387**, then mutation-specific slices.
-15. Integrate only after exact qualification: #385, #383, #392, #404, #412, #414, #416, #418, #460; then #461.
-16. Repeat executable #431 inventory and close **#316 only when no reachable mutation remains unsafe**.
+14. Refresh/review/integrate **#322** first as recovery-tree prerequisite.
+15. Rebase exact children; raw stacked test counts are not integration.
+16. Early cross-cutting recovery: **#387**, then mutation-specific slices.
+17. Integrate only after exact qualification: #385, #383, #392, #404, #412, #414, #416, #418, #460; then #461.
+18. For #416, combine #479 Room authority before idempotency/replay commit; for #418 combine #476 issue authority before replay integration.
+19. Repeat executable #431 inventory and close **#316 only when no reachable mutation remains unsafe**.
 
 ### Wave 3 — global session/offline/cache
 
-17. Close **#315**: generation fence across request/token/storage/navigation/cache/inbox/queue/files; A→B→A and project1→project2.
-18. Close **#317**: transport taxonomy, durable enqueue reachability, per-resource cache provenance/as-of.
-19. Airplane/restart/reconnect + delayed-response + account-switch matrix across queued families.
+20. Close **#315**: generation fence across request/token/storage/navigation/cache/inbox/queue/files; A→B→A and project1→project2.
+21. Close **#317**: transport taxonomy, durable enqueue reachability, per-resource cache provenance/as-of.
+22. Airplane/restart/reconnect + delayed-response + account-switch matrix across queued families.
 
 ### Wave 4 — financial truth + first connected GP1
 
-20. Requalify project/room lifecycle #434/#438/#440.
-21. Integrate estimate lifecycle #444/#412/#457 + Change Order #448 + budget truth #381/#382 on one lineage.
-22. Reconcile plan/revised/obligation/actual/payment/receipt/refund/unknown facts and drill-down.
-23. Rebuild **#458** and prove GP1 API + mobile-web on one SHA including second-side/retry/reversal.
+23. Requalify project/room lifecycle #434/#438/#440.
+24. Integrate estimate lifecycle #444/#412/#457 + Change Order #448 + budget truth #381/#382 on one lineage.
+25. Close remaining #318 authoritative facts: plan/revised/obligation/actual/payment/receipt/refund/dispute/unknown and drill-down.
+26. Rebuild **#458** and prove GP1 API + mobile-web on one SHA including second-side/retry/reversal.
 
 ### Wave 5 — participants / GP2 / GP3
 
-24. Close **#300/#344/#345** across work/schedule/workorders/chat/notifications/docs/materials/expenses/payee.
-25. Complete participant UX after #429; API-only foundation is not product-complete.
-26. Two/three-contractor sibling negatives + customer aggregate truth.
-27. Connect GP2 and GP3 API + mobile-web.
+27. Close **#300/#344/#345** across work/schedule/workorders/chat/notifications/docs/materials/expenses/payee.
+28. Complete participant UX after #429; API-only foundation is not product-complete.
+29. Two/three-contractor sibling negatives + customer aggregate truth.
+30. Connect GP2 and GP3 API + mobile-web after #481 authority and replay/scope closure.
 
 ### Wave 6 — lifecycle closure edges
 
-28. **#319** purge/retention/storage full graph.
-29. **#320** authenticated native file save/share after #315.
-30. Unified closeout → archive/history → warranty → warranty closure.
-31. Close M07 supervisor, M08 viewer/revoke, M09 portal-token lifecycle.
-32. Internal simulated-provider qualification only; no automatic real-provider activation.
+31. **#319** purge/retention/storage full graph.
+32. **#320** authenticated native file save/share after #315.
+33. Unified closeout → archive/history → warranty → warranty closure.
+34. Close M07 supervisor, M08 viewer/revoke, M09 portal-token lifecycle.
+35. Internal simulated-provider qualification only; no automatic real-provider activation.
 
 ### Wave 7 — Human Usability Closure
 
-33. Customer Home: `статус → нужно решить → 7 дней → план/факт/прогноз → главный риск`.
-34. Contractor Home: `сегодня → просрочено → заблокировано → ждёт заказчика → готово к сдаче → деньги`.
-35. Stable top-level navigation; no phase-driven learned-position breakage.
-36. Object: `Комнаты / Смета / Чертежи и дизайн / Данные объекта`.
-37. Estimate: `Сводка / Позиции / Изменения / Документы`; Change Order = `Дополнительные работы`.
-38. Stage = aggregate container: tasks/materials/time/money/photos/issues/next action.
-39. Materials: `Нужно → Согласовано → Заказано → Доставлено`; **approved ≠ ordered**.
-40. Schedule: `Сегодня / 2 недели / Весь ремонт`; delays expose causes.
-41. Inbox = one attention center; Approvals = detail; Chat = context, not second source of truth.
-42. Unified acceptance/issue/warranty cards with explicit role actions.
-43. Documents: `Проект / Финансы / Приёмка и гарантия / Архив`; technical exports = advanced integrations.
-44. Contextual quick actions, accessibility/navigation, role-by-role friction retirement.
+36. Customer Home: `статус → нужно решить → 7 дней → план/факт/прогноз → главный риск`.
+37. Contractor Home: `сегодня → просрочено → заблокировано → ждёт заказчика → готово к сдаче → деньги`.
+38. Stable top-level navigation; no phase-driven learned-position breakage.
+39. Object: `Комнаты / Смета / Чертежи и дизайн / Данные объекта`.
+40. Estimate: `Сводка / Позиции / Изменения / Документы`; Change Order = `Дополнительные работы`.
+41. Stage = aggregate container: tasks/materials/time/money/photos/issues/next action.
+42. Materials: `Нужно → Согласовано → Заказано → Доставлено`; **approved ≠ ordered**.
+43. Schedule: `Сегодня / 2 недели / Весь ремонт`; delays expose causes.
+44. Inbox = one attention center; Approvals = detail; Chat = context, not second source of truth.
+45. Unified acceptance/issue/warranty cards with explicit role actions.
+46. Documents: `Проект / Финансы / Приёмка и гарантия / Архив`; technical exports = advanced integrations.
+47. Contextual quick actions, accessibility/navigation, role-by-role friction retirement.
 
 ### Wave 8 — one immutable PRODUCT COMPLETE candidate
 
-45. GP1–GP8 API + mobile-web on canonical PostgreSQL + Redis + MinIO + API + Worker.
-46. Customer×contractor concurrent run.
-47. Slow network/offline/response-loss/conflict/reversal/account-switch run.
-48. Chromium + WebKit 100% green; required native iOS/Android paths green.
-49. Deterministic review seed: active + near-closeout objects.
-50. Freeze exact SHA; any source change creates a new candidate and affected requalification.
-51. Release Evidence Pack = Board + GP + mutation inventory + calculations + security + migrations/restore + browser/device + provider truth + known external limitations.
+48. GP1–GP8 API + mobile-web on canonical PostgreSQL + Redis + MinIO + API + Worker.
+49. Customer×contractor concurrent run.
+50. Slow network/offline/response-loss/conflict/reversal/account-switch run.
+51. Chromium + WebKit 100% green; required native iOS/Android paths green.
+52. Deterministic review seed: active + near-closeout objects.
+53. Freeze exact SHA; any source change creates a new candidate and affected requalification.
+54. Release Evidence Pack = Board + GP + mutation inventory + calculations + security + migrations/restore + browser/device + provider truth + known external limitations.
 
 ### Wave 9 — external production qualification
 
-52. Persistent staging / exact-artifact promotion.
-53. Managed backup/PITR restore drill; measured RPO/RTO.
-54. Observability alert→delivery→ACK→recovery.
-55. Load/ramp/spike/soak.
-56. Independent security/pentest/legal/privacy.
-57. Real provider acceptance only for approved release scope.
-58. Controlled pilot/support/incident runbook.
+55. Persistent staging / exact-artifact promotion.
+56. Managed backup/PITR restore drill; measured RPO/RTO.
+57. Observability alert→delivery→ACK→recovery.
+58. Load/ramp/spike/soak.
+59. Independent security/pentest/legal/privacy.
+60. Real provider acceptance only for approved release scope.
+61. Controlled pilot/support/incident runbook.
 
 ---
 
@@ -352,7 +373,7 @@ Review stand пригоден для ограниченного ознакомл
 7. Если новая находка опровергается canonical route/service evidence — закрыть её, а не защищать ошибочно созданный backlog.
 8. Если новая находка делает прежний план неверным — изменить план, а не защищать старую очередь.
 
-**На текущем evidence cut integration-critical шаг остаётся owner-side resolution #247 → merge #425.** Поскольку этот prerequisite сейчас административно заблокирован, активная техническая работа продолжается в Wave 1: завершить #476 и sibling authority scan, не переходя к более низким UX-приоритетам. После #425 — fresh rebase/requalification #389/#372/#437/#450, затем всех Wave-1 candidates.
+**Integration-critical шаг остаётся owner-side resolution #247 → merge #425.** Поскольку этот prerequisite административно заблокирован, текущая активная техническая работа остаётся в Wave 1: **#481 Work Schedule authority → оставшаяся finance truth #318**. Уже bounded-proven #441/#473/#476/#479 не должны дорабатываться ради активности; после #425 они должны rebase/requalify. Только после Wave-1 authority/truth closure переходить к Wave 2 #322/#316.
 
 ---
 
