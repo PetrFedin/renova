@@ -16,6 +16,23 @@ function atDayStart(d: Date) {
   return x;
 }
 
+/**
+ * `YYYY-MM-DD` is a calendar day, not an instant.
+ *
+ * `new Date('2026-06-01')` is UTC midnight, which is 31 May anywhere west of
+ * UTC — so a 1 June expense fell outside "current month" and vanished from
+ * the screen. Parsing the parts keeps the day the day.
+ */
+function parseDay(iso: string) {
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+  return new Date(y, (m || 1) - 1, d || 1);
+}
+
+/** The inverse. `toISOString()` would shift the day east of UTC. */
+function formatDay(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function atDayEnd(d: Date) {
   const x = new Date(d);
   x.setHours(23, 59, 59, 999);
@@ -45,12 +62,13 @@ export function plannedShareForPeriod(
   period: BudgetPeriod,
   projectStart?: string | null,
   projectEnd?: string | null,
+  now = new Date(),
 ): number {
   if (plannedTotal <= 0) return 0;
   if (period === 'all') return plannedTotal;
-  const { start, end } = periodRange(period);
-  const pStart = projectStart ? atDayStart(new Date(projectStart.slice(0, 10))) : start;
-  const pEnd = projectEnd ? atDayEnd(new Date(projectEnd.slice(0, 10))) : end;
+  const { start, end } = periodRange(period, now);
+  const pStart = projectStart ? parseDay(projectStart) : start;
+  const pEnd = projectEnd ? atDayEnd(parseDay(projectEnd)) : end;
   const projMs = Math.max(1, pEnd.getTime() - pStart.getTime());
   const overlapStart = Math.max(start.getTime(), pStart.getTime());
   const overlapEnd = Math.min(end.getTime(), pEnd.getTime());
@@ -60,7 +78,7 @@ export function plannedShareForPeriod(
 
 function rowInRange(row: ExpenseDetailRow, start: Date, end: Date) {
   if (!row.date) return false;
-  const d = atDayStart(new Date(row.date.slice(0, 10)));
+  const d = parseDay(row.date);
   return d >= start && d <= end;
 }
 
@@ -89,12 +107,13 @@ export function buildPeriodBuckets(
   plannedTotal: number,
   projectStart?: string | null,
   projectEnd?: string | null,
+  now = new Date(),
 ): BudgetPeriodBucket[] {
-  const periodPlanned = plannedShareForPeriod(plannedTotal, period, projectStart, projectEnd);
-  const filtered = filterRowsByPeriod(rows, period);
+  const periodPlanned = plannedShareForPeriod(plannedTotal, period, projectStart, projectEnd, now);
+  const filtered = filterRowsByPeriod(rows, period, now);
 
   if (period === 'week') {
-    const { start } = periodRange(period);
+    const { start } = periodRange(period, now);
     const buckets: BudgetPeriodBucket[] = [];
     for (let i = 0; i < 7; i++) {
       const day = atDayStart(new Date(start));
@@ -102,7 +121,7 @@ export function buildPeriodBuckets(
       const dayEnd = atDayEnd(day);
       const dayRows = filtered.filter((r) => rowInRange(r, day, dayEnd));
       buckets.push({
-        key: day.toISOString().slice(0, 10),
+        key: formatDay(day),
         label: fmtDay(day),
         spent: sumRows(dayRows),
         planned: Math.round(periodPlanned / 7),
@@ -113,7 +132,6 @@ export function buildPeriodBuckets(
   }
 
   if (period === 'month') {
-    const now = new Date();
     const monthStart = atDayStart(new Date(now.getFullYear(), now.getMonth(), 1));
     const monthEnd = atDayEnd(new Date(now.getFullYear(), now.getMonth() + 1, 0));
     const buckets: BudgetPeriodBucket[] = [];
@@ -125,7 +143,7 @@ export function buildPeriodBuckets(
       if (wEnd > monthEnd) wEnd.setTime(monthEnd.getTime());
       const wRows = filtered.filter((r) => rowInRange(r, wStart, wEnd));
       buckets.push({
-        key: wStart.toISOString().slice(0, 10),
+        key: formatDay(wStart),
         label: `${fmtDay(wStart)} – ${fmtDay(wEnd)}`,
         spent: sumRows(wRows),
         planned: Math.round(periodPlanned / 4),
@@ -137,7 +155,7 @@ export function buildPeriodBuckets(
   }
 
   if (period === 'year') {
-    const y = new Date().getFullYear();
+    const y = now.getFullYear();
     return Array.from({ length: 12 }, (_, m) => {
       const mStart = atDayStart(new Date(y, m, 1));
       const mEnd = atDayEnd(new Date(y, m + 1, 0));

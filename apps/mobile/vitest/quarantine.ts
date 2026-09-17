@@ -26,7 +26,6 @@
  */
 export const QUARANTINED_MOBILE_TESTS: ReadonlyArray<readonly [string, string]> = [
   ['apps/mobile/lib/chatThreadOpen.w100.test.ts', 'assertion helper threw (see file)'],
-  ['apps/mobile/lib/domain/aggregateBudgetByPeriod.test.ts', 'Error: planned share'],
   ['apps/mobile/lib/domain/moreMenuA11y.w77.test.ts', 'Error: empty'],
   ['apps/mobile/lib/financialFormIntegrity.test.ts', 'Error: manual expense durable write boundary'],
   ['apps/mobile/lib/journeyUnify.w101.test.ts', 'assertion helper threw (see file)'],
