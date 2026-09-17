@@ -222,12 +222,9 @@ async def upsert_pin(
         project = await _lock_project(db, project_id)
         await _revalidate_authority(db, project=project, user_id=user_id)
         plan = await lock_floor_plan(db, project_id=project_id, plan_id=plan_id)
-        room = await _project_room_or_404(
-            db,
-            project_id=project_id,
-            room_id=canonical["room_id"],
-        )
 
+        # Replay is authoritative for an already committed intent. Do not make it
+        # depend on a mutable reference still being present after the original write.
         replay_id = await replay_entity_id(
             db,
             scope=PIN_SCOPE,
@@ -246,6 +243,11 @@ async def upsert_pin(
             await db.commit()
             return replayed, True
 
+        room = await _project_room_or_404(
+            db,
+            project_id=project_id,
+            room_id=canonical["room_id"],
+        )
         pin = (
             await db.execute(
                 select(FloorPlanPin).where(
