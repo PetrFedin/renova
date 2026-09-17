@@ -1,9 +1,23 @@
 # Renova — Product Completion Mandate
 
-**Статус:** ACTIVE — единственный приоритетный план работ до отдельного решения владельца.
-**Подчинение:** `AGENTS.md` остаётся authoritative engineering context. Этот документ задаёт *что* и *в каком порядке* делать; `AGENTS.md` — *как*. При конфликте формулировок приоритет у `AGENTS.md` и текущего кода/CI; конфликт фиксируется в §9 этого документа, а не решается молча.
-**Цель:** довести продукт до состояния **полностью работающего end-to-end для заказчика и исполнителя на симуляторах провайдеров**, с архитектурой, в которую живые ЮKassa/ФНС/Мой налог/Контур/Twilio подключаются добавлением адаптера, без изменения доменного кода.
-**Критерий завершения:** все 8 golden paths из `GOLDEN-PATHS.md` зелёные в API- и mobile-web-E2E на canonical local runtime, и `PRODUCTION-READINESS.md` §3 не содержит открытых product-integrity пунктов.
+**Статус:** ACTIVE — authoritative completion-task and acceptance catalogue.  
+**Текущий execution order:** `PRODUCT-COMPLETION-BOARD.md` + `CHANGELOG-ROADMAP.md`.  
+**Подчинение:** `AGENTS.md` остаётся authoritative engineering context. Этот документ задаёт обязательные задачи A1–E4 и их acceptance; Completion Board определяет *какой незакрытый контур делать следующим* на основании текущего `main`, exact-head evidence, новых P0 и dependency graph.  
+**Цель:** довести продукт до состояния **полностью работающего end-to-end для заказчика и исполнителя на предусмотренных симуляторах провайдеров**, с архитектурой, в которую живые провайдеры подключаются адаптером без подмены доменной истины.  
+**Критерий завершения:** все 8 golden paths из `GOLDEN-PATHS.md` зелёные в API- и mobile-web-E2E на canonical runtime, product-integrity blockers закрыты, а one-SHA exit gate из Completion Board выполнен.
+
+### Execution-precedence rule
+
+Acceptance из этого документа не ослабляется и task IDs не переопределяются. Однако старая фазовая последовательность **не имеет права обгонять более новый подтверждённый security/data/recovery/session/calculation blocker**.
+
+Перед выбором задачи агент обязан:
+
+1. прочитать `AGENTS.md`;
+2. сверить current `main`, migration head, open P0/P1, PR heads/bases и CI;
+3. прочитать `PRODUCT-COMPLETION-BOARD.md`;
+4. только затем использовать этот mandate для scope/evidence конкретного A1–E4 task.
+
+Если Board и этот документ расходятся по очередности, **Board управляет execution order, mandate управляет acceptance**. Если расходятся по требуемому продуктовому поведению — конфликт фиксируется в §9 и не решается молча.
 
 ---
 
@@ -14,226 +28,270 @@
 ### 1.1. Ничего не удалять без доказательства
 
 - Удаление файла, функции, класса, endpoint, route, миграции, теста, workflow, документа или поля модели допускается **только** при выполнении всех условий:
-  1. `grep -rn` по всему репозиторию (backend, apps/mobile, e2e, scripts, docs, .github) показывает ноль внешних ссылок, либо каждая ссылка переведена на замену в том же PR;
-  2. для кода — есть замена, покрытая тестом, который проверяет то же поведение;
-  3. для миграций — удаление запрещено всегда; только новая forward-миграция;
-  4. для тестов — тест удаляется только вместе с удалением проверяемого поведения, и это явно названо в PR;
-  5. для документов — перемещение в `docs/archive/` с пометкой `HISTORICAL` вместо удаления.
-- В описании PR обязателен раздел **`Removal proof`** с выводом grep и ссылкой на заменяющий код. PR без этого раздела при наличии удалений считается не соответствующим DoD.
-- Если доказательства ненужности нет на 100 % — не удалять. Оставить, пометить `# LEGACY-RETAINED: <reason> <issue>` и создать issue.
+  1. repository-wide search показывает ноль внешних ссылок, либо каждая ссылка переведена на замену в том же PR;
+  2. для кода есть замена, покрытая тестом того же поведения;
+  3. для миграций удаление запрещено; только новая forward migration;
+  4. тест удаляется только вместе с доказанным удалением/заменой проверяемого контракта;
+  5. исторические документы архивируются вместо уничтожения, если сохраняют traceability.
+- В описании PR обязателен `Removal proof` при наличии удалений.
+- Если доказательства ненужности нет — не удалять; сохранить/пометить и создать issue.
 
-### 1.2. Не ломать зелёное
+### 1.2. Не ломать зелёное и не переиспользовать stale green
 
-- Перед началом любой задачи: `npm run dev -- doctor && npm run dev -- check && npm run dev -- test-focused`. Если красное до изменений — сначала issue с фактом, задача не начинается на сломанной базе.
-- После изменений: `test-full` + релевантные PostgreSQL integrity workflow. SQLite-прогон не заменяет PostgreSQL-доказательство для concurrency, enum, миграций.
-- Локальный `1068 passed` на `main` от 2026-09-08 — baseline. Число прошедших тестов не должно уменьшаться ни в одном PR.
+- Перед началом задачи фиксируется **текущий** baseline exact branch/main, а не историческое число passed.
+- Если baseline красный до изменений — зафиксировать источник; не выдавать собственный PR за причину/решение чужого failure.
+- После изменений выполнить применимые full/targeted/PostgreSQL checks.
+- SQLite не заменяет PostgreSQL evidence для concurrency, locks, enum, migrations и DB authority.
+- Необъяснимое уменьшение coverage/test count — blocker; легитимное изменение состава тестов требует traceability.
+- После rebase/change SHA прошлый green является historical evidence exact старого SHA и не квалифицирует новый head.
 
 ### 1.3. Проверять от начала до конца, а не по месту правки
 
-Для каждой затронутой сущности агент обязан пройти цепочку целиком и зафиксировать её в PR:
+Для каждой затронутой сущности пройти цепочку:
 
-`mobile screen → api client (`apps/mobile/lib/api*`) → router (`app/api/v1`) → service → model/migration → outbox handler (если есть) → worker → mobile screen (обратный путь: инвалидация, уведомление, inbox)`.
+`mobile/UI → api client → router → service → transaction/model/migration → outbox/storage/provider → worker → authoritative read → counterpart UI → retry/reversal/history`.
 
-Разрыв цепочки на любом звене — дефект, даже если тесты зелёные. Найденные по пути дефекты вне задачи фиксируются как issue, не чинятся молча в том же PR (иначе PR становится непроверяемым).
+Разрыв цепочки — defect, даже если локальный unit test зелёный. Найденный defect вне bounded scope оформляется issue/Board row; не маскируется и не молча расширяет PR.
 
 ### 1.4. Размер и форма изменений
 
-- Один PR = одна задача из §4 или один именованный подпункт. Не более ~600 строк diff без явной причины.
-- Ветка: `agent/<phase>-<task-id>-<slug>` от актуального `main`.
-- Название PR: `<type>(<scope>): <task-id> <summary>`.
-- В PR обязательны разделы: `What`, `Why (link to mandate task)`, `Chain verified` (§1.3), `Removal proof` (§1.1, или «no removals»), `Evidence` (команды и их результат), `Out of scope / found issues`.
+- Один PR = одна bounded задача/подзадача или один именованный blocker.
+- Branch/PR naming следует `AGENTS.md` и текущему issue graph.
+- В PR обязательны: `What`, `Why`, `Chain verified`, `Removal proof`, `Evidence`, `Out of scope / found issues`.
+- Exact base/head SHA и applicability evidence обязательны.
 
 ### 1.5. Запрещено
 
-- Подключать реальные ключи провайдеров или менять `production`/`staging` policy на разрешение `simulated`.
-- Расширять legacy writers (`project_service.create_project`, `assign_contractor`, `budget_service_legacy`, `[legacyTab]`, finance-center redirects). Только retire по §4.
-- Добавлять новые GitHub workflow. Новые проверки — в существующий `ci.yml` или matrix (§4, фаза E).
-- Добавлять новые `docs/*.md` вне `technical-spec/` и `archive/`.
-- Закрывать issue #300 keyword-ами в PR.
-- Использовать `demo`-ветки (`demo=True` в `yookassa_service.create_payment`, `verify_receipt_stub`) как основу симуляторов — они заменяются, не расширяются.
+- Подключать реальные ключи provider-ов или ослаблять production/staging policy.
+- Расширять legacy writers вместо перевода в canonical service.
+- Ослаблять tests/gates ради green.
+- Переписывать assertion под текущее отображаемое значение без доказанного `STALE_CONTRACT`.
+- Закрывать #300 foundation-PR-ом, если full scoped lifecycle не принят.
+- Выдавать simulator/demo за real provider.
+- Выдавать source inventory за E2E proof.
+- Self-merge.
 
 ---
 
 ## 2. Приоритизация
 
-Порядок фаз фиксирован. Внутри фазы задачи можно параллелить между агентами, если они не трогают одни файлы. Переход к следующей фазе — после закрытия всех `P0` задач текущей.
+Фазы A–E ниже — **структура acceptance backlog**, а не неизменяемая календарная очередь.
 
-| Фаза | Цель | Ориентир |
+Текущий порядок выполнения вычисляется Completion Board по risk/dependency resolver:
+
+`security/data/money corruption → atomicity/recovery → session/offline/cache → calculation truth → browser/native correctness → lifecycle/multi-party → usability → external readiness → new features`.
+
+Если высшая задача ждёт owner/external action, агент берёт независимую задачу того же или более высокого класса риска; prerequisite не обходится.
+
+| Фаза mandate | Acceptance purpose | Execution note |
 |---|---|---|
-| **A. Foundation** | Golden paths как падающие E2E; порты и реестр провайдеров; симуляторы | 1–2 недели |
-| **B. Product truth** | #300 полностью; retire legacy writers; capacity/source-transition policy | 2–3 недели |
-| **C. Experience** | Realistic seed; дашборд, бюджет, график, документы, empty states; web-демо | 2 недели |
-| **D. End-to-end proof** | Все 8 golden paths зелёные API + mobile-web; negative paths | 1 неделя |
-| **E. Consolidation** | CI matrix, архив docs, readiness обновлён | 1 неделя |
+| **A. Foundation** | Golden-path contracts, provider ports/simulators | Делать тогда, когда не нарушает более высокий текущий P0/DAG prerequisite. |
+| **B. Product truth** | participant scope, legacy retirement, capacity/source truth | Security/data authority имеет высокий приоритет. |
+| **C. Experience** | seed, dashboard, budget, schedule, documents, empty states/demo | UX не обгоняет integrity blocker и не скрывает его. |
+| **D. End-to-end proof** | GP1–GP8 + negative/recovery | Финальный proof только на одном integrated SHA. |
+| **E. Consolidation** | CI/docs/readiness | Не использовать consolidation для ослабления существующих gates. |
 
 ---
 
 ## 3. Определения
 
-- **Port** — `Protocol` в `app/services/providers/base.py`, описывающий внешнюю способность (платёж, чек, статус НПД, подпись, SMS, push, storage). Доменный код зависит только от порта.
-- **Adapter** — реализация порта для конкретного провайдера (`adapters/yookassa.py`). Только адаптер знает формат провайдера.
-- **Simulator** — реализация порта, которая эмулирует полный жизненный цикл провайдера в памяти/БД, включая входящие webhook в собственную систему через существующий `/webhooks` путь. Запрещён в `production`.
-- **Contract test** — параметризованный тест, одинаковый для всех реализаций порта (`tests/providers/test_provider_contracts.py`).
-- **Golden path** — сквозной пользовательский сценарий из `GOLDEN-PATHS.md` с acceptance-критериями.
-- **Legacy writer** — путь мутации, дублирующий канонический (§13 `AGENTS.md`).
+- **Port** — protocol внешней способности; domain зависит от порта, не provider-specific SDK.
+- **Adapter** — реализация порта для конкретного provider-а.
+- **Simulator** — контролируемая реализация полного provider lifecycle для test/local; запрещён как silent production substitute.
+- **Contract test** — одинаковый behavior test для реализаций порта.
+- **Golden path** — сквозной пользовательский сценарий из `GOLDEN-PATHS.md`.
+- **Legacy writer** — mutation path, дублирующий canonical writer.
+- **Exact evidence** — evidence, привязанное к конкретному SHA/runtime; не переносится автоматически после change/rebase.
 
 ---
 
 ## 4. Задачи
 
-Формат: `ID · приоритет · описание · файлы/области · evidence`.
+Формат сохранён для `scripts/governance/create-mandate-issues.py`: `ID · приоритет · описание` + scope + `Evidence:`.
 
 ### Фаза A — Foundation
 
 **A1 · P0 · Golden paths как исполняемые контракты.**
-Создать `e2e/golden/` с одним Playwright-файлом на каждый путь из `GOLDEN-PATHS.md` (API-уровень) и `apps/mobile/e2e/golden/` (mobile-web). Тесты пишутся сразу по acceptance-критериям и **должны падать** там, где функционал не готов. Каждый тест помечается `@golden` и `@gp<N>`. В `ci.yml` добавляется job `golden-paths`, allowed-to-fail до фазы D.
-Evidence: список из 8 тестов с текущим статусом pass/fail и причиной fail для каждого.
+Создать `e2e/golden/` с одним Playwright-файлом на каждый путь из `GOLDEN-PATHS.md` (API-уровень) и `apps/mobile/e2e/golden/` (mobile-web). Тесты пишутся по acceptance-критериям и должны честно падать там, где функционал не готов. Каждый тест помечается `@golden` и `@gp<N>`. В существующей CI topology должен быть явный golden-path gate; временная allow-fail политика допустима только пока это зафиксировано как незакрытый gate.
+Evidence: список 8 GP с exact SHA/runtime и текущим pass/fail + причиной каждого fail.
 
 **A2 · P0 · Порты провайдеров.**
-Добавить `backend/app/services/providers/` из этого пакета (`base.py`, `registry.py`, `errors.py`). Ничего существующего не менять в этой задаче. Прогнать `tests/providers/` на симуляторе.
-Evidence: `pytest tests/providers -q` зелёный.
+Добавить/довести `backend/app/services/providers/` (`base.py`, `registry.py`, `errors.py`) без изменения продуктовой семантики. Existing providers мигрируют bounded-проходами, не big-bang refactor.
+Evidence: provider contract tests зелёные на exact candidate; no direct provider bypass introduced.
 
 **A3 · P0 · Симулятор платежей.**
-`providers/simulated/payment.py` (референс в пакете) довести до полного цикла: `create → pending → (succeed | cancel) → refund`, с генерацией webhook-события во внутренний обработчик через тот же код-путь, что реальный webhook (`payments.py` webhook endpoint → `process_webhook`). Симулятор персистентен в Redis/БД (не только память), чтобы переживать рестарт API и работать из worker.
-Admin/dev endpoint `POST /api/v1/dev/providers/payment/{external_id}/transition` (только `local`/`test`, fail-closed в остальных) для управления из E2E и с экрана `payment-return.tsx`.
-Evidence: contract test `[simulated]` зелёный; E2E GP5 доходит до `PaymentSucceeded` в outbox и записи `Expense`.
+Довести simulated payment lifecycle: `create → pending → (succeed | cancel) → refund`, через тот же domain/webhook processing path, что adapter contract. Симулятор должен переживать restart необходимого runtime и быть controllable из test/dev только fail-closed вне разрешённых environment.
+Evidence: contract test simulated + GP5 relevant slice; persisted domain/outbox/Expense truth сходится без двойного recognition.
 
 **A4 · P0 · Миграция платежей на порт.**
-Перевести `payment_checkout_service.py`, `subscription_checkout_service.py`, `payments.py`, `subscription.py`, `payment_checkout_integrity.py`, `subscription_integrity.py`, `admin.py`, `portal.py`, `staging_readiness.py` с прямого `yookassa_service` на `registry.payment_provider()`. Доменная часть `yookassa_service.py` (event_key, idempotency, money) переезжает в `providers/payments_domain.py`; ЮKassa-специфика — в `providers/adapters/yookassa.py`. `yookassa_service.py` остаётся тонким re-export-слоем с `# LEGACY-RETAINED` до фазы E.
-Evidence: `grep -rn "yookassa_service" app --include=*.py` показывает только re-export и адаптер; все существующие `test_yookassa_*`, `test_payment_*`, `test_subscription_*` зелёные без изменений ожидаемых значений.
+Перевести прямые provider-specific calls payment/subscription/admin/portal/readiness на provider registry/port. Provider-specific code остаётся в adapter; compatibility re-export допускается только как явный temporary bridge.
+Evidence: repository search показывает только допустимые adapter/re-export references; payment/subscription tests зелёные без подгонки expected values.
 
 **A5 · P0 · Симулятор ФНС-чеков и статуса НПД.**
-`providers/simulated/fiscal.py`: по QR-строке возвращает детерминированный чек (сумма/ИНН из seed), режимы `valid | not_found | amount_mismatch | timeout | rate_limited` выбираются по маркеру в QR (например, `fp=9999` → not_found). `providers/simulated/npd.py`: статусы `active | inactive | unknown` по ИНН из seed. Заменить `verify_receipt_stub` и текущие `demo`-ветки на вызов порта.
-Evidence: contract tests зелёные; `test_fns_*` зелёные; GP5 и GP6 проходят шаг «чек».
+Simulated fiscal/NPD должен поддерживать детерминированные valid/not_found/mismatch/timeout/rate-limit/active/inactive/unknown outcomes через provider port, а не demo shortcut.
+Evidence: provider contracts + affected GP5/GP6 receipt/status slices.
 
 **A6 · P1 · Симуляторы уведомлений и подписи.**
-SMS: `SimulatedSmsProvider` пишет в таблицу `dev_outbound_messages` (новая миграция) и в лог; E2E читает OTP оттуда вместо чтения из Redis напрямую. Push: аналогично + генерация push receipts для reconciliation worker. E-sign: существующий `in_app` считается симулятором; `external_stub.py` привести к порту.
-Evidence: GP8 проходит OTP-вход и получение push через симулятор; `test_otp_*`, `test_push_*` зелёные.
+SMS/push/e-sign simulated paths должны быть inspectable/replayable и использовать те же domain boundaries, что real adapters. E-sign simulation не называется юридически эквивалентной real qualified signature.
+Evidence: GP8 OTP/push simulated slice; e-sign contract path; exact persisted message/receipt evidence.
 
 **A7 · P1 · Режимы провайдеров в settings и runtime policy.**
-Единая схема `settings.<provider>_mode: off | simulated | real`. `runtime_policy` fail-closed: `simulated` запрещён в `staging`/`production`; `real` без ключей — ошибка старта (как сейчас для kontur). `/health` и `/ready` отдают режим каждого провайдера. Существующие `kontur_mode`, `goskey_mode`, `document_ocr_mode` приводятся к схеме без переименования env-переменных (alias).
-Evidence: `test_runtime_preflight_integrity.py` расширен; `staging_readiness` учитывает режимы.
+Единая semantic model `off | simulated | real`; simulated fail-closed in staging/production unless explicitly approved test environment; real without required credentials fails preflight. Health/readiness отражают фактический mode.
+Evidence: runtime/preflight integrity + provider mode matrix.
 
 ### Фаза B — Product truth (#300 и legacy)
 
 **B1 · P0 · Scoped participant visibility.**
-Все read-пути проекта (stages, work orders, schedule, documents, chat threads, notifications, expenses, materials) фильтруются по `ProjectParticipant.scope`. Исполнитель видит только свои этапы/work orders/треды; заказчик — всё. Negative tests: sibling contractor не видит и не может мутировать чужой scope (403/404 по контракту `AGENTS.md` §9).
-Evidence: PostgreSQL integrity `project-participant-postgres-integrity` расширен; GP2 и GP3 проходят с двумя исполнителями.
+Все relevant read/write пути проекта должны применять `ProjectParticipant.scope`. Исполнитель видит и мутирует только свой scope; заказчик — разрешённую aggregate truth. Sibling contractor negative tests обязательны.
+Evidence: PostgreSQL participant integrity + GP2/GP3 with two independent contractors.
 
 **B2 · P0 · Mobile participant UX.**
-Экран участников проекта у заказчика: список, роль, scope, статус лида, приглашение/замена/удаление. У исполнителя: «мои проекты» показывает только назначенные scope-ы, `contractor-wizard/[leadId]` завершает конверсию через канонический `marketplace_conversion_service`. Маршруты — только через `routeRegistry.ts`.
-Evidence: mobile-web E2E GP2; typecheck зелёный; `mobile-hub-navigation-integrity` зелёный.
+Заказчик управляет участниками/scope/status; исполнитель видит назначенные project/scope; direct/marketplace conversion заканчивается canonical participant truth; routes только через registry.
+Evidence: mobile-web GP2 + typecheck/navigation + sibling role scenarios.
 
 **B3 · P0 · Retire legacy writers.**
-`project_service.create_project()` и `assign_contractor()` делегируют в `project_create_service` / `project_assignment_service`; все внутренние/seed/demo вызовы переведены; после этого старые тела функций удаляются по правилу §1.1. `budget_service_legacy.py`: каждая функция сопоставлена с `budget_service` эквивалентом; переведены вызовы; удалено с proof. Mobile: `[legacyTab].tsx` и finance-center redirect — после проверки, что `routeRegistry` не содержит ссылок, и deep-link тесты покрывают старые URL редиректом на канон.
-Evidence: `Removal proof` в каждом PR; `test_budget_*`, `test_project_*` без изменений ожиданий.
+Legacy project/budget/mobile writers переводятся на canonical writers. Удаление только после repository-wide proof и behavioral replacement.
+Evidence: Removal proof + unchanged relevant business expectations.
 
 **B4 · P1 · Contractor capacity policy.**
-Единая политика лимита проектов исполнителя как ресурса (`contractor_free_project_limit` и подписка): advisory lock по contractor_id, проверка при create-with-contractor, assign, marketplace conversion, quote accept. PostgreSQL race test: два одновременных assignment на разных проектах одному исполнителю с лимитом 1 — ровно один успешен.
-Evidence: новый PostgreSQL integrity test в существующем `project-participant-postgres-integrity` workflow.
+Capacity проверяется атомарно при create/assign/conversion/quote acceptance. Concurrent operations не могут oversubscribe ограниченный resource.
+Evidence: PostgreSQL race with capacity=1 gives exactly one success.
 
 **B5 · P1 · Marketplace source transitions.**
-Все writers `JobLead` (quote select, auto-assign, conversion, cancel) через один `job_lead_transition_service` с `SELECT ... FOR UPDATE` и явной таблицей допустимых переходов. Race test: два исполнителя одновременно берут один лид — один `taken`, второй `409 lead_already_taken`.
-Evidence: PostgreSQL race test; GP2 negative path.
+JobLead writers сходятся в одной transition authority с row/version locking и явной transition table.
+Evidence: PostgreSQL race + GP2 negative path.
 
 ### Фаза C — Experience
 
 **C1 · P0 · Realistic seed.**
-`app/dev_seed.py` генерирует «проект в середине жизни»: 3-комнатная квартира с планировкой; 8 этапов (2 accepted, 1 on_review, 1 rework, 2 in_progress, 2 planned); 2 исполнителя с разными scope; 40 позиций сметы из calc-engine templates; 15 платежей (12 с валидными симулированными чеками, 1 без чека, 1 с mismatch, 1 в споре); 3 закупки материалов с ценовой историей; 2 просроченных пункта графика; 3 непрочитанных треда; 1 гарантийный claim; 1 change order на согласовании. Idempotentность seed сохраняется. Все суммы сходятся: план = смета, факт = Σ expenses, отклонение = факт − план по каждой категории.
-Evidence: `test_dev_seed_integrity.py` проверяет сходимость сумм и количество сущностей; `npm run dev -- seed` дважды подряд не дублирует.
+Deterministic realistic seed создаёт насыщенный mid-life project и near-closeout state с rooms, estimate, stages, participants, payments/evidence, materials/purchases, schedule, chat, issue/warranty/change. Повторный seed не дублирует. Финансовые facts сходятся по authoritative formulas.
+Evidence: seed integrity + double-seed idempotency + exact expected counts/amounts.
 
 **C2 · P0 · Дашборд заказчика.**
-Главная (`(customer)/(tabs)/index.tsx`): прогресс этапов (accepted/total и по весу сметы), план/факт/отклонение бюджета, ближайшие 3 события (приёмка, платёж, дедлайн), attention-блок из `dashboard_integrity_service` (просрочки, перерасход > threshold, споры, ожидающие согласования). Каждый элемент — deep-link в канонический hub через `routeRegistry`. Данные — с существующих `/os`, `/kpi_history`, `/analytics` эндпоинтов; недостающие агрегаты добавляются в `dashboard_integrity_service`, не в mobile.
-Evidence: mobile-web E2E на seed C1 проверяет конкретные числа; screenshot в PR.
+Главная показывает статус, нужные решения, ближайшие события, plan/fact/forecast и главный риск с deep-link в canonical detail. Не перегружать advanced analytics основным пользовательским flow.
+Evidence: mobile-web exact data from C1 + browser/accessibility state.
 
 **C3 · P0 · Бюджет: план → смета → факт → отклонение.**
-`(tabs)/budget.tsx`: сводка по категориям и по этапам, drill-down категория → позиции → платежи → чек (`PaymentDetailSheet`). Индикаторы `budgetThreshold`. Экспорт в PDF через `export.py`. Заказчик и исполнитель видят свою проекцию (исполнитель — только свой scope, B1).
-Evidence: числа на экране = числа из `test_dev_seed_integrity`; GP1 и GP5 mobile-web.
+Budget UI и API сохраняют различие plan/revised/obligation/actual/cash/forecast; category/record/evidence drill-down. Contractor projection соблюдает participant scope.
+Evidence: numbers reconcile with calculation registry/seed; GP1/GP5 relevant mobile-web.
 
 **C4 · P1 · График работ.**
-`UnifiedScheduleView`: gantt-подобная лента этапов с зависимостями из `dependency_service`, критический путь, просрочки, drag-free (только просмотр + переход в stage). Календарь `/calendar` остаётся hub; ICS-экспорт работает на seed.
-Evidence: mobile-web E2E GP3; `calendar-mutation-integrity` зелёный.
+Schedule показывает этапы/dependencies/critical delay truth и causal blocker; календарь остаётся canonical schedule access point.
+Evidence: GP3 mobile-web + calendar integrity.
 
 **C5 · P1 · Приёмка и гарантия в UI.**
-`work-acceptance.tsx`, `quality-control.tsx`, `StageDetailScreen`: полный цикл сдача → принять / вернуть с замечаниями → rework SLA → гарантийный claim; фото-доказательства через `media.py`; портал заказчика (`portal.tsx`) для решения без входа (portal token).
-Evidence: GP4 API + mobile-web; `technical-supervision-integrity`, `warranty-claim-postgres-integrity` зелёные.
+Полный flow `submit → accept/return → rework → confirm fix → close → warranty claim → warranty closure`, включая evidence/portal authority.
+Evidence: GP4 API + mobile-web + PostgreSQL warranty/supervision integrity.
 
 **C6 · P1 · Документы.**
-`DocumentsHub.tsx` (1065 строк) разбить на контейнер + секции без изменения поведения (proof: те же тесты). Цикл договор → версия → подпись in_app обеими сторонами → статус → экспорт архива (`export_archive`) и 1С (`onec_export`).
-Evidence: GP7; `document-*` тесты зелёные; diff DocumentsHub — только структурный.
+Document hub можно структурно декомпозировать без изменения поведения; lifecycle version → sign → status → authenticated export/archive. Native file outcome остаётся отдельным acceptance.
+Evidence: GP7 + document tests + structural removal/behavior proof.
 
 **C7 · P1 · Empty states и первый запуск.**
-`ProjectEmptyState.tsx` (465 строк) разбить по ролям/состояниям. Пройти первый запуск обеих ролей с чистой БД (без seed): каждый экран имеет осмысленное пустое состояние с одним действием, ведущим в GP1/GP3.
-Evidence: mobile-web E2E «cold start» для обеих ролей.
+Первый запуск обеих ролей на clean DB даёт осмысленный one-next-action empty state, ведущий в canonical GP, без demo-only shortcut.
+Evidence: customer + contractor clean-start mobile-web E2E.
 
 **C8 · P1 · Web-демо-стенд.**
-`npm run demo:web` собирает mobile-web с `iphone-shell.html`, `EXPO_PUBLIC_DEMO=1`, API на local runtime с seed C1. Один README-раздел «Демо за 3 команды». Не деплой — только воспроизводимая локальная сборка.
-Evidence: `expo-web-native-capability-integrity` зелёный; скриншоты обеих ролей в PR.
+Reproducible review/demo build использует deterministic seed и явные demo/provider modes. Public deployment, если существует, оценивается отдельно deployed smoke и не становится product-complete доказательством автоматически.
+Evidence: reproducible build + role entry + full browser contract; known browser failures остаются blocker до исправления.
 
 ### Фаза D — End-to-end proof
 
-**D1 · P0 · Все 8 golden paths зелёные (API + mobile-web).** Снять allowed-to-fail с job `golden-paths`.
-**D2 · P0 · Negative paths.** Для каждого GP минимум 2 отрицательных сценария из `GOLDEN-PATHS.md`.
-**D3 · P1 · Recovery paths.** Симулятор платежей: webhook пришёл дважды, пришёл раньше создания, пришёл с другой суммой, worker упал между outbox и Expense — состояние сходится через reconciliation. То же для чеков и push receipts.
-Evidence: `golden-paths` job зелёный на PostgreSQL topology; `PRODUCTION-READINESS.md` §3 обновлён.
+**D1 · P0 · Все 8 golden paths зелёные (API + mobile-web).**
+GP1–GP8 проходят на одном exact integrated SHA на canonical PostgreSQL + Redis + MinIO + API + Worker с предусмотренными simulated providers.
+Evidence: one-SHA golden-path job/result matrix без allow-fail для финального candidate.
+
+**D2 · P0 · Negative paths.**
+Для каждого GP минимум два релевантных отрицательных сценария плюс обязательные ACL/session/offline/concurrency cases по Completion Board.
+Evidence: exact negative matrix linked to GP IDs.
+
+**D3 · P1 · Recovery paths.**
+Duplicate/early/mismatched provider events, worker crash, response loss, restart и reconciliation сходятся к одному authoritative state без двойных business effects.
+Evidence: PostgreSQL/worker/provider recovery tests + GP recovery scenarios.
 
 ### Фаза E — Consolidation
 
-**E1 · P1 · CI matrix.** 51 workflow → `ci.yml` (lint/typecheck/unit), `postgres-integrity.yml` (matrix по текущим integrity-suite), `security.yml`, `mobile.yml`, `golden-paths.yml`, `release.yml`. Старые workflow — в `.github/workflows/archive/` с `if: false` на один релизный цикл, затем удаление по §1.1. Набор проверок не уменьшается: proof — таблица «старый workflow → новый job».
-**E2 · P1 · Docs archive.** Всё `docs/AUDIT-*`, `DOCUMENT-CENTER-WAVE*`, `MERGE-*`, `CI-*-FIX-*`, `*-2026-07-*` → `docs/archive/` с `HISTORICAL` шапкой. `README.md` §«Исторические документы» обновлён. `AGENTS.md` — не длиннее текущего; ссылки на архив.
-**E3 · P0 · Readiness truth.** `PRODUCTION-READINESS.md` и `production-readiness-evidence.json`: новый раздел `product_completeness` с 8 GP и их статусом; provider matrix отражает режимы `simulated/real`; внешние блокеры (#233–#257) не трогаются и не закрываются.
-**E4 · P2 · LICENSE.** Добавить `LICENSE` в корень (владелец выбирает; до выбора — `All rights reserved`).
+**E1 · P1 · CI matrix.**
+Consolidation workflow-ов допускается только с one-to-one mapping существующих checks и без уменьшения mandatory coverage. Не создавать новый workflow только ради обхода существующего governance.
+Evidence: old-check → new-job mapping + exact green candidate.
+
+**E2 · P1 · Docs archive.**
+Historical audit/merge/fix docs архивируются с `HISTORICAL`; current master/Board/roadmap остаются однозначными.
+Evidence: no broken authoritative links; historical docs не используются как current readiness.
+
+**E3 · P0 · Readiness truth.**
+`PRODUCTION-READINESS.md` и machine evidence показывают фактический product completeness/provider modes/external blockers и exact SHA.
+Evidence: readiness integrity + agreement with migration head and Completion Board final verdict.
+
+**E4 · P2 · LICENSE.**
+Добавить/уточнить repository LICENSE только по решению владельца; до решения не придумывать лицензию.
+Evidence: owner-approved license text or explicit retained status.
 
 ---
 
-## 5. Definition of Done (дополняет `AGENTS.md` §12)
+## 5. Definition of Done
 
-PR по мандату считается готовым, когда:
+PR по mandate task готов, когда:
 
-1. Задача указана по ID; scope PR не шире задачи.
-2. Разделы PR из §1.4 заполнены; `Chain verified` содержит реальный путь, а не шаблон.
-3. `Removal proof` присутствует при любом удалении; без него PR возвращается.
-4. `test-focused` и `test-full` зелёные локально; число passed ≥ baseline; релевантные PostgreSQL integrity зелёные в CI.
-5. Затронутые golden paths прогнаны; если статус GP изменился — обновлена таблица в `GOLDEN-PATHS.md` §«Статус».
-6. Найденные вне scope дефекты оформлены как issue со ссылкой на файл/строку.
-7. Ни один провайдер не переведён в `real`; `production`/`staging` policy не ослаблена.
-8. `typecheck:mobile` зелёный; новые экраны — только через `routeRegistry`.
+1. Task ID/scope указан; PR bounded.
+2. `Chain verified` содержит реальную affected path.
+3. `Removal proof` присутствует при удалении.
+4. Applicable focused/full/PostgreSQL/browser/native checks зелёные либо внешний blocker явно зафиксирован.
+5. Exact SHA/run записаны; stale old-head evidence не переиспользуется.
+6. Golden Path/Board status обновлён только если actual evidence изменился.
+7. Found out-of-scope defect оформлен issue/Board entry.
+8. Provider mode/readiness truth не ослаблена.
+9. Mobile typecheck/navigation/accessibility применимо проверены.
+10. No self-merge; owner/required reviewer принимает интеграцию.
 
 ---
 
 ## 6. Порядок работы одного агента над задачей
 
-1. Прочитать `AGENTS.md`, этот документ, `GOLDEN-PATHS.md`, контракт затронутой области в `technical-spec/`.
-2. `npm run dev -- doctor && bootstrap && check && test-focused` — зафиксировать baseline в PR.
-3. Найти все точки цепочки §1.3 через grep, записать список файлов *до* правок.
-4. Написать/расширить тест, который падает.
-5. Реализовать минимально; не рефакторить соседнее.
-6. Прогнать §5.4; приложить вывод.
-7. Пройти цепочку §1.3 руками (curl + mobile-web) и описать.
-8. Открыть PR по §1.4. Не мержить самостоятельно — merge делает владелец или второй агент-ревьюер по §7.
+1. Прочитать `AGENTS.md` → `PRODUCT-COMPLETION-BOARD.md` → master spec → roadmap → этот mandate → Golden Paths → domain contract.
+2. Сверить main/migration/issues/PR heads/CI/deployed evidence.
+3. Выбрать highest-priority available bounded blocker по Board; только затем сопоставить его с mandate ID/acceptance.
+4. Зафиксировать current baseline.
+5. Пройти affected chain и сформулировать failing contract/test.
+6. Реализовать минимальный bounded fix без соседнего scope creep.
+7. Прогнать exact applicable tests и persisted outcome checks.
+8. Обновить spec/Board/roadmap при изменении status/order.
+9. Открыть/обновить PR с exact evidence. Не мержить самостоятельно.
 
 ---
 
-## 7. Ревью вторым агентом
+## 7. Ревью вторым агентом/владельцем
 
-Каждый PR фазы A–B и каждый PR с удалениями проходит ревью вторым агентом с чек-листом:
+Для P0, deletion, security/data/recovery и других governed PR ревью проверяет:
 
-- Воспроизвёл `Evidence` независимо? (не доверять выводу из описания)
-- `Removal proof`: повторил grep сам, результат совпал?
-- Цепочка §1.3 замкнута? Есть ли экран/эндпоинт, который стал недостижим?
-- Есть ли расширение legacy writer или новый прямой вызов провайдера в обход порта?
-- Что ещё сломается, если это смержить? (назвать минимум одну гипотезу и проверить)
+- evidence воспроизводимо на exact candidate?
+- removal proof корректен?
+- chain действительно замкнута?
+- нет нового legacy/provider bypass?
+- новая проблема не замаскирована test rewrite?
+- какой adjacent failure наиболее вероятен и был ли проверен?
+- не используется ли stale base/green?
 
-Ревью пишется как комментарий к PR с вердиктом `APPROVE` / `CHANGES_REQUESTED` и списком проверенных пунктов.
+Вердикт и evidence остаются в PR. Merge выполняется только после required review/policy.
 
 ---
 
-## 8. Что мандат явно НЕ включает
+## 8. Что мандат явно НЕ делает автоматически
 
-- Внешний staging, production, managed backup/PITR, observability delivery, pentest, main protection (#233, #234, #235, #236, #237, #247, #256, #257) — остаются открытыми и не закрываются никакими PR по мандату.
-- Живые ключи и реальные транзакции.
-- Публикация в TestFlight/App Store.
-- Юридический контур (оферта, ПДн) — отдельное решение владельца.
+Следующие области требуют отдельной фактической внешней qualification и могут оставаться `FUTURE EXTERNAL` после internal product completeness:
+
+- persistent staging/exact artifact promotion;
+- production/main administrative protection evidence;
+- managed backup/PITR/DR;
+- external observability alert delivery/ACK;
+- load/capacity;
+- independent pentest/security acceptance;
+- живые provider credentials/transactions;
+- TestFlight/App Store distribution;
+- legal/privacy approval;
+- controlled production pilot.
+
+Репозиторный CI не закрывает эти внешние факты.
 
 ---
 
@@ -241,6 +299,6 @@ PR по мандату считается готовым, когда:
 
 | Дата | Конфликт | Решение | Кто |
 |---|---|---|---|
-| — | — | — | — |
+| 2026-09-16 | Старый mandate объявлял фиксированный фазовый порядок и исторический baseline, тогда как к этому времени появился новый P0 dependency graph и множество stacked exact-head candidates. | Acceptance A1–E4 сохранён; current execution order передан `PRODUCT-COMPLETION-BOARD.md`; baseline всегда берётся с текущего exact SHA. | governance reconciliation |
 
-Агент, обнаруживший противоречие между этим документом, `AGENTS.md` и кодом, добавляет строку сюда в том же PR и не принимает решение самостоятельно, если оно меняет продуктовое поведение.
+Агент, обнаруживший новый конфликт между mandate, `AGENTS.md`, Board и кодом, обязан обновить этот журнал или создать governance issue. Если конфликт меняет продуктовое поведение/authority, он не решается молча.
