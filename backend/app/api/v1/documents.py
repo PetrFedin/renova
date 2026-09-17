@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
-from app.models.entities import AcceptanceStatus, DesignPackage, Receipt, Stage, User, WorkAcceptance
+from app.models.entities import AcceptanceStatus, DesignPackage, Payment, Receipt, Stage, User, WorkAcceptance
 from app.models.project_documents import DocumentStatus, DocumentType, ProjectDocument
 from app.schemas.project_documents import DocumentCreateIn, DocumentSignIn, DocumentVersionIn, LegalHoldIn, OcrRunIn
 from app.services import project_document_service as docs_svc
@@ -42,6 +42,38 @@ async def require_project_docs(db: AsyncSession, project_id: str, user: User, *,
             raise HTTPException(404, "document_or_project_not_found") from e
         raise
 
+
+async def _require_project_document_refs(
+    db: AsyncSession,
+    project_id: str,
+    *,
+    stage_id: str | None = None,
+    payment_id: str | None = None,
+) -> None:
+    """Fail closed when optional document references belong to another project."""
+    if stage_id:
+        stage = (
+            await db.execute(
+                select(Stage.id).where(
+                    Stage.id == stage_id,
+                    Stage.project_id == project_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if stage is None:
+            raise HTTPException(404, "document_or_project_not_found")
+
+    if payment_id:
+        payment = (
+            await db.execute(
+                select(Payment.id).where(
+                    Payment.id == payment_id,
+                    Payment.project_id == project_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if payment is None:
+            raise HTTPException(404, "document_or_project_not_found")
 
 
 def export_doc(project_id: str, kind: str, title: str, href: str) -> dict:
@@ -225,6 +257,12 @@ async def create_project_document(
     db: AsyncSession = Depends(get_db),
 ):
     await require_project_docs(db, project_id, user, write=True)
+    await _require_project_document_refs(
+        db,
+        project_id,
+        stage_id=body.stage_id,
+        payment_id=body.payment_id,
+    )
     doc = await docs_svc.create_document(
         db,
         project_id=project_id,
@@ -405,6 +443,12 @@ async def upload_project_document(
 ):
     """D-06: multipart upload → storage + ProjectDocument + DocumentVersion."""
     await require_project_docs(db, project_id, user, write=True)
+    await _require_project_document_refs(
+        db,
+        project_id,
+        stage_id=stage_id,
+        payment_id=payment_id,
+    )
 
     data = await file.read()
     if not data:
