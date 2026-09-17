@@ -25,33 +25,32 @@ async def test_waste_same_target_replay_revalidates_target_role_without_duplicat
         phone=f"+78{uuid.uuid4().int % 10_000_000_000:010d}",
         role=UserRole.contractor,
     )
+    customer_id = customer.id
+    contractor_id = contractor.id
     db.add_all([customer, contractor])
     await db.flush()
     project = Project(
         id=_id("waste-replay-project"),
         name="Waste replay authority",
         renovation_type="cosmetic",
-        customer_id=customer.id,
-        contractor_id=contractor.id,
+        customer_id=customer_id,
+        contractor_id=contractor_id,
     )
+    project_id = project.id
     db.add(project)
     await db.flush()
     order = WasteOrder(
         id=_id("waste-replay-order"),
-        project_id=project.id,
+        project_id=project_id,
         volume_m3=2.5,
         waste_type="construction",
         status=WasteOrderStatus.requested,
         price=3500,
         notes="Already requested",
     )
+    order_id = order.id
     db.add(order)
     await db.commit()
-
-    customer_id = customer.id
-    contractor_id = contractor.id
-    project_id = project.id
-    order_id = order.id
 
     current_project = await db.get(Project, project_id, populate_existing=True)
     current_customer = await db.get(User, customer_id, populate_existing=True)
