@@ -58,6 +58,36 @@ const PICTOGRAPHIC = /[\u{1F300}-\u{1FAFF}\u{1F000}-\u{1F2FF}]/u;
 
 const HEX = /#[0-9a-fA-F]{3,8}\b/;
 
+/**
+ * Engineering vocabulary that leaked into Russian user-facing copy, e.g.
+ * "Предложить фиксацию без одностороннего lock" on the contractor's home card.
+ *
+ * Matched only inside a quoted string that also contains Cyrillic, and never
+ * when the word follows `.` or `${` — otherwise `${snapshot.documents_total}`
+ * and similar member names inside template literals dominate the output. A
+ * first draft of this rule reported 12 hits of which 10 were exactly that, so
+ * the boundary is deliberate.
+ */
+const JARGON = /(?<![.$}\w])\b(lock|outbox|payload|fallback|idempotency|deeplink|SoT|ACL)\b/;
+const CYRILLIC = /[а-яА-ЯёЁ]/;
+const QUOTED = /['"`]([^'"`\n]*)['"`]/g;
+
+/**
+ * routeRegistry.ts is developer-facing metadata, not UI copy: neither titleRu
+ * nor descriptionRu is rendered by any component (verified by grep over app/
+ * and components/), so "Legacy deeplink → бюджет" there documents a redirect
+ * for a reader of the registry.
+ */
+const JARGON_EXEMPT_FILES = new Set(['apps/mobile/lib/routeRegistry.ts']);
+
+function hasJargonInCopy(line) {
+  for (const match of line.matchAll(QUOTED)) {
+    const text = match[1];
+    if (CYRILLIC.test(text) && JARGON.test(text)) return true;
+  }
+  return false;
+}
+
 function walk(dir, found = []) {
   if (!existsSync(dir)) return found;
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -77,7 +107,7 @@ function isTokenSource(relativePath) {
 }
 
 function collect() {
-  const findings = { 'local-hex': [], 'pictographic-emoji': [] };
+  const findings = { 'local-hex': [], 'pictographic-emoji': [], 'jargon-in-copy': [] };
 
   for (const dir of SCAN_DIRS) {
     for (const file of walk(join(MOBILE, dir))) {
@@ -91,6 +121,9 @@ function collect() {
         if (PICTOGRAPHIC.test(line) && !isAllowlisted(rel, line)) {
           findings['pictographic-emoji'].push(`${rel}:${index + 1}`);
         }
+        if (!JARGON_EXEMPT_FILES.has(rel) && hasJargonInCopy(line)) {
+          findings['jargon-in-copy'].push(`${rel}:${index + 1}`);
+        }
       });
     }
   }
@@ -102,6 +135,8 @@ const RULES = {
     'hard-coded colour. Use RenovaTheme.colors.* or uiTokens — a literal cannot follow the theme.',
   'pictographic-emoji':
     'emoji instead of an icon. Use Ionicons; an emoji has no accessible name, no size token and renders differently per platform.',
+  'jargon-in-copy':
+    'engineering vocabulary in Russian user-facing copy. Say what the user is doing, not how it is implemented.',
 };
 
 function main() {

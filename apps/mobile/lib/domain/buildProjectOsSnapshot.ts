@@ -364,7 +364,13 @@ export function buildProjectOsSnapshot(
     const proposed = !!project.estimate_lock_proposed_at;
     nextAction = {
       title: proposed ? 'Смета у заказчика' : 'Отправить смету на согласование',
-      subtitle: proposed ? 'Ждём фиксацию заказчиком' : 'Предложить фиксацию без одностороннего lock',
+      // Was 'Предложить фиксацию без одностороннего lock' — an English word in
+      // a Russian interface, describing an internal property (the estimate
+      // cannot be locked unilaterally) instead of what the contractor is about
+      // to do. Mirrors the customer-side subtitle two branches above.
+      subtitle: proposed
+        ? 'Ждём фиксацию заказчиком'
+        : `${estimateLines} поз. · заказчик подтвердит фиксацию`,
       button: 'Смета',
       href: objectTabRoute(role, 'estimate'),
       kind: 'expense',
