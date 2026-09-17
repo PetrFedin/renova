@@ -4,24 +4,12 @@ import { join } from 'node:path';
 const mobile = join(__dirname, '..');
 const repo = join(mobile, '..', '..');
 const backend = (relativePath: string) => readFileSync(join(repo, 'backend', relativePath), 'utf8');
+import { mustPrecede } from './testing/sourceOrder';
+
 const must = (condition: boolean, message: string) => {
   if (!condition) throw new Error(message);
 };
 
-/**
- * `a.indexOf(x) < a.indexOf(y)` passes when x is absent.
- *
- * A missing string gives -1, which is below every real index, so deleting the
- * guard entirely satisfies the assertion that the guard comes first. Both
- * strings have to be required explicitly.
- */
-const mustPrecede = (source: string, before: string, after: string, message: string) => {
-  const first = source.indexOf(before);
-  const second = source.indexOf(after);
-  must(first >= 0, `${message}: ${JSON.stringify(before)} is not present at all`);
-  must(second >= 0, `${message}: ${JSON.stringify(after)} is not present at all`);
-  must(first < second, message);
-};
 
 const endpoint = backend('app/api/v1/purchases.py');
 const service = backend('app/services/purchase_service.py');

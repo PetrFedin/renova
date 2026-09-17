@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { mustPrecede } from './testing/sourceOrder';
 
 const mobile = join(__dirname, '..');
 const repo = join(mobile, '..', '..');
@@ -25,7 +26,7 @@ must(sheet.includes('confirmableIds, matchToken'), 'sheet confirms the exact sig
 must(sheet.includes('expenses_replayed'), 'sheet distinguishes new and replayed expenses');
 must(sheet.includes('replayed_count'), 'sheet reports replayed payment confirmations');
 
-must(router.indexOf('include_router(bank_statements.router)') < router.indexOf('include_router(export.router)'), 'canonical bank routes precede legacy routes');
+mustPrecede(router, 'include_router(bank_statements.router)', 'include_router(export.router)', 'canonical bank routes precede legacy routes');
 must(endpoint.includes('UserRole.customer') && endpoint.includes('user.id != project.customer_id'), 'bank confirmation is customer-owner only');
 must(endpoint.includes('verify_match_token('), 'confirmation verifies signed match evidence');
 must(endpoint.includes('annotate_statement_rows('), 'statement rows receive canonical identities before matching');
