@@ -78,7 +78,7 @@ const mocks = new Map([
   ['@/lib/useProjectDataReload', { useProjectDataReload: () => undefined }],
   ['@/lib/mediaUpload', { uploadMediaBlob: async () => 'media/floor-plan.jpg' }],
   ['@/lib/offlineUi', {
-    isOfflineQueued: error => error instanceof Error && error.message === 'offline_queued',
+    isOfflineQueued: error => Boolean(error && error.message === 'offline_queued'),
     notifyOfflineQueued: label => notifications.push(label),
   }],
   ['@/components/renova/OfflineSyncStatus', { OfflineSyncStatus: stubComponent('OfflineSyncStatus') }],
