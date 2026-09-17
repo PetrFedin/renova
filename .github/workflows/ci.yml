@@ -105,7 +105,15 @@ jobs:
           assert not root.findall('.//skipped'), 'skipped tests are not qualification evidence'
           assert not root.findall('.//failure') and not root.findall('.//error')
           races = [c for c in cases if c.get('classname', '').endswith('test_chat_business_commands_postgres')]
-          assert len(races) >= 6, 'all six physical PostgreSQL scenarios must execute'
+          assert len(races) >= 6, 'physical PostgreSQL scenarios must execute'
+          race_names = {c.get('name', '') for c in races}
+          required_work_order = {
+              'test_direct_work_order_same_key_postgres_race_persists_one_canonical_result[contract]',
+              'test_direct_work_order_same_key_postgres_race_persists_one_canonical_result[milestone]',
+              'test_direct_work_order_rechecks_authority_after_postgres_lock_wait[contract]',
+              'test_direct_work_order_rechecks_authority_after_postgres_lock_wait[milestone]',
+          }
+          assert required_work_order <= race_names, 'all exact direct WorkOrder PostgreSQL replay/revocation cases must execute'
           PY
       - name: Retain chat command and PostgreSQL qualification
         if: always()
