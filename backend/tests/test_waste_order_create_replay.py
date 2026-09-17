@@ -18,47 +18,52 @@ def _id(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:12]}"
 
 
-async def _seed(db):
+async def _seed(db) -> tuple[str, str, str, str]:
     customer = User(
         id=_id("waste-customer"),
         phone=f"+79{uuid.uuid4().int % 10_000_000_000:010d}",
         role=UserRole.customer,
     )
+    customer_id = customer.id
     project = Project(
         id=_id("waste-project"),
         name="Waste replay",
         renovation_type="cosmetic",
-        customer_id=customer.id,
+        customer_id=customer_id,
     )
+    project_id = project.id
     foreign_project = Project(
         id=_id("waste-foreign-project"),
         name="Foreign waste project",
         renovation_type="cosmetic",
-        customer_id=customer.id,
+        customer_id=customer_id,
     )
+    foreign_project_id = foreign_project.id
     db.add(customer)
     await db.flush()
     db.add_all([project, foreign_project])
     await db.flush()
     room = Room(
         id=_id("waste-room"),
-        project_id=project.id,
+        project_id=project_id,
         name="Kitchen",
         room_type="kitchen",
         length_m=4,
         width_m=3,
     )
+    room_id = room.id
     foreign_room = Room(
         id=_id("waste-foreign-room"),
-        project_id=foreign_project.id,
+        project_id=foreign_project_id,
         name="Foreign room",
         room_type="living",
         length_m=5,
         width_m=4,
     )
+    foreign_room_id = foreign_room.id
     db.add_all([room, foreign_room])
     await db.commit()
-    return customer, project, room, foreign_room
+    return customer_id, project_id, room_id, foreign_room_id
 
 
 async def _count(db, model, *where) -> int:
@@ -78,11 +83,7 @@ def _payload(room_id: str, *, notes: str = "После демонтажа") -> d
 
 @pytest.mark.asyncio
 async def test_waste_order_create_replays_original_conflicts_changed_payload_preserves_distinct_intents_and_rejects_foreign_room(db):
-    customer, project, room, foreign_room = await _seed(db)
-    customer_id = customer.id
-    project_id = project.id
-    room_id = room.id
-    foreign_room_id = foreign_room.id
+    customer_id, project_id, room_id, foreign_room_id = await _seed(db)
     payload = _payload(room_id)
 
     first, replayed = await waste_svc.create_order(
@@ -165,10 +166,7 @@ async def test_waste_order_create_replays_original_conflicts_changed_payload_pre
 
 @pytest.mark.asyncio
 async def test_waste_order_create_rolls_back_flushed_order_and_ledger_then_same_intent_recovers(db, monkeypatch):
-    customer, project, room, _foreign_room = await _seed(db)
-    customer_id = customer.id
-    project_id = project.id
-    room_id = room.id
+    customer_id, project_id, room_id, _foreign_room_id = await _seed(db)
     payload = _payload(room_id)
     original_commit = waste_svc.commit_client_write
 
