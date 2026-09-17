@@ -93,6 +93,25 @@ must(
   'the 2025 row and the future row stay out of the 2026 buckets',
 );
 
+// A year that is not the current one, so the assertion cannot pass by accident
+// on a run where the wall clock happens to agree with `now`.
+const pastYear = buildPeriodBuckets(
+  rows,
+  'year',
+  120000,
+  '2019-01-01',
+  '2019-12-31',
+  new Date('2019-06-20T12:00:00'),
+);
+must(
+  pastYear.every((b) => b.key.startsWith('2019-')),
+  `the year buckets must come from \`now\`, not the wall clock; got ${pastYear[0]?.key}`,
+);
+must(
+  pastYear.every((b) => b.rows.length === 0),
+  'no 2026 expense may appear in 2019 buckets',
+);
+
 const weekBuckets = buildPeriodBuckets(rows, 'week', 120000, PROJECT_START, PROJECT_END, now);
 must(weekBuckets.length === 7, `a week has seven buckets, got ${weekBuckets.length}`);
 must(
