@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api.v1.issue_transitions import IssueTransitionIn, transition_issue as transition_issue_api
+from app.core.timeutil import utc_now
 from app.db.base import Base
 from app.models.client_write_request import ClientWriteRequest  # noqa: F401
 from app.models.entities import DomainOutbox, Project, ProjectIssue, User, UserRole
@@ -74,7 +75,20 @@ async def test_close_and_reopen_manage_closed_timestamp():
     closed = await service.transition_issue(FakeDb(), issue, "closed", UserRole.customer)
     assert closed.status == "closed"
     assert isinstance(closed.closed_at, datetime)
-    assert closed.closed_at.tzinfo == timezone.utc
+
+    # This used to assert `tzinfo == timezone.utc`, which pinned the defect:
+    # `closed_at` is a bare `DateTime` column, i.e. TIMESTAMP WITHOUT TIME ZONE,
+    # and asyncpg refuses an aware value for one. Closing a defect answered 500
+    # on PostgreSQL for exactly as long as this assertion demanded the aware
+    # shape. The test never noticed because it runs against a SimpleNamespace
+    # and the suite's engine is SQLite, which accepts either.
+    assert closed.closed_at.tzinfo is None, (
+        "closed_at must be naive UTC — an aware datetime cannot be stored in a "
+        "TIMESTAMP WITHOUT TIME ZONE column"
+    )
+    assert abs((closed.closed_at - utc_now()).total_seconds()) < 60, (
+        "closed_at must be UTC, not local time"
+    )
 
     reopened = await service.transition_issue(FakeDb(), closed, "open", UserRole.customer)
     assert reopened.status == "open"
