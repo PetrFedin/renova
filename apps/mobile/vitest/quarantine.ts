@@ -20,7 +20,11 @@
  *  - behavioural claims that may be real defects and need a human decision:
  *    `purchaseTransitionIntegrity` ("delivery increments inventory once"),
  *    `financialFormIntegrity`, `aggregateBudgetByPeriod` ("planned share"),
- *    `materialPickLifecycleIntegrity`, `paymentEventHistoryIntegrity`.
+ *    `materialPickLifecycleIntegrity`.
+ *
+ * `paymentEventHistoryIntegrity` left the list: its claim was measuring the
+ * wrong thing — see backend/tests/test_route_table_has_no_shadowed_routes.py,
+ * which asserts the property itself on the runtime route table.
  *
  * Triage belongs in its own issue, not in the change that made them visible.
  */
@@ -44,7 +48,6 @@ export const QUARANTINED_MOBILE_TESTS: ReadonlyArray<readonly [string, string]> 
   ['apps/mobile/lib/materialPickLifecycleIntegrity.test.ts', 'Error: price mutation requires editable material'],
   ['apps/mobile/lib/offline/sync.w92.test.ts', 'Error: W92 sync.ts missing: if (synced > 0)'],
   ['apps/mobile/lib/offline/sync.w94.test.ts', 'Error: missing writeQueue'],
-  ['apps/mobile/lib/paymentEventHistoryIntegrity.test.ts', 'AssertionError: History route must precede the legacy list route'],
   ['apps/mobile/lib/portalPayHonesty.w144.test.ts', 'assertion helper threw (see file)'],
   ['apps/mobile/lib/projectDataBus.w99.test.ts', 'Error: EstimateDocumentsLayer.tsx missing syncProjectSideEffects'],
   ['apps/mobile/lib/purchaseTransitionIntegrity.test.ts', 'Error: delivery increments inventory once'],

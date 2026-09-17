@@ -95,7 +95,32 @@ assert.match(service, /Receipt\.payment_id\.in_\(payment_ids\)/, 'Receipt links 
 assert.match(service, /_SAFE_NOTE_EVIDENCE/, 'Technical notes must be filtered server-side');
 assert.doesNotMatch(service, /"evidence_ref":/, 'Raw provider evidence references must not leave the server projection');
 assert.match(route, /events=event_map\.get\(payment\.id, \[\]\)/, 'Canonical payment list must embed event history');
-assert.ok(router.indexOf('payment_history.router') < router.indexOf('payments.router'), 'History route must precede the legacy list route');
+// The canonical list must be the history one. This used to be asserted as
+// `indexOf('payment_history.router') < indexOf('payments.router')`, which
+// measured the wrong thing: the first occurrence of `payments.router` is the
+// `_remove_replaced_routes(payments.router, ...)` line above the includes, so
+// the comparison was false however the routers were ordered.
+//
+// It was also the weaker claim. router.py does not rely on include order at
+// all — it deletes the superseded route from the older router, which survives
+// someone moving an include_router line. That is what is asserted here, and
+// the runtime route table is asserted to have no shadowing at all in
+// backend/tests/test_route_table_has_no_shadowed_routes.py.
+assert.match(
+  router,
+  /_PAYMENT_HISTORY_ROUTES[^=]*=\s*\{\("\/projects\/\{project_id\}\/payments",\s*"GET"\)\}/,
+  'the superseded payments list route must be named exactly',
+);
+assert.match(
+  router,
+  /_remove_replaced_routes\(\s*payments\.router,[^)]*_PAYMENT_HISTORY_ROUTES/,
+  'the legacy payments list route must be removed, not merely out-ordered',
+);
+assert.match(
+  router,
+  /api_router\.include_router\(payment_history\.router\)/,
+  'the history router must be included',
+);
 assert.match(schema, /events: list\[PaymentEventOut\] = Field\(default_factory=list\)/, 'API schema must provide a safe empty history');
 assert.match(typeSource, /events\?: PaymentEvent\[\]/, 'Mobile Payment type must expose canonical events');
 assert.doesNotMatch(historySource, /без отдельного API/, 'Synthetic-only history must not return');
