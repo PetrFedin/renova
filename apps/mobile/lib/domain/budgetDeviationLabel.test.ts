@@ -54,11 +54,19 @@ for (const deviation of [-185938, -1, 0, 1, 185938]) {
   );
 }
 
-// --- degenerate inputs do not produce NaN ₽ ---------------------------------
+// --- degenerate inputs do not reach the screen ------------------------------
+//
+// Intl formats these in Russian, so a check for "NaN" or "Infinity" would pass
+// no matter what: NaN renders as «не число ₽» and Infinity as «∞ ₽». The
+// assertion has to name the expected output instead.
 
+const zero = formatDeviationValue(0);
 for (const bad of [NaN, Infinity, -Infinity]) {
   const value = formatDeviationValue(bad);
-  must(!/NaN|Infinity/.test(value), `a non-finite deviation must not reach the screen; got ${value}`);
+  must(
+    value === zero,
+    `a non-finite deviation must render as ${JSON.stringify(zero)}; got ${JSON.stringify(value)}`,
+  );
 }
 
 // --- the screen uses the helpers rather than its own formatting -------------
