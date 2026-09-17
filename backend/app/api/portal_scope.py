@@ -41,6 +41,11 @@ WRITE_SCOPES = frozenset({"accept_stage", "sign_document", "pay"})
 #: The portal screen calls ``/auth/me`` to resolve who the link belongs to.
 #: Keep this list closed and small — every entry is a route a leaked link can
 #: reach, so anything added here must be safe for a stranger to call.
+#:
+#: ``/auth/me`` only qualifies because it refuses to mint a fresh access token
+#: for a portal caller. It used to, and that made this entire module
+#: bypassable in one request: the new token carried no ``portal`` claim, so
+#: nothing downstream restricted it. See `is_portal_request`.
 PROJECTLESS_READS = frozenset({"/api/v1/auth/me"})
 
 
@@ -60,6 +65,14 @@ def enforce_portal_scope(request: Request, payload: dict | None) -> None:
     if claims is None:
         return
 
+    # Handlers need to know they are serving a portal link. Without this,
+    # /auth/me happily minted a fresh, unrestricted token and the whole check
+    # was bypassable in one request.
+    try:
+        request.state.portal_claims = claims
+    except Exception:  # pragma: no cover - a request without mutable state
+        pass
+
     scopes = set(claims.get("scopes") or ["read"])
     method = request.method.upper()
 
@@ -77,3 +90,12 @@ def enforce_portal_scope(request: Request, payload: dict | None) -> None:
 
     if not bound or not requested or requested != bound:
         raise HTTPException(403, "portal_token_project_mismatch")
+
+
+def is_portal_request(request: Request) -> bool:
+    """Whether this request is authenticated by a portal link.
+
+    Handlers use it to withhold anything that would escape the link's limits —
+    above all a freshly minted access token.
+    """
+    return bool(getattr(request.state, "portal_claims", None))

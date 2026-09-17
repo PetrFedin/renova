@@ -239,3 +239,48 @@ def test_existing_claim_shape_is_unchanged():
     assert claims["project_id"] == "portal-project"
     assert claims["scopes"] == WRITE_SCOPES
     assert claims["read_only"] is False
+
+
+# --- the revocation cutoff must not depend on the host's timezone ------------
+
+
+def test_revocation_cutoff_is_read_as_utc_on_any_host(monkeypatch):
+    """`sign out everywhere` had a bypass window the size of the UTC offset.
+
+    `tokens_invalid_before` is stored as naive UTC, and
+    `.replace(tzinfo=None).timestamp()` reads a naive value as *local* time. On
+    a Moscow host that made a link minted up to three hours before the
+    revocation keep working. CI runs in UTC, where the two readings agree — so
+    the suite was green precisely where the bug could not appear.
+
+    This pins the conversion under a non-UTC zone in-process.
+    """
+    import os
+    import time
+    from datetime import datetime, timezone
+
+    from app.services.portal_access import _issued_before_revocation
+
+    original = os.environ.get("TZ")
+    try:
+        os.environ["TZ"] = "Europe/Moscow"
+        time.tzset()
+
+        cutoff_utc = datetime(2026, 9, 17, 12, 0, 0)  # naive, meaning UTC
+        cutoff_epoch = cutoff_utc.replace(tzinfo=timezone.utc).timestamp()
+
+        # Minted one minute before the revocation: must be refused.
+        assert _issued_before_revocation(cutoff_epoch - 60, cutoff_utc) is True
+
+        # Minted one minute after: must still work.
+        assert _issued_before_revocation(cutoff_epoch + 60, cutoff_utc) is False
+
+        # The window the bug opened: two hours before the cutoff is still
+        # inside Moscow's +3 offset, so the old reading let it through.
+        assert _issued_before_revocation(cutoff_epoch - 2 * 3600, cutoff_utc) is True
+    finally:
+        if original is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = original
+        time.tzset()

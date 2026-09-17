@@ -175,6 +175,57 @@ async def test_a_write_scope_still_allows_its_own_project():
 # --- what the portal legitimately needs ---------------------------------------
 
 
+async def test_auth_me_does_not_hand_a_portal_link_a_fresh_session():
+    """The bypass this module exists to prevent, and the one it first allowed.
+
+    `/auth/me` is allowlisted because the portal screen needs to know who the
+    link belongs to. It also used to answer with a newly minted access token —
+    and that token carried no `portal` claim, so nothing downstream restricted
+    it. One request turned a read-only link for project A into a full session
+    with write access to project B.
+
+    The first version of this test only asserted `status_code == 200`, which is
+    exactly why it passed while the hole was open.
+    """
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        customer, own, other = await _two_projects(client)
+        body = await _portal_bearer(
+            client, user_id=customer["id"], project_id=own, scopes=["read"]
+        )
+        headers = {"Authorization": f"Bearer {body['access_token']}"}
+
+        me = await client.get("/api/v1/auth/me", headers=headers)
+        assert me.status_code == 200, me.text
+        payload = me.json()
+
+        assert payload["id"] == customer["id"], "the link must still identify its holder"
+        assert not payload.get("access_token"), (
+            "a portal link must not be able to trade /auth/me for an unrestricted token"
+        )
+        assert not payload.get("refresh_token")
+
+        # And the restriction genuinely still holds afterwards.
+        foreign = await client.get(f"/api/v1/projects/{other}", headers=headers)
+        assert foreign.status_code == 403
+        assert "portal_token_project_mismatch" in foreign.text
+
+
+async def test_a_normal_session_still_gets_its_token_from_auth_me():
+    """Guards the guard: withholding the token from everyone would also pass
+    the test above, and would break ordinary sign-in."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        user = (await client.post("/api/v1/auth/demo", json={"role": "customer"})).json()
+        headers = {"Authorization": f"Bearer {user['access_token']}"}
+
+        me = await client.get("/api/v1/auth/me", headers=headers)
+        assert me.status_code == 200
+        assert me.json().get("access_token"), (
+            "an ordinary session must keep refreshing its access token"
+        )
+
+
 async def test_the_portal_can_still_resolve_who_it_belongs_to():
     """The portal screen calls /auth/me, which carries no project id."""
     transport = ASGITransport(app=app)
