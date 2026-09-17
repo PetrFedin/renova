@@ -4,12 +4,46 @@ from __future__ import annotations
 from app.core.timeutil import utc_now
 from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import or_, select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import AppNotification, NotificationType
 from app.models.outbox_runtime import SideEffectDelivery
 from app.services.push_service import send_push, stable_push_delivery_id
+
+
+async def mark_chat_thread_notifications_read(
+    db: AsyncSession, *, user_id: str, thread_id: str
+) -> int:
+    """Clear this user's unread notifications about one chat thread.
+
+    A chat_message notification carries no message id — only
+    ``link_path == "/chat/{thread_id}"`` — so it can be resolved to a thread but
+    not to a position in it. The caller must therefore only invoke this once the
+    thread has no unread messages left; otherwise it would clear notifications
+    about messages the user has not reached.
+
+    Returns the number cleared, so a caller can assert the effect.
+    """
+    result = await db.execute(
+        sa_update(AppNotification)
+        .where(
+            AppNotification.user_id == user_id,
+            AppNotification.notification_type == NotificationType.chat_message,
+            or_(
+                AppNotification.link_path == f"/chat/{thread_id}",
+                # `_stored_link` appends `?returnTo=…`, so an exact match never
+                # fires on a real row. The separator is pinned so a longer id
+                # that merely starts with this one cannot match.
+                AppNotification.link_path.like(f"/chat/{thread_id}?%"),
+                AppNotification.link_path.like(f"/chat/{thread_id}&%"),
+            ),
+            AppNotification.read.is_(False),
+        )
+        .values(read=True)
+    )
+    await db.commit()
+    return int(result.rowcount or 0)
 
 _TYPE_ALIASES: dict[str, str] = {
     "material": "materials",

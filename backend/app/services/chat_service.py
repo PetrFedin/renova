@@ -448,7 +448,19 @@ async def mark_thread_read(
             row.updated_at = now
 
     await db.commit()
-    return await count_unread_in_thread(db, thread_id, user_id)
+
+    remaining = await count_unread_in_thread(db, thread_id, user_id)
+    if remaining == 0:
+        # The thread is fully read, so every notification about it is stale.
+        # Only safe at zero: the notification identifies the thread but not the
+        # message, so clearing it earlier would silence messages the user has
+        # not reached yet.
+        from app.services import notification_service as notif_svc
+
+        await notif_svc.mark_chat_thread_notifications_read(
+            db, user_id=user_id, thread_id=thread_id
+        )
+    return remaining
 
 
 async def read_map(db: AsyncSession, thread_id: str) -> dict[str, datetime]:
