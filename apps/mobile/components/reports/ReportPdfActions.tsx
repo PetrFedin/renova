@@ -1,4 +1,5 @@
 /** Кнопки PDF: открыть · поделиться · скачать */
+import { Ionicons } from '@expo/vector-icons';
 import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 import { downloadReportPdf, previewReportPdf, shareReportPdf, type ReportPdfKind } from '@/lib/reports/reportPdf';
@@ -26,17 +27,25 @@ export function ReportPdfActions({ userId, projectId, kind, sections, categories
 
   return (
     <View style={s.row}>
-      <ActionBtn label="Открыть" icon="👁" onPress={() => run('preview', () => previewReportPdf(userId, projectId, kind, opts))} />
-      <ActionBtn label="Поделиться" icon="↗" onPress={() => run('share', () => shareReportPdf(userId, projectId, kind, opts))} />
-      <ActionBtn label="Скачать" icon="↓" onPress={() => run('download', () => downloadReportPdf(userId, projectId, kind, opts))} />
+      <ActionBtn label="Открыть" icon="eye-outline" onPress={() => run('preview', () => previewReportPdf(userId, projectId, kind, opts))} />
+      <ActionBtn label="Поделиться" icon="share-outline" onPress={() => run('share', () => shareReportPdf(userId, projectId, kind, opts))} />
+      <ActionBtn label="Скачать" icon="download-outline" onPress={() => run('download', () => downloadReportPdf(userId, projectId, kind, opts))} />
     </View>
   );
 }
 
-function ActionBtn({ label, icon, onPress }: { label: string; icon: string; onPress: () => void }) {
+function ActionBtn({
+  label,
+  icon,
+  onPress,
+}: {
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+}) {
   return (
     <Pressable style={s.btn} onPress={onPress} accessibilityRole="button" accessibilityLabel={label}>
-      <Text style={s.icon}>{icon}</Text>
+      <Ionicons name={icon} size={16} color={RenovaTheme.colors.accent} />
       <Text style={s.label}>{label}</Text>
     </Pressable>
   );

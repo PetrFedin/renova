@@ -26,7 +26,7 @@ export function ReworkSlaWidget({
   if (!rework.length) return null;
   return (
     <View style={s.box}>
-      <Text style={s.head}>🔄 Доработка ({rework.length})</Text>
+      <Text style={s.head}>Доработка ({rework.length})</Text>
       {rework.map(st => (
         <View key={st.id} style={s.row}>
           <Pressable style={{ flex: 1 }} onPress={() => pushStageDetail(st.id, pathname)}>

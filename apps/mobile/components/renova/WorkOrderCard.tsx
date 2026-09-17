@@ -1,4 +1,5 @@
 /** Карточка детальной работы в календаре / списке */
+import { Ionicons } from '@expo/vector-icons';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { usePathname } from 'expo-router';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
@@ -36,6 +37,10 @@ export function WorkOrderCard({ wo, rooms, compact }: { wo: WorkOrder; rooms?: R
       </View>
       {wo.chat_thread_id && !compact && (
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Открыть чат по работе «${wo.title}»`}
+          hitSlop={8}
+          style={s.chat}
           onPress={() =>
             pushOsNav(
               { pathname: '/chat/[threadId]', params: { threadId: wo.chat_thread_id! } },
@@ -44,7 +49,11 @@ export function WorkOrderCard({ wo, rooms, compact }: { wo: WorkOrder; rooms?: R
             )
           }
         >
-          <Text style={s.chat}>💬</Text>
+          <Ionicons
+            name="chatbubble-ellipses-outline"
+            size={18}
+            color={RenovaTheme.colors.accent}
+          />
         </Pressable>
       )}
     </Pressable>
@@ -57,5 +66,5 @@ const s = StyleSheet.create({
   compact: { paddingVertical: 8 },
   title: { ...screenTypography.listTitle, fontSize: 14 },
   meta: { ...screenTypography.listMeta },
-  chat: { fontSize: 18, paddingHorizontal: 8 },
+  chat: { paddingHorizontal: 8, justifyContent: 'center' },
 });

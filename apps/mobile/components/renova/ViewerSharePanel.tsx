@@ -1,4 +1,5 @@
 /** Заказчик: гостевой доступ (только просмотр) */
+import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -187,7 +188,7 @@ export function ViewerSharePanel({
                   style={({ pressed }: PressState) => [s.linkBtn, (pressed || linkBusy) && s.pressed, busy && !linkBusy && s.disabled]}
                   onPress={() => { void shareViewerPortal(v); }}
                 >
-                  {linkBusy ? <ActivityIndicator size="small" color={RenovaTheme.colors.primary} /> : <Text style={s.linkBtnT}>🔗</Text>}
+                  {linkBusy ? <ActivityIndicator size="small" color={RenovaTheme.colors.primary} /> : <Ionicons name="link-outline" size={18} color={RenovaTheme.colors.primary} />}
                 </Pressable>
                 <Pressable
                   accessibilityRole="button"

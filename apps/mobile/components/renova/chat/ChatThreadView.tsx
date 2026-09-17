@@ -1,4 +1,5 @@
 /** Экран треда: реакции, закрепление, задачи, счета, участники, файлы */
+import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   AppState, ScrollView, View, Text, TextInput, StyleSheet, Image, Pressable, Alert, Modal,
@@ -99,7 +100,12 @@ function MessageBubble({
         });
       }}
     >
-      {m.is_pinned ? <Text style={s.pinTag}>📌 Закреплено</Text> : null}
+      {m.is_pinned ? (
+                              <View style={s.pinRow}>
+                                <Ionicons name="pin" size={12} color={RenovaTheme.colors.muted} />
+                                <Text style={s.pinTag}>Закреплено</Text>
+                              </View>
+                            ) : null}
       <Text style={s.role}>{roleLabel}</Text>
       {m.text && <HighlightText text={m.text} query={query} />}
       {m.message_type === 'payment' && m.confirmed !== true && onPay && (
@@ -123,7 +129,12 @@ function MessageBubble({
         </Pressable>
       )}
       {m.image_url && <Image source={{ uri: m.image_url }} style={s.img} />}
-      {m.file_name ? <Text style={s.file}>📎 {m.file_name}</Text> : null}
+      {m.file_name ? (
+                              <View style={s.fileRow}>
+                                <Ionicons name="document-attach-outline" size={13} color={RenovaTheme.colors.muted} />
+                                <Text style={s.file}>{m.file_name}</Text>
+                              </View>
+                            ) : null}
       {m.reactions && Object.keys(m.reactions).length > 0 && (
         <View style={s.reactions}>
           {Object.entries(m.reactions).map(([emoji, users]) => (
@@ -517,7 +528,12 @@ export function ChatThreadView({
               reportError('ChatThreadView.SendPhoto.Mutation', error, { threadId, projectId });
               Alert.alert('Ошибка', 'Не удалось отправить фото');
             }
-          }}><Text style={s.toolBtn}>📷</Text></Pressable>
+          }}
+            accessibilityRole="button"
+            accessibilityLabel="Отправить фото с камеры"
+            hitSlop={8}
+            style={s.toolBtn}
+          ><Ionicons name="camera-outline" size={22} color={RenovaTheme.colors.accent} /></Pressable>
           <Pressable disabled={!canWrite} onPress={async () => {
             const pick = await ImagePicker.launchImageLibraryAsync({ base64: true, quality: 0.8, mediaTypes: ImagePicker.MediaTypeOptions.All });
             if (pick.canceled || !pick.assets[0]?.base64) return;
@@ -529,7 +545,12 @@ export function ChatThreadView({
               reportError('ChatThreadView.SendAttachment.Mutation', error, { threadId, projectId });
               Alert.alert('Ошибка', 'Не удалось отправить файл');
             }
-          }}><Text style={s.toolBtn}>📎</Text></Pressable>
+          }}
+            accessibilityRole="button"
+            accessibilityLabel="Прикрепить файл или фото"
+            hitSlop={8}
+            style={s.toolBtn}
+          ><Ionicons name="attach-outline" size={22} color={RenovaTheme.colors.accent} /></Pressable>
           {user.role === 'contractor' && (
             <>
               <Pressable disabled={!canWrite} onPress={() => {
@@ -576,7 +597,12 @@ export function ChatThreadView({
                       { label: 'Открыть оплаты', onPress: openPaymentForm },
                     ],
                   });
-                }}><Text style={s.toolBtn}>💳</Text></Pressable>
+                }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Выставить счёт на оплату"
+                  hitSlop={8}
+                  style={s.toolBtn}
+                ><Ionicons name="card-outline" size={22} color={RenovaTheme.colors.accent} /></Pressable>
               )}
             </>
           )}
@@ -672,6 +698,8 @@ export function ChatThreadView({
 }
 
 const s = StyleSheet.create({
+  pinRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  fileRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   root: { flex: 1, backgroundColor: RenovaTheme.colors.background },
   wrap: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 24 },
@@ -698,7 +726,7 @@ const s = StyleSheet.create({
   reactText: { fontSize: 12 },
   composer: { padding: 12, backgroundColor: RenovaTheme.colors.surface, borderTopWidth: 1, borderTopColor: RenovaTheme.colors.border, gap: 8 },
   composerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
-  toolBtn: { fontSize: 20, padding: 4 },
+  toolBtn: { padding: 4, justifyContent: 'center', alignItems: 'center' },
   typing: { fontSize: 11, color: '#999' },
   wsHint: { fontSize: 10, color: RenovaTheme.colors.warning, marginBottom: 4 },
   input: { minHeight: 44, borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: 8, padding: 10 },

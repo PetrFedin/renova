@@ -11,7 +11,7 @@ export function RenovationPlanBadge({ renovationType, propertyType, stageNames }
   const isHouse = propertyType === 'house';
   return (
     <View style={s.box}>
-      <Text style={s.head}>📋 План работ · {stagePlanLabel(renovationType || 'cosmetic')}{isHouse ? ' · дом' : ' · квартира'}</Text>
+      <Text style={s.head}>План работ · {stagePlanLabel(renovationType || 'cosmetic')}{isHouse ? ' · дом' : ' · квартира'}</Text>
       <Text style={s.flow}>{stages.join(' → ')}</Text>
     </View>
   );

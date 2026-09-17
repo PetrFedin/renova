@@ -1,4 +1,5 @@
 /** 2D-схема комнаты: стены + розетки */
+import { Ionicons } from '@expo/vector-icons';
 import { View, Text, StyleSheet } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 import { Room } from '@/lib/api';
@@ -15,9 +16,9 @@ export function RoomDiagram({ room }: { room: Room }) {
       <Text style={s.head}>Схема · {room.length_m}×{room.width_m} м</Text>
       <View style={[s.room, { width: ow, height: oh }]}>
         {dots.map((d, i) => <View key={i} style={[s.outlet, { left: d.x, top: d.y }]} />)}
-        {room.plumbing_points > 0 && <View style={s.plumb}><Text style={s.plumbT}>💧</Text></View>}
+        {room.plumbing_points > 0 && <View style={s.plumb}><Ionicons name="water" size={11} color={RenovaTheme.colors.accent} /></View>}
       </View>
-      <Text style={s.legend}>● розетки ({room.outlets_count}) · 💧 сантехника ({room.plumbing_points})</Text>
+      <Text style={s.legend}>● розетки ({room.outlets_count}) · ◆ сантехника ({room.plumbing_points})</Text>
     </View>
   );
 }

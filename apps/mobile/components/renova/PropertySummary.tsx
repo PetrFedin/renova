@@ -19,7 +19,7 @@ export function PropertySummary({ project, compact }: { project: ProjectDetail; 
   return (
     <View style={[s.box, compact && s.compact]}>
       <Text style={s.head}>
-        {isHouse ? '🏠 Дом' : '🏢 Квартира'} · {rooms.length} комн.
+        {isHouse ? 'Дом' : 'Квартира'} · {rooms.length} комн.
       </Text>
       <Text style={s.meta}>
         {isHouse && floors.length > 1 ? `${floors.length} этажа · ` : ''}

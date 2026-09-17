@@ -1,5 +1,6 @@
 /** Список чатов: фильтр объектов, архив, закрепление — каждый чат привязан к одному объекту.
  * Clarity D: unread только в dock; в списке — title + 1 строка preview. */
+import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, Alert } from 'react-native';
 import { useFocusEffect } from 'expo-router';
@@ -54,7 +55,14 @@ function ThreadCard({
       <View style={s.cardHead}>
         <View style={{ flex: 1, minWidth: 0 }}>
           <View style={s.titleRow}>
-            {thread.is_pinned ? <Text style={s.pinIcon}>📌</Text> : null}
+            {thread.is_pinned ? (
+            <Ionicons
+              name="pin"
+              size={13}
+              color={RenovaTheme.colors.muted}
+              accessibilityLabel="Закреплённый чат"
+            />
+          ) : null}
             <Text style={s.title} numberOfLines={1}>{thread.title}</Text>
             {/* Clarity D: точечный attention без цифры unread (цифра — только dock) */}
             {unread > 0 || awaiting ? <View style={[s.awaitDot, unread > 0 && s.unreadDot]} /> : null}

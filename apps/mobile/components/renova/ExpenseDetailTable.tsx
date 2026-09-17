@@ -33,7 +33,7 @@ function RowLine({ row, onPress }: { row: ExpenseDetailRow; onPress?: (row: Expe
         <Text style={s.lineMeta} numberOfLines={1}>
           {date} · {row.categoryLabel} · {expensePayerLabel(row)}
           {row.roomName ? ` · ${row.roomName}` : ''}
-          {row.hasDocument ? ' · 📄' : ''}
+          {row.hasDocument ? ' · с документом' : ''}
         </Text>
       </View>
       <Text style={s.lineAmt}>{formatRub(row.amount)}</Text>
