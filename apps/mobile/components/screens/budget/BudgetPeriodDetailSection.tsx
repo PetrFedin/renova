@@ -49,11 +49,16 @@ export function BudgetPeriodDetailSection(props: Props) {
     onExpensePress,
   } = props;
 
-  const periodPlanned = plannedShareForPeriod(planned, period, projectStart, projectEnd);
-  const periodSpent = sumRows(filterRowsByPeriod(rows, period));
+  // One reading of the clock per render. Each of the four calls below used to
+  // take its own, so a render crossing a day or month boundary could show a
+  // planned share for one period next to spending from another.
+  const now = new Date();
+
+  const periodPlanned = plannedShareForPeriod(planned, period, projectStart, projectEnd, now);
+  const periodSpent = sumRows(filterRowsByPeriod(rows, period, now));
   const limit = customerLimit && customerLimit > 0 ? customerLimit : planned;
   const limitShare = customerLimit
-    ? plannedShareForPeriod(customerLimit, period, projectStart, projectEnd)
+    ? plannedShareForPeriod(customerLimit, period, projectStart, projectEnd, now)
     : periodPlanned;
   const remaining = Math.max(0, limitShare - periodSpent);
   const overrun = periodSpent > limitShare ? periodSpent - limitShare : 0;
@@ -67,7 +72,7 @@ export function BudgetPeriodDetailSection(props: Props) {
           ? formatRub(forecastTotal ?? spentTotal)
           : formatRub(remaining);
 
-  const buckets = buildPeriodBuckets(rows, period, planned, projectStart, projectEnd);
+  const buckets = buildPeriodBuckets(rows, period, planned, projectStart, projectEnd, now);
 
   return (
     <View style={s.wrap}>
