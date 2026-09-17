@@ -20,6 +20,14 @@ jobs:
         run: npm ci
       - name: Mobile TypeScript integrity
         run: npm run typecheck:mobile
+      - name: Calc engine single source and tests
+        # README names packages/calc-engine as the shared estimate engine, but
+        # nothing imported it and it had drifted into a frozen smaller snapshot
+        # of the mobile copy. Neither its tests nor the drift were checked.
+        run: |
+          set -euo pipefail
+          npm run calc:single-source
+          npm run calc:test
       - name: Mobile domain and UI contracts
         run: npm run mobile:test
       - name: Mobile runtime and persistence contracts
