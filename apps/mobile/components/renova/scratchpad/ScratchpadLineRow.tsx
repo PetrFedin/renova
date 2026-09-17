@@ -23,7 +23,13 @@ export function ScratchpadLineRow({ line, onToggle, onEdit, onPromote, onDelete,
   return (
     <View style={[s.row, card, line.done && s.rowDone]}>
       {checkable ? (
-        <Pressable onPress={onToggle} style={s.check} accessibilityRole="checkbox" accessibilityState={{ checked: line.done }}>
+        <Pressable
+          onPress={onToggle}
+          style={s.check}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: line.done }}
+          accessibilityLabel={`Отметить: ${line.text}`}
+        >
           <Ionicons name={line.done ? 'checkbox' : 'square-outline'} size={22} color={line.done ? RenovaTheme.colors.accent : RenovaTheme.colors.textMuted} />
         </Pressable>
       ) : (
