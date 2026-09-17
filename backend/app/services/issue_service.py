@@ -1,11 +1,12 @@
 """Замечания и дефекты Renova OS — статусы, проверка ролей и reopen."""
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
+from datetime import timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timeutil import utc_now
 from app.models.entities import Project, ProjectIssue, UserRole
 from app.services import outbox_service as outbox
 
@@ -95,7 +96,7 @@ async def create_issue(
         description=description,
         severity=severity,
         status="open",
-        due_at=datetime.now(timezone.utc) + timedelta(days=due_days),
+        due_at=utc_now() + timedelta(days=due_days),
         floor_plan_id=floor_plan_id,
         x_pct=x_pct,
         y_pct=y_pct,
@@ -134,7 +135,7 @@ async def transition_issue(
     """Apply a valid transition; callers may compose it into a wider transaction."""
     validate_issue_transition(issue.status, target, actor_role)
     issue.status = target
-    issue.closed_at = datetime.now(timezone.utc) if target == "closed" else None
+    issue.closed_at = utc_now() if target == "closed" else None
     if commit:
         await db.commit()
         await db.refresh(issue)
@@ -151,7 +152,7 @@ async def update_issue_status(
     if not issue or not validate_issue_status_change(issue.status, status):
         return None
     issue.status = status
-    issue.closed_at = datetime.now(timezone.utc) if status == "closed" else None
+    issue.closed_at = utc_now() if status == "closed" else None
     await db.commit()
     await db.refresh(issue)
     return issue
