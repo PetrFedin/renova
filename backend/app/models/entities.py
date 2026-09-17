@@ -82,8 +82,8 @@ class Project(Base):
     renovation_type: Mapped[str] = mapped_column(String(32))
     property_type: Mapped[str] = mapped_column(String(32), default="apartment")
     total_area_sqm: Mapped[float | None] = mapped_column(Float, nullable=True)
-    customer_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
-    contractor_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    customer_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
+    contractor_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     budget_planned: Mapped[float] = mapped_column(Float, default=0)
     budget_spent: Mapped[float] = mapped_column(Float, default=0)
     progress_percent: Mapped[float] = mapped_column(Float, default=0)
@@ -118,7 +118,7 @@ class Room(Base):
     __tablename__ = "rooms"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"))
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
     floor_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("property_floors.id"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(100))
     room_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -141,8 +141,8 @@ class EstimateLine(Base):
     __tablename__ = "estimate_lines"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"))
-    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
+    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True, index=True)
     line_type: Mapped[LineType] = mapped_column(Enum(LineType))
     name: Mapped[str] = mapped_column(String(255))
     unit: Mapped[str] = mapped_column(String(16))
@@ -161,7 +161,7 @@ class Stage(Base):
     __tablename__ = "stages"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"))
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
     name: Mapped[str] = mapped_column(String(255))
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[StageStatus] = mapped_column(Enum(StageStatus), default=StageStatus.planned)
@@ -194,7 +194,7 @@ class StageComment(Base):
     __tablename__ = "stage_comments"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    stage_id: Mapped[str] = mapped_column(String(36), ForeignKey("stages.id"))
+    stage_id: Mapped[str] = mapped_column(String(36), ForeignKey("stages.id"), index=True)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
     author_role: Mapped[str] = mapped_column(String(16))
     text: Mapped[str] = mapped_column(Text)
@@ -207,7 +207,7 @@ class StagePhoto(Base):
     __tablename__ = "stage_photos"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    stage_id: Mapped[str] = mapped_column(String(36), ForeignKey("stages.id"))
+    stage_id: Mapped[str] = mapped_column(String(36), ForeignKey("stages.id"), index=True)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
     caption: Mapped[str | None] = mapped_column(String(255), nullable=True)
     storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
@@ -222,8 +222,8 @@ class Payment(Base):
     __tablename__ = "payments"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"))
-    stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id"), nullable=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
+    stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id"), nullable=True, index=True)
     payment_type: Mapped[PaymentType] = mapped_column(Enum(PaymentType))
     status: Mapped[PaymentStatus] = mapped_column(Enum(PaymentStatus), default=PaymentStatus.pending)
     title: Mapped[str] = mapped_column(String(255))
@@ -243,7 +243,7 @@ class ChangeOrder(Base):
     __tablename__ = "change_orders"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"))
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     amount: Mapped[float] = mapped_column(Float)
@@ -258,7 +258,7 @@ class Receipt(Base):
     __tablename__ = "receipts"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"))
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
     amount: Mapped[float] = mapped_column(Float)
     qr_raw: Mapped[str | None] = mapped_column(Text, nullable=True)
     fn: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -267,8 +267,8 @@ class Receipt(Base):
     # verified_live|saved_unverified|verification_pending|verification_failed|demo_verified|invalid
     verification_status: Mapped[str] = mapped_column(String(32), default="saved_unverified")
     expense_category: Mapped[str] = mapped_column(String(32), default="materials")
-    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True)
-    stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id"), nullable=True)
+    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True, index=True)
+    stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id"), nullable=True, index=True)
     payment_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("payments.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
@@ -326,8 +326,8 @@ class RoomChangeRequest(Base):
     __tablename__ = "room_change_requests"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"))
-    room_id: Mapped[str] = mapped_column(String(36), ForeignKey("rooms.id"))
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
+    room_id: Mapped[str] = mapped_column(String(36), ForeignKey("rooms.id"), index=True)
     requested_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
     status: Mapped[RoomChangeStatus] = mapped_column(Enum(RoomChangeStatus), default=RoomChangeStatus.pending)
     message: Mapped[str] = mapped_column(Text)
@@ -342,7 +342,7 @@ class ChatThread(Base):
     __tablename__ = "chat_threads"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"))
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
     title: Mapped[str] = mapped_column(String(255))
     topic: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
@@ -357,7 +357,7 @@ class ChatMessage(Base):
     __tablename__ = "chat_messages"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    thread_id: Mapped[str] = mapped_column(String(36), ForeignKey("chat_threads.id"))
+    thread_id: Mapped[str] = mapped_column(String(36), ForeignKey("chat_threads.id"), index=True)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
     author_role: Mapped[str] = mapped_column(String(16))
     message_type: Mapped[ChatMessageType] = mapped_column(Enum(ChatMessageType), default=ChatMessageType.text)
@@ -378,7 +378,7 @@ class AppNotification(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
-    project_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("projects.id"), nullable=True)
+    project_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("projects.id"), nullable=True, index=True)
     notification_type: Mapped[NotificationType] = mapped_column(Enum(NotificationType))
     title: Mapped[str] = mapped_column(String(255))
     body: Mapped[str] = mapped_column(Text)
@@ -880,8 +880,8 @@ class ProjectIssue(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
-    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True)
-    stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id"), nullable=True)
+    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True, index=True)
+    stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id"), nullable=True, index=True)
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     severity: Mapped[str] = mapped_column(String(16), default="medium")
@@ -976,7 +976,7 @@ class WorkAcceptance(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
-    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True)
+    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True, index=True)
     stage_id: Mapped[str] = mapped_column(String(36), ForeignKey("stages.id"), index=True)
     requested_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     accepted_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
@@ -1004,8 +1004,8 @@ class BudgetLine(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
-    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True)
-    stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id"), nullable=True)
+    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True, index=True)
+    stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id"), nullable=True, index=True)
     estimate_line_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("estimate_lines.id"), nullable=True)
     category: Mapped[str] = mapped_column(String(32), default="other")
     description: Mapped[str] = mapped_column(String(255))
@@ -1022,8 +1022,8 @@ class Expense(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
-    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True)
-    stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id"), nullable=True)
+    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True, index=True)
+    stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id"), nullable=True, index=True)
     material_pick_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     receipt_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("receipts.id"), nullable=True)
     payment_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("payments.id"), nullable=True)
