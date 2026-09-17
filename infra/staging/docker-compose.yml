@@ -1,0 +1,140 @@
+# Renova staging topology.
+#
+# Before this file the only thing in the repository that looked like a
+# deployment was scripts/deploy-prod.sh, which activated a local virtualenv and
+# ran `uvicorn` with DATABASE_URL defaulting to renova:renova@localhost. That is
+# not a deployment; it is a developer shortcut with a misleading name.
+#
+# This is the smallest honest staging definition: the same immutable image as
+# production, pinned by digest, running the two documented process roles.
+#
+#   docker compose -f infra/staging/docker-compose.yml --env-file staging.env up -d
+#
+# See README.md in this directory for the promotion and rollback runbook.
+#
+# Deliberately NOT in here, because claiming them without evidence would be
+# worse than their absence:
+#   - managed PostgreSQL with PITR (#234). The postgres service below is a
+#     staging convenience, not a backup strategy;
+#   - TLS termination and DNS. The API listens on plain HTTP and expects a
+#     reverse proxy in front; FORWARDED_ALLOW_IPS must name that proxy;
+#   - secret management. Secrets come from an env file that is never committed.
+
+name: renova-staging
+
+x-image: &image
+  # Immutable. RENOVA_IMAGE_DIGEST is the digest promoted by backend-image.yml,
+  # e.g. sha256:...; a floating tag would make "which build is running" a guess.
+  image: ghcr.io/petrfedin/renova-api@${RENOVA_IMAGE_DIGEST:?set RENOVA_IMAGE_DIGEST to a promoted sha256 digest}
+
+x-app-environment: &app-environment
+  ENVIRONMENT: staging
+  DATABASE_URL: postgresql+asyncpg://renova:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/renova
+  REDIS_URL: redis://redis:6379/0
+  ALLOW_CREATE_ALL: "false"
+  ALLOW_DEMO_SEED: "false"
+  AUTH_ALLOW_HEADER_USER_ID: "false"
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
+services:
+  postgres:
+    image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+    environment:
+      POSTGRES_USER: renova
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: renova
+    volumes:
+      - renova_staging_pg:/var/lib/postgresql/data
+    # No host port. Nothing outside this network has any business reaching the
+    # database directly.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U renova -d renova"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+    logging: *logging
+
+  redis:
+    image: redis:7.4.2-alpine
+    command: ["redis-server", "--save", "900", "1", "--appendonly", "no"]
+    volumes:
+      - renova_staging_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+    logging: *logging
+
+  migrate:
+    <<: *image
+    env_file: [staging.env]
+    environment: *app-environment
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # One-shot. A failed migration must stop the promotion, not restart forever.
+    restart: "no"
+    logging: *logging
+
+  api:
+    <<: *image
+    env_file: [staging.env]
+    environment:
+      <<: *app-environment
+      # request.client.host feeds the anonymous rate-limit bucket, the YooKassa
+      # webhook IP allowlist and the audit trail. Behind a proxy it is the proxy
+      # unless uvicorn is told which peers may set X-Forwarded-For.
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:?set FORWARDED_ALLOW_IPS to the reverse-proxy address}
+    command: ["renova-api"]
+    ports:
+      # Bound to loopback: the reverse proxy is the only thing that talks to it.
+      - "127.0.0.1:8100:8100"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    logging: *logging
+
+  worker:
+    <<: *image
+    env_file: [staging.env]
+    environment: *app-environment
+    command: ["renova-worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    # The outbox lease is fenced, so an in-flight job survives a restart; give
+    # it room to finish rather than killing it mid-dispatch.
+    stop_grace_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    logging: *logging
+
+volumes:
+  renova_staging_pg:
+  renova_staging_redis:
