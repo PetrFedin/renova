@@ -5,6 +5,8 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+
+from app.models.money import MONEY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.timeutil import utc_now
@@ -33,7 +35,7 @@ class SubscriptionCheckout(Base):
         unique=True,
     )
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="pending", index=True)
-    amount: Mapped[float] = mapped_column(Float, nullable=False)
+    amount: Mapped[float] = mapped_column(MONEY, nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="RUB")
     days: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
     idempotence_key: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
@@ -53,7 +55,7 @@ class SubscriptionCheckout(Base):
     entitlement_before_plan: Mapped[str | None] = mapped_column(String(32), nullable=True)
     entitlement_before_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     entitlement_after_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    refunded_amount: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    refunded_amount: Mapped[float] = mapped_column(MONEY, nullable=False, default=0.0)
     entitlement_reversed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -92,7 +94,7 @@ class SubscriptionRefund(Base):
         index=True,
     )
     provider_payment_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
-    amount: Mapped[float] = mapped_column(Float, nullable=False)
+    amount: Mapped[float] = mapped_column(MONEY, nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     # partial|applied|manual_review|dismissed
     status: Mapped[str] = mapped_column(String(24), nullable=False, index=True)

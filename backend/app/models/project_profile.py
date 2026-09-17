@@ -7,6 +7,8 @@ column or a second source of truth.
 from __future__ import annotations
 
 from sqlalchemy import Float
+
+from app.models.money import MONEY
 from sqlalchemy.orm import mapped_column
 
 from app.models.entities import Project
@@ -21,7 +23,7 @@ def register_project_profile_fields() -> None:
         setattr(
             Project,
             "customer_budget",
-            mapped_column("customer_budget", Float, nullable=True),
+            mapped_column("customer_budget", MONEY, nullable=True),
         )
 
 
