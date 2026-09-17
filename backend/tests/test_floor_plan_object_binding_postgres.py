@@ -39,6 +39,9 @@ async def test_floor_object_binding_is_fail_closed_on_postgres():
             phone=f"+79{suffix[:9].replace('a', '1').replace('b', '2').replace('c', '3').replace('d', '4').replace('e', '5').replace('f', '6')}",
             role=UserRole.customer,
         )
+        db.add(customer)
+        await db.flush()
+
         project_a = Project(
             id=f"floor-pg-a-{suffix}",
             name="Floor PG A",
@@ -51,6 +54,9 @@ async def test_floor_object_binding_is_fail_closed_on_postgres():
             renovation_type="cosmetic",
             customer_id=customer.id,
         )
+        db.add_all([project_a, project_b])
+        await db.flush()
+
         room_a = Room(
             id=f"floor-pg-room-a-{suffix}",
             project_id=project_a.id,
@@ -79,6 +85,9 @@ async def test_floor_object_binding_is_fail_closed_on_postgres():
             name="Plan B",
             image_key=f"tests/floor-b-{suffix}.png",
         )
+        db.add_all([room_a, room_b, plan_a, plan_b])
+        await db.flush()
+
         pin_b = FloorPlanPin(
             id=f"floor-pg-pin-b-{suffix}",
             floor_plan_id=plan_b.id,
@@ -87,7 +96,7 @@ async def test_floor_object_binding_is_fail_closed_on_postgres():
             y_pct=23,
             label="B",
         )
-        db.add_all([customer, project_a, project_b, room_a, room_b, plan_a, plan_b, pin_b])
+        db.add(pin_b)
         await db.commit()
 
         with pytest.raises(HTTPException) as foreign_pin:
