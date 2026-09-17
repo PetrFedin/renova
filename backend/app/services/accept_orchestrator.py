@@ -121,12 +121,16 @@ async def mark_acceptance_pin_on_plan(
     if not room_ids:
         return
 
+    # Shared serialization boundary with the client/API pin upsert path.
+    # Keep the pin inside the surrounding acceptance transaction; no independent commit.
     plan = (
         await db.execute(
             select(FloorPlan)
             .where(FloorPlan.project_id == project_id)
             .order_by(FloorPlan.created_at.desc())
             .limit(1)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
     ).scalar_one_or_none()
     if not plan:
