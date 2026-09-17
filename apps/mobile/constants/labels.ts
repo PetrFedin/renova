@@ -163,7 +163,7 @@ export function designPackageStatusLabel(status: string): string {
 }
 
 export function stageStatusLabel(status: string): string {
-  return STAGE_STATUS_LABEL[status]?.replace(/^[✓⏳🔨○]\s*/, '') ?? status;
+  return STAGE_STATUS_LABEL[status]?.replace(/^[✓⏳🔨○]\s*/u, '') ?? status;
 }
 
 /** Фильтры экрана «Работы» */

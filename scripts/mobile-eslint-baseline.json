@@ -1,0 +1,10 @@
+{
+  "(parse-error)": 5,
+  "@typescript-eslint/ban-ts-comment": 1,
+  "@typescript-eslint/no-unused-expressions": 1,
+  "@typescript-eslint/no-unused-vars": 80,
+  "no-empty": 4,
+  "no-template-curly-in-string": 17,
+  "no-useless-escape": 3,
+  "prefer-const": 4
+}

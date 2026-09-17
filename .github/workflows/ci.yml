@@ -20,6 +20,10 @@ jobs:
         run: npm ci
       - name: Mobile TypeScript integrity
         run: npm run typecheck:mobile
+      - name: Mobile ESLint baseline
+        # tsc covers types; this covers mistakes that type-check and then
+        # misbehave at runtime. Ratcheted against scripts/mobile-eslint-baseline.json.
+        run: npm run lint:mobile
       - name: Mobile domain and UI contracts
         run: npm run mobile:test
       - name: Mobile runtime and persistence contracts

@@ -35,7 +35,7 @@ const KIND: Record<string, string> = {
 function eventStatusLabel(status?: string): string | null {
   if (!status) return null;
   if (status in WORK_STATUS_LABEL) return WORK_STATUS_LABEL[status as keyof typeof WORK_STATUS_LABEL];
-  if (status in STAGE_STATUS_LABEL) return STAGE_STATUS_LABEL[status].replace(/^[✓⏳🔨○]\s*/, '');
+  if (status in STAGE_STATUS_LABEL) return STAGE_STATUS_LABEL[status].replace(/^[✓⏳🔨○]\s*/u, '');
   return status;
 }
 
