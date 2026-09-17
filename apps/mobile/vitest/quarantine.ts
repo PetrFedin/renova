@@ -41,7 +41,6 @@ export const QUARANTINED_MOBILE_TESTS: ReadonlyArray<readonly [string, string]> 
   ['apps/mobile/lib/journeyUnify.w123.test.ts', 'assertion helper threw (see file)'],
   ['apps/mobile/lib/journeyUnify.w126.test.ts', 'assertion helper threw (see file)'],
   ['apps/mobile/lib/leanWsNotif.w147.test.ts', 'assertion helper threw (see file)'],
-  ['apps/mobile/lib/materialPickLifecycleIntegrity.test.ts', 'Error: price mutation requires editable material'],
   ['apps/mobile/lib/offline/sync.w92.test.ts', 'Error: W92 sync.ts missing: if (synced > 0)'],
   ['apps/mobile/lib/offline/sync.w94.test.ts', 'Error: missing writeQueue'],
   ['apps/mobile/lib/paymentEventHistoryIntegrity.test.ts', 'AssertionError: History route must precede the legacy list route'],

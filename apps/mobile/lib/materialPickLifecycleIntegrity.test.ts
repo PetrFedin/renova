@@ -12,6 +12,11 @@ const must = (condition: boolean, message: string) => {
 const materialsApi = readMobile('lib/api/materials.ts');
 const endpoint = readBackend('app/api/v1/materials.py');
 const service = readBackend('app/services/material_pick_service.py');
+// Price mutation left materials.py in #311: the `sync-price` route there was
+// synthetic (it fabricated `pick.price = 1000.0` when no price was known) and
+// was deleted. The real route and its guard now live here.
+const priceEndpoint = readBackend('app/api/v1/material_price_sync.py');
+const priceService = readBackend('app/services/material_price_service.py');
 
 const createStart = materialsApi.indexOf('createMaterialPick: async');
 const createEnd = materialsApi.indexOf('submitMaterialPick:', createStart);
@@ -31,7 +36,33 @@ must(endpoint.includes('MATERIAL_PICK_CREATE_SCOPE = "material_pick.create"'), '
 must(endpoint.includes('replay_entity_id(') && endpoint.includes('commit_client_write('), 'material create uses request ledger');
 must(endpoint.includes('@router.post("/{project_id}/material-picks/{pick_id}/reject")'), 'backend exposes reject transition');
 must(endpoint.includes('user.role != UserRole.customer'), 'approve and reject require customer role');
-must(endpoint.includes('require_editable_pick('), 'price mutation requires editable material');
+// The editability guard for prices: asserted where it actually runs, and
+// asserted to be unreachable from materials.py, so the deleted synthetic
+// route cannot quietly come back. The behavioural proof that the guard
+// refuses a pending or purchase-locked pick lives in
+// backend/tests/test_material_price_editability.py.
+must(
+  !/@router\.(post|patch|put)\([^)]*sync-price/.test(endpoint),
+  'materials.py must not re-expose a price route; the canonical one is material_price_sync.py',
+);
+must(
+  priceEndpoint.includes('set_manual_material_price(') &&
+    priceEndpoint.includes('sync_material_price('),
+  'the price routes delegate to the price service rather than assigning price inline',
+);
+must(
+  !/pick\.price\s*=/.test(priceEndpoint),
+  'no route may assign a material price directly, bypassing the guard',
+);
+must(
+  priceService.includes('_require_price_mutable_pick('),
+  'price mutation requires an editable material',
+);
+must(
+  priceService.includes('material_pick_price_not_editable') &&
+    priceService.includes('material_pick_locked_by_purchase'),
+  'the guard refuses both a non-editable status and a purchase-locked material',
+);
 must(endpoint.includes('analog_of_id=pick_id'), 'analog route sets parent exactly once');
 
 must(service.includes('MaterialPick.id == pick_id,') && service.includes('MaterialPick.project_id == project_id,'), 'material lookup is project scoped before mutation');
