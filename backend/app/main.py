@@ -13,6 +13,7 @@ from app.core.logging_config import setup_logging
 from app.core.observability import configure_observability, release_digest, release_sha
 from app.core.rate_limit import rate_limiter
 from app.core.runtime_policy import configured_runtime_warnings, validate_configured_runtime
+from app.middleware.idempotency import ClientRequestIdempotencyMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.audit import AuditMiddleware
 from app.middleware.correlation import CorrelationIdMiddleware
@@ -27,6 +28,7 @@ import app.models.work_schedule  # noqa: F401
 import app.models.project_documents  # noqa: F401
 import app.models.outbox_runtime  # noqa: F401
 import app.models.webhook_runtime  # noqa: F401
+import app.models.client_request_replay  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +176,11 @@ async def storage_unavailable_handler(_: Request, __: Exception):
 app.add_exception_handler(StorageConfigurationError, storage_unavailable_handler)
 app.add_exception_handler(StorageUnavailable, storage_unavailable_handler)
 
+# Starlette runs middleware in reverse registration order, so the idempotency
+# guard registered first ends up innermost — closest to the route, after
+# correlation/audit/rate-limit have run. It is a no-op for any request without
+# a valid X-Offline-Id header.
+app.add_middleware(ClientRequestIdempotencyMiddleware)
 app.add_middleware(CorrelationIdMiddleware)
 app.add_middleware(AuditMiddleware)
 app.add_middleware(RateLimitMiddleware)
