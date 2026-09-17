@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { mustPrecede } from './testing/sourceOrder';
 
 const mobile = join(__dirname, '..');
 const repo = join(mobile, '..', '..');
@@ -21,7 +22,7 @@ must(patchStart >= 0 && patchEnd > patchStart, 'expense patch client block exist
 must(patchBlock.includes('const serialized = JSON.stringify(body)'), 'expense patch serializes once');
 must((patchBlock.match(/body: serialized/g) || []).length === 2, 'online and offline patch reuse exact body');
 
-must(router.indexOf('include_router(expense_mutations.router)') < router.indexOf('include_router(os.router)'), 'canonical expense routes precede legacy OS routes');
+mustPrecede(router, 'include_router(expense_mutations.router)', 'include_router(os.router)', 'canonical expense routes precede legacy OS routes');
 must(endpoint.includes('body.model_fields_set'), 'endpoint distinguishes omitted fields from explicit null');
 must(endpoint.includes('room_id_supplied="room_id" in supplied'), 'room mutation is presence-aware');
 must(endpoint.includes('stage_id_supplied="stage_id" in supplied'), 'stage mutation is presence-aware');

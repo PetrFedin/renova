@@ -1,6 +1,7 @@
 /** W138: один канон оплаты — PaymentDetailSheet; finance-center не confirm напрямую */
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
+import { mustFollow } from './testing/sourceOrder';
 
 const mobile = join(__dirname, '..');
 const read = (relativePath: string) => readFileSync(join(mobile, relativePath), 'utf8');
@@ -57,7 +58,7 @@ must(createForm.includes('loading={busy}'), 'create payment shared loading');
 must(createForm.includes('Введённые данные сохранены в форме'), 'create payment preserves draft on error');
 must(createForm.includes('title="Отмена"') && createForm.includes('variant="ghost"'), 'create payment cancel tertiary');
 must(createForm.includes('let created = false') && createForm.includes('if (!created) return'), 'payment durable write boundary');
-must(createForm.indexOf('if (!created) return') < createForm.indexOf('clearDraft();', createForm.indexOf('if (!created) return')), 'payment clears only after durable write');
+mustFollow(createForm, 'if (!created) return', 'clearDraft();', 'payment clears only after durable write');
 must(createForm.includes('void syncProjectSideEffects') && createForm.includes("reportCatch('CreatePaymentForm.sideEffects')"), 'payment side effects best effort');
 must(createForm.includes("stage_id: paymentType === 'stage' ? stageId : null"), 'material payment has no hidden stage');
 must(createForm.includes("if (next !== 'stage')") && createForm.includes('setStageId(null)'), 'payment type switch clears stage');

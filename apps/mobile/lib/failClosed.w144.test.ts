@@ -15,6 +15,7 @@ import {
   serializeSessionUserSnapshot,
 } from './sessionSnapshot';
 import type { User } from './api';
+import { mustPrecede } from './testing/sourceOrder';
 
 const root = join(__dirname, '..');
 const must = (cond: boolean, msg: string) => {
@@ -133,8 +134,10 @@ must(
   wsAuth.includes('?ticket=') && wsAuth.includes('throw normalized;'),
   'Only a confirmed short-lived ticket may produce a WebSocket auth query',
 );
-must(
-  chatWs.indexOf('const qs = await buildWsAuthQuery();') < chatWs.indexOf('const ws = new WebSocket('),
+mustPrecede(
+  chatWs,
+  'const qs = await buildWsAuthQuery();',
+  'const ws = new WebSocket(',
   'WebSocket must not be created until ticket mint succeeds',
 );
 must(

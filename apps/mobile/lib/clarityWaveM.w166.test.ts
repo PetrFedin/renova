@@ -1,6 +1,7 @@
 /** Clarity M: ActionConfirm actions[]; Docs/Chat/Payment sheets; visual leftovers */
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { precedes } from './testing/sourceOrder';
 
 const mobile = join(__dirname, '..');
 const src = (rel: string) => readFileSync(join(mobile, rel), 'utf8');
@@ -45,7 +46,7 @@ if (!pay.includes("title: 'Чек'") || !pay.includes('showActionConfirm')) thro
 if (works.includes('<RepairProcessTimeline') && !works.includes('showSecondaryPanels')) {
   throw new Error('timeline still always first viewport');
 }
-const timelineBeforeFilters = works.indexOf('RepairProcessTimeline') < works.indexOf('SearchFilter');
+const timelineBeforeFilters = precedes(works, 'RepairProcessTimeline', 'SearchFilter', 'works screen layout');
 if (timelineBeforeFilters) throw new Error('timeline should be behind secondary, not before filters');
 
 if (!timeline.includes('listRowStyles') || timeline.includes('...card')) throw new Error('timeline visual');

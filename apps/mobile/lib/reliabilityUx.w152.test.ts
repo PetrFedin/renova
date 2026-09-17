@@ -2,6 +2,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { resolvePushLink } from './pushLinks';
+import { mustPrecede } from './testing/sourceOrder';
 
 const mobile = join(__dirname, '..');
 
@@ -54,8 +55,10 @@ console.assert(
     && offlineQueue.includes("const message = errorText || (response.ok ? 'ok' : `HTTP ${response.status}`)"),
   'failed response-body reads retain HTTP status truth for retry/block decisions',
 );
-console.assert(
-  offlineQueue.indexOf('await setQueueUnlocked(queue);') < offlineQueue.indexOf('await emitQueueChanged();'),
+mustPrecede(
+  offlineQueue,
+  'await setQueueUnlocked(queue);',
+  'await emitQueueChanged();',
   'offline mutation is durable before best-effort UI notification',
 );
 console.assert(
@@ -105,9 +108,16 @@ console.assert(
     && rooms.includes("requestsState.status === 'error'"),
   'rooms and room-change requests expose source failure instead of silent empty fallback',
 );
-console.assert(
-  rooms.indexOf("await api.createRoomChangeRequest") < rooms.indexOf("alertRoomChangeRequested('customer')")
-    && rooms.indexOf("alertRoomChangeRequested('customer')") < rooms.indexOf('await reloadRooms();'),
+mustPrecede(
+  rooms,
+  'await api.createRoomChangeRequest',
+  "alertRoomChangeRequested('customer')",
+  'room-change mutation is acknowledged before its non-authoritative list refresh',
+);
+mustPrecede(
+  rooms,
+  "alertRoomChangeRequested('customer')",
+  'await reloadRooms();',
   'room-change mutation is acknowledged before its non-authoritative list refresh',
 );
 
