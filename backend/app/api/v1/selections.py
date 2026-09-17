@@ -8,8 +8,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project
+from app.api.scoping import scoped_id
 from app.db.session import get_db
-from app.models.entities import Project, SelectionItem, SelectionStatus, User, UserRole
+from app.models.entities import Project, Room, SelectionItem, SelectionStatus, User, UserRole
 from app.services import activity_service as act
 
 router = APIRouter(prefix="/projects", tags=["selections"])
@@ -100,9 +101,12 @@ async def create_selection(
     await require_project(db, project_id, user, write=True)
     if body.category not in CATEGORIES:
         raise HTTPException(422, "invalid_category")
+    # The path authorises the project; body.room_id does not inherit that.
+    # A foreign key only proves the room exists, not that it is ours.
+    room_id = await scoped_id(db, Room, body.room_id, project_id)
     row = SelectionItem(
         project_id=project_id,
-        room_id=body.room_id,
+        room_id=room_id,
         category=body.category,
         title=body.title.strip(),
         sku=body.sku,
