@@ -16,6 +16,10 @@ from app.services import floor_plan_annotation_service as annot_svc
 
 router = APIRouter(prefix="/projects", tags=["floor-plan-annotations"])
 
+#: Shorter than this and the reference is indistinguishable from a tap, so
+#: every measurement derived from it would be meaningless or enormous.
+MIN_CALIBRATION_PCT = 0.5
+
 
 class AnnotationIn(BaseModel):
     kind: str
@@ -34,12 +38,13 @@ class AnnotationPatch(BaseModel):
 class CalibrationIn(BaseModel):
     """A segment of known real length, drawn on the sheet.
 
-    ``ref_pct`` is that segment's length as a share of the sheet diagonal, the
-    same unit every measurement uses, so calibration and measurement cannot
-    drift apart.
+    The client sends the two points it drew, not a precomputed share. The
+    server measures them with the same function every measurement uses, so the
+    two cannot drift apart — and a client that normalizes coordinates
+    differently cannot silently set a wrong scale.
     """
 
-    ref_pct: float = Field(gt=0, le=200)
+    points: list[dict[str, Any]] = Field(min_length=2, max_length=2)
     ref_m: float = Field(gt=0, le=1000)
 
 
@@ -171,7 +176,7 @@ async def delete_annotation(
     if not annotation or annotation.floor_plan_id != plan_id:
         raise HTTPException(404, "annotation_not_found")
 
-    removed = annot_svc.soft_delete(annotation)
+    removed = annot_svc.soft_delete(annotation, by_user_id=user.id)
     await db.commit()
     return {"ok": True, "removed": removed, "replayed": not removed}
 
@@ -194,7 +199,21 @@ async def calibrate_plan(
     await require_project(db, project_id, user, write=True)
     plan = await _plan_or_404(db, project_id, plan_id)
 
-    plan.scale_ref_pct = float(body.ref_pct)
+    try:
+        points = annot_svc.normalize_geometry(
+            annot_svc.AnnotationKind.measure, body.points
+        )
+    except annot_svc.AnnotationError as error:
+        raise _refuse(error) from error
+
+    ref_pct = annot_svc.segment_length_pct(points, plan)
+    # A reference segment of no length would make every measurement infinite.
+    if ref_pct < MIN_CALIBRATION_PCT:
+        raise HTTPException(
+            422, detail={"code": "annotation_calibration_segment_too_short"}
+        )
+
+    plan.scale_ref_pct = ref_pct
     plan.scale_ref_m = float(body.ref_m)
     await db.commit()
     await db.refresh(plan)
@@ -210,7 +229,7 @@ async def calibrate_plan(
             points = _json.loads(row.geometry_json)
         except (TypeError, ValueError):
             continue
-        now_m = metres_for(plan, annot_svc.segment_length_pct(points))
+        now_m = metres_for(plan, annot_svc.segment_length_pct(points, plan))
         if now_m is not None and row.measured_m is not None and abs(now_m - row.measured_m) > 0.005:
             restated.append({"id": row.id, "stored_m": row.measured_m, "now_m": now_m})
 

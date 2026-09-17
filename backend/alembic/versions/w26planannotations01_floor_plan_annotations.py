@@ -58,10 +58,12 @@ def upgrade() -> None:
             sa.Column("created_at", sa.DateTime(), nullable=False),
             sa.Column("updated_at", sa.DateTime(), nullable=False),
             sa.Column("deleted_at", sa.DateTime(), nullable=True),
+            sa.Column("deleted_by", sa.String(length=36), nullable=True),
             sa.PrimaryKeyConstraint("id"),
             sa.ForeignKeyConstraint(["project_id"], ["projects.id"]),
             sa.ForeignKeyConstraint(["floor_plan_id"], ["floor_plans.id"]),
             sa.ForeignKeyConstraint(["author_id"], ["users.id"]),
+            sa.ForeignKeyConstraint(["deleted_by"], ["users.id"]),
             sa.CheckConstraint(
                 "kind IN (" + ", ".join(f"'{value}'" for value in _KIND_VALUES) + ")",
                 name="ck_floor_plan_annotations_kind",

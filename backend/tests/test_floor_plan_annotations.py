@@ -36,11 +36,15 @@ async def setup_db(tmp_path, monkeypatch):
         await seed_articles(db)
 
 
-async def _plan(client, headers, project_id, *, name="Планировка"):
+async def _plan(client, headers, project_id, *, name="Планировка", width_px=None, height_px=None):
+    payload = {"name": name, "image_key": "photos/plan.jpg", "floor_level": 1}
+    if width_px and height_px:
+        payload["width_px"] = width_px
+        payload["height_px"] = height_px
     created = await client.post(
         f"/api/v1/projects/{project_id}/floor-plans",
         headers=headers,
-        json={"name": name, "image_key": "photos/plan.jpg", "floor_level": 1},
+        json=payload,
     )
     assert created.status_code in (200, 201), created.text
     return created.json()["id"]
@@ -171,19 +175,19 @@ async def test_calibration_makes_the_ruler_report_metres():
         _user, headers, project_id = await _context(client)
         plan_id = await _plan(client, headers, project_id)
 
-        # A segment 10% of the sheet diagonal is 2 m.
+        # The reference segment the user drew is 2 m long.
         calibrated = await client.post(
             f"/api/v1/projects/{project_id}/floor-plans/{plan_id}/calibrate",
             headers=headers,
-            json={"ref_pct": 10, "ref_m": 2},
+            json={"points": [{"x": 0, "y": 0}, {"x": 10, "y": 0}], "ref_m": 2},
         )
         assert calibrated.status_code == 200, calibrated.text
 
-        # 3-4-5 triangle: this segment is exactly 50% of the diagonal → 10 m.
+        # Five times the reference segment → 10 m.
         measured = await client.post(
             f"/api/v1/projects/{project_id}/floor-plans/{plan_id}/annotations",
             headers=headers,
-            json={"kind": "measure", "points": [{"x": 0, "y": 0}, {"x": 30, "y": 40}]},
+            json={"kind": "measure", "points": [{"x": 0, "y": 0}, {"x": 50, "y": 0}]},
         )
         assert measured.status_code == 200
         assert measured.json()["measured_m"] == pytest.approx(10.0, abs=0.01)
@@ -198,13 +202,13 @@ async def test_recalibration_does_not_rewrite_a_measurement_already_taken():
         await client.post(
             f"/api/v1/projects/{project_id}/floor-plans/{plan_id}/calibrate",
             headers=headers,
-            json={"ref_pct": 10, "ref_m": 2},
+            json={"points": [{"x": 0, "y": 0}, {"x": 10, "y": 0}], "ref_m": 2},
         )
         measured = (
             await client.post(
                 f"/api/v1/projects/{project_id}/floor-plans/{plan_id}/annotations",
                 headers=headers,
-                json={"kind": "measure", "points": [{"x": 0, "y": 0}, {"x": 30, "y": 40}]},
+                json={"kind": "measure", "points": [{"x": 0, "y": 0}, {"x": 50, "y": 0}]},
             )
         ).json()
         assert measured["measured_m"] == pytest.approx(10.0, abs=0.01)
@@ -212,7 +216,7 @@ async def test_recalibration_does_not_rewrite_a_measurement_already_taken():
         again = await client.post(
             f"/api/v1/projects/{project_id}/floor-plans/{plan_id}/calibrate",
             headers=headers,
-            json={"ref_pct": 10, "ref_m": 4},
+            json={"points": [{"x": 0, "y": 0}, {"x": 10, "y": 0}], "ref_m": 4},
         )
         assert again.status_code == 200
         restated = again.json()["restated"]
@@ -324,4 +328,102 @@ async def test_a_sheet_from_another_project_is_not_found():
         )
         assert listed.status_code == 404, (
             "a sheet must not be reachable through another project's id"
+        )
+
+
+# --- the sheet is rarely square -----------------------------------------------
+
+
+async def test_a_measurement_respects_the_sheets_aspect_ratio():
+    """`x` is a share of width and `y` of height — different physical units.
+
+    The first version of `segment_length_pct` combined them directly, so on a
+    4:3 sheet a horizontal and a vertical "10%" came out equal when they differ
+    by a third. No test set width_px/height_px, which is exactly why it passed.
+    """
+    async with _client() as client:
+        _user, headers, project_id = await _context(client)
+        plan_id = await _plan(client, headers, project_id, width_px=4000, height_px=3000)
+        base = f"/api/v1/projects/{project_id}/floor-plans/{plan_id}"
+
+        calibrated = await client.post(
+            f"{base}/calibrate",
+            headers=headers,
+            json={"points": [{"x": 0, "y": 0}, {"x": 10, "y": 0}], "ref_m": 4},
+        )
+        assert calibrated.status_code == 200, calibrated.text
+
+        horizontal = (
+            await client.post(
+                f"{base}/annotations",
+                headers=headers,
+                json={"kind": "measure", "points": [{"x": 0, "y": 0}, {"x": 10, "y": 0}]},
+            )
+        ).json()["measured_m"]
+        vertical = (
+            await client.post(
+                f"{base}/annotations",
+                headers=headers,
+                json={"kind": "measure", "points": [{"x": 0, "y": 0}, {"x": 0, "y": 10}]},
+            )
+        ).json()["measured_m"]
+
+        assert horizontal == pytest.approx(4.0, abs=0.01), horizontal
+        # 10% of a 3000px height is 300px against 400px for the width, so the
+        # same percentage is three quarters of the length.
+        assert vertical == pytest.approx(3.0, abs=0.01), vertical
+        assert horizontal != vertical, (
+            "a square-sheet assumption would report these as equal"
+        )
+
+
+async def test_a_reference_segment_of_no_length_is_refused():
+    """Otherwise every measurement on the sheet becomes enormous."""
+    async with _client() as client:
+        _user, headers, project_id = await _context(client)
+        plan_id = await _plan(client, headers, project_id)
+
+        refused = await client.post(
+            f"/api/v1/projects/{project_id}/floor-plans/{plan_id}/calibrate",
+            headers=headers,
+            json={"points": [{"x": 20, "y": 20}, {"x": 20.05, "y": 20}], "ref_m": 5},
+        )
+        assert refused.status_code == 422, refused.text
+        assert "annotation_calibration_segment_too_short" in refused.text
+
+
+# --- who erased it ------------------------------------------------------------
+
+
+async def test_erasing_records_who_did_it():
+    """The model promises the sheet can answer "who removed the remark"."""
+    async with _client() as client:
+        _author, author_headers, project_id = await _context(client, role="contractor")
+        plan_id = await _plan(client, author_headers, project_id)
+        base = f"/api/v1/projects/{project_id}/floor-plans/{plan_id}/annotations"
+
+        created = (
+            await client.post(
+                base,
+                headers=author_headers,
+                json={"kind": "note", "points": [{"x": 5, "y": 5}], "text": "Стояк"},
+            )
+        ).json()
+
+        customer = (await client.post("/api/v1/auth/demo", json={"role": "customer"})).json()
+        eraser_headers = {"X-User-Id": customer["id"]}
+
+        removed = await client.delete(f"{base}/{created['id']}", headers=eraser_headers)
+        assert removed.status_code == 200, removed.text
+
+        history = (
+            await client.get(f"{base}?include_deleted=true", headers=author_headers)
+        ).json()["items"]
+        assert len(history) == 1
+        assert history[0]["deleted_at"] is not None
+        assert history[0]["deleted_by"] == customer["id"], (
+            "the eraser must be named, not just the moment"
+        )
+        assert history[0]["author_id"] != customer["id"], (
+            "and it was someone else's remark"
         )

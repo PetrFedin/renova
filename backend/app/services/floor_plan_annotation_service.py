@@ -80,16 +80,32 @@ def normalize_geometry(kind: AnnotationKind, points: Iterable[Any]) -> list[dict
     return cleaned
 
 
-def segment_length_pct(points: list[dict[str, float]]) -> float:
+def segment_length_pct(points: list[dict[str, float]], plan: FloorPlan | None = None) -> float:
     """Length of a two-point segment as a share of the sheet's diagonal.
 
-    The diagonal, not the width: a measurement drawn vertically on a landscape
-    sheet must convert with the same factor as a horizontal one.
+    `x` is a percentage of the sheet's width and `y` of its height, so they are
+    not the same physical unit and cannot be combined directly. The first
+    version of this function did exactly that, and on a 4:3 sheet reported a
+    horizontal and a vertical "10%" as equal when they differ by a third.
+
+    With the sheet's pixel dimensions known, both axes are converted to pixels
+    first and the result expressed against the real diagonal. Without them the
+    aspect ratio is unknown, and the square assumption is the only one
+    available — so the value is still self-consistent, and calibration, which
+    goes through this same function, cancels the factor out.
     """
     if len(points) < 2:
         return 0.0
     dx = points[1]["x"] - points[0]["x"]
     dy = points[1]["y"] - points[0]["y"]
+
+    width = float(getattr(plan, "width_px", 0) or 0) if plan is not None else 0.0
+    height = float(getattr(plan, "height_px", 0) or 0) if plan is not None else 0.0
+    if width > 0 and height > 0:
+        length_px = math.hypot(dx / 100.0 * width, dy / 100.0 * height)
+        diagonal_px = math.hypot(width, height)
+        return length_px / diagonal_px * 100.0
+
     return math.hypot(dx, dy)
 
 
@@ -98,7 +114,7 @@ def resolve_measurement(
 ) -> float | None:
     if kind is not AnnotationKind.measure:
         return None
-    return metres_for(plan, segment_length_pct(points))
+    return metres_for(plan, segment_length_pct(points, plan))
 
 
 def clean_text(value: str | None, *, kind: AnnotationKind) -> str | None:
@@ -184,11 +200,12 @@ def build(
     )
 
 
-def soft_delete(annotation: FloorPlanAnnotation) -> bool:
+def soft_delete(annotation: FloorPlanAnnotation, *, by_user_id: str) -> bool:
     """Returns False when it was already removed, so a replay stays honest."""
     if annotation.deleted_at is not None:
         return False
     annotation.deleted_at = utc_now()
+    annotation.deleted_by = by_user_id
     return True
 
 
@@ -210,4 +227,5 @@ def to_dict(annotation: FloorPlanAnnotation) -> dict[str, Any]:
         "created_at": annotation.created_at.isoformat() if annotation.created_at else None,
         "updated_at": annotation.updated_at.isoformat() if annotation.updated_at else None,
         "deleted_at": annotation.deleted_at.isoformat() if annotation.deleted_at else None,
+        "deleted_by": annotation.deleted_by,
     }

@@ -109,6 +109,11 @@ class FloorPlanAnnotation(Base):
         DateTime, default=utc_now, onupdate=utc_now
     )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    #: Who erased it. The docstring above promises the sheet can answer "who
+    #: removed the remark about the pipe"; `deleted_at` alone cannot.
+    deleted_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
 
     __table_args__ = (
         CheckConstraint(
