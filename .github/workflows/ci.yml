@@ -30,6 +30,11 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/wasteOrderTransport.test.mjs
+      - name: Floor-plan and pin production transport and queued UI contracts
+        run: |
+          set -euo pipefail
+          node scripts/floorPlanTransport.test.mjs
+          node scripts/floorPlanQueuedUi.test.mjs
       - name: Mobile runtime and persistence contracts
         run: |
           set -euo pipefail
@@ -62,6 +67,7 @@ jobs:
       FURNITURE_CREATE_POSTGRES_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5436/renova_chat_integrity
       FLOOR_OBJECT_BINDING_POSTGRES_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5436/renova_chat_integrity
       WASTE_ORDER_POSTGRES_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5436/renova_chat_integrity
+      FLOOR_WRITE_POSTGRES_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5436/renova_chat_integrity
       PUBLIC_BASE_URL: http://127.0.0.1:8100
       SECRET_KEY: ci-${{ github.sha }}
       ALLOW_CREATE_ALL: "true"
@@ -212,6 +218,64 @@ jobs:
           path: |
             backend/waste-order-behavioral-results.xml
             backend/waste-order-postgres-results.xml
+          if-no-files-found: error
+          retention-days: 14
+      - name: Run fail-closed floor-plan create and pin recovery contracts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          poetry run pytest -q \
+            tests/test_floor_plan_write_replay.py \
+            tests/test_floor_plan_object_binding.py \
+            --junitxml=floor-plan-behavioral-results.xml
+          poetry run pytest -q \
+            tests/test_floor_plan_write_replay_postgres.py \
+            --junitxml=floor-plan-postgres-results.xml
+          poetry run python - <<'PY'
+          import xml.etree.ElementTree as ET
+
+          def read_cases(path):
+              root = ET.parse(path).getroot()
+              cases = root.findall('.//testcase')
+              assert cases, f'{path}: qualification must execute tests'
+              assert not root.findall('.//skipped'), f'{path}: skipped tests are not qualification evidence'
+              assert not root.findall('.//failure'), f'{path}: failing tests are not qualification evidence'
+              assert not root.findall('.//error'), f'{path}: errored tests are not qualification evidence'
+              return {(case.get('classname', ''), case.get('name', '')) for case in cases}
+
+          behavioral = read_cases('floor-plan-behavioral-results.xml')
+          behavioral_names = {name for _classname, name in behavioral}
+          required_behavioral = {
+              'test_floor_plan_create_replays_conflicts_preserves_distinct_intents_and_one_activity_each',
+              'test_floor_plan_create_rolls_back_plan_activity_and_ledger_then_same_intent_recovers',
+              'test_floor_pin_upsert_replays_without_duplicate_activity_conflicts_and_rejects_foreign_room',
+              'test_floor_pin_upsert_rolls_back_flushed_pin_activity_and_ledger_then_same_intent_recovers',
+              'test_move_pin_cannot_cross_project_or_plan_boundary',
+              'test_pin_room_reference_is_project_scoped',
+          }
+          assert required_behavioral <= behavioral_names, 'all exact floor-plan/pin behavioral and inherited binding scenarios must execute'
+
+          postgres = read_cases('floor-plan-postgres-results.xml')
+          postgres_names = {
+              name for classname, name in postgres
+              if classname.endswith('test_floor_plan_write_replay_postgres')
+          }
+          required_postgres = {
+              'test_floor_plan_create_same_key_postgres_race_reaches_project_lock_and_creates_one_result',
+              'test_floor_plan_create_rechecks_revoked_contractor_after_physical_project_lock_wait',
+              'test_floor_pin_distinct_intents_postgres_race_serializes_to_one_pin',
+              'test_floor_pin_api_and_acceptance_share_physical_floor_plan_lock_and_leave_one_pin',
+          }
+          assert required_postgres <= postgres_names, 'all exact floor-plan/pin PostgreSQL scenarios must execute'
+          PY
+      - name: Retain floor-plan recovery qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: floor-plan-pin-recovery-qualification
+          path: |
+            backend/floor-plan-behavioral-results.xml
+            backend/floor-plan-postgres-results.xml
           if-no-files-found: error
           retention-days: 14
 
