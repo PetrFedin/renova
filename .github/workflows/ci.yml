@@ -251,7 +251,13 @@ jobs:
           --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
     env:
       ENVIRONMENT: test
-      DATABASE_URL: sqlite+aiosqlite:///./ci-tests.db
+      # The full regression runs on the engine production actually uses.
+      # Staging/production forbid SQLite by policy (app.core.environment), so a
+      # suite that only ever ran on SQLite could not prove Postgres behaviour:
+      # native enums, numeric types, transactional DDL, real FK enforcement and
+      # row locking all differ. The dedicated race/migration workflows were the
+      # only Postgres evidence in the repository.
+      DATABASE_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova_suite
       PUBLIC_BASE_URL: http://127.0.0.1:8100
       SECRET_KEY: ci-secret-key-at-least-16
       ALLOW_CREATE_ALL: "true"
@@ -268,6 +274,16 @@ jobs:
           set -euo pipefail
           python -m pip install --disable-pip-version-check "poetry==2.4.1"
           poetry sync --no-interaction
+      - name: Create the dedicated suite database
+        # Kept separate from the `renova` database so the Alembic upgrade step
+        # below still starts from an empty schema rather than one create_all
+        # already materialised.
+        run: |
+          set -euo pipefail
+          PGPASSWORD=renova psql -h 127.0.0.1 -p 5433 -U renova -d renova \
+            -v ON_ERROR_STOP=1 \
+            -c "DROP DATABASE IF EXISTS renova_suite;" \
+            -c "CREATE DATABASE renova_suite OWNER renova;"
       - name: Full backend test suite
         working-directory: backend
         run: |
