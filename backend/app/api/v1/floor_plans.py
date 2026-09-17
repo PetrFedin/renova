@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_project
@@ -37,6 +37,9 @@ class FurnitureIn(BaseModel):
     y_pct: float | None = None
     notes: str | None = None
 
+class FurnitureCreateIn(FurnitureIn):
+    client_request_id: str = Field(min_length=8, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
+
 
 def _punch_item(i: ProjectIssue) -> dict:
     return {
@@ -64,6 +67,24 @@ def _plan(p: FloorPlan, pins: list, punch: list | None = None) -> dict:
         "punch": punch or [],
         "created_at": p.created_at.isoformat(),
     }
+
+
+def _furniture(f: FurnitureItem, *, replayed: bool | None = None) -> dict:
+    result = {
+        "id": f.id,
+        "room_id": f.room_id,
+        "floor_plan_id": f.floor_plan_id,
+        "name": f.name,
+        "width_m": f.width_m,
+        "depth_m": f.depth_m,
+        "height_m": f.height_m,
+        "x_pct": f.x_pct,
+        "y_pct": f.y_pct,
+        "notes": f.notes,
+    }
+    if replayed is not None:
+        result["replayed"] = replayed
+    return result
 
 
 async def _project_plan_or_404(db: AsyncSession, project_id: str, plan_id: str) -> FloorPlan:
@@ -146,20 +167,32 @@ async def list_furniture(project_id: str, room_id: str | None = None, user: User
     q = select(FurnitureItem).where(FurnitureItem.project_id == project_id)
     if room_id: q = q.where(FurnitureItem.room_id == room_id)
     r = await db.execute(q.order_by(FurnitureItem.created_at.desc()))
-    return [{"id": f.id, "room_id": f.room_id, "floor_plan_id": f.floor_plan_id, "name": f.name, "width_m": f.width_m, "depth_m": f.depth_m, "height_m": f.height_m, "x_pct": f.x_pct, "y_pct": f.y_pct, "notes": f.notes} for f in r.scalars().all()]
+    return [_furniture(f) for f in r.scalars().all()]
 
 
 @router.post("/{project_id}/furniture")
-async def create_furniture(project_id: str, body: FurnitureIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def create_furniture(project_id: str, body: FurnitureCreateIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=True)
-    if body.room_id is not None:
-        await _project_room_or_404(db, project_id, body.room_id)
-    if body.floor_plan_id is not None:
-        await _project_plan_or_404(db, project_id, body.floor_plan_id)
-    f = FurnitureItem(project_id=project_id, **body.model_dump())
-    db.add(f); await db.commit(); await db.refresh(f)
-    await act.log_event(db, project_id=project_id, user_id=user.id, kind="plan", title=f"Мебель: {f.name}", room_id=f.room_id)
-    return {"id": f.id, "name": f.name, "width_m": f.width_m, "depth_m": f.depth_m, "height_m": f.height_m, "x_pct": f.x_pct, "y_pct": f.y_pct}
+    from app.services import furniture_create_service as furniture_create
+    from app.services.client_write_idempotency import IdempotencyConflict
+
+    try:
+        item, replayed = await furniture_create.create_furniture(
+            db,
+            project_id=project_id,
+            user_id=user.id,
+            client_request_id=body.client_request_id,
+            payload=body.model_dump(exclude={"client_request_id"}),
+        )
+    except IdempotencyConflict as error:
+        raise HTTPException(
+            409,
+            detail={
+                "code": "idempotency_conflict",
+                "message": "Этот идентификатор создания мебели уже использован для других данных",
+            },
+        ) from error
+    return _furniture(item, replayed=replayed)
 
 
 @router.patch("/{project_id}/floor-plans/{plan_id}/pins/{pin_id}")

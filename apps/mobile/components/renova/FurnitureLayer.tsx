@@ -24,6 +24,28 @@ export function FurnitureLayer({ userId, projectId, planId, role }: { userId: st
       load();
     } catch (e) {
       if (isOfflineQueued(e)) notifyOfflineQueued('Мебель на плане');
+      else reportCatch('components.renova.FurnitureLayer.move')(e);
+    }
+  };
+  const createSofa = async () => {
+    try {
+      await api.createFurniture(userId, projectId, {
+        name: 'Диван',
+        width_m: 2.1,
+        depth_m: 0.9,
+        floor_plan_id: planId,
+        x_pct: 30,
+        y_pct: 60,
+      });
+      await syncProjectSideEffects({
+        user: user ?? ({ id: userId } as any),
+        project: activeProject ?? ({ id: projectId } as any),
+      });
+    } catch (e) {
+      if (isOfflineQueued(e)) notifyOfflineQueued('Мебель на плане');
+      else reportCatch('components.renova.FurnitureLayer.create')(e);
+    } finally {
+      load();
     }
   };
   return (
@@ -37,7 +59,7 @@ export function FurnitureLayer({ userId, projectId, planId, role }: { userId: st
           )}
         </View>
       ))}
-      {role === 'contractor' && planId && <PrimaryButton title="+ Диван" variant="outline" onPress={async () => { try { await api.createFurniture(userId, projectId, { name: 'Диван', width_m: 2.1, depth_m: 0.9, floor_plan_id: planId, x_pct: 30, y_pct: 60 }); await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any) }); } catch { await api.enqueueOfflineCreate(`/api/v1/projects/${projectId}/furniture`, 'POST', { name: 'Диван', floor_plan_id: planId }, userId); } load(); }} />}
+      {role === 'contractor' && planId && <PrimaryButton title="+ Диван" variant="outline" onPress={createSofa} />}
     </View>
   );
 }

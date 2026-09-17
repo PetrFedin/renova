@@ -22,6 +22,10 @@ jobs:
         run: npm run typecheck:mobile
       - name: Mobile domain and UI contracts
         run: npm run mobile:test
+      - name: Furniture production transport and restart contract
+        run: |
+          set -euo pipefail
+          node scripts/furnitureTransport.test.mjs
       - name: Mobile runtime and persistence contracts
         run: |
           set -euo pipefail
@@ -51,8 +55,10 @@ jobs:
       ENVIRONMENT: test
       DATABASE_URL: sqlite+aiosqlite:///./chat-message-integrity.db
       CHAT_MESSAGE_POSTGRES_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5436/renova_chat_integrity
+      FURNITURE_CREATE_POSTGRES_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5436/renova_chat_integrity
+      FLOOR_OBJECT_BINDING_POSTGRES_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5436/renova_chat_integrity
       PUBLIC_BASE_URL: http://127.0.0.1:8100
-      SECRET_KEY: ci-secret-key-at-least-16
+      SECRET_KEY: ci-${{ github.sha }}
       ALLOW_CREATE_ALL: "true"
       ALLOW_DEMO_SEED: "false"
       PYTHONHASHSEED: "0"
@@ -87,6 +93,66 @@ jobs:
             tests/test_chat_thread_only_acl_contract.py \
             tests/test_chat_thread_only_mobile_capabilities_contract.py \
             tests/test_chat_thread_only_mobile_inbox_contract.py
+      - name: Run fail-closed furniture recovery and floor binding contracts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          poetry run pytest -q \
+            tests/test_furniture_create_replay.py \
+            --junitxml=furniture-behavioral-results.xml
+          poetry run pytest -q \
+            tests/test_furniture_create_replay_postgres.py \
+            tests/test_floor_plan_object_binding_postgres.py \
+            --junitxml=furniture-postgres-results.xml
+          poetry run python - <<'PY'
+          import xml.etree.ElementTree as ET
+
+          def read_cases(path):
+              root = ET.parse(path).getroot()
+              cases = root.findall('.//testcase')
+              assert cases, f'{path}: qualification must execute tests'
+              assert not root.findall('.//skipped'), f'{path}: skipped tests are not qualification evidence'
+              assert not root.findall('.//failure'), f'{path}: failing tests are not qualification evidence'
+              assert not root.findall('.//error'), f'{path}: errored tests are not qualification evidence'
+              return {(case.get('classname', ''), case.get('name', '')) for case in cases}
+
+          behavioral = read_cases('furniture-behavioral-results.xml')
+          behavioral_names = {
+              name for classname, name in behavioral
+              if classname.endswith('test_furniture_create_replay')
+          }
+          required_behavioral = {
+              'test_furniture_create_replays_original_conflicts_on_changed_payload_and_preserves_distinct_intents',
+              'test_furniture_create_rolls_back_flushed_item_outbox_and_ledger_then_same_intent_recovers',
+          }
+          assert required_behavioral <= behavioral_names, 'both exact furniture semantic/rollback scenarios must execute'
+
+          postgres = read_cases('furniture-postgres-results.xml')
+          furniture_pg_names = {
+              name for classname, name in postgres
+              if classname.endswith('test_furniture_create_replay_postgres')
+          }
+          required_furniture_pg = {
+              'test_furniture_create_same_key_postgres_race_reaches_project_lock_and_creates_one_result',
+              'test_furniture_create_rechecks_revoked_contractor_after_physical_project_lock_wait',
+          }
+          assert required_furniture_pg <= furniture_pg_names, 'both exact furniture PostgreSQL scenarios must execute'
+          floor_binding_names = {
+              name for classname, name in postgres
+              if classname.endswith('test_floor_plan_object_binding_postgres')
+          }
+          assert 'test_floor_object_binding_is_fail_closed_on_postgres' in floor_binding_names, 'floor object binding PostgreSQL scenario must execute'
+          PY
+      - name: Retain furniture recovery qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: furniture-create-recovery-qualification
+          path: |
+            backend/furniture-behavioral-results.xml
+            backend/furniture-postgres-results.xml
+          if-no-files-found: error
+          retention-days: 14
 
   project-creation-contracts:
     runs-on: ubuntu-latest
@@ -95,7 +161,7 @@ jobs:
       ENVIRONMENT: test
       DATABASE_URL: sqlite+aiosqlite:///./project-create-tests.db
       PUBLIC_BASE_URL: http://127.0.0.1:8100
-      SECRET_KEY: ci-secret-key-at-least-16
+      SECRET_KEY: ci-${{ github.sha }}
       ALLOW_CREATE_ALL: "true"
       ALLOW_DEMO_SEED: "true"
       PYTHONHASHSEED: "0"
@@ -132,7 +198,7 @@ jobs:
       ENVIRONMENT: test
       DATABASE_URL: sqlite+aiosqlite:///./acceptance-decision-tests.db
       PUBLIC_BASE_URL: http://127.0.0.1:8100
-      SECRET_KEY: ci-secret-key-at-least-16
+      SECRET_KEY: ci-${{ github.sha }}
       ALLOW_CREATE_ALL: "true"
       ALLOW_DEMO_SEED: "true"
       PYTHONHASHSEED: "0"
@@ -169,7 +235,7 @@ jobs:
       ENVIRONMENT: test
       DATABASE_URL: sqlite+aiosqlite:///./stage-mutation-tests.db
       PUBLIC_BASE_URL: http://127.0.0.1:8100
-      SECRET_KEY: ci-secret-key-at-least-16
+      SECRET_KEY: ci-${{ github.sha }}
       ALLOW_CREATE_ALL: "true"
       ALLOW_DEMO_SEED: "true"
       PYTHONHASHSEED: "0"
@@ -206,7 +272,7 @@ jobs:
       ENVIRONMENT: test
       DATABASE_URL: sqlite+aiosqlite:///./team-lifecycle-tests.db
       PUBLIC_BASE_URL: http://127.0.0.1:8100
-      SECRET_KEY: ci-secret-key-at-least-16
+      SECRET_KEY: ci-${{ github.sha }}
       ALLOW_CREATE_ALL: "true"
       ALLOW_DEMO_SEED: "true"
       PYTHONHASHSEED: "0"
@@ -253,7 +319,7 @@ jobs:
       ENVIRONMENT: test
       DATABASE_URL: sqlite+aiosqlite:///./ci-tests.db
       PUBLIC_BASE_URL: http://127.0.0.1:8100
-      SECRET_KEY: ci-secret-key-at-least-16
+      SECRET_KEY: ci-${{ github.sha }}
       ALLOW_CREATE_ALL: "true"
       ALLOW_DEMO_SEED: "true"
       PYTHONHASHSEED: "0"

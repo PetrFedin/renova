@@ -94,7 +94,6 @@ test.describe('P0 floor-plan object binding', () => {
       expect(pinBResponse.status()).toBe(200);
       const pinB = (await pinBResponse.json()) as { id: string; x_pct: number; y_pct: number };
 
-      // Attack 1: authorized project A + plan A path with a pin that belongs to project B.
       const moveForeignPin = await request.patch(
         `${API}/api/v1/projects/${projectA.id}/floor-plans/${planA.id}/pins/${pinB.id}`,
         { headers, data: { x_pct: 88, y_pct: 91 } },
@@ -109,7 +108,6 @@ test.describe('P0 floor-plan object binding', () => {
         ?.pins.find((pin) => pin.id === pinB.id);
       expect(pinBAfterAttack).toMatchObject({ x_pct: 17, y_pct: 23 });
 
-      // Attack 2: create/upsert a project-A pin that points at project-B room.
       const foreignRoomPin = await request.post(
         `${API}/api/v1/projects/${projectA.id}/floor-plans/${planA.id}/pins`,
         {
@@ -124,17 +122,23 @@ test.describe('P0 floor-plan object binding', () => {
       );
       expect(foreignRoomPin.status()).toBe(404);
 
-      // Attack 3: create furniture in project A bound to a project-B room.
       const foreignRoomFurniture = await request.post(`${API}/api/v1/projects/${projectA.id}/furniture`, {
         headers,
-        data: { room_id: projectB.roomId, name: 'Foreign room chair' },
+        data: {
+          room_id: projectB.roomId,
+          name: 'Foreign room chair',
+          client_request_id: `floor-e2e-foreign-room-${marker}`,
+        },
       });
       expect(foreignRoomFurniture.status()).toBe(404);
 
-      // Attack 4: create furniture in project A bound to a project-B floor plan.
       const foreignPlanFurniture = await request.post(`${API}/api/v1/projects/${projectA.id}/furniture`, {
         headers,
-        data: { floor_plan_id: planB.id, name: 'Foreign plan chair' },
+        data: {
+          floor_plan_id: planB.id,
+          name: 'Foreign plan chair',
+          client_request_id: `floor-e2e-foreign-plan-${marker}`,
+        },
       });
       expect(foreignPlanFurniture.status()).toBe(404);
 
@@ -144,6 +148,7 @@ test.describe('P0 floor-plan object binding', () => {
           room_id: projectA.roomId,
           floor_plan_id: planB.id,
           name: 'Mixed refs chair',
+          client_request_id: `floor-e2e-mixed-${marker}`,
         },
       });
       expect(mixedFurniture.status()).toBe(404);
@@ -153,7 +158,6 @@ test.describe('P0 floor-plan object binding', () => {
       ).json()) as { id: string; name: string }[];
       expect(furnitureAfterAttacks.some((item) => item.name.includes('Foreign') || item.name.includes('Mixed'))).toBe(false);
 
-      // Same-project positive path stays functional.
       const pinAResponse = await request.post(
         `${API}/api/v1/projects/${projectA.id}/floor-plans/${planA.id}/pins`,
         {
@@ -184,10 +188,12 @@ test.describe('P0 floor-plan object binding', () => {
           name: 'Own chair',
           x_pct: 10,
           y_pct: 15,
+          client_request_id: `floor-e2e-own-${marker}`,
         },
       });
       expect(ownFurniture.status()).toBe(200);
-      const ownFurnitureBody = (await ownFurniture.json()) as { id: string };
+      const ownFurnitureBody = (await ownFurniture.json()) as { id: string; replayed: boolean };
+      expect(ownFurnitureBody.replayed).toBe(false);
 
       const moveOwnFurniture = await request.patch(
         `${API}/api/v1/projects/${projectA.id}/furniture/${ownFurnitureBody.id}`,
