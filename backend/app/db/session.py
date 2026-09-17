@@ -70,6 +70,27 @@ async def _prepare_database_schema() -> None:
         )
 
 
+def startup_truth_repair_enabled() -> bool:
+    """Whether API startup may rewrite legacy business rows.
+
+    These repairs mutate receipts, expenses, provider connections and OCR
+    suggestions. Running them inside lifespan means every API start — every
+    deploy, every restart, every replica, every rollback — races N concurrent
+    passes over the same tables, and the work is unbounded by table size.
+
+    Local and test keep the historical behaviour so a developer database is
+    self-healing. A deployed environment runs the same code deliberately, once,
+    through `python -m app.ops.truth_repair`.
+    """
+    override = settings.run_startup_truth_repair
+    if override is not None:
+        return bool(override)
+    return policy_for(settings.normalized_environment).name not in {
+        "staging",
+        "production",
+    }
+
+
 async def init_db() -> None:
     """Validate/initialize schema before any idempotent truth repair runs."""
     await _prepare_database_schema()
@@ -77,6 +98,14 @@ async def init_db() -> None:
     from app.services.document_ocr_truth_repair import repair_legacy_ocr_truth
     from app.services.fns.receipt_truth_repair import repair_legacy_receipt_truth
     from app.services.moy_nalog_truth_repair import repair_legacy_moy_nalog_truth
+
+    if not startup_truth_repair_enabled():
+        logger.info(
+            "startup truth repair skipped (environment=%s); run "
+            "`python -m app.ops.truth_repair` as an explicit operator action",
+            settings.normalized_environment,
+        )
+        return
 
     async with SessionLocal() as db:
         receipts = await repair_legacy_receipt_truth(db)

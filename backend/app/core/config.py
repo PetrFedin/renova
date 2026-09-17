@@ -86,6 +86,12 @@ class Settings(BaseSettings):
 
     allow_create_all: bool | None = None
     allow_demo_seed: bool | None = None
+    # Legacy truth repairs rewrite receipts/expenses/provider connections/OCR
+    # suggestions. Running them from API lifespan means every deploy, restart
+    # and replica races a concurrent pass over the same tables. Local/test keep
+    # the self-healing behaviour; staging/production run them once, explicitly,
+    # via `python -m app.ops.truth_repair`. An explicit value wins either way.
+    run_startup_truth_repair: bool | None = None
     # off | metadata. Real OCR engine modes are not exposed until content reading exists.
     document_ocr_mode: str = "metadata"
     document_ocr_worker_interval_sec: float = 5.0
