@@ -268,6 +268,12 @@ jobs:
           set -euo pipefail
           python -m pip install --disable-pip-version-check "poetry==2.4.1"
           poetry sync --no-interaction
+      - name: Backend lint and type baseline (ruff + mypy)
+        # The backend had no linter, formatter or type checker at all. Both
+        # tools are ratcheted against scripts/backend-lint-baseline.json rather
+        # than turned on as a hard failure, so a new violation fails the build
+        # without demanding a mechanical diff across 58k lines.
+        run: python scripts/check_backend_lint_baseline.py
       - name: Full backend test suite
         working-directory: backend
         run: |

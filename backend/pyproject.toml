@@ -34,6 +34,26 @@ boto3 = "^1.43.82"
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.0"
 pytest-asyncio = "^0.24.0"
+ruff = "0.14.0"
+mypy = "1.18.2"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# Deliberately a starting set, not the full default. E9 (syntax/runtime-shaped
+# errors) and F (pyflakes: undefined names, unused imports, redefinitions) are
+# the rules that find defects rather than style. Style rules can be added later
+# against the same ratchet without a mechanical reformat of 58k lines.
+select = ["E9", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+# This facade deliberately republishes the extracted core module by copying it
+# into globals() in a loop, so every name it re-exports looks undefined to a
+# static reader. The pattern is documented in the module docstring; the 15
+# F821s it produces are an artefact of that, not missing names.
+"app/services/work_order_service.py" = ["F821"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

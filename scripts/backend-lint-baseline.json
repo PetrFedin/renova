@@ -1,0 +1,20 @@
+{
+  "ruff": {
+    "F401": 61,
+    "F541": 4,
+    "F811": 11,
+    "F841": 8
+  },
+  "mypy": {
+    "arg-type": 16,
+    "assignment": 3,
+    "attr-defined": 34,
+    "call-arg": 7,
+    "call-overload": 10,
+    "name-defined": 15,
+    "no-redef": 7,
+    "operator": 7,
+    "union-attr": 5,
+    "var-annotated": 1
+  }
+}
