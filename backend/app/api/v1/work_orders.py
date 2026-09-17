@@ -8,12 +8,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import User
+from app.services import work_order_client_write as wo_write
 from app.services import work_order_service as wo_svc
+from app.services.client_write_idempotency import IdempotencyConflict
 
 router = APIRouter(prefix="/projects", tags=["work-orders"])
 
 
 class WorkOrderCreate(BaseModel):
+    client_request_id: str = Field(min_length=8, max_length=80)
     title: str = Field(min_length=1, max_length=255)
     work_type: str = Field(min_length=1, max_length=64)
     room_id: str | None = None
@@ -56,12 +59,15 @@ async def list_work_orders(project_id: str, user: User = Depends(get_current_use
 
 @router.post("/{project_id}/work-orders")
 async def create_work_order(project_id: str, body: WorkOrderCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await require_project(db, project_id, user, write=True)
+    # Authority is intentionally re-read after the Project row lock inside the
+    # composed writer. A stale pre-lock require_project() is not sufficient for a
+    # response-loss/idempotency boundary.
     try:
-        work_order = await wo_svc.create_work_order(
+        work_order = await wo_write.create_work_order(
             db,
             project_id=project_id,
             user_id=user.id,
+            client_request_id=body.client_request_id,
             title=body.title,
             work_type=body.work_type,
             room_id=body.room_id,
@@ -72,8 +78,17 @@ async def create_work_order(project_id: str, body: WorkOrderCreate, user: User =
             notes=body.notes,
             publish=body.publish,
         )
+    except IdempotencyConflict as error:
+        raise HTTPException(409, "idempotency_conflict") from error
     except ValueError as error:
-        raise HTTPException(400, str(error)) from error
+        code = str(error)
+        if code == "work_order_actor_unavailable":
+            raise HTTPException(401, code) from error
+        if code == "work_order_project_missing":
+            raise HTTPException(404, code) from error
+        if code == "work_order_create_forbidden":
+            raise HTTPException(403, code) from error
+        raise HTTPException(400, code) from error
     return wo_svc.wo_dict(work_order)
 
 
