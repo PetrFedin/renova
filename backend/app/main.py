@@ -43,6 +43,8 @@ logger = logging.getLogger(__name__)
 # twilio_sid=settings.twilio_sid
 # twilio_token=settings.twilio_token
 # twilio_from=settings.twilio_from
+# forwarded_allow_ips=settings.forwarded_allow_ips
+# auth_rate_limit_rpm=settings.auth_rate_limit_rpm
 
 
 @asynccontextmanager

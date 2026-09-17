@@ -79,6 +79,16 @@ class Settings(BaseSettings):
     log_json: bool = False
     cors_allowed_origins: str = ""
     rate_limit_rpm: int = 120
+    # Credential endpoints get their own, much smaller quota. The generic
+    # public-api limit is sized for normal product traffic and is far too
+    # permissive for OTP request/verify, login and refresh.
+    auth_rate_limit_rpm: int = Field(default=20, ge=1, le=600)
+    # Comma-separated trusted proxy addresses for uvicorn --forwarded-allow-ips.
+    # Empty means the runtime does NOT trust X-Forwarded-For: request.client.host
+    # then stays the direct peer. Behind a load balancer this must be set, or
+    # every client collapses into the proxy address for rate limiting, the
+    # provider IP allowlist and the audit trail.
+    forwarded_allow_ips: str = ""
 
     twilio_sid: str | None = None
     twilio_token: str | None = None
@@ -121,6 +131,18 @@ class Settings(BaseSettings):
         from app.core.environment import policy_for
 
         return policy_for(self.normalized_environment).allow_header_user_id
+
+    @property
+    def forwarded_allow_ip_list(self) -> tuple[str, ...]:
+        """Trusted proxy entries, order preserved, blanks dropped."""
+        raw = (self.forwarded_allow_ips or "").strip()
+        if not raw:
+            return ()
+        return tuple(entry.strip() for entry in raw.split(",") if entry.strip())
+
+    @property
+    def trusts_forwarded_headers(self) -> bool:
+        return bool(self.forwarded_allow_ip_list)
 
     @property
     def admin_identity_config(self) -> AdminIdentityConfig:

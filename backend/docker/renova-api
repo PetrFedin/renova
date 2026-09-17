@@ -2,4 +2,18 @@
 set -eu
 ROLE_FILE="${RENOVA_RUNTIME_ROLE_FILE:-/tmp/renova-runtime-role}"
 printf '%s\n' api > "$ROLE_FILE"
-exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8100}"
+
+# Behind a reverse proxy/load balancer the direct peer is the proxy, so
+# request.client.host is the proxy address unless uvicorn is told which peers
+# may set X-Forwarded-For. That address is authoritative for the public rate
+# limit bucket, the provider webhook IP allowlist and the audit trail.
+#
+# Trust is opt-in and explicit: FORWARDED_ALLOW_IPS lists the proxy addresses.
+# Unset means no proxy header is trusted, which is the correct default for a
+# directly exposed container and never silently accepts a spoofed client IP.
+set -- app.main:app --host 0.0.0.0 --port "${PORT:-8100}"
+if [ -n "${FORWARDED_ALLOW_IPS:-}" ]; then
+  set -- "$@" --proxy-headers --forwarded-allow-ips "${FORWARDED_ALLOW_IPS}"
+fi
+
+exec uvicorn "$@"

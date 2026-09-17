@@ -185,10 +185,23 @@ def validate_runtime_settings(
     twilio_sid: str | None = None,
     twilio_token: str | None = None,
     twilio_from: str | None = None,
+    forwarded_allow_ips: str | None = None,
 ) -> EnvironmentPolicy:
     """Raise ValueError before traffic if settings violate the environment policy."""
     policy = policy_for(environment)
     errors: list[str] = []
+
+    # Inspect the raw value: stripping first would hide a trailing CR/LF, which
+    # is exactly the header-injection shape this guard exists to reject.
+    forwarded_raw = forwarded_allow_ips or ""
+    forwarded = forwarded_raw.strip()
+    if forwarded:
+        if any(char in forwarded_raw for char in "\r\n\x00") or len(forwarded_raw) > 512:
+            errors.append(f"{policy.name}: FORWARDED_ALLOW_IPS имеет некорректный формат")
+        elif any(not entry.strip() for entry in forwarded.split(",")):
+            errors.append(
+                f"{policy.name}: FORWARDED_ALLOW_IPS содержит пустые элементы"
+            )
 
     if not policy.allow_header_user_id and auth_allow_header_user_id is True:
         errors.append(
@@ -309,10 +322,19 @@ def collect_warnings(
     twilio_sid: str | None = None,
     twilio_token: str | None = None,
     twilio_from: str | None = None,
+    forwarded_allow_ips: str | None = None,
 ) -> list[str]:
     """Soft warnings for development/staging (do not fail startup)."""
     name = normalize_environment(environment)
     warnings: list[str] = []
+    if name in ("staging", "production") and not (forwarded_allow_ips or "").strip():
+        # Not fatal: a directly exposed container is a legitimate topology and
+        # trusting X-Forwarded-For by default would let any client spoof its IP.
+        warnings.append(
+            f"{name}: FORWARDED_ALLOW_IPS is empty — X-Forwarded-For is not trusted. "
+            "Behind a proxy/load balancer the rate-limit bucket, provider IP allowlist "
+            "and audit trail will all see the proxy address instead of the client."
+        )
     if name == "development":
         if _is_default_secret(secret_key):
             warnings.append("development: SECRET_KEY is default — OK for local only")

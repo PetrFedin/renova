@@ -59,6 +59,7 @@ def validate_configured_runtime(
         twilio_sid=current.twilio_sid,
         twilio_token=current.twilio_token,
         twilio_from=current.twilio_from,
+        forwarded_allow_ips=current.forwarded_allow_ips,
     )
     _validate_admin_identity_configuration(current, policy)
     validate_observability_configuration(current)
@@ -87,6 +88,7 @@ def configured_runtime_warnings(
             twilio_sid=current.twilio_sid,
             twilio_token=current.twilio_token,
             twilio_from=current.twilio_from,
+            forwarded_allow_ips=current.forwarded_allow_ips,
         )
     )
     warnings.extend(observability_warnings(current))
