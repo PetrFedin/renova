@@ -34,11 +34,39 @@ must(payment.includes('formSurfaceStyles') && !payment.includes('StyleSheet.crea
 
 const expense = src('components/renova/ManualExpenseForm.tsx');
 must(expense.includes('const busyRef = useRef(false)'), 'manual expense duplicate guard');
-must(expense.includes('let saved = false') && expense.includes('if (!saved) return'), 'manual expense durable write boundary');
-must(expense.indexOf('if (!saved) return') < expense.indexOf('onSaved?.()'), 'manual expense callback after write');
+// The durable write boundary. This form names the flag after what it carries
+// — `savedReceipt` is the created receipt, not a boolean — which is stricter
+// than the sibling forms' `let saved = false`, because the post-commit block
+// cannot run without the entity in hand. The literal was renamed; the boundary
+// never moved.
+must(
+  /let savedReceipt: ReceiptItem \| null = null/.test(expense) &&
+    expense.includes('if (!savedReceipt) return'),
+  'manual expense durable write boundary',
+);
+must(
+  expense.indexOf('if (!savedReceipt) return') < expense.indexOf('onSaved?.('),
+  'manual expense callback after write',
+);
 must(expense.includes("notifyOfflineQueued('Расход без чека')") && expense.includes('clearDraft();'), 'manual expense queued draft handling');
-must(expense.includes('void syncProjectSideEffects') && expense.includes("reportCatch('ManualExpenseForm.sideEffects')"), 'manual expense best-effort side effects');
-must(!expense.includes('await syncProjectSideEffects'), 'manual expense secondary sync must not control durable write result');
+// Post-commit refresh, best-effort. This form refreshes through `loadProject`
+// rather than `syncProjectSideEffects`, and that is a superset: loadProject
+// calls notifyProjectDataChanged and reloadInboxSync — everything
+// syncProjectSideEffects does — and additionally refetches the project and
+// checks the user has not switched object between the commit and the refresh.
+// Asserted as behaviour rather than as one function's name.
+must(
+  expense.includes("void loadProject(project.id).catch(reportCatch('ManualExpenseForm.projectRefresh'))"),
+  'manual expense best-effort post-commit refresh',
+);
+must(
+  expense.includes('ManualExpenseForm.ContextChangedAfterCommit'),
+  'a commit whose context changed must be reported, not refreshed against the wrong project',
+);
+must(
+  !/await\s+(syncProjectSideEffects|loadProject)/.test(expense),
+  'manual expense secondary sync must not control durable write result',
+);
 must(expense.includes('formSurfaceStyles') && !expense.includes('StyleSheet.create'), 'manual expense shared form surface');
 
 const estimate = src('components/renova/AddEstimateLineForm.tsx');
