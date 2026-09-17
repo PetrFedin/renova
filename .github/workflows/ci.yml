@@ -22,6 +22,11 @@ jobs:
         run: npm run typecheck:mobile
       - name: Mobile domain and UI contracts
         run: npm run mobile:test
+      - name: Every mobile test file, discovered automatically
+        # npm run mobile:test is a hand-maintained && chain and only runs the
+        # files someone remembered to append: 118 of 226 had never executed.
+        # This runs all of them, in parallel, with independent reporting.
+        run: npm run mobile:test:all
       - name: Mobile runtime and persistence contracts
         run: |
           set -euo pipefail
