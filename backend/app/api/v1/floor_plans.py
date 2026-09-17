@@ -5,9 +5,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import User, FloorPlan, FloorPlanPin, FurnitureItem, Room, ProjectIssue
-from app.services import activity_service as act
 
 router = APIRouter(prefix="/projects", tags=["floor-plans"])
+
 
 class PlanIn(BaseModel):
     name: str = "Планировка"
@@ -16,15 +16,26 @@ class PlanIn(BaseModel):
     width_px: int | None = None
     height_px: int | None = None
 
+
+class PlanCreateIn(PlanIn):
+    client_request_id: str = Field(min_length=8, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
+
+
 class PinPatch(BaseModel):
     x_pct: float
     y_pct: float
+
 
 class PinIn(BaseModel):
     room_id: str
     x_pct: float = 50
     y_pct: float = 50
     label: str | None = None
+
+
+class PinCreateIn(PinIn):
+    client_request_id: str = Field(min_length=8, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
+
 
 class FurnitureIn(BaseModel):
     room_id: str | None = None
@@ -36,6 +47,7 @@ class FurnitureIn(BaseModel):
     x_pct: float | None = None
     y_pct: float | None = None
     notes: str | None = None
+
 
 class FurnitureCreateIn(FurnitureIn):
     client_request_id: str = Field(min_length=8, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
@@ -54,8 +66,14 @@ def _punch_item(i: ProjectIssue) -> dict:
     }
 
 
-def _plan(p: FloorPlan, pins: list, punch: list | None = None) -> dict:
-    return {
+def _plan(
+    p: FloorPlan,
+    pins: list,
+    punch: list | None = None,
+    *,
+    replayed: bool | None = None,
+) -> dict:
+    result = {
         "id": p.id,
         "name": p.name,
         "image_key": p.image_key,
@@ -67,6 +85,22 @@ def _plan(p: FloorPlan, pins: list, punch: list | None = None) -> dict:
         "punch": punch or [],
         "created_at": p.created_at.isoformat(),
     }
+    if replayed is not None:
+        result["replayed"] = replayed
+    return result
+
+
+def _pin(pin: FloorPlanPin, *, replayed: bool | None = None) -> dict:
+    result = {
+        "id": pin.id,
+        "room_id": pin.room_id,
+        "x_pct": pin.x_pct,
+        "y_pct": pin.y_pct,
+        "label": pin.label,
+    }
+    if replayed is not None:
+        result["replayed"] = replayed
+    return result
 
 
 def _furniture(f: FurnitureItem, *, replayed: bool | None = None) -> dict:
@@ -136,29 +170,54 @@ async def list_plans(project_id: str, user: User = Depends(get_current_user), db
 
 
 @router.post("/{project_id}/floor-plans")
-async def create_plan(project_id: str, body: PlanIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def create_plan(project_id: str, body: PlanCreateIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=True)
-    p = FloorPlan(project_id=project_id, **body.model_dump())
-    db.add(p); await db.commit(); await db.refresh(p)
-    await act.log_event(db, project_id=project_id, user_id=user.id, kind="plan", title=f"Планировка: {p.name}", link_path="/approvals")
-    return _plan(p, [], [])
+    from app.services import floor_plan_write_service as floor_write
+    from app.services.client_write_idempotency import IdempotencyConflict
+
+    try:
+        plan, replayed = await floor_write.create_plan(
+            db,
+            project_id=project_id,
+            user_id=user.id,
+            client_request_id=body.client_request_id,
+            payload=body.model_dump(exclude={"client_request_id"}),
+        )
+    except IdempotencyConflict as error:
+        raise HTTPException(
+            409,
+            detail={
+                "code": "idempotency_conflict",
+                "message": "Этот идентификатор создания планировки уже использован для других данных",
+            },
+        ) from error
+    return _plan(plan, [], [], replayed=replayed)
 
 
 @router.post("/{project_id}/floor-plans/{plan_id}/pins")
-async def upsert_pin(project_id: str, plan_id: str, body: PinIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def upsert_pin(project_id: str, plan_id: str, body: PinCreateIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=True)
-    plan = await _project_plan_or_404(db, project_id, plan_id)
-    room = await _project_room_or_404(db, project_id, body.room_id)
-    r = await db.execute(select(FloorPlanPin).where(FloorPlanPin.floor_plan_id == plan.id, FloorPlanPin.room_id == room.id))
-    pin = r.scalar_one_or_none()
-    if pin:
-        pin.x_pct, pin.y_pct, pin.label = body.x_pct, body.y_pct, body.label
-    else:
-        pin = FloorPlanPin(floor_plan_id=plan.id, **body.model_dump())
-        db.add(pin)
-    await db.commit(); await db.refresh(pin)
-    await act.log_event(db, project_id=project_id, user_id=user.id, kind="room_change", title="Метка комнаты на плане", room_id=body.room_id, link_path=f"/room/{body.room_id}")
-    return {"id": pin.id, "room_id": pin.room_id, "x_pct": pin.x_pct, "y_pct": pin.y_pct, "label": pin.label}
+    from app.services import floor_plan_write_service as floor_write
+    from app.services.client_write_idempotency import IdempotencyConflict
+
+    try:
+        pin, replayed = await floor_write.upsert_pin(
+            db,
+            project_id=project_id,
+            plan_id=plan_id,
+            user_id=user.id,
+            client_request_id=body.client_request_id,
+            payload=body.model_dump(exclude={"client_request_id"}),
+        )
+    except IdempotencyConflict as error:
+        raise HTTPException(
+            409,
+            detail={
+                "code": "idempotency_conflict",
+                "message": "Этот идентификатор метки на плане уже использован для других данных",
+            },
+        ) from error
+    return _pin(pin, replayed=replayed)
 
 
 @router.get("/{project_id}/furniture")
@@ -223,7 +282,8 @@ class FurnitureMove(BaseModel):
 async def move_furniture(project_id: str, item_id: str, body: FurnitureMove, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=True)
     f = await db.get(FurnitureItem, item_id)
-    if not f or f.project_id != project_id: raise HTTPException(404)
+    if not f or f.project_id != project_id:
+        raise HTTPException(404)
     f.x_pct, f.y_pct = body.x_pct, body.y_pct
     await db.commit()
     return {"ok": True, "x_pct": f.x_pct, "y_pct": f.y_pct}
