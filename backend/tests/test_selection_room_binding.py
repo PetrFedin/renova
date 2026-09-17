@@ -5,7 +5,15 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from app.api.v1 import selections as api
-from app.models.entities import Project, Room, SelectionItem, User, UserRole
+from app.models.entities import (
+    MaterialPick,
+    Project,
+    Room,
+    SelectionItem,
+    SelectionStatus,
+    User,
+    UserRole,
+)
 
 
 @pytest.mark.asyncio
@@ -84,3 +92,68 @@ async def test_selection_create_binds_optional_room_to_path_project(db):
     )
     assert no_room["project_id"] == project_a.id
     assert no_room["room_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_selection_approve_rechecks_legacy_room_before_procurement(db):
+    customer = User(id="selection-approve-user", phone="+79990004781", role=UserRole.customer)
+    db.add(customer)
+    await db.flush()
+
+    project_a = Project(
+        id="selection-approve-project-a",
+        name="Selection approve A",
+        renovation_type="cosmetic",
+        customer_id=customer.id,
+    )
+    project_b = Project(
+        id="selection-approve-project-b",
+        name="Selection approve B",
+        renovation_type="cosmetic",
+        customer_id=customer.id,
+    )
+    db.add_all([project_a, project_b])
+    await db.flush()
+
+    room_b = Room(
+        id="selection-approve-room-b",
+        project_id=project_b.id,
+        name="Foreign Room",
+        room_type="living",
+        length_m=5,
+        width_m=3,
+    )
+    db.add(room_b)
+    await db.flush()
+
+    contaminated = SelectionItem(
+        id="selection-legacy-contaminated",
+        project_id=project_a.id,
+        room_id=room_b.id,
+        category="tile",
+        title="Legacy contaminated selection",
+        price=2500,
+        proposed_by_id=customer.id,
+        status=SelectionStatus.proposed,
+    )
+    db.add(contaminated)
+    await db.commit()
+
+    with pytest.raises(HTTPException) as rejected:
+        await api.approve_selection(project_a.id, contaminated.id, user=customer, db=db)
+    assert rejected.value.status_code == 404
+
+    await db.refresh(contaminated)
+    assert contaminated.status == SelectionStatus.proposed
+
+    propagated = list(
+        (
+            await db.execute(
+                select(MaterialPick).where(
+                    MaterialPick.project_id == project_a.id,
+                    MaterialPick.room_id == room_b.id,
+                )
+            )
+        ).scalars().all()
+    )
+    assert propagated == []
