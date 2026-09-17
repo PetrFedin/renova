@@ -29,6 +29,24 @@ class IssueIn(BaseModel):
     photo_key: str | None = None
 
 
+async def _require_issue_refs(db: AsyncSession, project_id: str, body: IssueIn) -> None:
+    """Bind optional issue child identifiers to the already-authorized project."""
+    from app.models.entities import FloorPlan, Room, Stage
+
+    if body.room_id:
+        room = await db.get(Room, body.room_id)
+        if not room or room.project_id != project_id:
+            raise HTTPException(404, "issue_or_project_not_found")
+    if body.stage_id:
+        stage = await db.get(Stage, body.stage_id)
+        if not stage or stage.project_id != project_id:
+            raise HTTPException(404, "issue_or_project_not_found")
+    if body.floor_plan_id:
+        floor_plan = await db.get(FloorPlan, body.floor_plan_id)
+        if not floor_plan or floor_plan.project_id != project_id:
+            raise HTTPException(404, "issue_or_project_not_found")
+
+
 class CheckIn(BaseModel):
     item_id: str
     done: bool
@@ -97,6 +115,7 @@ async def create_issue(
     from app.services import team_service as team_svc
     project = await require_project(db, project_id, user, write=True)
     await team_svc.require_capability(db, user, project, "field_write")
+    await _require_issue_refs(db, project_id, body)
     issue = await iss.create_issue(
         db, project_id, body.title,
         description=body.description, room_id=body.room_id, stage_id=body.stage_id, severity=body.severity,
