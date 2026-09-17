@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
-from app.models.entities import Project, SelectionItem, SelectionStatus, User, UserRole
+from app.models.entities import Project, Room, SelectionItem, SelectionStatus, User, UserRole
 from app.services import activity_service as act
 
 router = APIRouter(prefix="/projects", tags=["selections"])
@@ -100,6 +100,17 @@ async def create_selection(
     await require_project(db, project_id, user, write=True)
     if body.category not in CATEGORIES:
         raise HTTPException(422, "invalid_category")
+    if body.room_id:
+        room = (
+            await db.execute(
+                select(Room.id).where(
+                    Room.id == body.room_id,
+                    Room.project_id == project_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if room is None:
+            raise HTTPException(404, "selection_or_project_not_found")
     row = SelectionItem(
         project_id=project_id,
         room_id=body.room_id,
