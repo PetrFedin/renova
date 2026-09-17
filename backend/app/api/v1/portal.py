@@ -58,12 +58,17 @@ async def portal_session(body: PortalSessionIn, db: AsyncSession = Depends(get_d
         raise HTTPException(401, "token_mismatch")
 
     # P0: portal snapshot/API need Bearer — magic link alone must mint access JWT
+    token_scopes = list(claims.get("scopes") or ["read"])
     access_token = create_access_token(
         user.id,
         {
             "role": user.role.value,
             "portal": True,
             "project_id": project.id,
+            # The claims existed on the magic link and were dropped here, so
+            # nothing downstream could enforce them. See app/api/portal_scope.py.
+            "scopes": token_scopes,
+            "read_only": bool(claims.get("read_only", read_only)),
         },
     )
     return {
@@ -73,7 +78,7 @@ async def portal_session(body: PortalSessionIn, db: AsyncSession = Depends(get_d
         "read_only": bool(claims.get("read_only", read_only)),
         "access_mode": mode,
         "role": user.role.value,
-        "scopes": claims.get("scopes", ["read"]),
+        "scopes": token_scopes,
         "access_token": access_token,
         "token_type": "bearer",
     }

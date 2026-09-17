@@ -3,12 +3,13 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Request
 from jwt.exceptions import InvalidTokenError as JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.api.portal_scope import enforce_portal_scope
 from app.core.security import bearer_user_id, decode_access_token
 from app.db.session import get_db
 from app.models.entities import Project, User
@@ -87,11 +88,31 @@ async def resolve_user_id(
     raise HTTPException(401, "Требуется Authorization: Bearer <access_token>")
 
 
+def _portal_payload(authorization: str) -> dict | None:
+    """Decoded claims, or None when the header is not a usable Bearer token.
+
+    Authentication itself is `resolve_user_id`'s job and has already run; this
+    only needs the claims. A token that cannot be decoded is rejected there,
+    so failing open here cannot widen access.
+    """
+    try:
+        return decode_access_token(_bearer_token(authorization))
+    except Exception:
+        return None
+
+
 async def get_current_user(
+    request: Request,
     user_id: str = Depends(resolve_user_id),
     authorization: str | None = Header(default=None, alias="Authorization"),
     db: AsyncSession = Depends(get_db),
 ) -> User:
+    # A portal token is bound to one project and one set of scopes. Refuse it
+    # outside them before touching the database — the check is a property of
+    # the token alone.
+    if authorization:
+        enforce_portal_scope(request, _portal_payload(authorization))
+
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
