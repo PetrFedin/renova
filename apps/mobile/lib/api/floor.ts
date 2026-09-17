@@ -4,8 +4,63 @@ import { createClientRequestId } from '@/lib/clientRequestId';
 import type { FloorPlan, FurnitureItem, WasteOrder } from './types';
 export const floorApi = {
   listFloorPlans: (userId: string, projectId: string) => req<FloorPlan[]>(`/api/v1/projects/${projectId}/floor-plans`, {}, userId),
-  createFloorPlan: (userId: string, projectId: string, body: object) => req<FloorPlan>(`/api/v1/projects/${projectId}/floor-plans`, { method: 'POST', body: JSON.stringify(body) }, userId),
-  pinFloorPlanRoom: (userId: string, projectId: string, planId: string, body: object) => req(`/api/v1/projects/${projectId}/floor-plans/${planId}/pins`, { method: 'POST', body: JSON.stringify(body) }, userId),
+  createFloorPlan: async (userId: string, projectId: string, body: object) => {
+    const input = body as Record<string, unknown> & { client_request_id?: string };
+    const requestBody = {
+      ...input,
+      client_request_id: input.client_request_id ?? createClientRequestId('floor-plan'),
+    };
+    const serialized = JSON.stringify(requestBody);
+    try {
+      return await req<FloorPlan & { replayed: boolean }>(
+        `/api/v1/projects/${projectId}/floor-plans`,
+        { method: 'POST', body: serialized },
+        userId,
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 429) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/floor-plans`,
+        method: 'POST',
+        body: serialized,
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
+  pinFloorPlanRoom: async (userId: string, projectId: string, planId: string, body: object) => {
+    const input = body as Record<string, unknown> & { client_request_id?: string };
+    const requestBody = {
+      ...input,
+      client_request_id: input.client_request_id ?? createClientRequestId('floor-pin'),
+    };
+    const serialized = JSON.stringify(requestBody);
+    try {
+      return await req<{
+        id: string;
+        room_id: string;
+        x_pct: number;
+        y_pct: number;
+        label?: string | null;
+        replayed: boolean;
+      }>(
+        `/api/v1/projects/${projectId}/floor-plans/${planId}/pins`,
+        { method: 'POST', body: serialized },
+        userId,
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 429) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/floor-plans/${planId}/pins`,
+        method: 'POST',
+        body: serialized,
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
   moveFloorPin: async (userId: string, projectId: string, planId: string, pinId: string, x_pct: number, y_pct: number) => {
     const body = { x_pct, y_pct };
     try {

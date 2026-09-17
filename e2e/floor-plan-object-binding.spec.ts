@@ -58,6 +58,7 @@ async function createPlan(
       image_key: `e2e/floor-${marker}.png`,
       width_px: 1200,
       height_px: 800,
+      client_request_id: `floor-e2e-plan-${marker}`,
     },
   });
   expect(response.status()).toBe(200);
@@ -88,6 +89,7 @@ test.describe('P0 floor-plan object binding', () => {
             x_pct: 17,
             y_pct: 23,
             label: 'B pin',
+            client_request_id: `floor-e2e-pin-b-${marker}`,
           },
         },
       );
@@ -117,6 +119,7 @@ test.describe('P0 floor-plan object binding', () => {
             x_pct: 11,
             y_pct: 22,
             label: 'foreign room',
+            client_request_id: `floor-e2e-foreign-pin-${marker}`,
           },
         },
       );
@@ -167,6 +170,7 @@ test.describe('P0 floor-plan object binding', () => {
             x_pct: 25,
             y_pct: 35,
             label: 'A pin',
+            client_request_id: `floor-e2e-pin-a-${marker}`,
           },
         },
       );

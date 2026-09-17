@@ -79,6 +79,10 @@ def _furniture_body(request_id: str, **kwargs):
     return api.FurnitureCreateIn(client_request_id=request_id, **kwargs)
 
 
+def _pin_body(request_id: str, **kwargs):
+    return api.PinCreateIn(client_request_id=request_id, **kwargs)
+
+
 async def _fresh_user(db, user_id: str) -> User:
     user = await db.get(User, user_id, populate_existing=True)
     assert user is not None
@@ -110,7 +114,7 @@ async def test_move_pin_cannot_cross_project_or_plan_boundary(db):
     own_pin = await api.upsert_pin(
         project_a_id,
         plan_a_id,
-        api.PinIn(room_id=room_a_id, x_pct=20, y_pct=30, label="A"),
+        _pin_body("floor-binding-own-pin", room_id=room_a_id, x_pct=20, y_pct=30, label="A"),
         user=await _fresh_user(db, customer_id),
         db=db,
     )
@@ -139,7 +143,7 @@ async def test_pin_room_reference_is_project_scoped(db):
         await api.upsert_pin(
             project_a_id,
             plan_a_id,
-            api.PinIn(room_id=room_b_id, x_pct=11, y_pct=22, label="foreign"),
+            _pin_body("floor-binding-foreign-pin", room_id=room_b_id, x_pct=11, y_pct=22, label="foreign"),
             user=customer,
             db=db,
         )

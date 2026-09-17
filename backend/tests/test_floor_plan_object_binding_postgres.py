@@ -32,6 +32,10 @@ def _furniture(request_id: str, **kwargs) -> api.FurnitureCreateIn:
     return api.FurnitureCreateIn(client_request_id=request_id, **kwargs)
 
 
+def _pin(request_id: str, **kwargs) -> api.PinCreateIn:
+    return api.PinCreateIn(client_request_id=request_id, **kwargs)
+
+
 async def _fresh_user(db, user_id: str) -> User:
     user = await db.get(User, user_id, populate_existing=True)
     assert user is not None
@@ -134,7 +138,7 @@ async def test_floor_object_binding_is_fail_closed_on_postgres():
             await api.upsert_pin(
                 project_a_id,
                 plan_a_id,
-                api.PinIn(room_id=room_b_id, x_pct=11, y_pct=22, label="foreign"),
+                _pin(f"floor-pg-foreign-pin-{suffix}", room_id=room_b_id, x_pct=11, y_pct=22, label="foreign"),
                 user=await _fresh_user(db, customer_id),
                 db=db,
             )
@@ -169,7 +173,7 @@ async def test_floor_object_binding_is_fail_closed_on_postgres():
         own_pin = await api.upsert_pin(
             project_a_id,
             plan_a_id,
-            api.PinIn(room_id=room_a_id, x_pct=20, y_pct=30, label="own"),
+            _pin(f"floor-pg-own-pin-{suffix}", room_id=room_a_id, x_pct=20, y_pct=30, label="own"),
             user=await _fresh_user(db, customer_id),
             db=db,
         )

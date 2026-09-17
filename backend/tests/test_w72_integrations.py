@@ -63,14 +63,24 @@ async def test_acceptance_marks_floor_pin_label():
         plan = await client.post(
             f"/api/v1/projects/{pid}/floor-plans",
             headers=h_k,
-            json={"name": "План", "image_key": "demo/plan.jpg"},
+            json={
+                "name": "План",
+                "image_key": "demo/plan.jpg",
+                "client_request_id": "w72-floor-plan-create-001",
+            },
         )
         assert plan.status_code == 200, plan.text
         plan_id = plan.json()["id"]
         pin = await client.post(
             f"/api/v1/projects/{pid}/floor-plans/{plan_id}/pins",
             headers=h_k,
-            json={"room_id": room_id, "x_pct": 40, "y_pct": 40, "label": "Комната"},
+            json={
+                "room_id": room_id,
+                "x_pct": 40,
+                "y_pct": 40,
+                "label": "Комната",
+                "client_request_id": "w72-floor-pin-upsert-001",
+            },
         )
         assert pin.status_code == 200, pin.text
 
