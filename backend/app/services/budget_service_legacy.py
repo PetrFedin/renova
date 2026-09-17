@@ -6,6 +6,7 @@ from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.entities import (
     BudgetLine,
@@ -379,6 +380,11 @@ async def refresh_budget_facts(db: AsyncSession, project_id: str) -> None:
     purchases = (
         await db.execute(
             select(Purchase)
+            # `expense_from_purchase` reads `purchase.items`, and it is a plain
+            # function that cannot await a lazy load. Without this the whole
+            # budget surface of the project answers 500 as soon as one purchase
+            # reaches paid/delivered — see test_purchase_expense_eager_items.
+            .options(selectinload(Purchase.items))
             .where(
                 Purchase.project_id == project_id,
                 Purchase.status.in_((PurchaseStatus.paid, PurchaseStatus.delivered)),
