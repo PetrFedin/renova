@@ -244,7 +244,16 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
     }
   }
 
-  useEffect(() => { load(); refreshProjects().catch(reportCatch('components.screens.OsHomeScreen.1')); }, [user?.id, activeProject?.id]);
+  // Home data depends on the active project; the project *list* does not.
+  // Refreshing both on [user, activeProject] re-fetched the list on every
+  // object switch. It is cheap today only because listProjects is one of the
+  // five cachedGet endpoints and enrichProjectsPendingPayments no-ops until a
+  // project reaches 100% — for a customer with several finished objects it
+  // becomes one pending-count request per finished project, per switch.
+  useEffect(() => { load(); }, [user?.id, activeProject?.id]);
+  useEffect(() => {
+    refreshProjects().catch(reportCatch('components.screens.OsHomeScreen.1'));
+  }, [user?.id]);
 
   // W79: после sync offline — обновить счётчики hero без полного reload проекта
   useEffect(() => subscribeOfflineFlush(() => {
