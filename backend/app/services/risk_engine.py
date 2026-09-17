@@ -97,7 +97,7 @@ async def compute_project_risks(db: AsyncSession, project: Project) -> list[dict
     for st in stages:
         if st.status not in (StageStatus.planned, StageStatus.active):
             continue
-        ev = await dep_svc.evaluate_stage(db, st)
+        ev = await dep_svc.evaluate_stage(db, st, commit=False, persist_status=False)
         if ev.get("blocked") and ev.get("reasons"):
             r0 = ev["reasons"][0]
             risks.append({

@@ -72,7 +72,7 @@ async def completion_check(db: AsyncSession, stage: Stage, project) -> dict:
     if missing:
         checks.append({"id": "materials", "ok": False, "message": f"Не хватает материалов: {len(missing)}", "action": "materials", "button": "Материалы"})
 
-    blocked = await dep_svc.evaluate_stage(db, stage)
+    blocked = await dep_svc.evaluate_stage(db, stage, commit=False, persist_status=False)
     if blocked.get("blocked"):
         reasons = blocked.get("reasons") or []
         msg = reasons[0].get("title") or reasons[0].get("message") if reasons else "Есть блокирующие зависимости"
@@ -108,10 +108,11 @@ async def build_work_snapshot(db: AsyncSession, stage: Stage, project, *, role: 
     await wf.ensure_stage_checklist(db, stage)
     cl = wf.stage_checklist(stage)
     prog = wf.checklist_progress(cl)
-    stage.percent_complete = float(prog)
+    # `prog` is what this snapshot returns; assigning it to the stage made a GET
+    # overwrite the contractor's recorded progress with the checklist ratio.
 
     comp = await completion_check(db, stage, project)
-    blocked = await dep_svc.evaluate_stage(db, stage)
+    blocked = await dep_svc.evaluate_stage(db, stage, commit=False, persist_status=False)
     na = next_action(stage, role, completion_ok=comp["ok"])
 
     room_ids = parse_room_ids(stage)
