@@ -8,6 +8,7 @@ from app.api.deps import get_current_user, require_project
 from app.core.security import create_access_token
 from app.db.session import get_db
 from app.models.entities import Project, User, UserRole
+from app.services import portal_access
 from app.services import portal_token_service as portal_tok
 from app.services import team_service as team_svc
 
@@ -34,18 +35,21 @@ class PortalLinkOut(BaseModel):
 async def portal_session(body: PortalSessionIn, db: AsyncSession = Depends(get_db)):
     """Обмен magic link JWT → user_id + project (без пароля; гость должен быть в project_viewers)."""
     try:
-        claims = portal_tok.verify_portal_token(body.token)
+        unverified = portal_tok.verify_portal_token(body.token)
     except ValueError:
         raise HTTPException(401, "invalid_portal_token")
 
     from sqlalchemy import select
 
-    user = await db.get(User, claims["user_id"])
-    if not user:
-        raise HTTPException(401, "user_not_found")
-    project = await db.get(Project, claims["project_id"])
-    if not project:
-        raise HTTPException(404, "project_not_found")
+    # Re-prove the link against current state: deleted account, revoked
+    # sessions, removed participant and trashed project are all invisible to a
+    # signature check.
+    access = await portal_access.authorize_portal(
+        db, token=body.token, project_id=unverified["project_id"]
+    )
+    claims = {**unverified, "read_only": access.read_only}
+    user = access.user
+    project = access.project
 
     mode, read_only = await team_svc.project_access_mode(db, user, project)
     if mode == "none":
@@ -370,14 +374,10 @@ async def portal_accept_work(
     db: AsyncSession = Depends(get_db),
 ):
     """P3.2a: приёмка этапа по magic link (scope accept_stage, только заказчик)."""
-    try:
-        claims = portal_tok.verify_portal_token(body.token)
-    except ValueError:
-        raise HTTPException(401, "invalid_portal_token")
-    if claims["project_id"] != project_id:
-        raise HTTPException(401, "token_mismatch")
-    if "accept_stage" not in claims.get("scopes", []):
-        raise HTTPException(403, "portal_read_only")
+    access = await portal_access.authorize_portal(
+        db, token=body.token, project_id=project_id, required_scope="accept_stage"
+    )
+    claims = {"user_id": access.user.id, "project_id": access.project.id}
 
     from app.models.entities import WorkAcceptance
     from app.api.v1.work_acceptances import (
@@ -478,21 +478,12 @@ async def portal_return_work(
     from app.services import activity_service as act
     from app.services import notification_service as notif
 
-    try:
-        claims = portal_tok.verify_portal_token(body.token)
-    except ValueError:
-        raise HTTPException(401, "invalid_portal_token")
-    if claims["project_id"] != project_id:
-        raise HTTPException(401, "token_mismatch")
-    if "accept_stage" not in claims.get("scopes", []):
-        raise HTTPException(403, "portal_read_only")
-
-    user = await db.get(User, claims["user_id"])
-    if not user:
-        raise HTTPException(401, "user_not_found")
-    project = await db.get(Project, project_id)
-    if not project:
-        raise HTTPException(404, "project_not_found")
+    access = await portal_access.authorize_portal(
+        db, token=body.token, project_id=project_id, required_scope="accept_stage"
+    )
+    claims = {"user_id": access.user.id, "project_id": access.project.id}
+    user = access.user
+    project = access.project
     if user.id != project.customer_id or user.role != UserRole.customer:
         raise HTTPException(403, "acceptance_decision_customer_only")
 
@@ -553,14 +544,10 @@ async def portal_sign_document(
     db: AsyncSession = Depends(get_db),
 ):
     """P3-W6: in-app подпись черновика по magic link (scope sign_document, заказчик)."""
-    try:
-        claims = portal_tok.verify_portal_token(body.token)
-    except ValueError:
-        raise HTTPException(401, "invalid_portal_token")
-    if claims["project_id"] != project_id:
-        raise HTTPException(401, "token_mismatch")
-    if "sign_document" not in claims.get("scopes", []):
-        raise HTTPException(403, "portal_read_only")
+    access = await portal_access.authorize_portal(
+        db, token=body.token, project_id=project_id, required_scope="sign_document"
+    )
+    claims = {"user_id": access.user.id, "project_id": access.project.id}
 
     from app.models.project_documents import DocumentStatus
     from app.services import project_document_service as docs_svc
@@ -621,15 +608,44 @@ class PortalScheduleIn(BaseModel):
     reason: str | None = None
 
 
-def _portal_claims(token: str, project_id: str) -> dict:
-    """Verify magic-link; 401 on bad/expired token."""
+async def _portal_claims(
+    db: AsyncSession,
+    token: str,
+    project_id: str,
+    *,
+    required_scope: str | None = None,
+) -> dict:
+    """Verify magic-link against current state; 401/403 when no longer usable.
+
+    Signature and expiry alone never proved the account still exists, the
+    sessions were not revoked, the participant still belongs to the project, or
+    the project is not in the trash.
+
+    Two pre-existing contracts are preserved deliberately. A token for another
+    project answers 403 ``token_project_mismatch`` here (the shared helper uses
+    401 ``token_mismatch``, which is what the other portal routes already
+    returned), and ``required_scope`` is evaluated before any database access,
+    because a missing scope is a property of the token alone.
+    """
     try:
         claims = portal_tok.verify_portal_token(token)
     except ValueError:
-        raise HTTPException(401, "invalid_portal_token")
+        raise HTTPException(401, "invalid_portal_token") from None
     if claims.get("project_id") != project_id:
         raise HTTPException(403, "token_project_mismatch")
-    return claims
+    if required_scope is not None and required_scope not in (claims.get("scopes") or []):
+        raise HTTPException(403, f"portal_{required_scope}_scope_required")
+
+    access = await portal_access.authorize_portal(
+        db, token=token, project_id=project_id, required_scope=required_scope
+    )
+    return {
+        "user_id": access.user.id,
+        "project_id": access.project.id,
+        "read_only": access.read_only,
+        "scopes": list(access.scopes),
+        "access": access,
+    }
 
 
 def _require_portal_scope(claims: dict, scope: str) -> None:
@@ -645,8 +661,10 @@ async def portal_confirm_schedule(
     db: AsyncSession = Depends(get_db),
 ):
     """W57/W60: подтверждение графика по magic link — нужен accept_stage scope."""
-    claims = _portal_claims(body.token, project_id)
     # Schedule confirm = согласие заказчика; тот же write-scope, что и приёмка
+    claims = await _portal_claims(
+        db, body.token, project_id, required_scope="accept_stage"
+    )
     _require_portal_scope(claims, "accept_stage")
     user = await db.get(User, claims["user_id"])
     if not user:
@@ -668,7 +686,9 @@ async def portal_reject_schedule(
     db: AsyncSession = Depends(get_db),
 ):
     """W57/W60: отклонение графика — нужен accept_stage scope."""
-    claims = _portal_claims(body.token, project_id)
+    claims = await _portal_claims(
+        db, body.token, project_id, required_scope="accept_stage"
+    )
     _require_portal_scope(claims, "accept_stage")
     user = await db.get(User, claims["user_id"])
     if not user:
@@ -695,7 +715,9 @@ async def portal_lock_estimate(
     db: AsyncSession = Depends(get_db),
 ):
     """W105: зафиксировать смету по magic link (scope accept_stage, заказчик)."""
-    claims = _portal_claims(body.token, project_id)
+    claims = await _portal_claims(
+        db, body.token, project_id, required_scope="accept_stage"
+    )
     _require_portal_scope(claims, "accept_stage")
     user = await db.get(User, claims["user_id"])
     if not user:
@@ -726,7 +748,9 @@ async def portal_reject_estimate(
     db: AsyncSession = Depends(get_db),
 ):
     """W105: отклонить proposal сметы по magic link."""
-    claims = _portal_claims(body.token, project_id)
+    claims = await _portal_claims(
+        db, body.token, project_id, required_scope="accept_stage"
+    )
     _require_portal_scope(claims, "accept_stage")
     user = await db.get(User, claims["user_id"])
     if not user:
@@ -764,14 +788,11 @@ async def portal_approve_change_order(
     db: AsyncSession = Depends(get_db),
 ):
     """Согласование доп. работ из lite-портала (scope accept_stage / customer)."""
-    try:
-        claims = portal_tok.verify_portal_token(body.token)
-    except ValueError:
-        raise HTTPException(401, "invalid_portal_token")
-    if claims["project_id"] != project_id:
-        raise HTTPException(401, "token_mismatch")
-    user = await db.get(User, claims["user_id"])
-    project = await db.get(Project, project_id)
+    access = await portal_access.authorize_portal(
+        db, token=body.token, project_id=project_id
+    )
+    user = access.user
+    project = access.project
     if not user or not project:
         raise HTTPException(404)
     if user.id != project.customer_id or user.role != UserRole.customer:
@@ -792,14 +813,11 @@ async def portal_reject_change_order(
     body: PortalChangeOrderIn,
     db: AsyncSession = Depends(get_db),
 ):
-    try:
-        claims = portal_tok.verify_portal_token(body.token)
-    except ValueError:
-        raise HTTPException(401, "invalid_portal_token")
-    if claims["project_id"] != project_id:
-        raise HTTPException(401, "token_mismatch")
-    user = await db.get(User, claims["user_id"])
-    project = await db.get(Project, project_id)
+    access = await portal_access.authorize_portal(
+        db, token=body.token, project_id=project_id
+    )
+    user = access.user
+    project = access.project
     if not user or not project:
         raise HTTPException(404)
     if user.id != project.customer_id or user.role != UserRole.customer:

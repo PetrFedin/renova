@@ -47,11 +47,16 @@ def verify_portal_token(token: str) -> dict:
         raise ValueError("expired_portal_token")
     if not payload.get("project_id") or not payload.get("sub"):
         raise ValueError("invalid_portal_token")
+    issued_at = payload.get("iat")
     return {
         "user_id": str(payload["sub"]),
         "project_id": str(payload["project_id"]),
         "read_only": bool(payload.get("read_only", True)),
         "scopes": list(payload.get("scopes") or ["read"]),
+        # Exposed so app.services.portal_access can compare the mint time with
+        # user.tokens_invalid_before. A signature proves the token was issued
+        # here; it does not prove the session behind it is still valid.
+        "issued_at": int(issued_at) if isinstance(issued_at, (int, float)) else None,
     }
 
 
