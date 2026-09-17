@@ -33,6 +33,26 @@ class SelectionRejectIn(BaseModel):
     reason: str | None = None
 
 
+async def _require_selection_room(
+    db: AsyncSession,
+    project_id: str,
+    room_id: str | None,
+) -> None:
+    """Bind an optional Selection room to the already-authorized project."""
+    if not room_id:
+        return
+    room = (
+        await db.execute(
+            select(Room.id).where(
+                Room.id == room_id,
+                Room.project_id == project_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if room is None:
+        raise HTTPException(404, "selection_or_project_not_found")
+
+
 def _out(row: SelectionItem) -> dict:
     return {
         "id": row.id,
@@ -100,17 +120,7 @@ async def create_selection(
     await require_project(db, project_id, user, write=True)
     if body.category not in CATEGORIES:
         raise HTTPException(422, "invalid_category")
-    if body.room_id:
-        room = (
-            await db.execute(
-                select(Room.id).where(
-                    Room.id == body.room_id,
-                    Room.project_id == project_id,
-                )
-            )
-        ).scalar_one_or_none()
-        if room is None:
-            raise HTTPException(404, "selection_or_project_not_found")
+    await _require_selection_room(db, project_id, body.room_id)
     row = SelectionItem(
         project_id=project_id,
         room_id=body.room_id,
@@ -186,6 +196,7 @@ async def approve_selection(
     row = await db.get(SelectionItem, selection_id)
     if not row or row.project_id != project_id:
         raise HTTPException(404)
+    await _require_selection_room(db, project_id, row.room_id)
     if row.status != SelectionStatus.proposed:
         raise HTTPException(409, "not_proposed")
     row.status = SelectionStatus.approved
