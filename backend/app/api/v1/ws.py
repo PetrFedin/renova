@@ -3,10 +3,17 @@ from __future__ import annotations
 
 from collections import defaultdict
 import json
+import time
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.core.request_auth import user_id_from_access_token
+from app.services.ws_frame_contract import (
+    FrameRateLimiter,
+    InvalidClientFrame,
+    parse_client_frame,
+    server_typing_payload,
+)
 from app.db.session import SessionLocal
 from app.models.entities import ChatThread, Project, User
 from app.services import chat_participant_service as participant_svc
@@ -19,6 +26,13 @@ inbox_rooms: dict[str, set[WebSocket]] = defaultdict(set)
 # 4401 = unauthorized (custom close; browsers treat as abnormal)
 _WS_UNAUTHORIZED = 4401
 _WS_FORBIDDEN = 4403
+# 1008 is the standard policy-violation close.
+_WS_POLICY_VIOLATION = 1008
+
+# Authorisation is proved at connect. Re-prove it periodically so a revoked
+# session or a removed participant stops receiving thread traffic without
+# waiting for the socket to drop.
+REAUTHORIZE_INTERVAL_SECONDS = 60.0
 
 
 async def _authenticate_ws(websocket: WebSocket) -> str | None:
@@ -71,16 +85,52 @@ async def chat_ws(websocket: WebSocket, thread_id: str):
         return
     await websocket.accept()
     rooms[thread_id].add(websocket)
+
+    limiter = FrameRateLimiter()
+    reauthorized_at = time.monotonic()
     try:
         while True:
-            data = await websocket.receive_text()
+            raw = await websocket.receive_text()
+            now = time.monotonic()
+
+            # Authorisation was proved once, at connect. A long-lived socket
+            # must not outlive a revoked session or a removed participant.
+            if now - reauthorized_at >= REAUTHORIZE_INTERVAL_SECONDS:
+                reauthorized_at = now
+                if not await _can_access_thread(uid, thread_id):
+                    await websocket.close(code=_WS_FORBIDDEN)
+                    break
+
+            if not limiter.allow(now):
+                await websocket.close(code=_WS_POLICY_VIOLATION)
+                break
+
+            try:
+                frame = parse_client_frame(raw)
+            except InvalidClientFrame:
+                # Never relay an unrecognised frame. The receive handler in the
+                # mobile client treats any non-typing frame as a reason to
+                # reload, so echoing arbitrary client bytes let one participant
+                # both forge server events and flood another client.
+                continue
+
+            if not frame.broadcasts:
+                continue
+
+            # The server builds the outbound payload; client bytes never reach
+            # another socket. This also supplies the authenticated sender id.
+            outbound = json.dumps(
+                server_typing_payload(user_id=uid), ensure_ascii=False
+            )
             for ws in list(rooms[thread_id]):
                 if ws != websocket:
                     try:
-                        await ws.send_text(data)
+                        await ws.send_text(outbound)
                     except Exception:
                         rooms[thread_id].discard(ws)
     except WebSocketDisconnect:
+        pass
+    finally:
         rooms[thread_id].discard(websocket)
 
 
@@ -96,31 +146,31 @@ async def inbox_ws(websocket: WebSocket, user_id: str):
         return
     await websocket.accept()
     inbox_rooms[user_id].add(websocket)
+
+    limiter = FrameRateLimiter()
     try:
         while True:
+            # Inbox frames are keepalives only; nothing is ever relayed from
+            # here. The limiter still bounds a flood from one connection.
             await websocket.receive_text()
+            if not limiter.allow(time.monotonic()):
+                await websocket.close(code=_WS_POLICY_VIOLATION)
+                break
     except WebSocketDisconnect:
+        pass
+    finally:
         inbox_rooms[user_id].discard(websocket)
 
 
 async def _redis_publish(channel: str, packed: str) -> None:
-    """Best-effort cross-instance fanout when REDIS_URL set (packed = instance envelope)."""
-    from app.core.config import settings
+    """Cross-instance fanout over the shared pooled client.
 
-    url = (settings.redis_url or "").strip()
-    if not url:
-        return
-    try:
-        import redis.asyncio as redis  # type: ignore
+    This used to open and close a Redis connection per published frame, i.e. a
+    TCP connect and RESP handshake per chat message and per inbox badge update.
+    """
+    from app.services.ws_publisher import publish
 
-        client = redis.from_url(url, decode_responses=True)
-        try:
-            await client.publish(channel, packed)
-        finally:
-            await client.aclose()
-    except Exception:
-        # Fail-open locally: in-process rooms still deliver on this instance
-        pass
+    await publish(channel, packed)
 
 
 async def broadcast(thread_id: str, payload: dict) -> None:

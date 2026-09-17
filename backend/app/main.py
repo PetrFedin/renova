@@ -147,6 +147,14 @@ async def lifespan(app: FastAPI):
             await api_heartbeat_publisher.close()
 
         try:
+            # Release the pooled WS publisher before the loop closes.
+            from app.services.ws_publisher import close as close_ws_publisher
+
+            await close_ws_publisher()
+        except Exception:
+            logger.warning("ws publisher close failed", exc_info=True)
+
+        try:
             await rate_limiter.close()
         finally:
             observability_runtime = getattr(app.state, "observability_runtime", None)
