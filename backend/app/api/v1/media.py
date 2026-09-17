@@ -90,9 +90,18 @@ async def get_media(
         raise HTTPException(404)
     name = key.rsplit("/", 1)[-1]
     mime = mimetypes.guess_type(name)[0] or "application/octet-stream"
-    cache = (
-        "private, max-age=3600"
-        if key.startswith("documents/")
-        else "public, max-age=86400, s-maxage=604800"
-    )
+    # Every object served here is private project content: stage photos,
+    # quality-control defect shots, floor plans, receipt scans. `photos/*` used
+    # to be returned as `public, s-maxage=604800`, which invites any shared
+    # cache — CDN, corporate proxy — to retain one customer's renovation photos
+    # for a week and hand them to whoever asks for the same URL.
+    #
+    # `private` keeps client-side caching (React Native <Image> still caches
+    # locally, so nothing gets slower for the user) while removing the shared
+    # copy. It does not fix the underlying gap: `photos/*` carries no project in
+    # its key (`photos/{uuid}.jpg`), so possession of the URL is still the only
+    # authorisation, and those URLs never expire. Closing that needs a
+    # project-scoped key scheme plus expiring signatures and a migration for
+    # already-stored URLs — tracked as #449, not something to half-do here.
+    cache = "private, max-age=3600" if key.startswith("documents/") else "private, max-age=86400"
     return Response(content=data, media_type=mime, headers={"Cache-Control": cache})
