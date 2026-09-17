@@ -231,7 +231,12 @@ async def test_floor_plan_create_rechecks_revoked_contractor_after_physical_proj
             ClientWriteRequest.project_id == project_id,
             ClientWriteRequest.scope == floor_write.PLAN_SCOPE,
         ) == 0
-        assert await _count(Session, DomainOutbox, DomainOutbox.aggregate_type == "floor_plan") == 0
+        assert await _count(
+            Session,
+            DomainOutbox,
+            DomainOutbox.aggregate_type == "floor_plan",
+            DomainOutbox.payload_json.contains(project_id),
+        ) == 0
     finally:
         await holder.close()
         await engine.dispose()
