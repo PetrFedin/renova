@@ -26,6 +26,10 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/furnitureTransport.test.mjs
+      - name: Waste-order production transport and restart contract
+        run: |
+          set -euo pipefail
+          node scripts/wasteOrderTransport.test.mjs
       - name: Mobile runtime and persistence contracts
         run: |
           set -euo pipefail
@@ -57,6 +61,7 @@ jobs:
       CHAT_MESSAGE_POSTGRES_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5436/renova_chat_integrity
       FURNITURE_CREATE_POSTGRES_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5436/renova_chat_integrity
       FLOOR_OBJECT_BINDING_POSTGRES_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5436/renova_chat_integrity
+      WASTE_ORDER_POSTGRES_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5436/renova_chat_integrity
       PUBLIC_BASE_URL: http://127.0.0.1:8100
       SECRET_KEY: ci-${{ github.sha }}
       ALLOW_CREATE_ALL: "true"
@@ -151,6 +156,62 @@ jobs:
           path: |
             backend/furniture-behavioral-results.xml
             backend/furniture-postgres-results.xml
+          if-no-files-found: error
+          retention-days: 14
+      - name: Run fail-closed waste-order recovery contracts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          poetry run pytest -q \
+            tests/test_waste_order_create_replay.py \
+            tests/test_waste_order_transition_replay.py \
+            tests/test_waste_order_lifecycle_integrity.py \
+            --junitxml=waste-order-behavioral-results.xml
+          poetry run pytest -q \
+            tests/test_waste_order_replay_postgres.py \
+            --junitxml=waste-order-postgres-results.xml
+          poetry run python - <<'PY'
+          import xml.etree.ElementTree as ET
+
+          def read_cases(path):
+              root = ET.parse(path).getroot()
+              cases = root.findall('.//testcase')
+              assert cases, f'{path}: qualification must execute tests'
+              assert not root.findall('.//skipped'), f'{path}: skipped tests are not qualification evidence'
+              assert not root.findall('.//failure'), f'{path}: failing tests are not qualification evidence'
+              assert not root.findall('.//error'), f'{path}: errored tests are not qualification evidence'
+              return {(case.get('classname', ''), case.get('name', '')) for case in cases}
+
+          behavioral = read_cases('waste-order-behavioral-results.xml')
+          required_behavioral = {
+              'test_waste_order_create_replays_original_conflicts_changed_payload_preserves_distinct_intents_and_rejects_foreign_room',
+              'test_waste_order_create_rolls_back_flushed_order_and_ledger_then_same_intent_recovers',
+              'test_waste_same_target_replay_revalidates_target_role_without_duplicate_effects',
+              'test_request_is_atomic_and_replay_does_not_duplicate_effects',
+          }
+          behavioral_names = {name for _classname, name in behavioral}
+          assert required_behavioral <= behavioral_names, 'all exact waste-order behavioral scenarios must execute'
+
+          postgres = read_cases('waste-order-postgres-results.xml')
+          required_postgres = {
+              'test_waste_order_create_same_key_postgres_race_reaches_project_lock_and_creates_one_result',
+              'test_waste_order_create_rechecks_revoked_contractor_after_physical_project_lock_wait',
+              'test_waste_order_transition_rechecks_revoked_contractor_after_physical_order_lock_wait',
+          }
+          postgres_names = {
+              name for classname, name in postgres
+              if classname.endswith('test_waste_order_replay_postgres')
+          }
+          assert required_postgres <= postgres_names, 'all exact waste-order PostgreSQL scenarios must execute'
+          PY
+      - name: Retain waste-order recovery qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: waste-order-recovery-qualification
+          path: |
+            backend/waste-order-behavioral-results.xml
+            backend/waste-order-postgres-results.xml
           if-no-files-found: error
           retention-days: 14
 

@@ -22,6 +22,14 @@ class WasteIn(BaseModel):
     notes: str | None = None
 
 
+class WasteCreateIn(WasteIn):
+    client_request_id: str = Field(
+        min_length=8,
+        max_length=80,
+        pattern=r"^[A-Za-z0-9_-]+$",
+    )
+
+
 def _out(waste_order: WasteOrder, *, replayed: bool | None = None) -> dict:
     status = (
         waste_order.status.value
@@ -70,16 +78,30 @@ async def list_waste(
 @router.post("/{project_id}/waste-orders")
 async def create_waste(
     project_id: str,
-    body: WasteIn,
+    body: WasteCreateIn,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     await require_project(db, project_id, user, write=True)
-    order = WasteOrder(project_id=project_id, **body.model_dump())
-    db.add(order)
-    await db.commit()
-    await db.refresh(order)
-    return _out(order)
+    from app.services.client_write_idempotency import IdempotencyConflict
+
+    try:
+        order, replayed = await waste_svc.create_order(
+            db,
+            project_id=project_id,
+            user_id=user.id,
+            client_request_id=body.client_request_id,
+            payload=body.model_dump(exclude={"client_request_id"}),
+        )
+    except IdempotencyConflict as error:
+        raise HTTPException(
+            409,
+            detail={
+                "code": "idempotency_conflict",
+                "message": "Этот идентификатор заявки на вывоз уже использован для других данных",
+            },
+        ) from error
+    return _out(order, replayed=replayed)
 
 
 async def _transition(

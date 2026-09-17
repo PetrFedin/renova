@@ -1,12 +1,18 @@
-"""Waste-order lifecycle with role, state and durable side-effect integrity."""
+"""Waste-order lifecycle with replay, role, state and durable side-effect integrity."""
 from __future__ import annotations
 
+from typing import Any
+
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import Project, User, WasteOrder, WasteOrderStatus
+from app.models.entities import Project, Room, User, WasteOrder, WasteOrderStatus
 from app.services import outbox_service as outbox
 from app.services import team_service
+from app.services.client_write_idempotency import commit_client_write, replay_entity_id
+
+CREATE_SCOPE = "waste_order.create"
 
 _ALLOWED: dict[WasteOrderStatus, set[WasteOrderStatus]] = {
     WasteOrderStatus.draft: {WasteOrderStatus.requested},
@@ -28,6 +34,24 @@ def _is_assigned_executor(project: Project, user_id: str, team_role: str | None 
     return user_id == project.contractor_id or team_role in {"owner", "foreman"}
 
 
+def _validate_target_actor(
+    *,
+    project: Project,
+    actor: User,
+    target: WasteOrderStatus,
+    actor_team_role: str | None = None,
+) -> None:
+    if target in {WasteOrderStatus.scheduled, WasteOrderStatus.cancelled}:
+        if actor.id != project.customer_id:
+            raise ValueError("waste_order_actor_forbidden")
+        return
+    if target in {WasteOrderStatus.requested, WasteOrderStatus.done}:
+        if not _is_assigned_executor(project, actor.id, actor_team_role):
+            raise ValueError("waste_order_actor_forbidden")
+        return
+    raise ValueError("waste_order_actor_forbidden")
+
+
 def validate_transition(
     *,
     project: Project,
@@ -40,15 +64,166 @@ def validate_transition(
         raise ValueError(
             f"invalid_waste_order_transition:{current.value}:{target.value}"
         )
-    if target in {WasteOrderStatus.scheduled, WasteOrderStatus.cancelled}:
-        if actor.id != project.customer_id:
-            raise ValueError("waste_order_actor_forbidden")
+    _validate_target_actor(
+        project=project,
+        actor=actor,
+        target=target,
+        actor_team_role=actor_team_role,
+    )
+
+
+def canonical_create_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    scheduled_date = payload.get("scheduled_date")
+    if scheduled_date is not None and hasattr(scheduled_date, "isoformat"):
+        scheduled_date = scheduled_date.isoformat()
+    elif scheduled_date is not None:
+        scheduled_date = str(scheduled_date)
+    return {
+        "room_id": payload.get("room_id"),
+        "volume_m3": float(payload.get("volume_m3", 1)),
+        "waste_type": str(payload.get("waste_type") or "construction"),
+        "scheduled_date": scheduled_date,
+        "price": float(payload.get("price", 0)),
+        "notes": payload.get("notes"),
+    }
+
+
+def _create_entity_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "room_id": payload.get("room_id"),
+        "volume_m3": float(payload.get("volume_m3", 1)),
+        "waste_type": str(payload.get("waste_type") or "construction"),
+        "scheduled_date": payload.get("scheduled_date"),
+        "price": float(payload.get("price", 0)),
+        "notes": payload.get("notes"),
+    }
+
+
+async def _lock_project(db: AsyncSession, project_id: str) -> Project:
+    project = (
+        await db.execute(
+            select(Project)
+            .where(Project.id == project_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
+    if project is None:
+        raise HTTPException(404, "project_not_found")
+    return project
+
+
+async def _revalidate_project_write(
+    db: AsyncSession,
+    *,
+    project: Project,
+    user_id: str,
+) -> User:
+    actor = await db.get(User, user_id, populate_existing=True)
+    if actor is None or getattr(actor, "deleted_at", None):
+        raise HTTPException(403, "project_forbidden")
+    if getattr(project, "trashed_at", None):
+        raise HTTPException(404, "project_in_trash")
+    if not await team_service.can_access_project(db, actor, project, write=True):
+        raise HTTPException(403, "project_forbidden")
+    return actor
+
+
+async def _validate_create_room(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    room_id: str | None,
+) -> None:
+    if room_id is None:
         return
-    if target in {WasteOrderStatus.requested, WasteOrderStatus.done}:
-        if not _is_assigned_executor(project, actor.id, actor_team_role):
-            raise ValueError("waste_order_actor_forbidden")
-        return
-    raise ValueError("waste_order_actor_forbidden")
+    found = await db.scalar(
+        select(Room.id).where(Room.id == room_id, Room.project_id == project_id)
+    )
+    if found is None:
+        raise HTTPException(404, "room_not_found")
+
+
+async def _replay_created_order(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    order_id: str,
+) -> WasteOrder:
+    order = await db.get(WasteOrder, order_id)
+    if order is None or order.project_id != project_id:
+        raise RuntimeError("waste_order_replay_corrupt")
+    return order
+
+
+async def create_order(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    user_id: str,
+    client_request_id: str,
+    payload: dict[str, Any],
+) -> tuple[WasteOrder, bool]:
+    """Create one waste order exactly once for one logical client intent."""
+    canonical = canonical_create_payload(payload)
+    order: WasteOrder | None = None
+    try:
+        project = await _lock_project(db, project_id)
+        await _revalidate_project_write(db, project=project, user_id=user_id)
+
+        replay_id = await replay_entity_id(
+            db,
+            scope=CREATE_SCOPE,
+            project_id=project_id,
+            user_id=user_id,
+            request_id=client_request_id,
+            payload=canonical,
+        )
+        if replay_id:
+            replayed = await _replay_created_order(
+                db,
+                project_id=project_id,
+                order_id=replay_id,
+            )
+            await db.commit()
+            return replayed, True
+
+        entity_payload = _create_entity_payload(payload)
+        await _validate_create_room(
+            db,
+            project_id=project_id,
+            room_id=entity_payload["room_id"],
+        )
+
+        order = WasteOrder(project_id=project_id, **entity_payload)
+        db.add(order)
+        await db.flush()
+
+        created, entity_id = await commit_client_write(
+            db,
+            scope=CREATE_SCOPE,
+            project_id=project_id,
+            user_id=user_id,
+            request_id=client_request_id,
+            payload=canonical,
+            entity_id=order.id,
+        )
+        if not created:
+            replayed = await _replay_created_order(
+                db,
+                project_id=project_id,
+                order_id=entity_id,
+            )
+            await db.commit()
+            return replayed, True
+    except BaseException:
+        await db.rollback()
+        raise
+
+    if order is None:
+        raise RuntimeError("waste_order_create_missing")
+    await db.refresh(order)
+    return order, False
 
 
 def _activity_copy(
@@ -158,6 +333,53 @@ async def _prepare_effects(
         )
 
 
+async def _lock_order(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    order_id: str,
+) -> WasteOrder | None:
+    query = (
+        select(WasteOrder)
+        .where(
+            WasteOrder.id == order_id,
+            WasteOrder.project_id == project_id,
+        )
+        .execution_options(populate_existing=True)
+    )
+    try:
+        query = query.with_for_update()
+    except Exception:
+        pass
+    return (await db.execute(query)).scalar_one_or_none()
+
+
+async def _fresh_transition_context(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    actor_id: str,
+) -> tuple[Project, User, str | None]:
+    project = (
+        await db.execute(
+            select(Project)
+            .where(Project.id == project_id)
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
+    actor = await db.get(User, actor_id, populate_existing=True)
+    if (
+        project is None
+        or actor is None
+        or getattr(actor, "deleted_at", None)
+        or getattr(project, "trashed_at", None)
+        or not await team_service.can_access_project(db, actor, project, write=True)
+    ):
+        raise ValueError("waste_order_actor_forbidden")
+    actor_team_role = await team_service.team_role_for_project(db, actor, project)
+    return project, actor, actor_team_role
+
+
 async def transition_order(
     db: AsyncSession,
     *,
@@ -166,26 +388,31 @@ async def transition_order(
     actor: User,
     target: WasteOrderStatus,
 ) -> tuple[WasteOrder | None, bool]:
-    """Move one order exactly once and commit state with its durable evidence."""
-    query = select(WasteOrder).where(
-        WasteOrder.id == order_id,
-        WasteOrder.project_id == project.id,
-    )
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
-    order = (await db.execute(query)).scalar_one_or_none()
+    """Move one order exactly once with fresh post-lock authority and durable evidence."""
+    project_id = project.id
+    actor_id = actor.id
+    order = await _lock_order(db, project_id=project_id, order_id=order_id)
     if not order:
         return None, False
 
+    fresh_project, fresh_actor, actor_team_role = await _fresh_transition_context(
+        db,
+        project_id=project_id,
+        actor_id=actor_id,
+    )
     current = WasteOrderStatus(_status_value(order.status))
     if current == target:
+        _validate_target_actor(
+            project=fresh_project,
+            actor=fresh_actor,
+            target=target,
+            actor_team_role=actor_team_role,
+        )
         return order, True
-    actor_team_role = await team_service.team_role_for_project(db, actor, project)
+
     validate_transition(
-        project=project,
-        actor=actor,
+        project=fresh_project,
+        actor=fresh_actor,
         current=current,
         target=target,
         actor_team_role=actor_team_role,
@@ -195,9 +422,9 @@ async def transition_order(
     try:
         await _prepare_effects(
             db,
-            project=project,
+            project=fresh_project,
             order=order,
-            actor_id=actor.id,
+            actor_id=fresh_actor.id,
             target=target,
         )
         await db.commit()
