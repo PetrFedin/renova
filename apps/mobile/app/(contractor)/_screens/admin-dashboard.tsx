@@ -90,7 +90,7 @@ export default function AdminDashboardScreen() {
         <Stack.Screen options={{ headerShown: false }} />
         <BackHeader title="Панель администратора" />
         <View style={st.nativeWrap}>
-          <Text style={st.title}>Панель</Text>
+          {/* «Панель» под «Панелью администратора» ничего не добавляла. */}
           <Text style={st.sub}>Полная версия доступна в web-превью (desktop).</Text>
           {s ? (
             <>
