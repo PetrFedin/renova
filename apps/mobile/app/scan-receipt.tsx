@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { View, Text, TextInput, StyleSheet, Alert, Platform } from 'react-native';
+import { Alert, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -143,6 +143,20 @@ export default function ScanReceiptScreen() {
   return (
     <>
       <BackHeader title="Скан чека" returnTo={returnTo} subtitle="Камера или расход без чека ниже" />
+      {/*
+        Экран не прокручивался вовсе: камера занимала всё оставшееся место
+        (flex: 1), а форма расхода под ней оказывалась за краем экрана — на
+        iPhone SE до неё нельзя было добраться никак. Подзаголовок при этом
+        обещает «расход без чека ниже».
+
+        Камере задана высота вместо flex: внутри прокрутки flex-ребёнок не
+        растягивается. 300 pt больше прежнего гарантированного minHeight 280,
+        так что кадр не уменьшился.
+      */}
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
       {activeProject && (
         <ExpenseContextPickers
           project={activeProject}
@@ -155,7 +169,7 @@ export default function ScanReceiptScreen() {
           disabled={busy}
         />
       )}
-      <View style={{ flex: 1, minHeight: 280 }}>
+      <View style={styles.cameraBox}>
         <CameraView
           style={{ flex: 1 }}
           barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
@@ -168,11 +182,14 @@ export default function ScanReceiptScreen() {
           <ManualExpenseForm userId={user.id} project={activeProject} initialRoomId={roomId} initialStageId={stageId} collapsed onSaved={() => loadProject(activeProject.id)} />
         </View>
       )}
+      </ScrollView>
     </>
   );
 }
 
 const styles = StyleSheet.create({
+  scrollContent: { paddingBottom: 32 },
+  cameraBox: { height: 300 },
   manualWrap: { padding: 16, paddingBottom: 32 },
   wrap: { flex: 1, padding: 16, backgroundColor: RenovaTheme.colors.background },
   input: { borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: 10, padding: 12, minHeight: 100, marginBottom: 16, fontSize: 13 },
