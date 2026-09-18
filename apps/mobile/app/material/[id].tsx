@@ -1,6 +1,7 @@
 /** Деталь материала — подбор / закупка */
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, View, Text, StyleSheet, Linking, Pressable, TextInput } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, Linking, TextInput } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { useLocalSearchParams } from 'expo-router';
 import { pushOsNav, replaceOsNav } from '@/lib/pushOsNav';
 import { BackHeader } from '@/components/renova/BackHeader';

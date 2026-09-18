@@ -1,6 +1,7 @@
 /** Материалы — hub: Потребности · Закупки · Чеки */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
+import { ScrollView, View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { router, useFocusEffect, useLocalSearchParams, usePathname } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography, listRowStyles, filterChipStyles } from '@/constants/screenTypography';

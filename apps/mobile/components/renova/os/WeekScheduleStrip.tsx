@@ -1,6 +1,7 @@
 /** Превью плана на неделю — одна строка-сводка + детали по ▼ */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme } from '@/constants/Theme';
 import { homeRowStyles, homeTypography } from '@/constants/homeTypography';
 import { api, CalendarData } from '@/lib/api';

@@ -1,6 +1,7 @@
 /** Компактная панель действий календаря — иконки в строку, подсказка при наведении */
 import { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Platform, Alert } from 'react-native';
+import { View, Text, StyleSheet, Platform, Alert } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
 import { api } from '@/lib/api';

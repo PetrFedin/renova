@@ -1,4 +1,5 @@
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme } from '@/constants/Theme';
 const OPT = [5, 10, 15, 20];
 export function RoomBudgetThreshold({ value, onChange }: { value?: number | null; onChange: (v: number) => void }) {

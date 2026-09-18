@@ -1,5 +1,6 @@
 /** Кнопки PDF: открыть · поделиться · скачать */
-import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme } from '@/constants/Theme';
 import { downloadReportPdf, previewReportPdf, shareReportPdf, type ReportPdfKind } from '@/lib/reports/reportPdf';
 import type { ExpenseCategoryId, FinalReportSectionId } from '@/lib/reports/reportSections';

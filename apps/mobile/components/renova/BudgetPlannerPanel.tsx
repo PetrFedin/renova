@@ -1,6 +1,7 @@
 /** Планировщик бюджета: работа / материалы / срок / рынок / Лемана ПРО */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Pressable, ScrollView, Linking } from 'react-native';
+import { View, Text, TextInput, StyleSheet, ScrollView, Linking } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';

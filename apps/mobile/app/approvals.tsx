@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
-import { ScrollView, View, Text, StyleSheet, TextInput, Pressable } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, TextInput } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { useLocalSearchParams } from 'expo-router';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';

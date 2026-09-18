@@ -1,6 +1,7 @@
 import { BackHeader } from '@/components/renova/BackHeader';
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Share, Pressable, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Share, ScrollView } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { useLocalSearchParams, router } from 'expo-router';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';

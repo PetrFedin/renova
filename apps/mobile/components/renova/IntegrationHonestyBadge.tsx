@@ -1,6 +1,7 @@
 /** Честный статус интеграций на Home — свёрнут, раскрывается по тапу (не 4 chips всегда). */
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme } from '@/constants/Theme';
 import { api } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';

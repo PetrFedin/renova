@@ -1,5 +1,6 @@
 /** Компактная ссылка на портфель — одна строка без карточки */
-import { Text, StyleSheet, Pressable } from 'react-native';
+import { Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { homeLayout, homeTypography } from '@/constants/homeTypography';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useOsNavFromHere } from '@/lib/navigation';

@@ -1,5 +1,6 @@
 /** Привязка этапа к комнатам — пустой список = весь объект */
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { Room } from '@/lib/api';
 import { roomTypeLabel } from '@/constants/roomTypes';
 import { RenovaTheme } from '@/constants/Theme';

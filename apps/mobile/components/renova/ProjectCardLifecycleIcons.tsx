@@ -1,5 +1,6 @@
 /** Иконки archive/trash/restore на карточке объекта — справа снизу, без текста */
-import { View, Pressable, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
 import type { ProjectBucket } from '@/components/renova/ProjectBucketToolbar';

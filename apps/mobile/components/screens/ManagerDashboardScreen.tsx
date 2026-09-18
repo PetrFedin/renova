@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { router } from 'expo-router';
 
 import { ActivityFeed } from '@/components/renova/ActivityFeed';

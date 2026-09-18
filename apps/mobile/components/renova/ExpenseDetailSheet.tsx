@@ -1,6 +1,7 @@
 /** Детализация расхода — просмотр, правка и удаление */
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Text, TextInput, View } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { usePathname } from 'expo-router';
 
 import { PrimaryButton } from '@/components/renova/PrimaryButton';

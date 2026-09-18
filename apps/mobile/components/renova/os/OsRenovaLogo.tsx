@@ -1,5 +1,6 @@
 /** Логотип RENOVA — слева в шапке, тап → главная */
-import { Pressable, Text, StyleSheet } from 'react-native';
+import { Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { router } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { tabsRoute, type OsRole } from '@/constants/osSections';

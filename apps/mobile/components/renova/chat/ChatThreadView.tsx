@@ -1,8 +1,7 @@
 /** Экран треда: реакции, закрепление, задачи, счета, участники, файлы */
 import { useEffect, useRef, useState, useCallback } from 'react';
-import {
-  AppState, ScrollView, View, Text, TextInput, StyleSheet, Image, Pressable, Alert, Modal,
-} from 'react-native';
+import { AppState, ScrollView, View, Text, TextInput, StyleSheet, Image, Alert, Modal } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { useFocusEffect, usePathname } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { RenovaTheme } from '@/constants/Theme';

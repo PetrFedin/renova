@@ -1,6 +1,7 @@
 /** Визуальная зона главной — «Сделать сейчас» / «Сводка» / «Детали» */
 import type { ReactNode } from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { homeRowStyles, homeTypography } from '@/constants/homeTypography';
 
 type Props = {

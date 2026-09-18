@@ -1,5 +1,6 @@
 /** Сверка: закупки по смете vs отсканированные чеки */
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { usePathname } from 'expo-router';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import type { Room, ReceiptItem, MaterialPick } from '@/lib/api';

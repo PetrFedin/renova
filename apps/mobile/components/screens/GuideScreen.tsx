@@ -1,6 +1,7 @@
 /** Гид по ремонту — статьи для заказчика и исполнителя */
 import { useEffect, useState } from 'react';
-import { ScrollView, Text, StyleSheet, Pressable } from 'react-native';
+import { ScrollView, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';
 import { api, ArticleSummary } from '@/lib/api';

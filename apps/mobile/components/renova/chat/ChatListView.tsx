@@ -1,7 +1,8 @@
 /** Список чатов: фильтр объектов, архив, закрепление — каждый чат привязан к одному объекту.
  * Clarity D: unread только в dock; в списке — title + 1 строка preview. */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { useFocusEffect } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';

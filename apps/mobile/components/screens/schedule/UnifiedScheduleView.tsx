@@ -1,7 +1,8 @@
 /** W71: канонический hub сроков (календарь + work-schedule + confirm/reject).
  * Единый календарь: компактный календарь + план работ */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, ScrollView, View, Text, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
+import { Alert, ScrollView, View, Text, StyleSheet, useWindowDimensions } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { useLocalSearchParams } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { CreateWorkSheet } from '@/components/renova/CreateWorkSheet';

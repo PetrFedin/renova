@@ -1,7 +1,8 @@
 /** Компактная подсказка «заполните профиль» — dismiss на проект.
  * Важно: на web Pressable → <button>; вложенные button запрещены DOM. */
 import { useEffect, useState } from 'react';
-import { Text, StyleSheet, Pressable, View } from 'react-native';
+import { Text, StyleSheet, View } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RenovaTheme } from '@/constants/Theme';
 import { homeLayout, homeTypography } from '@/constants/homeTypography';

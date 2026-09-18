@@ -1,5 +1,6 @@
 /** Текстовая ссылка — accent, без стрелки в title кнопки */
-import { Pressable, Text, StyleSheet } from 'react-native';
+import { Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { typography } from '@/constants/typography';
 
 export function TextLink({ label, onPress }: { label: string; onPress: () => void }) {

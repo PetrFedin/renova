@@ -1,6 +1,7 @@
 /** Выбор проекта в шапке — группы «В работе» / «Завершённые» + портфель */
 import { useState, useEffect, useMemo } from 'react';
-import { View, Text, Pressable, StyleSheet, Modal, ActivityIndicator, Alert, ScrollView, Platform } from 'react-native';
+import { View, Text, StyleSheet, Modal, ActivityIndicator, Alert, ScrollView, Platform } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { Ionicons } from '@expo/vector-icons';
 import { usePathname } from 'expo-router';
 import { RenovaTheme, formatRub } from '@/constants/Theme';

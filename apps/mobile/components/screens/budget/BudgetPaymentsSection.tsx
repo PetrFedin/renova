@@ -1,6 +1,7 @@
 /** Вкладка «Бюджет → Оплаты» — создание, фильтры, история */
 import { useState } from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { formatRub, RenovaTheme } from '@/constants/Theme';
 import { filterChipStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';

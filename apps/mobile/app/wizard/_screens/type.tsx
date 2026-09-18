@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { View, StyleSheet, Alert, ScrollView, KeyboardAvoidingView, Platform, Text, TextInput, Pressable } from 'react-native';
+import { View, StyleSheet, Alert, ScrollView, KeyboardAvoidingView, Platform, Text, TextInput } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RenovaTheme } from '@/constants/Theme';

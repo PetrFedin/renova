@@ -1,6 +1,7 @@
 /** Детализация счёта — sheet по tap из «Бюджет → Оплаты» */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, Platform, Pressable, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, AppState, Platform, Text, TextInput, View } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import * as WebBrowser from 'expo-web-browser';
 import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';

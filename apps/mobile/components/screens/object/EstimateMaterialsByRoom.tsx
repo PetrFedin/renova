@@ -1,6 +1,7 @@
 /** Материалы сметы — свёрнуто по комнатам */
 import { useMemo, useState } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';
 import { EstimateLineRow } from '@/components/screens/object/ObjectSection';

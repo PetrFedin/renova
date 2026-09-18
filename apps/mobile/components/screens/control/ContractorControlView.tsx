@@ -1,6 +1,7 @@
 import { reportError } from '@/lib/reportError';
 /** Контроль — приёмка, замечания, качество (исполнитель) */
-import { Alert, ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
+import { Alert, ScrollView, View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { usePathname } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';

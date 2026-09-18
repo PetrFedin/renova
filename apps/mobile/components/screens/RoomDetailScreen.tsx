@@ -1,6 +1,7 @@
 /** Комната — Digital Twin: паспорт сверху, детали по запросу */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
+import { ScrollView, View, Text, TextInput, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { useLocalSearchParams, usePathname } from 'expo-router';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';

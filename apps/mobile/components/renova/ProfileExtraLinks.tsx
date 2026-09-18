@@ -1,5 +1,6 @@
 /** Ссылки «Ещё» в профиле — замена удалённого MoreMenu */
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { pushOsNav } from '@/lib/pushOsNav';
 

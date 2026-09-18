@@ -1,6 +1,7 @@
 /** Операции вне ядра сметы — вывоз, подбор материалов (сворачиваемый блок) */
 import { useState } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { WasteOrderList } from '@/components/renova/WasteOrderList';
 import { MaterialPickList } from '@/components/renova/MaterialPickList';

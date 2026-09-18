@@ -1,5 +1,6 @@
 /** Выбор комнаты — чеки, расходы и строки сметы */
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 
 import { formSurfaceStyles } from '@/constants/formStyles';
 import { filterChipStyles, screenTypography } from '@/constants/screenTypography';

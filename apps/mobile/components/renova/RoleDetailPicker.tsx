@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { DetailLevel, getDetailLevel, setDetailLevel } from '@/lib/detailLevel';
 import { RenovaTheme } from '@/constants/Theme';
 

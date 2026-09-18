@@ -1,6 +1,7 @@
 /** P1.14: баннер когда cachedGet отдал устаревшие данные после ошибки API */
 import { useCallback, useState } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { useFocusEffect } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { getLastCachedGetMeta } from '@/lib/api/client';

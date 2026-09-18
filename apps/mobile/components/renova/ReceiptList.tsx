@@ -1,6 +1,7 @@
 /** Список чеков — категория, комната, редактирование */
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, Alert } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import type { ReceiptItem } from '@/lib/api';
 import { expenseCategoryLabel, EXPENSE_CATEGORIES, type ExpenseCategoryId } from '@/constants/expenseCategories';

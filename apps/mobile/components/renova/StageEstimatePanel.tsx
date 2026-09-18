@@ -1,5 +1,6 @@
 /** Смета этапа — только выбранные комнаты */
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { EstimateLine, Room } from '@/lib/api';
 import { filterLinesForStage, sumEstimateLines } from '@/lib/stageEstimate';

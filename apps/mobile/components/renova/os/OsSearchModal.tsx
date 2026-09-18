@@ -1,5 +1,6 @@
 /** Глобальный поиск по проекту — модалка из шапки OS */
-import { Modal, View, StyleSheet, Pressable } from 'react-native';
+import { Modal, View, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { usePathname } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { GlobalSearchBar } from '@/components/renova/GlobalSearchBar';

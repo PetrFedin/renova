@@ -4,7 +4,8 @@
  * удалены после миграции на Slot (OsRoleTabsNavigator), чтобы не вернуть
  * Maximum update depth через BottomTabNavigator.
  */
-import { View, StyleSheet, Pressable } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { useState } from 'react';
 import { usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';

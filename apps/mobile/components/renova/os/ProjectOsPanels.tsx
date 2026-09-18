@@ -1,6 +1,7 @@
 /** Компактные панели Renova OS для главной */
 import { useState } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { homeLayout, homeTypography } from '@/constants/homeTypography';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';

@@ -1,6 +1,7 @@
 /** Пустое состояние — нет активного проекта; список с группами «В работе» / «Завершённые» */
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView, Platform } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, ScrollView, Platform } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { usePathname } from 'expo-router';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';

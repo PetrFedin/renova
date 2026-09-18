@@ -1,5 +1,6 @@
 /** Этап ↔ комнаты ↔ траты — одна сводка для заказчика на «Бюджет → Сводка» */
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { buildStageExpenseLinks, type StageExpenseLink } from '@/lib/domain/buildStageExpenseLinks';
 import type { ExpenseDetailRow } from '@/lib/domain/expenseAnalytics';

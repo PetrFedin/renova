@@ -1,14 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Alert,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Alert, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 
 import { api, type ProjectIssue, type WorkAcceptance } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';

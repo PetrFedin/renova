@@ -1,4 +1,5 @@
-import { Pressable, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { PRESSED_OPACITY, Pressable } from '@/components/ui/Pressable';
 import * as Haptics from 'expo-haptics';
 import { RenovaTheme } from '@/constants/Theme';
 import { reportCatch } from '@/lib/reportError';
@@ -120,7 +121,7 @@ const styles = StyleSheet.create({
   danger: { backgroundColor: RenovaTheme.colors.danger },
   ghost: { backgroundColor: 'transparent', paddingVertical: 6 },
   disabled: { opacity: 0.45 },
-  pressed: { opacity: 0.85 },
+  pressed: { opacity: PRESSED_OPACITY },
   text: { color: RenovaTheme.colors.inverseText, fontWeight: RenovaTheme.fontWeight.semibold },
   textSecondary: { color: RenovaTheme.colors.text },
   textOutline: { color: RenovaTheme.colors.text },

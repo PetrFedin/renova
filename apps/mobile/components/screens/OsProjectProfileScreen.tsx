@@ -1,6 +1,7 @@
 /** Профиль объекта — редактирование основных данных проекта (Объект → Профиль) */
 import { useEffect, useState } from 'react';
-import { ScrollView, View, Text, StyleSheet, Alert, Pressable } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, Alert } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { TechnicalSupervisionCard } from '@/components/renova/TechnicalSupervisionCard';

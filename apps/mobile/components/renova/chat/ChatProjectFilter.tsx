@@ -1,6 +1,7 @@
 /** Мультивыбор объектов для списка чатов — все / один / несколько */
 import { useEffect, useMemo, useState } from 'react';
-import { Modal, View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { Modal, View, Text, ScrollView, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';

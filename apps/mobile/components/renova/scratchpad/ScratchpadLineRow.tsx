@@ -1,5 +1,6 @@
 /** Строка черновика — tap редактирует, → превращает в задачу/чат/расход */
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';

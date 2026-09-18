@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { RenovaTheme } from '@/constants/Theme';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { DetailPreset, PRESET_LABELS, getDetailPreset, applyDetailPreset } from '@/lib/detailLevel';
 
 const KEYS: DetailPreset[] = ['cosmetic', 'capital', 'house'];

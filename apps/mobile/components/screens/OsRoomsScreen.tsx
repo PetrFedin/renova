@@ -1,6 +1,7 @@
 /** Комнаты объекта — список по этажам (вкладка «Объект → Комнаты») */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ScrollView, View, Text, TextInput, StyleSheet, Pressable, Alert } from 'react-native';
+import { ScrollView, View, Text, TextInput, StyleSheet, Alert } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { usePathname } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
