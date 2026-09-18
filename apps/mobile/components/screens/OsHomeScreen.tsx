@@ -27,6 +27,7 @@ import { getOfflineOutboxStatus, subscribeOfflineFlush } from '@/lib/offline';
 import { mergeDigestInsight } from '@/lib/domain/digestHomeInsight';
 import { subscribeProjectDataChanged } from '@/lib/projectDataBus';
 import { reportCatch, reportError } from '@/lib/reportError';
+import { FAB_SAFE_BOTTOM } from '@/constants/fab';
 
 const HOME_SOURCE_NAMES = [
   'receipts',
@@ -395,7 +396,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: RenovaTheme.colors.background },
-  content: { padding: homeLayout.screenPadding, paddingBottom: 24 },
+  content: { padding: homeLayout.screenPadding, paddingBottom: FAB_SAFE_BOTTOM },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: RenovaTheme.colors.background },
   emptyTitle: { fontSize: 16, fontWeight: '700', color: RenovaTheme.colors.text, marginBottom: 12 },
   hint: { fontSize: 13, color: RenovaTheme.colors.warning, marginBottom: 10 },

@@ -25,6 +25,7 @@ import { resolveChatCreateProject } from '@/lib/resolveChatCreateProject';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { reportCatch } from '@/lib/reportError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { FAB_SAFE_BOTTOM } from '@/constants/fab';
 
 type Folder = 'active' | 'archive';
 
@@ -227,7 +228,7 @@ export function ChatListView() {
   }
 
   return (
-    <ScrollView style={s.wrap} contentContainerStyle={{ padding: 16, paddingBottom: 24 }}>
+    <ScrollView style={s.wrap} contentContainerStyle={{ padding: 16, paddingBottom: FAB_SAFE_BOTTOM }}>
       {folder === 'active' && (unreadFailed || loadError) && globalUnread === 0 && displayThreads.length > 0 ? (
         <Pressable onPress={() => reload().catch(reportCatch('components.renova.chat.ChatListView.7'))}>
           <Text style={s.unreadWarn}>Не удалось обновить — нажмите, чтобы повторить</Text>

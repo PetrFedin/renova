@@ -84,7 +84,7 @@ export function OsPlanTabScreen({
   const section = SECTIONS[sub];
 
   return (
-    <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
+    <ScrollView style={s.wrap} contentContainerStyle={screenLayout.tabContentStyle}>
       <ObjectTabGuide tab="plan" role={role} onNextTab={onNextTab} />
       <ReadOnlyBanner />
       <PlanTabOverview role={role} project={activeProject} userId={user.id} />
