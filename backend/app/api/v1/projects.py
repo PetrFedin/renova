@@ -286,6 +286,17 @@ async def purge_project(project_id: str, user: User = Depends(get_current_user),
 @router.patch("/{project_id}", response_model=ProjectDetail)
 async def patch_project(project_id: str, body: ProjectUpdate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     project = await require_project(db, project_id, user, write=True)
+    # Профиль объекта принадлежит заказчику. Проверки владельца тут не было, и
+    # исполнитель переписывал название, адрес, сроки, ставку НДС и личный
+    # потолок бюджета заказчика — без единого уведомления. Ставка НДС при этом
+    # пересчитывает суммы.
+    #
+    # Клиент и так считает это правом владельца: canEditProjectProfile ===
+    # isProjectOwner (apps/mobile/lib/domain/roleCapabilities.ts). Сервер
+    # приводится к тому же правилу, что и trash/archive/viewers, где владелец
+    # уже проверялся.
+    if user.id != project.customer_id:
+        raise HTTPException(403, detail={"code": "project_profile_owner_only"})
     data = body.model_dump(exclude_unset=True)
     p = await profile_svc.update_project_profile(db, project, data)
     return await _detail(db, p, user)
