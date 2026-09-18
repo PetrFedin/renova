@@ -3,6 +3,10 @@ import { parseOsHref, type OsTabRoute } from '../constants/osSections';
 
 /** Legacy tab-маршруты → канонические hub-пути */
 export const TAB_ALIASES: Record<string, string> = {
+  // Маршрута (tabs)/home не существует — главная это (tabs)/ со слешем.
+  // Бэкенд рассылал именно (tabs)/home в 55 местах, и «Назад» уходило не на
+  // главную, а в legacy-редиректор.
+  '/(customer)/(tabs)/home': '/(customer)/(tabs)/',
   '/(customer)/(tabs)/finance': '/(customer)/(tabs)/budget',
   '/(customer)/(tabs)/more': '/(customer)/(tabs)/profile',
   '/(customer)/(tabs)/works': '/(customer)/(tabs)/repair?tab=works',
@@ -12,6 +16,7 @@ export const TAB_ALIASES: Record<string, string> = {
   '/(customer)/(tabs)/rooms': '/(customer)/(tabs)/object?tab=rooms',
   '/(customer)/(tabs)/estimate': '/(customer)/(tabs)/object?tab=estimate',
   '/(customer)/(tabs)/plan': '/(customer)/(tabs)/object?tab=plan',
+  '/(contractor)/(tabs)/home': '/(contractor)/(tabs)/',
   '/(contractor)/(tabs)/money': '/(contractor)/(tabs)/budget',
   '/(contractor)/(tabs)/more': '/(contractor)/(tabs)/profile',
   '/(contractor)/(tabs)/works': '/(contractor)/(tabs)/repair?tab=works',

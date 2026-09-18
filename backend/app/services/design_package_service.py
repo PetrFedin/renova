@@ -192,7 +192,7 @@ async def _prepare_effects(
                 "title": notification_title,
                 "body": body or f"{package.title} · v{package.version}",
                 "link_path": "/design" if action == "submit" else "/(contractor)/(tabs)/object",
-                "return_to": "/(customer)/(tabs)/home" if action == "submit" else "/(contractor)/(tabs)/home",
+                "return_to": "/(customer)/(tabs)/" if action == "submit" else "/(contractor)/(tabs)/",
             },
         )
 

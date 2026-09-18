@@ -34,10 +34,18 @@ export function resolvePushLink(
   role: OsRole = 'customer',
 ): PushTarget | null {
   if (!link) return null;
-  const [path, query = ''] = link.split('?');
+  // Всё после первого «?» — это запрос целиком. Раньше здесь брался только
+  // второй кусок split('?'), и хвост после второго «?» молча терялся:
+  // бэкенд вкладывал returnTo без кодирования, поэтому ссылка вида
+  //   /stage/<id>?returnTo=/(customer)/(tabs)/repair?tab=control
+  // теряла tab=control. Человек приходил из уведомления в «Приёмку», жал
+  // «Назад» и оказывался в «Этапах». URLSearchParams режет по «&», поэтому
+  // такие — уже сохранённые — ссылки тоже разбираются верно.
+  const [path, ...queryParts] = link.split('?');
+  const query = queryParts.join('?');
   const canonical = TAB_ALIASES[path] || link;
   const canonicalPath = canonical.split('?')[0];
-  const canonicalQuery = canonical.includes('?') ? canonical.split('?')[1] : query;
+  const canonicalQuery = canonical.includes('?') ? canonical.split('?').slice(1).join('?') : query;
   const incoming = queryParams(canonicalQuery || '');
   // An explicit returnTo carried by the inbound URL is authoritative; the
   // caller-provided context is only a fallback for links that omit it.

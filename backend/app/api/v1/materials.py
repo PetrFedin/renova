@@ -168,7 +168,7 @@ async def _deliver_transition(
                 title=event.notification_title,
                 body=event.notification_body or pick.name,
                 link_path=event.notification_link,
-                return_to="/(customer)/(tabs)/home",
+                return_to="/(customer)/(tabs)/",
             )
     finally:
         clear_request_side_effect_context()
@@ -371,7 +371,7 @@ async def update_supply(
                     title="Изменён источник материала",
                     body=f"Повторно согласуйте: {pick.name}",
                     link_path="/approvals",
-                    return_to="/(customer)/(tabs)/home",
+                    return_to="/(customer)/(tabs)/",
                 )
         finally:
             clear_request_side_effect_context()

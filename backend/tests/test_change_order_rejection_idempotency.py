@@ -85,7 +85,7 @@ async def test_rejection_and_delivery_replay_once(rejection_db, monkeypatch):
         title=f"Доп. работы отклонены: {order.title}",
         body=order.description or "",
         link_path="/(contractor)/(tabs)/budget",
-        return_to="/(contractor)/(tabs)/home",
+        return_to="/(contractor)/(tabs)/",
     )
     clear_request_side_effect_context()
 

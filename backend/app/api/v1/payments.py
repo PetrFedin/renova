@@ -249,7 +249,7 @@ async def create_payment(
                 title=f"Счёт к оплате: {payment.title}",
                 body=str(payment.amount),
                 link_path="/(customer)/(tabs)/budget?tab=payments",
-                return_to="/(customer)/(tabs)/home",
+                return_to="/(customer)/(tabs)/",
             )
 
         await _attempt_durable_inline_delivery(
@@ -360,7 +360,7 @@ async def confirm_payment(
                 title=notification_title,
                 body=str(payment.amount),
                 link_path="/(customer)/(tabs)/budget" if member_id == project.customer_id else "/(contractor)/(tabs)/budget",
-                return_to="/(customer)/(tabs)/home" if member_id == project.customer_id else "/(contractor)/(tabs)/home",
+                return_to="/(customer)/(tabs)/" if member_id == project.customer_id else "/(contractor)/(tabs)/",
             )
         return None
 

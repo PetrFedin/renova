@@ -59,7 +59,7 @@ async def prepare_request_effects(
                 "title": f"Этап ждёт приёмки: {stage.name}",
                 "body": comment or "Проверьте результат работ и примите решение.",
                 "link_path": f"/stage/{stage.id}",
-                "return_to": "/(customer)/(tabs)/home",
+                "return_to": "/(customer)/(tabs)/",
             },
         )
         event_ids.append(notification.id)
@@ -108,7 +108,7 @@ async def prepare_return_effects(
                 "title": f"Доработка по этапу: {stage.name}",
                 "body": comment or "Этап возвращён после проверки.",
                 "link_path": f"/stage/{stage.id}",
-                "return_to": "/(customer)/(tabs)/home",
+                "return_to": "/(customer)/(tabs)/",
             },
         )
         event_ids.append(notification.id)
