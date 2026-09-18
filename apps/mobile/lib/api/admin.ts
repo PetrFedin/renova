@@ -144,6 +144,9 @@ export const adminApi = {
   createTeamInviteLink: (userId: string, role = 'member') =>
     req<{ token: string; link: string }>('/api/v1/teams/invite-link', { method: 'POST', body: JSON.stringify({ role }) }, userId),
   inviteTeamMember: (userId: string, phone: string, role = 'member') => req('/api/v1/teams/invite', { method: 'POST', body: JSON.stringify({ phone, role }) }, userId),
+  removeTeamMember: (userId: string, memberId: string) =>
+    req('/api/v1/teams/member', { method: 'DELETE', body: JSON.stringify({ user_id: memberId }) }, userId),
+  leaveTeam: (userId: string) => req<{ ok: boolean; message?: string }>('/api/v1/teams/leave', { method: 'POST' }, userId),
   getAuditLogs: (userId: string) => req<{ id: string; method: string; path: string; status_code: number; created_at: string }[]>('/api/v1/audit/logs', {}, userId),
   getTeam: (userId: string) => req<{ id: string; name: string; members: { user_id: string; phone: string; role: string }[] } | null>('/api/v1/teams/me', {}, userId),
   createTeam: (userId: string, name: string) => req('/api/v1/teams', { method: 'POST', body: JSON.stringify({ name }) }, userId),
