@@ -99,21 +99,32 @@ export function StageRoomMatrix({ rooms, stages, canEdit, onToggleLink }: Props)
   );
 }
 
+/**
+ * Зазор между ячейками. Раньше переключатели стояли вплотную: промах по
+ * границе включал не ту комнату в не тот этап. Ширину ячейки задаёт число
+ * этапов и до 44 её не довести, поэтому зазор здесь важнее всего.
+ */
+const CELL_GAP = 2;
+
 const s = StyleSheet.create({
   box: { marginBottom: 12, paddingVertical: 4 },
   head: { ...screenTypography.section, marginTop: 0, fontWeight: '700', color: RenovaTheme.colors.text },
   hint: { ...screenTypography.listMeta, marginBottom: 10 },
   empty: { ...screenTypography.empty, marginBottom: 8 },
   link: { ...screenTypography.listLink },
-  header: { flexDirection: 'row', marginBottom: 4 },
+  header: { flexDirection: 'row', marginBottom: 4, gap: CELL_GAP },
   corner: { width: 88 },
   colHead: { flex: 1, paddingHorizontal: 2 },
   colH: { fontSize: 9, fontWeight: '600', textAlign: 'center', color: RenovaTheme.colors.textMuted },
-  row: { flexDirection: 'row', alignItems: 'center', ...listRowStyles.row, paddingHorizontal: 0 },
+  // Строка давала 56 pt (12 + 32 + 12), но нажималась только середина: 32 pt
+  // ячейки с мёртвыми зонами по 12 сверху и снизу. Высота перенесена в саму
+  // ячейку — общая высота строки почти не изменилась, зона нажатия выросла
+  // с 32 до 44.
+  row: { flexDirection: 'row', alignItems: 'center', ...listRowStyles.row, paddingHorizontal: 0, paddingVertical: 4, gap: CELL_GAP },
   roomCell: { width: 88, paddingRight: 4 },
   roomN: { fontSize: 11, fontWeight: '700' },
   roomT: { fontSize: 8, color: RenovaTheme.colors.textMuted },
-  cell: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 6, minHeight: 32 },
+  cell: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 6, minHeight: RenovaTheme.minTouch },
   editable: { borderRadius: 6 },
   on: { backgroundColor: RenovaTheme.colors.infoBg },
   dot: { fontSize: 14, color: '#ccc' },
