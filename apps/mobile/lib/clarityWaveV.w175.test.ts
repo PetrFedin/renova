@@ -42,7 +42,12 @@ if (!roomDetail.includes("variant={room.is_archived ? 'outline' : 'dangerOutline
 if (!roomDetail.includes('const mutationRef = useRef(false)')) throw new Error('room mutation ref guard');
 if (!roomDetail.includes('if (mutationRef.current) return undefined')) throw new Error('room duplicate mutation guard');
 if (!roomDetail.includes("loading={mutation === 'archive'}")) throw new Error('room archive loading state');
-if (!roomDetail.includes("loading={mutation === 'save'}")) throw new Error('room save loading state');
+// Обе формы комнаты — «Габариты» и «Инженерия» — показывают занятость, и
+// каждая свою: раньше обе крутились под общим ключом 'save', и человек не
+// понимал, что именно сохраняется.
+if (!roomDetail.includes("loading={mutation === 'save:dimensions'}")) throw new Error('room dimensions loading state');
+if (!roomDetail.includes("loading={mutation === 'save:utilities'}")) throw new Error('room utilities loading state');
+if (roomDetail.includes("loading={mutation === 'save'}")) throw new Error('room save loading state is shared again');
 
 const mats = src('components/renova/MaterialPickList.tsx');
 const matSheet = src('components/renova/MaterialPickDetailSheet.tsx');

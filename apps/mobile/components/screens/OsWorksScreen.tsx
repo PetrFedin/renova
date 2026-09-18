@@ -243,7 +243,11 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
         ) : null}
         {!readOnly && (canScheduleStages || isContractor) && (
           <View style={s.createRow}>
-            {canScheduleStages ? <PrimaryButton title="+ Этап" onPress={() => setShowCreate(true)} /> : null}
+            {canScheduleStages ? <PrimaryButton title="+ Этап"
+              // Пока этапы выделены, главное действие — отправить их на
+              // приёмку; создание нового этапа отступает на второй план.
+              variant={sel.size > 0 ? 'outline' : 'primary'}
+              onPress={() => setShowCreate(true)} /> : null}
             {isContractor ? <PrimaryButton title="+ Работа" variant="outline" onPress={() => setShowCreateWork(true)} /> : null}
           </View>
         )}

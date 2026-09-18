@@ -28,7 +28,11 @@ import { screenLayout } from '@/constants/screenLayout';
 import { reportCatch, reportError } from '@/lib/reportError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 
-type RoomMutation = 'archive' | 'save' | 'materials';
+// Раньше любое сохранение комнаты шло под одним ключом 'save', и обе кнопки
+// «Сохранить» — в «Габаритах» и в «Инженерии» — крутились одновременно, как и
+// при смене типа комнаты или порога бюджета. Человек не понимал, что именно
+// сохраняется. Ключ теперь называет форму.
+type RoomMutation = 'archive' | 'save' | 'save:dimensions' | 'save:utilities' | 'materials';
 type RoomLoadState = 'loading' | 'ready' | 'error';
 
 export function RoomDetailScreen() {
@@ -177,12 +181,12 @@ export function RoomDetailScreen() {
     });
   };
 
-  const save = async (body: object) => {
+  const save = async (body: object, kind: RoomMutation = 'save') => {
     if (!user || !activeProject || !room) return;
     const actor = user;
     const projectId = activeProject.id;
     const roomId = room.id;
-    await runMutation('save', async () => {
+    await runMutation(kind, async () => {
       try {
         await api.updateRoom(actor.id, projectId, roomId, body);
       } catch (error: unknown) {
@@ -317,11 +321,11 @@ export function RoomDetailScreen() {
             </View>)}
             {(isContractor || ownerCanEdit) && (<View style={s.card}><Text style={s.h}>Габариты</Text>
               <Field label="Длина" value={len} onChange={setLen} /><Field label="Ширина" value={wid} onChange={setWid} /><Field label="Высота" value={hei} onChange={setHei} />
-              <PrimaryButton disabled={(!canWrite && !ownerCanEdit) || busy} loading={mutation === 'save'} title="Сохранить" compact onPress={() => save({ length_m:+len, width_m:+wid, height_m:+hei })} />
+              <PrimaryButton disabled={(!canWrite && !ownerCanEdit) || busy} loading={mutation === 'save:dimensions'} title="Сохранить" compact onPress={() => save({ length_m:+len, width_m:+wid, height_m:+hei }, 'save:dimensions')} />
             </View>)}
             <View style={s.card}><Text style={s.h}>Инженерия</Text>
               {(isContractor || ownerCanEdit) ? (<><Field label="Розетки" value={outlets} onChange={setOutlets} /><Field label="Сантехника" value={plumbing} onChange={setPlumbing} />
-              <PrimaryButton disabled={(!canWrite && !ownerCanEdit) || busy} loading={mutation === 'save'} title="Сохранить" compact onPress={() => save({ outlets_count:+outlets||0, plumbing_points:+plumbing||0, switches_count:+switches||0 })} /></>)
+              <PrimaryButton disabled={(!canWrite && !ownerCanEdit) || busy} loading={mutation === 'save:utilities'} title="Сохранить" compact onPress={() => save({ outlets_count:+outlets||0, plumbing_points:+plumbing||0, switches_count:+switches||0 }, 'save:utilities')} /></>)
               : <Text style={s.line}>Розетки {room.outlets_count} · сантехника {room.plumbing_points}. Изменения — через запрос исполнителю.</Text>}
             </View>
             {lines.length > 0 && <View style={s.card}><Text style={s.h}>Смета</Text>
