@@ -498,6 +498,12 @@ class TeamInvite(Base):
     role: Mapped[str] = mapped_column(String(32), default="member")
     expires_at: Mapped[datetime] = mapped_column(DateTime)
     used: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: Кому именно выписано приглашение. Пусто у ссылки и QR — они
+    #: обезличены по назначению; заполнено у приглашения по телефону, и
+    #: тогда предъявить его может только адресат.
+    invited_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 class ChecklistTemplate(Base):

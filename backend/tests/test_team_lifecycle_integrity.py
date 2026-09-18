@@ -276,18 +276,34 @@ async def test_invite_phone_is_owner_scoped_and_atomic(db):
         phone=member_phone,
         role="viewer",
     )
-    assert result == {"ok": True, "user_id": member_id}
+    # Приглашение — предложение, а не свершившийся факт: членство создаёт сам
+    # приглашённый, предъявив токен. Роль при этом переносится из приглашения.
+    assert result["ok"] is True
+    assert result["user_id"] == member_id
+    assert result["invited"] is True
+    assert result["token"]
+    assert await db.scalar(
+        select(TeamMember.role).where(
+            TeamMember.team_id == team_id,
+            TeamMember.user_id == member_id,
+        )
+    ) is None, "членство создано без согласия приглашённого"
+    assert await db.scalar(
+        select(func.count())
+        .select_from(DomainOutbox)
+        .where(DomainOutbox.aggregate_id == team_id)
+    ) == 1
+
+    from app.services import team_invite_join_service as join_svc
+
+    joined = await join_svc.join_by_token(db, member_id, result["token"])
+    assert joined.get("ok") is True, joined
     assert await db.scalar(
         select(TeamMember.role).where(
             TeamMember.team_id == team_id,
             TeamMember.user_id == member_id,
         )
     ) == "viewer"
-    assert await db.scalar(
-        select(func.count())
-        .select_from(DomainOutbox)
-        .where(DomainOutbox.aggregate_id == team_id)
-    ) == 1
 
 
 @pytest.mark.asyncio
