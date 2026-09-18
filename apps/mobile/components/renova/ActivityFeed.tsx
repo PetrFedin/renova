@@ -9,6 +9,7 @@ import { pushOsNav } from '@/lib/pushOsNav';
 import { useRenova } from '@/lib/context/RenovaContext';
 import type { OsRole } from '@/constants/osSections';
 import { reportError } from '@/lib/reportError';
+import { EmptyActionState } from '@/components/ui/EmptyActionState';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 
@@ -35,6 +36,8 @@ export function ActivityFeed({
   const { user } = useRenova();
   const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
   const back = returnTo || '/';
+  /** Выборка сужена — пустота значит «не подошло», а не «ничего не было». */
+  const filtered = Boolean(kind) || Boolean(wt);
 
   const reload = useCallback(() => {
     api.activityFeed(userId, projectId, kind || undefined, wt)
@@ -76,6 +79,24 @@ export function ActivityFeed({
       )}
       {loadError ? (
         <LoadErrorState title="Не удалось загрузить ленту" onRetry={reload} />
+      ) : items.length === 0 ? (
+        // Лента рисовала заголовок, чипы фильтров — и пустоту под ними.
+        // Хуже всего с фильтром: человек сузил выборку, ничего не увидел и
+        // решил, что сломалось. Теперь лента говорит, что произошло, и даёт
+        // вернуться ко всем событиям.
+        filtered ? (
+          <EmptyActionState
+            title="По этому фильтру ничего нет"
+            hint="События есть, но под выбранные условия не подходят."
+            actionLabel="Показать все"
+            onAction={() => { setKind(''); setWt(undefined); }}
+          />
+        ) : (
+          <EmptyActionState
+            title={compact ? 'Пока ничего не происходило' : 'Событий по объекту пока нет'}
+            hint="Здесь появятся согласования, изменения комнат и работа с материалами."
+          />
+        )
       ) : (
         items.map((it) => {
         const clickable = Boolean(it.link_path);
