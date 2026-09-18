@@ -86,6 +86,18 @@ function CommentReactions({ id, stageId, counts }: { id: string; stageId: string
   );
 }
 
+/**
+ * Текст пункта чек-листа.
+ *
+ * Все пункты приходят с ключом `text`, но пункты доработки какое-то время
+ * создавались с ключом `title` — такие уже лежат в базе и рисовались пустой
+ * строкой: исполнитель видел, что пункт добавился, и не видел, что исправлять.
+ * Читаем оба, чтобы старые записи перестали быть немыми.
+ */
+function checklistText(item: { text?: string | null; title?: string | null }): string {
+  return (item.text || item.title || '').trim();
+}
+
 export function StageDetailScreen() {
   const { id, returnTo } = useLocalSearchParams<{ id: string; returnTo?: string }>();
   const { user, activeProject, loadProject, submitStage, acceptStage, rejectStage, readOnly } = useRenova();
@@ -149,7 +161,7 @@ export function StageDetailScreen() {
 
   const isContractor = user?.role === 'contractor';
   const role = isContractor ? 'contractor' as const : 'customer' as const;
-  const CHECKLIST = wfChecks.length ? wfChecks.map((c) => c.text) : [...checklistForStage(stage?.name || ''), ...customChecks];
+  const CHECKLIST = wfChecks.length ? wfChecks.map(checklistText) : [...checklistForStage(stage?.name || ''), ...customChecks];
   const checklistComplete =
     CHECKLIST.length === 0
       ? true
@@ -160,7 +172,7 @@ export function StageDetailScreen() {
   const hasResultPhoto = (stage?.photos?.length ?? 0) > 0;
   const acceptBlocked = (CHECKLIST.length > 0 && !checklistComplete) || !hasResultPhoto;
   const exportChecks = wfChecks.length
-    ? wfChecks.filter((c) => c.done).map((c) => c.text)
+    ? wfChecks.filter((c) => c.done).map(checklistText)
     : CHECKLIST.filter((c) => checks[c]);
 
   const onExportAcceptance = async () => {
@@ -177,7 +189,7 @@ export function StageDetailScreen() {
       await acceptStage(stage!.id, {
         qualityScore,
         checklist: CHECKLIST.filter((c) => {
-          const wf = wfChecks.find((x) => x.text === c);
+          const wf = wfChecks.find((x) => checklistText(x) === c);
           return wf ? wf.done : !!checks[c];
         }),
       });

@@ -1,6 +1,6 @@
 """Renova OS API — риски, workflow, замечания."""
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project
@@ -262,6 +262,10 @@ async def calc_room_materials(
 class AcceptIn(BaseModel):
     with_remarks: bool = False
     comment: str | None = None
+    # Совместимость со схемой канонического маршрута. Поля тут не было, и
+    # оценка, отправленная клиентом, молча отбрасывалась валидатором — запрос
+    # отвечал 200, а оценка не сохранялась и не объяснялось почему.
+    quality_score: float | None = Field(default=None, ge=0, le=10)
 
 
 class ReturnIn(BaseModel):
@@ -291,7 +295,7 @@ async def accept_work(project_id: str, acceptance_id: str, body: AcceptIn, user:
     decision = AcceptanceDecisionIn(
         comment=body.comment,
         create_issue=body.with_remarks,
-        quality_score=None,
+        quality_score=body.quality_score,
     )
     return await canon_accept_work(project_id, acceptance_id, decision, user, db)
 
