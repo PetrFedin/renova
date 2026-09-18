@@ -53,7 +53,7 @@ const s = StyleSheet.create({
   box: { backgroundColor: RenovaTheme.colors.surface, borderRadius: 12, padding: 14, marginBottom: 12 },
   head: { fontWeight: '800', marginBottom: 4 },
   hint: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginBottom: 8 },
-  row: { paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
+  row: { paddingVertical: 8, borderTopWidth: 1, borderTopColor: RenovaTheme.colors.border },
   name: { fontWeight: '700', fontSize: 13 },
   val: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 2 },
   delta: { fontSize: 11, fontWeight: '600', marginTop: 2 },

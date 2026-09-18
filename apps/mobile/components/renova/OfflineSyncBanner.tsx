@@ -68,8 +68,8 @@ export function OfflineSyncBanner() {
 }
 
 const s = StyleSheet.create({
-  box: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FEF3C7', borderRadius: 10, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: '#FDE047' },
-  offline: { backgroundColor: '#FEE2E2', borderColor: '#FECACA' },
+  box: { flexDirection: 'row', alignItems: 'center', backgroundColor: RenovaTheme.colors.warningBg, borderRadius: 10, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: '#FDE047' },
+  offline: { backgroundColor: RenovaTheme.colors.dangerBg, borderColor: RenovaTheme.colors.dangerBorder },
   title: { fontWeight: '700', fontSize: 13, color: RenovaTheme.colors.text },
   sub: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 2 },
   btn: { backgroundColor: RenovaTheme.colors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, marginLeft: 8 },

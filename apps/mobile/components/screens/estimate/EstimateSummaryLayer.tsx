@@ -251,7 +251,7 @@ const s = StyleSheet.create({
     borderColor: RenovaTheme.colors.border,
     backgroundColor: RenovaTheme.colors.surface,
   },
-  chipWarn: { borderColor: '#FCD34D', backgroundColor: '#FFFBEB' },
+  chipWarn: { borderColor: '#FCD34D', backgroundColor: RenovaTheme.colors.warningBg },
   chipLabel: { ...screenTypography.metricLabel, marginTop: 0 },
   chipVal: { fontSize: 14, fontWeight: '700', color: RenovaTheme.colors.text, marginTop: 2 },
   chipValWarn: { color: '#92400E' },

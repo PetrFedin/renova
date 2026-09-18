@@ -16,6 +16,7 @@ import { ActiveProjectSync } from '@/components/renova/ActiveProjectSync';
 import { OsQuickFab } from '@/components/renova/os/OsQuickFab';
 import { OsPendingProjectPickEffect } from '@/components/renova/os/OsPendingProjectPickEffect';
 import type { OsRole } from '@/constants/osSections';
+import { RenovaTheme } from '@/constants/Theme';
 
 type Props = { role: OsRole };
 
@@ -49,6 +50,6 @@ function OsRoleTabsNavigatorImpl({ role }: Props) {
 export const OsRoleTabsNavigator = memo(OsRoleTabsNavigatorImpl);
 
 const shell = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#F8FAFC' },
+  root: { flex: 1, backgroundColor: RenovaTheme.colors.background },
   body: { flex: 1, minHeight: 0, paddingBottom: Platform.OS === 'web' ? 4 : 0, overflow: 'hidden' },
 });

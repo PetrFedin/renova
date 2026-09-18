@@ -20,8 +20,8 @@ export function RoomDiffVisual({ before, after }: { before: Record<string, strin
   );
 }
 const s = StyleSheet.create({
-  box:{ backgroundColor:RenovaTheme.colors.surface, borderRadius:10, padding:12, marginBottom:10, borderWidth:1, borderColor:'#e5e7eb' },
+  box:{ backgroundColor:RenovaTheme.colors.surface, borderRadius:10, padding:12, marginBottom:10, borderWidth:1, borderColor:RenovaTheme.colors.border },
   head:{ fontWeight:'800', marginBottom:8 },
   row:{ flexDirection:'row', alignItems:'center', gap:6, paddingVertical:4, flexWrap:'wrap' },
-  k:{ fontWeight:'600', width:90, fontSize:12 }, old:{ color:'#9ca3af', fontSize:12 }, new:{ color:'#059669', fontWeight:'700', fontSize:12 },
+  k:{ fontWeight:'600', width:90, fontSize:12 }, old:{ color:RenovaTheme.colors.textSubtle, fontSize:12 }, new:{ color:'#059669', fontWeight:'700', fontSize:12 },
 });

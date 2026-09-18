@@ -5,6 +5,7 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { api } from '@/lib/api';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { reportCatch } from '@/lib/reportError';
+import { RenovaTheme } from '@/constants/Theme';
 
 export function LeadChat({ userId, leadId }: { userId: string; leadId: string }) {
   const { user, activeProject } = useRenova();
@@ -20,4 +21,4 @@ export function LeadChat({ userId, leadId }: { userId: string; leadId: string })
     </View>
   );
 }
-const s = StyleSheet.create({ box:{ marginTop:8, padding:8, backgroundColor:'#f9fafb', borderRadius:8 }, m:{ fontSize:12, marginBottom:4 }, inp:{ borderWidth:1, borderColor:'#ddd', borderRadius:8, padding:8, marginVertical:6 } });
+const s = StyleSheet.create({ box:{ marginTop:8, padding:8, backgroundColor:RenovaTheme.colors.background, borderRadius:8 }, m:{ fontSize:12, marginBottom:4 }, inp:{ borderWidth:1, borderColor:'#ddd', borderRadius:8, padding:8, marginVertical:6 } });

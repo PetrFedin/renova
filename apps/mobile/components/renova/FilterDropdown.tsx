@@ -107,7 +107,7 @@ const s = StyleSheet.create({
     backgroundColor: RenovaTheme.colors.surface,
     minHeight: 48,
   },
-  fieldDisabled: { backgroundColor: '#F1F5F9', opacity: 0.95 },
+  fieldDisabled: { backgroundColor: RenovaTheme.colors.surfaceMuted, opacity: 0.95 },
   fieldText: { flex: 1, fontSize: 15, fontWeight: '600', color: RenovaTheme.colors.text },
   placeholderText: { color: RenovaTheme.colors.textMuted, fontWeight: '500' },
   backdrop: {

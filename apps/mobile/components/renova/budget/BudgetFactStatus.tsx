@@ -30,12 +30,12 @@ export function BudgetFactStatus({ serverFact, listTotal, compact, showAligned }
 
 const s = StyleSheet.create({
   ok: {
-    backgroundColor: '#ECFDF5',
+    backgroundColor: RenovaTheme.colors.successBg,
     borderRadius: 8,
     padding: 10,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#A7F3D0',
+    borderColor: RenovaTheme.colors.successBorder,
   },
   compact: { marginBottom: 8, padding: 8 },
   okText: { fontSize: 12, color: '#065F46', fontWeight: '600' },

@@ -98,7 +98,7 @@ const s = StyleSheet.create({
   wrap: { marginBottom: 12 }, input: { backgroundColor: RenovaTheme.colors.surface, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: RenovaTheme.colors.border },
   hist: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6, alignItems: 'center' },
   histLabel: { ...screenTypography.metricLabel, width: '100%', marginTop: 0, marginBottom: 2 },
-  histT: { fontSize: 11, color: RenovaTheme.colors.primary, backgroundColor: '#eff6ff', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 },
+  histT: { fontSize: 11, color: RenovaTheme.colors.primary, backgroundColor: RenovaTheme.colors.infoBg, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 },
   hit: { backgroundColor: RenovaTheme.colors.surface, padding: 10, borderRadius: 8, marginTop: 6 },
   title: { fontWeight: '700' }, sub: { fontSize: 12, color: RenovaTheme.colors.textMuted },
 });

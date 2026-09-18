@@ -128,10 +128,10 @@ export function RoomDiagramInteractive({ room }: { room: Room }) {
 const s = StyleSheet.create({
   wrap: { backgroundColor: RenovaTheme.colors.surface, borderRadius: 12, padding: 12, marginBottom: 10 },
   head: { fontWeight: '700', marginBottom: 8 },
-  room: { borderWidth: 2, borderColor: '#374151', backgroundColor: '#f9fafb' },
+  room: { borderWidth: 2, borderColor: RenovaTheme.colors.primary, backgroundColor: RenovaTheme.colors.background },
   dot: { position: 'absolute', width: 10, height: 10, borderRadius: 5, backgroundColor: '#f59e0b' },
   dotActive: { backgroundColor: '#ef4444', transform: [{ scale: 1.3 }] },
-  clr: { color: '#2563eb', marginTop: 6, fontSize: 12 },
+  clr: { color: RenovaTheme.colors.accent, marginTop: 6, fontSize: 12 },
   gridPt: { position: 'absolute', width: 1, height: 1, backgroundColor: '#d1d5db' },
-  dimLbl: { position: 'absolute', fontSize: 9, color: '#6b7280', fontWeight: '600' },
+  dimLbl: { position: 'absolute', fontSize: 9, color: RenovaTheme.colors.textMuted, fontWeight: '600' },
 });

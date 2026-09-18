@@ -130,7 +130,7 @@ export function ContractorEstimateView() {
               }}
             />
             {!isContractorOwner && teamRole && teamRole !== 'owner' ? (
-              <Text style={{ color: '#64748B', marginTop: 8 }}>Отправку сметы делает главный исполнитель (не {teamRole}).</Text>
+              <Text style={{ color: RenovaTheme.colors.primaryMuted, marginTop: 8 }}>Отправку сметы делает главный исполнитель (не {teamRole}).</Text>
             ) : null}
             {project.estimate_lock_proposed_at ? (
               <PrimaryButton

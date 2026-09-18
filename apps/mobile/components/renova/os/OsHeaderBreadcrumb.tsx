@@ -168,7 +168,7 @@ const s = StyleSheet.create({
   },
   pathWrapBack: {
     backgroundColor: RenovaTheme.colors.infoBg,
-    borderColor: '#BFDBFE',
+    borderColor: RenovaTheme.colors.infoBorder,
   },
   pathIn: { flexDirection: 'row', alignItems: 'center', paddingRight: 4 },
   segWrap: { flexDirection: 'row', alignItems: 'center', maxWidth: 160 },

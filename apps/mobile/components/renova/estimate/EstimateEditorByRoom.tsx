@@ -63,7 +63,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     gap: 8,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: RenovaTheme.colors.background,
   },
   room: { flex: 1, fontWeight: '700', fontSize: 14 },
   summary: { fontSize: 11, color: RenovaTheme.colors.textMuted },

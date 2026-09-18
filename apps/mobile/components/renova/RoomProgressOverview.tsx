@@ -38,7 +38,7 @@ export function RoomProgressOverview({ rooms, stages }: { rooms: Room[]; stages:
 const s = StyleSheet.create({
   box: { ...card, marginBottom: 10, paddingVertical: 12 },
   head: { fontWeight: '800', marginBottom: 8 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, borderTopWidth: 1, borderTopColor: RenovaTheme.colors.border },
   name: { fontWeight: '700', fontSize: 13 },
   type: { fontSize: 10, color: RenovaTheme.colors.textMuted },
   barWrap: { width: 56, height: 6, backgroundColor: RenovaTheme.colors.border, borderRadius: 3, overflow: 'hidden' },

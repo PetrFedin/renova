@@ -165,7 +165,7 @@ const s = StyleSheet.create({
     gap: 4,
     marginBottom: 10,
     padding: 8,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: RenovaTheme.colors.background,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: RenovaTheme.colors.border,

@@ -4,6 +4,7 @@ import { api } from '@/lib/api';
 import { formatRub } from '@/constants/Theme';
 import { getDetailLevel } from '@/lib/detailLevel';
 import { reportCatch } from '@/lib/reportError';
+import { RenovaTheme } from '@/constants/Theme';
 
 export function BudgetScenario({ userId, projectId }: { userId: string; projectId: string }) {
   const [d, setD] = useState<{ delta: number; new_total: number } | null>(null);
@@ -14,4 +15,4 @@ export function BudgetScenario({ userId, projectId }: { userId: string; projectI
     <View style={s.box}><Text style={s.head}>Сценарий +10% материалы</Text><Text>Δ {formatRub(d.delta)} → {formatRub(d.new_total)}</Text></View>
   );
 }
-const s = StyleSheet.create({ box:{ marginTop:8, padding:10, backgroundColor:'#fef3c7', borderRadius:8 }, head:{ fontWeight:'700', marginBottom:4 } });
+const s = StyleSheet.create({ box:{ marginTop:8, padding:10, backgroundColor:RenovaTheme.colors.warningBg, borderRadius:8 }, head:{ fontWeight:'700', marginBottom:4 } });

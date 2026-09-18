@@ -17,7 +17,7 @@ export function EstimateSourceLegend({ compact }: { compact?: boolean }) {
 }
 
 const s = StyleSheet.create({
-  box: { ...card, marginBottom: 12, paddingVertical: 10, backgroundColor: '#F8FAFC' },
+  box: { ...card, marginBottom: 12, paddingVertical: 10, backgroundColor: RenovaTheme.colors.background },
   compact: { paddingVertical: 8 },
   title: { ...screenTypography.section, marginTop: 0, marginBottom: 4 },
   line: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 17 },

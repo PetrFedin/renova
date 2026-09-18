@@ -57,5 +57,5 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: RenovaTheme.colors.border,
   },
-  hit: { padding: 6, fontSize: 12, color: '#2563eb' },
+  hit: { padding: 6, fontSize: 12, color: RenovaTheme.colors.accent },
 });

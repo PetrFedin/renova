@@ -106,7 +106,7 @@ const s = StyleSheet.create({
     lineHeight: 17,
     marginBottom: 12,
     padding: 10,
-    backgroundColor: '#FEF3C7',
+    backgroundColor: RenovaTheme.colors.warningBg,
     borderRadius: 8,
   },
 });

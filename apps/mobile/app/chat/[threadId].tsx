@@ -9,6 +9,7 @@ import { api } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { reportError } from '@/lib/reportError';
 import { resolveChatProjectId } from '@/lib/chatProjectResolution';
+import { RenovaTheme } from '@/constants/Theme';
 
 type ResolutionState = 'loading' | 'ready' | 'not_found' | 'error';
 
@@ -132,5 +133,5 @@ function ResolutionMessage({
 
 const s = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 14 },
-  msg: { fontSize: 15, color: '#64748B', textAlign: 'center' },
+  msg: { fontSize: 15, color: RenovaTheme.colors.primaryMuted, textAlign: 'center' },
 });

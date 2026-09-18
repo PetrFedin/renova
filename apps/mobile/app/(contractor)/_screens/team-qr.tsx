@@ -145,7 +145,7 @@ const s = StyleSheet.create({
     padding: 10,
     backgroundColor: RenovaTheme.colors.surface,
   },
-  roleOn: { borderColor: RenovaTheme.colors.primary, backgroundColor: '#EFF6FF' },
+  roleOn: { borderColor: RenovaTheme.colors.primary, backgroundColor: RenovaTheme.colors.infoBg },
   roleT: { fontWeight: '700', color: RenovaTheme.colors.text },
   roleTOn: { color: RenovaTheme.colors.primary },
   roleHint: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 2 },

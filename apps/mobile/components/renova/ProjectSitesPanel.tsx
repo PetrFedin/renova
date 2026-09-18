@@ -68,7 +68,7 @@ const s = StyleSheet.create({
   siteName: { fontSize: 15, fontWeight: '700', flex: 1, color: RenovaTheme.colors.text },
   siteAmt: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.primary },
   siteMeta: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 4, marginBottom: 6 },
-  stageRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
+  stageRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, borderTopWidth: 1, borderTopColor: RenovaTheme.colors.border },
   stageName: { fontSize: 12, flex: 1, color: RenovaTheme.colors.text },
   stageSt: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginLeft: 8 },
 });

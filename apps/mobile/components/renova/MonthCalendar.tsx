@@ -26,6 +26,6 @@ const s = StyleSheet.create({
   head:{ fontWeight:'800', marginBottom:8, textTransform:'capitalize' },
   grid:{ flexDirection:'row', flexWrap:'wrap' },
   cell:{ width:'14.28%', aspectRatio:1, alignItems:'center', justifyContent:'center' },
-  marked:{ backgroundColor:'#dbeafe', borderRadius:6 },
+  marked:{ backgroundColor:RenovaTheme.colors.accentMuted, borderRadius:6 },
   d:{ fontSize:12 },
 });

@@ -1,4 +1,5 @@
 import { View, Text, StyleSheet } from 'react-native';
+import { RenovaTheme } from '@/constants/Theme';
 const BLOCKS: Record<string, string[]> = {
   brief: ['Прогресс %', 'Бюджет итого'],
   standard: ['Прогресс', 'План и факт', 'Этапы', 'Уведомления'],
@@ -13,4 +14,4 @@ export function DetailLevelPreview({ mode }: { mode: string }) {
     </View>
   );
 }
-const s = StyleSheet.create({ box:{ backgroundColor:'#f8fafc', padding:12, borderRadius:10, marginTop:12 }, head:{ fontWeight:'700', marginBottom:6 }, row:{ flexDirection:'row', gap:6, paddingVertical:2 }, dot:{ color:'#2563eb' } });
+const s = StyleSheet.create({ box:{ backgroundColor:RenovaTheme.colors.background, padding:12, borderRadius:10, marginTop:12 }, head:{ fontWeight:'700', marginBottom:6 }, row:{ flexDirection:'row', gap:6, paddingVertical:2 }, dot:{ color:RenovaTheme.colors.accent } });

@@ -50,7 +50,7 @@ const s = StyleSheet.create({
     marginTop: 8,
     padding: 10,
     borderRadius: 10,
-    backgroundColor: '#FEF3C7',
+    backgroundColor: RenovaTheme.colors.warningBg,
     borderWidth: 1,
     borderColor: '#F59E0B',
   },

@@ -24,8 +24,8 @@ export function RoomDiagram({ room }: { room: Room }) {
 const s = StyleSheet.create({
   wrap:{ backgroundColor:RenovaTheme.colors.surface, borderRadius:12, padding:12, marginBottom:10 },
   head:{ fontWeight:'700', marginBottom:8 },
-  room:{ borderWidth:2, borderColor:'#374151', backgroundColor:'#f9fafb', borderRadius:4, position:'relative' },
+  room:{ borderWidth:2, borderColor:RenovaTheme.colors.primary, backgroundColor:RenovaTheme.colors.background, borderRadius:4, position:'relative' },
   outlet:{ position:'absolute', width:8, height:8, borderRadius:4, backgroundColor:'#f59e0b' },
   plumb:{ position:'absolute', right:8, bottom:8 }, plumbT:{ fontSize:16 },
-  legend:{ fontSize:11, color:'#6b7280', marginTop:6 },
+  legend:{ fontSize:11, color:RenovaTheme.colors.textMuted, marginTop:6 },
 });
