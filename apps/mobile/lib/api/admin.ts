@@ -140,7 +140,7 @@ export const adminApi = {
       userId,
     ),
   getUploadUrl: (userId: string) => req<any>('/api/v1/media/upload-url', { method: 'POST' }, userId),
-  getMediaUploadUrl: (userId: string) => req<{ key: string; upload_url: string; public_url: string }>('/api/v1/media/upload-url', { method: 'POST' }, userId),
+  getMediaUploadUrl: (userId: string) => req<{ key: string; upload_url: string | null; direct_upload_url: string; public_url: string }>('/api/v1/media/upload-url', { method: 'POST' }, userId),
   createTeamInviteLink: (userId: string, role = 'member') =>
     req<{ token: string; link: string }>('/api/v1/teams/invite-link', { method: 'POST', body: JSON.stringify({ role }) }, userId),
   inviteTeamMember: (userId: string, phone: string, role = 'member') => req('/api/v1/teams/invite', { method: 'POST', body: JSON.stringify({ phone, role }) }, userId),
