@@ -377,8 +377,14 @@ async def sync_budget_lines_from_estimate(db: AsyncSession, project_id: str) -> 
     return out
 
 
-async def sync_project_budget_planned(db: AsyncSession, project_id: str) -> float:
-    """Write project plan from exact estimate and approved change-order values."""
+async def compute_project_budget_planned(db: AsyncSession, project_id: str) -> float:
+    """The project plan derived from the estimate and approved change orders.
+
+    Pure: it reads and returns, and never touches the stored column. Read paths
+    use this. Writing from a read is how opening a weekly report came to shift
+    a project's plan by 31 400 ₽ — and to zero it outright on a project whose
+    estimate had been emptied.
+    """
     estimate_rows = list(
         (await db.execute(select(EstimateLine).where(EstimateLine.project_id == project_id))).scalars().all()
     )
@@ -396,7 +402,17 @@ async def sync_project_budget_planned(db: AsyncSession, project_id: str) -> floa
         (_decimal(order.amount) for order in approved_orders),
         Decimal("0"),
     )
-    value = _money_float(total)
+    return _money_float(total)
+
+
+async def sync_project_budget_planned(db: AsyncSession, project_id: str) -> float:
+    """Materialize the derived plan onto the project.
+
+    Every mutation that can change it already calls this — estimate lines, room
+    geometry, change-order decisions. Reads must not: see
+    `compute_project_budget_planned`.
+    """
+    value = await compute_project_budget_planned(db, project_id)
     project = await db.get(Project, project_id)
     if project:
         project.budget_planned = value
@@ -569,6 +585,7 @@ async def refresh_budget_facts(db: AsyncSession, project_id: str) -> None:
 # keeps budget_summary/update/delete and every existing caller on one integrity path.
 _legacy.sync_budget_lines_from_estimate = sync_budget_lines_from_estimate
 _legacy.sync_project_budget_planned = sync_project_budget_planned
+_legacy.compute_project_budget_planned = compute_project_budget_planned
 _legacy.apply_change_order_to_budget = apply_change_order_to_budget
 _legacy._dedupe_linked_expenses = _dedupe_linked_expenses
 _legacy.expense_from_receipt = expense_from_receipt
