@@ -24,7 +24,9 @@ import { setAccessToken } from '@/lib/api/client';
 import {
   buildPortalCapabilities,
   buildPortalPendingSummary,
+  firstPortalDecision,
   portalActionVariant,
+  portalDecisionVariant,
   portalMutationKey,
   type PortalActionIntent,
 } from '@/lib/domain/portalActions';
@@ -311,6 +313,17 @@ export default function PortalScreen() {
   const canDecideEstimate = capabilities.accept
     && Boolean(snapshot.estimate_summary?.proposed_at)
     && !snapshot.estimate_summary?.locked_at;
+
+  // Главное действие ровно одно — первое сверху из тех, что ждут решения.
+  // Остальные остаются доступными, но перестают спорить с ним за внимание.
+  const firstDecision = firstPortalDecision({
+    schedule: Boolean(snapshot.pending_work_schedule) && capabilities.confirmSchedule,
+    acceptance: (snapshot.pending_acceptances?.length ?? 0) > 0 && capabilities.acceptStage,
+    changeOrder: (snapshot.pending_change_orders?.length ?? 0) > 0 && capabilities.decideChangeOrders,
+    estimate: canDecideEstimate,
+    payment: snapshot.pending_payments.length > 0 && capabilities.pay,
+    document: pendingDocuments.length > 0 && capabilities.signDocuments,
+  });
 
   const shareStatus = async () => {
     if (mutationRef.current) return;
@@ -632,6 +645,7 @@ export default function PortalScreen() {
               <PortalActionRow>
                 <PrimaryButton
                   title="Согласовать график"
+                  variant={portalDecisionVariant('schedule', firstDecision)}
                   compact
                   loading={mutationKey === portalMutationKey('schedule:confirm', snapshot.pending_work_schedule.id)}
                   disabled={busy}
@@ -691,6 +705,7 @@ export default function PortalScreen() {
                     <PortalActionRow>
                       <PrimaryButton
                         title="Принять этап"
+                        variant={portalDecisionVariant('acceptance', firstDecision)}
                         compact
                         loading={mutationKey === acceptKey}
                         disabled={busy}
@@ -722,6 +737,7 @@ export default function PortalScreen() {
                   <PortalActionRow>
                     <PrimaryButton
                       title="Согласовать"
+                      variant={portalDecisionVariant('changeOrder', firstDecision)}
                       compact
                       loading={mutationKey === portalMutationKey('change-order:approve', order.id)}
                       disabled={busy}
@@ -761,6 +777,7 @@ export default function PortalScreen() {
               <PortalActionRow>
                 <PrimaryButton
                   title="Зафиксировать смету"
+                  variant={portalDecisionVariant('estimate', firstDecision)}
                   compact
                   loading={mutationKey === portalMutationKey('estimate:lock')}
                   disabled={busy}
@@ -812,7 +829,7 @@ export default function PortalScreen() {
                 <PortalActionRow>
                   <PrimaryButton
                     title="Реквизиты / СБП"
-                    variant={snapshot.payments_mode === 'demo' ? 'primary' : 'outline'}
+                    variant={portalDecisionVariant('payment', firstDecision)}
                     compact
                     loading={mutationKey === portalMutationKey('payment:requisites', payment.id)}
                     disabled={busy}
@@ -860,6 +877,7 @@ export default function PortalScreen() {
                     <PortalActionRow>
                       <PrimaryButton
                         title={snapshot.kontur_available ? 'Подписать в приложении' : 'Подписать (in_app)'}
+                        variant={portalDecisionVariant('document', firstDecision)}
                         compact
                         loading={mutationKey === portalMutationKey('document:in_app', document.id)}
                         disabled={busy}
