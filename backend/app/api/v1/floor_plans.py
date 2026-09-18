@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_project
@@ -16,14 +16,19 @@ class PlanIn(BaseModel):
     width_px: int | None = None
     height_px: int | None = None
 
+#: A marker lives on the sheet. Off it, it cannot be seen and — since there is
+#: no delete route — cannot be recovered either.
+_PCT = dict(ge=0, le=100)
+
+
 class PinPatch(BaseModel):
-    x_pct: float
-    y_pct: float
+    x_pct: float = Field(**_PCT)
+    y_pct: float = Field(**_PCT)
 
 class PinIn(BaseModel):
     room_id: str
-    x_pct: float = 50
-    y_pct: float = 50
+    x_pct: float = Field(default=50, **_PCT)
+    y_pct: float = Field(default=50, **_PCT)
     label: str | None = None
 
 class FurnitureIn(BaseModel):
@@ -128,15 +133,30 @@ async def create_furniture(project_id: str, body: FurnitureIn, user: User = Depe
 @router.patch("/{project_id}/floor-plans/{plan_id}/pins/{pin_id}")
 async def move_pin(project_id: str, plan_id: str, pin_id: str, body: PinPatch, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=True)
-    pin = await db.get(FloorPlanPin, pin_id)
+    # Resolved through the plan and the project, not by id alone. Without this
+    # the pin_id was the only thing checked: write access to any project let a
+    # user move a marker on any other project's sheet, and `plan_id` from the
+    # URL was never looked at. Its siblings — upsert_pin and move_furniture —
+    # both scope correctly; this one did not.
+    pin = (
+        await db.execute(
+            select(FloorPlanPin)
+            .join(FloorPlan, FloorPlan.id == FloorPlanPin.floor_plan_id)
+            .where(
+                FloorPlanPin.id == pin_id,
+                FloorPlanPin.floor_plan_id == plan_id,
+                FloorPlan.project_id == project_id,
+            )
+        )
+    ).scalars().first()
     if not pin: raise HTTPException(404)
     pin.x_pct, pin.y_pct = body.x_pct, body.y_pct
     await db.commit()
     return {"id": pin.id, "x_pct": pin.x_pct, "y_pct": pin.y_pct}
 
 class FurnitureMove(BaseModel):
-    x_pct: float
-    y_pct: float
+    x_pct: float = Field(**_PCT)
+    y_pct: float = Field(**_PCT)
 
 @router.patch("/{project_id}/furniture/{item_id}")
 async def move_furniture(project_id: str, item_id: str, body: FurnitureMove, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
