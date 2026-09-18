@@ -108,7 +108,10 @@ export default function RoleScreen() {
   }
 
   return (
-    <ScrollView style={styles.wrap} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.wrap} contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
       <Text style={styles.logo}>Renova</Text>
       <Text style={styles.sub}>Кто вы в этом проекте?</Text>
       <View style={styles.modeRow}>

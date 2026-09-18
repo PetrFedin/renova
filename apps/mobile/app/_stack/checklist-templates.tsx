@@ -48,7 +48,10 @@ export default function ChecklistTemplatesScreen() {
   }
 
   return (
-    <ScrollView style={s.wrap} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
+    <ScrollView
+      style={s.wrap} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+      keyboardShouldPersistTaps="handled"
+    >
       <BackHeader title="Шаблоны чеклиста" />
       {!user ? <Text style={s.muted}>Войдите в аккаунт</Text> : (
         <>

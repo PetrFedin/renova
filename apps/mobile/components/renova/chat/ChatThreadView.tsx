@@ -1,8 +1,6 @@
 /** Экран треда: реакции, закрепление, задачи, счета, участники, файлы */
 import { useEffect, useRef, useState, useCallback } from 'react';
-import {
-  AppState, ScrollView, View, Text, TextInput, StyleSheet, Image, Pressable, Alert, Modal,
-} from 'react-native';
+import { Alert, AppState, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect, usePathname } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { RenovaTheme } from '@/constants/Theme';
@@ -29,6 +27,7 @@ import { alertChatInviteSent } from '@/lib/fieldCommsNav';
 import { alertChatInvoiceCreated, alertChatTaskCreated } from '@/lib/estimatePayNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { router } from 'expo-router';
+import { useBottomInset } from '@/lib/useTopInset';
 
 const REACTIONS = ['👍', '✅', '❤️', '🔥', '❓'];
 
@@ -155,6 +154,7 @@ export function ChatThreadView({
   const { user, activeProject, projects, loadProject } = useRenova();
   const canWrite = useWriteAllowed();
   const syncAfterRead = useChatReadSync(user?.id, user?.role);
+  const bottomInset = useBottomInset();
   const [chat, setChat] = useState<ChatDetail | null>(null);
   const [screenFocused, setScreenFocused] = useState(false);
   const [appState, setAppState] = useState(AppState.currentState);
@@ -384,7 +384,13 @@ export function ChatThreadView({
   };
 
   return (
-    <View style={s.root}>
+    // Поле ввода прибито к низу экрана. Без подъёма над клавиатурой человек
+    // печатает вслепую: и поле, и кнопка «Отправить» оказываются под ней.
+    // Это самый посещаемый экран приложения.
+    <KeyboardAvoidingView
+      style={s.root}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <BackHeader title={chat.title} returnTo={returnTo} />
       <View style={s.topActions}>
         <Text style={[s.wsDot, wsConnected ? s.wsOn : s.wsOff]}>{wsConnected ? '● онлайн' : '○ опрос 15 с'}</Text>
@@ -414,7 +420,15 @@ export function ChatThreadView({
       </View>
       <ChatInThreadSearch messages={chat.messages} onJump={(id) => router.setParams({ highlightId: id })} onQueryChange={setChatQuery} />
       <ReadOnlyBanner />
-      <ScrollView ref={scrollRef} style={s.wrap} contentContainerStyle={{ padding: 16 }}>
+      <ScrollView
+        ref={scrollRef}
+        style={s.wrap}
+        contentContainerStyle={{ padding: 16 }}
+        // Без этого первый тап по кнопке в ленте только прячет клавиатуру —
+        // ровно та жалоба «кнопка не работает с первого раза».
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+      >
         {chat.messages.filter((m) => !isChatCreationSystemMessage(m)).map((m) => (
           <MessageBubble
             key={m.id}
@@ -484,7 +498,12 @@ export function ChatThreadView({
         </View>
       )}
 
-      <View style={s.composer}>
+      {/*
+        Нижний отступ под home indicator: кнопка «Отправить» высотой 44
+        стояла на 12 pt от края, то есть 22 её точки лежали в зарезервированной
+        системой зоне, а нижние — в зоне жеста «домой».
+      */}
+      <View style={[s.composer, { paddingBottom: bottomInset }]}>
         {!wsConnected && <Text style={s.wsHint}>Нет live-соединения — обновление каждые 15 с (не «онлайн»)</Text>}
         {typing && <Text style={s.typing}>печатает…</Text>}
         <TextInput
@@ -667,7 +686,7 @@ export function ChatThreadView({
           alertChatTaskCreated(role === 'contractor' ? 'contractor' : 'customer');
         }}
       />
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -696,7 +715,7 @@ const s = StyleSheet.create({
   reactions: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6 },
   reactChip: { backgroundColor: '#f1f5f9', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2 },
   reactText: { fontSize: 12 },
-  composer: { padding: 12, backgroundColor: RenovaTheme.colors.surface, borderTopWidth: 1, borderTopColor: RenovaTheme.colors.border, gap: 8 },
+  composer: { paddingHorizontal: 12, paddingTop: 12, backgroundColor: RenovaTheme.colors.surface, borderTopWidth: 1, borderTopColor: RenovaTheme.colors.border, gap: 8 },
   composerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
   toolBtn: { fontSize: 20, padding: 4 },
   typing: { fontSize: 11, color: '#999' },

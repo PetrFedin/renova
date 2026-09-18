@@ -131,6 +131,7 @@ export function TechnicalSupervisionControlView() {
       style={s.root}
       contentContainerStyle={s.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} />}
+      keyboardShouldPersistTaps="handled"
     >
       <View style={s.boundary}>
         <Text style={s.boundaryTitle}>Контроль со стороны заказчика</Text>

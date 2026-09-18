@@ -83,7 +83,10 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
 
   if (loadState === 'error') {
     return (
-      <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
+      <ScrollView
+        style={s.wrap} contentContainerStyle={screenLayout.contentStyle}
+        keyboardShouldPersistTaps="handled"
+      >
         <LoadErrorState title="Не удалось загрузить подбор" onRetry={reload} role={role} showChatCta={role === 'customer'} />
       </ScrollView>
     );
@@ -123,7 +126,10 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
   };
 
   return (
-    <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
+    <ScrollView
+      style={s.wrap} contentContainerStyle={screenLayout.contentStyle}
+      keyboardShouldPersistTaps="handled"
+    >
       <Text style={s.hint}>
         Подбор чистовых материалов: исполнитель предлагает → заказчик согласует. Лимит — allowance.
       </Text>
@@ -140,7 +146,10 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
         />
       ) : null}
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chips}>
+      <ScrollView
+        horizontal showsHorizontalScrollIndicator={false} style={s.chips}
+        keyboardShouldPersistTaps="handled"
+      >
         {CATEGORIES.map((c) => (
           <Pressable key={c.key} style={[s.chip, filter === c.key && s.chipOn]} onPress={() => setFilter(c.key)}>
             <Text style={[s.chipT, filter === c.key && s.chipTOn]}>{c.label}</Text>
