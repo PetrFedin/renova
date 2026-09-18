@@ -483,9 +483,19 @@ async def budget_summary(db: AsyncSession, project_id: str) -> dict:
     actual = proj.budget_spent
     deviation = round(actual - total_plan, 2)
     deviation_pct = round(deviation / total_plan * 100, 1) if total_plan else 0
-    progress = proj.progress_percent or 0
-    forecast = round(actual / (progress / 100), 2) if progress > 5 else total_plan
-    over_risk = round(forecast - total_plan, 2)
+    # Live progress, not the dead `progress_percent` column. Substituting the
+    # plan below a threshold — the previous behaviour — says "we forecast
+    # exactly on plan" where it means "we cannot tell yet".
+    from app.models.entities import Stage
+    from app.services import budget_forecast as _bf
+    from app.services import stage_status_service as _st
+
+    stage_rows = list(
+        (await db.execute(select(Stage).where(Stage.project_id == project_id))).scalars().all()
+    )
+    progress = _st.weighted_progress(stage_rows)
+    forecast = _bf.forecast_total(actual, progress)
+    over_risk = _bf.forecast_overrun(forecast, total_plan)
     segments = {}
     for cat in ("works", "materials", "delivery", "tools", "other", "reserve"):
         seg_plan = sum(bl.planned_amount for bl in lines if bl.category == cat)
@@ -526,8 +536,8 @@ async def budget_summary(db: AsyncSession, project_id: str) -> dict:
         "deviation": deviation,
         "deviation_pct": deviation_pct,
         "forecast_total": forecast,
-        "forecast_over": max(0, over_risk),
-        "risk": "high" if over_risk > total_plan * 0.05 else ("medium" if over_risk > 0 else "ok"),
+        "forecast_over": over_risk,
+        "risk": _bf.forecast_risk(forecast, total_plan),
         "segments": segments,
         "remaining": round(max(0, total_plan - actual), 2),
         "change_orders": change_orders,
