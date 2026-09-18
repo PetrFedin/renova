@@ -4,6 +4,7 @@ import { AppState, ScrollView, View, Text, TextInput, StyleSheet, Image, Alert, 
 import { Pressable } from '@/components/ui/Pressable';
 import { useFocusEffect, usePathname } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -15,6 +16,7 @@ import { reportError, reportCatch } from '@/lib/reportError';
 import { api, ChatDetail, ChatMessage } from '@/lib/api';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { compressDataUrl } from '@/lib/compressImage';
+import { ChatToolButton } from '@/components/renova/chat/ChatToolButton';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
@@ -28,6 +30,9 @@ import { alertChatInviteSent } from '@/lib/fieldCommsNav';
 import { alertChatInvoiceCreated, alertChatTaskCreated } from '@/lib/estimatePayNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { router } from 'expo-router';
+
+/** Одно объяснение на все кнопки панели — чтобы не расходилось. */
+const CHAT_READ_ONLY_HINT = 'В режиме просмотра отправка недоступна';
 
 const REACTIONS = ['👍', '✅', '❤️', '🔥', '❓'];
 
@@ -98,7 +103,12 @@ function MessageBubble({
         });
       }}
     >
-      {m.is_pinned ? <Text style={s.pinTag}>📌 Закреплено</Text> : null}
+      {m.is_pinned ? (
+        <View style={s.pinRow}>
+          <Ionicons name="pin" size={12} color={RenovaTheme.colors.warningText} />
+          <Text style={s.pinTag}>Закреплено</Text>
+        </View>
+      ) : null}
       <Text style={s.role}>{roleLabel}</Text>
       {m.text && <HighlightText text={m.text} query={query} />}
       {m.message_type === 'payment' && m.confirmed !== true && onPay && (
@@ -122,7 +132,12 @@ function MessageBubble({
         </Pressable>
       )}
       {m.image_url && <Image source={{ uri: m.image_url }} style={s.img} />}
-      {m.file_name ? <Text style={s.file}>📎 {m.file_name}</Text> : null}
+      {m.file_name ? (
+        <View style={s.fileRow}>
+          <Ionicons name="document-attach-outline" size={14} color={RenovaTheme.colors.textMuted} />
+          <Text style={s.file}>{m.file_name}</Text>
+        </View>
+      ) : null}
       {m.reactions && Object.keys(m.reactions).length > 0 && (
         <View style={s.reactions}>
           {Object.entries(m.reactions).map(([emoji, users]) => (
@@ -507,7 +522,12 @@ export function ChatThreadView({
               Alert.alert('Ошибка', 'Не удалось отправить сообщение');
             }
           }} />
-          <Pressable disabled={!canWrite} onPress={async () => {
+          <ChatToolButton
+            icon="camera-outline"
+            label="Отправить фото"
+            disabledHint={CHAT_READ_ONLY_HINT}
+            disabled={!canWrite}
+            onPress={async () => {
             const pick = await ImagePicker.launchImageLibraryAsync({ base64: true, quality: 0.6 });
             if (pick.canceled || !pick.assets[0]?.base64) return;
             try {
@@ -516,8 +536,13 @@ export function ChatThreadView({
               reportError('ChatThreadView.SendPhoto.Mutation', error, { threadId, projectId });
               Alert.alert('Ошибка', 'Не удалось отправить фото');
             }
-          }}><Text style={s.toolBtn}>📷</Text></Pressable>
-          <Pressable disabled={!canWrite} onPress={async () => {
+          }} />
+          <ChatToolButton
+            icon="attach-outline"
+            label="Прикрепить файл"
+            disabledHint={CHAT_READ_ONLY_HINT}
+            disabled={!canWrite}
+            onPress={async () => {
             const pick = await ImagePicker.launchImageLibraryAsync({ base64: true, quality: 0.8, mediaTypes: ImagePicker.MediaTypeOptions.All });
             if (pick.canceled || !pick.assets[0]?.base64) return;
             const a = pick.assets[0];
@@ -528,19 +553,27 @@ export function ChatThreadView({
               reportError('ChatThreadView.SendAttachment.Mutation', error, { threadId, projectId });
               Alert.alert('Ошибка', 'Не удалось отправить файл');
             }
-          }}><Text style={s.toolBtn}>📎</Text></Pressable>
+          }} />
           {user.role === 'contractor' && (
             <>
-              <Pressable disabled={!canWrite} onPress={() => {
+              <ChatToolButton
+                icon="checkmark-done-outline"
+                label="Запросить подтверждение"
+                disabledHint={CHAT_READ_ONLY_HINT}
+                disabled={!canWrite}
+                onPress={() => {
                 void sendText('Прошу подтвердить согласование', 'confirm').catch((error) => {
                   reportError('ChatThreadView.SendConfirm.Mutation', error, { threadId, projectId });
                   Alert.alert('Ошибка', 'Не удалось отправить запрос подтверждения');
                 });
-              }}>
-                <Text style={s.toolBtn}>✓?</Text>
-              </Pressable>
+              }} />
               {canCreateInvoice && (
-                <Pressable disabled={!canWrite} onPress={() => {
+                <ChatToolButton
+                  icon="card-outline"
+                  label="Выставить счёт"
+                  disabledHint={CHAT_READ_ONLY_HINT}
+                  disabled={!canWrite}
+                  onPress={() => {
                   const createInvoice = async (amount: number) => {
                     try {
                       await api.invoiceFromChat(user.id, projectId, threadId, {
@@ -575,7 +608,7 @@ export function ChatThreadView({
                       { label: 'Открыть оплаты', onPress: openPaymentForm },
                     ],
                   });
-                }}><Text style={s.toolBtn}>💳</Text></Pressable>
+                }} />
               )}
             </>
           )}
@@ -698,6 +731,8 @@ const s = StyleSheet.create({
   composer: { padding: 12, backgroundColor: RenovaTheme.colors.surface, borderTopWidth: 1, borderTopColor: RenovaTheme.colors.border, gap: 8 },
   composerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
   toolBtn: { fontSize: 20, padding: 4 },
+  pinRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  fileRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   typing: { fontSize: 11, color: '#999' },
   wsHint: { fontSize: 10, color: RenovaTheme.colors.warning, marginBottom: 4 },
   input: { minHeight: 44, borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: 8, padding: 10 },
