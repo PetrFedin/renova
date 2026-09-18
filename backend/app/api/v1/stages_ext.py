@@ -425,3 +425,94 @@ async def list_project_dependencies(
             )
         )
     return output
+
+
+class StageSkipIn(BaseModel):
+    """Почему этап не нужен. Необязательно, но помогает читать историю."""
+
+    reason: str | None = Field(default=None, max_length=255)
+
+
+@router.post("/{project_id}/stages/{stage_id}/skip")
+async def skip_stage(
+    project_id: str,
+    stage_id: str,
+    body: StageSkipIn = StageSkipIn(),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Пометить этап ненужным этому объекту.
+
+    Ничего не удаляется: этап остаётся в истории, перестаёт считаться в
+    прогрессе и возвращается обратно через `/unskip`.
+    """
+    from app.services import stage_lifecycle_service as lifecycle
+
+    await require_project(db, project_id, user, write=True)
+    try:
+        stage = await lifecycle.skip_stage(
+            db, project_id=project_id, stage_id=stage_id, actor=user, reason=body.reason
+        )
+    except ValueError as error:
+        code = str(error)
+        raise HTTPException(404 if code == "stage_not_found" else 409, code) from error
+    return {
+        "ok": True,
+        "stage_id": stage.id,
+        "skipped_at": stage.skipped_at.isoformat() if stage.skipped_at else None,
+        "skipped_reason": stage.skipped_reason,
+    }
+
+
+@router.post("/{project_id}/stages/{stage_id}/unskip")
+async def unskip_stage(
+    project_id: str,
+    stage_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Вернуть пропущенный этап в работу."""
+    from app.services import stage_lifecycle_service as lifecycle
+
+    await require_project(db, project_id, user, write=True)
+    try:
+        stage = await lifecycle.unskip_stage(db, project_id=project_id, stage_id=stage_id)
+    except ValueError as error:
+        raise HTTPException(404, str(error)) from error
+    return {"ok": True, "stage_id": stage.id, "skipped_at": None}
+
+
+@router.delete("/{project_id}/stages/{stage_id}")
+async def delete_stage(
+    project_id: str,
+    stage_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Удалить этап — только если к нему ничего не привязано.
+
+    Если этап что-то держит, ничего не удаляется: ответ 409 перечисляет, что
+    именно, и предлагает пропуск. Молча терять оплаты, приёмки и расходы
+    нельзя.
+    """
+    from app.services import stage_lifecycle_service as lifecycle
+
+    await require_project(db, project_id, user, write=True)
+    try:
+        holds = await lifecycle.delete_stage(db, project_id=project_id, stage_id=stage_id)
+    except ValueError as error:
+        raise HTTPException(404, str(error)) from error
+    if holds:
+        raise HTTPException(
+            409,
+            detail={
+                "code": "stage_has_attachments",
+                "message": (
+                    "К этапу привязано: "
+                    f"{lifecycle.describe_holds(holds)}. "
+                    "Его можно пропустить — данные останутся на месте."
+                ),
+                "holds": [{"label": hold.label, "count": hold.count} for hold in holds],
+            },
+        )
+    return {"ok": True, "stage_id": stage_id, "deleted": True}
