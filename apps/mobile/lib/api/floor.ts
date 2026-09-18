@@ -90,3 +90,81 @@ export const floorApi = {
     }
   },
 };
+
+/** Разметка на листе плана: линейка, карандаш, стрелки, заметки. */
+export const planAnnotationsApi = {
+  list: (userId: string, projectId: string, planId: string) =>
+    req<{
+      floor_plan_id: string;
+      scale_ref_pct: number | null;
+      scale_ref_m: number | null;
+      items: {
+        id: string;
+        kind: string;
+        points: { x: number; y: number }[];
+        color: string;
+        stroke_width: number;
+        text?: string | null;
+        measured_m?: number | null;
+        author_id: string;
+        deleted_at?: string | null;
+      }[];
+    }>(`/api/v1/projects/${projectId}/floor-plans/${planId}/annotations`, {}, userId),
+
+  create: (
+    userId: string,
+    projectId: string,
+    planId: string,
+    body: {
+      kind: string;
+      points: { x: number; y: number }[];
+      color?: string;
+      stroke_width?: number;
+      text?: string | null;
+    },
+  ) =>
+    req<{ id: string; kind: string; measured_m?: number | null }>(
+      `/api/v1/projects/${projectId}/floor-plans/${planId}/annotations`,
+      { method: 'POST', body: JSON.stringify(body) },
+      userId,
+    ),
+
+  update: (
+    userId: string,
+    projectId: string,
+    planId: string,
+    annotationId: string,
+    body: { color?: string; stroke_width?: number; text?: string | null },
+  ) =>
+    req(
+      `/api/v1/projects/${projectId}/floor-plans/${planId}/annotations/${annotationId}`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+      userId,
+    ),
+
+  /** Стирание мягкое: пометка остаётся в истории вместе с тем, кто её убрал. */
+  remove: (userId: string, projectId: string, planId: string, annotationId: string) =>
+    req(
+      `/api/v1/projects/${projectId}/floor-plans/${planId}/annotations/${annotationId}`,
+      { method: 'DELETE' },
+      userId,
+    ),
+
+  /**
+   * Задать масштаб: две точки на отрезке известной длины.
+   *
+   * Клиент шлёт именно точки, а не готовую долю — сервер меряет их той же
+   * функцией, что и все измерения, поэтому расчёты не могут разойтись.
+   */
+  calibrate: (
+    userId: string,
+    projectId: string,
+    planId: string,
+    body: { points: { x: number; y: number }[]; ref_m: number },
+  ) =>
+    req<{ scale_ref_pct: number; scale_ref_m: number }>(
+      `/api/v1/projects/${projectId}/floor-plans/${planId}/calibrate`,
+      { method: 'POST', body: JSON.stringify(body) },
+      userId,
+    ),
+};
