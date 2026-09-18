@@ -124,12 +124,29 @@ async def budget_category_alerts(project_id: str, threshold_pct: float = 10, use
 
 @router.get("/projects/{project_id}/analytics/budget-forecast")
 async def budget_forecast(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from sqlalchemy import select as _select
+    from app.models.entities import Stage as _Stage
+    from app.services import budget_forecast as bf
+    from app.services import stage_status_service as st_status
+
     p = await require_project(db, project_id, user, write=False)
-    prog = max(p.progress_percent, 1) / 100
-    burn = p.budget_spent / prog if prog else p.budget_spent
-    forecast = burn
-    over = max(0, forecast - p.budget_planned)
-    return {"budget_planned": p.budget_planned, "budget_spent": p.budget_spent, "progress_percent": p.progress_percent, "forecast_total": round(forecast, 2), "forecast_over": round(over, 2), "risk": "high" if over > p.budget_planned * 0.05 else "ok"}
+    # `projects.progress_percent` is written by nothing but the demo seeder, so
+    # reading it made the forecast the spend multiplied by a hundred. The live
+    # figure is the one the dashboard already shows.
+    stages = list(
+        (await db.execute(_select(_Stage).where(_Stage.project_id == project_id))).scalars().all()
+    )
+    progress = st_status.weighted_progress(stages)
+    forecast = bf.forecast_total(p.budget_spent, progress)
+    return {
+        "budget_planned": p.budget_planned,
+        "budget_spent": p.budget_spent,
+        "progress_percent": progress,
+        # None, not a number, while there is too little to extrapolate from.
+        "forecast_total": forecast,
+        "forecast_over": bf.forecast_overrun(forecast, p.budget_planned),
+        "risk": bf.forecast_risk(forecast, p.budget_planned),
+    }
 
 @router.get("/projects/{project_id}/analytics/budget-scenario")
 async def budget_scenario(project_id: str, materials_pct: float = 10, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
