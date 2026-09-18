@@ -13,6 +13,7 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { tabsRoute, type OsRole } from '@/constants/osSections';
+import { useTopInset } from '@/lib/useTopInset';
 
 type LoadState = {
   budget: OsBudgetSummary | null;
@@ -47,6 +48,7 @@ function KpiCard({ label, value, hint }: { label: string; value: string; hint: s
 }
 
 export function ManagerDashboardScreen() {
+  const topInset = useTopInset();
   const { user, activeProject } = useRenova();
   const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
   const [state, setState] = useState<LoadState>({ budget: null, risks: [], insights: [] });
@@ -116,7 +118,8 @@ export function ManagerDashboardScreen() {
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={styles.content}
+      // Тот же случай: полноэкранный маршрут без BackHeader.
+      contentContainerStyle={[styles.content, { paddingTop: topInset + 8 }]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
     >
       <View style={styles.header}>

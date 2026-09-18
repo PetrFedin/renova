@@ -24,6 +24,7 @@ import {
   issueWaitingHint,
   type IssueTransitionAction,
 } from '@/lib/domain/issueLifecycle';
+import { useTopInset } from '@/lib/useTopInset';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
 
@@ -187,6 +188,7 @@ function IssueCard({
 }
 
 export function QualityControlScreen() {
+  const topInset = useTopInset();
   const { user, activeProject, readOnly } = useRenova();
   const params = useLocalSearchParams<{ issueId?: string }>();
   const focusIssueId = Array.isArray(params.issueId) ? params.issueId[0] : params.issueId;
@@ -381,7 +383,10 @@ export function QualityControlScreen() {
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={styles.content}
+      // Верхний отступ под вырез: экран полноэкранный (headerShown: false) и
+      // не использует BackHeader, поэтому учитывает безопасную зону сам.
+      // Иначе «‹ Назад» лежит в полосе 0…47, закрытой статус-баром.
+      contentContainerStyle={[styles.content, { paddingTop: topInset + 8 }]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} />}
     >
       <View style={styles.header}>
