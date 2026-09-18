@@ -17,6 +17,7 @@ import { alertWorkCreated } from '@/lib/fieldCreateNav';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import type { OsRole } from '@/constants/osSections';
 import { reportError } from '@/lib/reportError';
+import { SHEET_BACKDROP, SheetKeyboardLayer, useSheetBottomPadding } from '@/components/renova/SheetKeyboardLayer';
 
 type Props = {
   visible: boolean;
@@ -60,6 +61,7 @@ export function CreateWorkSheet({
 }: Props) {
   const { user, activeProject } = useRenova();
   const isCustomer = variant === 'customer';
+  const sheetBottom = useSheetBottomPadding();
   const [types, setTypes] = useState(WORK_TYPES_FALLBACK);
   const [workType, setWorkType] = useState('electrical');
   const [category, setCategory] = useState('engineering');
@@ -220,7 +222,8 @@ export function CreateWorkSheet({
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={s.backdrop}>
-        <View style={s.sheet}>
+        <SheetKeyboardLayer>
+        <View style={[s.sheet, { paddingBottom: sheetBottom }]}>
           <Text style={s.head}>{isCustomer ? 'Задача на день' : 'Новая работа'}</Text>
           <Text style={s.guide}>{isCustomer ? 'Можно несколько задач в один день — каждая отдельной строкой в календаре.' : WORK_FORM_HINTS.guide}</Text>
 
@@ -386,13 +389,14 @@ export function CreateWorkSheet({
             )}
           </View>
         </View>
+        </SheetKeyboardLayer>
       </View>
     </Modal>
   );
 }
 
 const s = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  backdrop: { flex: 1, backgroundColor: SHEET_BACKDROP, justifyContent: 'flex-end' },
   sheet: { ...card, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, padding: 16, maxHeight: '92%' },
   head: { fontSize: 18, fontWeight: '800', marginBottom: 4 },
   guide: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 17, marginBottom: 10 },

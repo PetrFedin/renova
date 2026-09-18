@@ -17,6 +17,7 @@ import { createProjectChat, type ChatParticipantInvite } from '@/lib/createProje
 import type { ChatThread } from '@/lib/api';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { SHEET_BACKDROP, SheetKeyboardLayer, useSheetBottomPadding } from '@/components/renova/SheetKeyboardLayer';
 
 const CHAT_TOPICS = [
   { value: 'general', label: 'Общий' },
@@ -67,6 +68,7 @@ export function CreateChatSheet({
   onOpenChat,
 }: Props) {
   const { user } = useRenova();
+  const sheetBottom = useSheetBottomPadding();
   const [title, setTitle] = useState('');
   const [topic, setTopic] = useState<Topic>('general');
   const [projectId, setProjectId] = useState(defaultProjectId ?? '');
@@ -181,7 +183,8 @@ export function CreateChatSheet({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={closeSafely}>
       <Pressable style={s.backdrop} onPress={closeSafely}>
-        <Pressable style={s.sheet} onPress={stopPropagation}>
+        <SheetKeyboardLayer>
+        <Pressable style={[s.sheet, { paddingBottom: sheetBottom }]} onPress={stopPropagation}>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.scroll}>
             <Text style={s.head}>Новый чат</Text>
             <Text style={s.sub}>Один чат — один объект. Участников можно добавить сразу или позже в настройках чата.</Text>
@@ -282,13 +285,14 @@ export function CreateChatSheet({
             <PrimaryButton title="Отмена" variant="ghost" onPress={closeSafely} disabled={busy} fullWidth />
           </ScrollView>
         </Pressable>
+        </SheetKeyboardLayer>
       </Pressable>
     </Modal>
   );
 }
 
 const s = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
+  backdrop: { flex: 1, backgroundColor: SHEET_BACKDROP, justifyContent: 'flex-end' },
   sheet: {
     maxHeight: '92%',
     backgroundColor: RenovaTheme.colors.surface,
