@@ -255,6 +255,10 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     await refreshTeamAccess(u);
   }, [user?.id, refreshTeamAccess]);
 
+  // Объект, о котором уже сообщали шине. Сравнение по идентификатору, а не
+  // флагом: возврат на прежний объект — это снова переключение.
+  const lastNotifiedProjectRef = useRef<string | null>(null);
+
   const loadProject = useCallback(
     async (id: string) => {
       if (!user) return;
@@ -272,7 +276,18 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
         await AsyncStorage.setItem(KEYS.projectId, id);
         await AsyncStorage.setItem(SESSION_KEYS.projectExplicitlyPicked, '1');
         await AsyncStorage.removeItem(SESSION_KEYS.pendingProjectPick);
-        notifyProjectDataChanged();
+        // Чтение проекта — не изменение. Раньше уведомление уходило при каждой
+        // загрузке, и шина замыкалась сама на себя: loadProject объявлял
+        // «данные изменились», слушатели в ответ перезагружали проект, тот
+        // снова объявлял. На живом стенде это давало сотни запросов и 429.
+        //
+        // Уведомление нужно ровно для одного случая — пользователь перешёл на
+        // ДРУГОЙ объект, и соседние экраны обязаны перечитать свои данные.
+        const switchedProject = lastNotifiedProjectRef.current !== id;
+        lastNotifiedProjectRef.current = id;
+        if (switchedProject) {
+          notifyProjectDataChanged();
+        }
         // Inbox/чат — не блокируем вход в объект (раньше ждал buildInboxItems → «Выберите объект» висел)
         void reloadInboxSync({
           userId: user.id,
