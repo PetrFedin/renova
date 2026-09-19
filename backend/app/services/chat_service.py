@@ -813,16 +813,72 @@ async def create_task_from_message(
         wo.assignee_id = assignee_id
         await db.commit()
 
-    text = f"📋 Задача: {title}" + (f" · до {due_at[:10]}" if due_at else "")
+    text = task_message_text(title, due_at)
     meta = {"work_order_id": wo.id, "assignee_id": assignee_id, "due_at": due_at}
     msg = await send_message(db, thread, user_id, role, text, "task", meta=meta)
-    orig = await db.get(ChatMessage, message_id)
-    if orig:
-        om = _parse_meta(orig.meta_json)
-        om["linked_task_id"] = wo.id
-        orig.meta_json = _dump_meta(om)
-        await db.commit()
+    await _link_task_to_message(db, message_id, wo.id)
+    await db.commit()
     return msg
+
+
+def task_message_text(title: str, due_at: str | None) -> str:
+    return f"📋 Задача: {title}" + (f" · до {due_at[:10]}" if due_at else "")
+
+
+async def _link_task_to_message(db: AsyncSession, message_id: str, work_order_id: str) -> None:
+    orig = await db.get(ChatMessage, message_id)
+    if not orig:
+        return
+    om = _parse_meta(orig.meta_json)
+    om["linked_task_id"] = work_order_id
+    orig.meta_json = _dump_meta(om)
+
+
+async def prepare_task_from_message(
+    db: AsyncSession,
+    thread: ChatThread,
+    user_id: str,
+    role: str,
+    message_id: str,
+    *,
+    title: str,
+    assignee_id: str | None,
+    due_at: str | None,
+    work_type: str = "general",
+) -> tuple[ChatMessage, "object"]:
+    """Наряд, сообщение о нём и связь в исходном сообщении — без коммита.
+
+    Коммит остаётся за вызывающим вместе с записью журнала идемпотентности:
+    иначе повтор после потери ответа создаёт второй наряд (#316).
+    """
+    from datetime import date
+    from app.services import work_order_service as wo_svc
+
+    due = date.fromisoformat(due_at[:10]) if due_at else None
+    wo = await wo_svc.prepare_work_order(
+        db,
+        project_id=thread.project_id,
+        user_id=user_id,
+        title=title,
+        work_type=work_type,
+        planned_start=due,
+        planned_end=due,
+        publish=True,
+    )
+    if assignee_id:
+        wo.assignee_id = assignee_id
+    msg = await prepare_message(
+        db,
+        thread,
+        user_id,
+        role,
+        task_message_text(title, due_at),
+        "task",
+        meta={"work_order_id": wo.id, "assignee_id": assignee_id, "due_at": due_at},
+    )
+    await _link_task_to_message(db, message_id, wo.id)
+    await db.flush()
+    return msg, wo
 
 
 def payment_message_text(title: str, amount: float) -> str:

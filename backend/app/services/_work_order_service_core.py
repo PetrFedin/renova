@@ -207,7 +207,7 @@ async def _validate_resource_refs(
             raise ValueError("work_order_stage_invalid")
 
 
-async def create_work_order(
+async def prepare_work_order(
     db: AsyncSession,
     *,
     project_id: str,
@@ -276,14 +276,61 @@ async def create_work_order(
                 "link_path": f"/work-order/{work_order.id}",
             },
         )
-        await db.commit()
     except BaseException:
         await db.rollback()
         raise
 
+    return work_order
+
+
+async def deliver_work_order(db: AsyncSession, work_order: WorkOrder) -> WorkOrder:
+    """Побочные эффекты уже сохранённого наряда."""
     await db.refresh(work_order)
     await _dispatch_committed_effects(db, source="work_order.create")
     return work_order
+
+
+async def create_work_order(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    user_id: str,
+    title: str,
+    work_type: str,
+    room_id: str | None = None,
+    stage_id: str | None = None,
+    planned_start: date | None = None,
+    planned_end: date | None = None,
+    budget_planned: float = 0,
+    notes: str | None = None,
+    publish: bool = False,
+) -> WorkOrder:
+    """Создать наряд и разослать эффекты — прежнее поведение.
+
+    Подготовка и коммит разделены, чтобы вызывающий мог положить наряд в
+    одну транзакцию с записью журнала идемпотентности: без этого повтор
+    после потери ответа создавал второй наряд (#316).
+    """
+    work_order = await prepare_work_order(
+        db,
+        project_id=project_id,
+        user_id=user_id,
+        title=title,
+        work_type=work_type,
+        room_id=room_id,
+        stage_id=stage_id,
+        planned_start=planned_start,
+        planned_end=planned_end,
+        budget_planned=budget_planned,
+        notes=notes,
+        publish=publish,
+    )
+    try:
+        await db.commit()
+    except BaseException:
+        await db.rollback()
+        raise
+    return await deliver_work_order(db, work_order)
 
 
 def _normalize_expected_updated_at(value: datetime) -> datetime:
