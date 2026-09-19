@@ -166,12 +166,19 @@ export const chatsApi = {
     userId: string,
     projectId: string,
     threadId: string,
-    body: { title: string; amount: number; payment_type?: string },
+    body: { title: string; amount: number; payment_type?: string; client_request_id?: string },
   ) => {
+    // Ключ рождается ОДИН раз до попытки: живой запрос и переигровка из
+    // офлайн-очереди должны нести один и тот же — иначе сервер увидит два
+    // разных запроса и выставит два счёта.
+    const serialized = JSON.stringify({
+      ...body,
+      client_request_id: body.client_request_id ?? newChatClientRequestId(),
+    });
     try {
       return await req<ChatMessage>(
         `/api/v1/projects/${projectId}/chats/${threadId}/invoice`,
-        { method: 'POST', body: JSON.stringify(body) },
+        { method: 'POST', body: serialized },
         userId,
       );
     } catch (e) {
@@ -180,7 +187,7 @@ export const chatsApi = {
       await enqueue({
         path: `/api/v1/projects/${projectId}/chats/${threadId}/invoice`,
         method: 'POST',
-        body: JSON.stringify(body),
+        body: serialized,
         userId,
       });
       throw new Error('offline_queued');
