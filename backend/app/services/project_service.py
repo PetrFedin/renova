@@ -194,10 +194,13 @@ def build_dashboard(project: Project) -> dict:
     next_stage = review or active
 
     ms = material_stats(project.estimate_lines)
+    # None означает «факт по материалам ещё не вносили» — перерасхода нет и
+    # быть не может, пока не с чем сравнивать. Раньше при пустом факте сюда
+    # приходил ноль, потому что вместо факта подставлялся план.
     overrun = ms["overrun_percent"]
 
     alerts = []
-    if overrun > 5:
+    if overrun is not None and overrun > 5:
         alerts.append(f"Перерасход материалов {round(overrun)}%")
     days_overdue = 0
     if project.planned_end_date and date.today() > project.planned_end_date and progress < 100:

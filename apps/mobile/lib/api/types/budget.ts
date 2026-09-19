@@ -113,7 +113,20 @@ export type ReceiptItem = {
   description?: string | null;
 };
 
-export type MaterialStats = { planned: number; actual: number; overrun_percent: number };
+/**
+ * План и факт по материалам.
+ *
+ * `overrun_percent` равен null, пока факт не вносили ни по одной строке:
+ * иначе «отклонение −100 %» читалось бы как провал, хотя означает лишь
+ * отсутствие данных.
+ */
+export type MaterialStats = {
+  planned: number;
+  actual: number;
+  overrun_percent: number | null;
+  lines_total?: number;
+  lines_with_fact?: number;
+};
 
 export type ChangeOrder = {
   id: string;
