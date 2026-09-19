@@ -435,7 +435,7 @@ async def create_warranty_claim(
             title=issue.title,
             body=body.description or "Новое гарантийное обращение",
             link_path="/quality-control" if other_is_contractor else "/documents",
-            return_to="/(contractor)/(tabs)/home" if other_is_contractor else "/(customer)/(tabs)/home",
+            return_to="/(contractor)/(tabs)/" if other_is_contractor else "/(customer)/(tabs)/",
         )
     await db.commit()
     return {
@@ -652,7 +652,7 @@ async def closeout_project(
         user_id=user.id,
         kind="ProjectCloseout",
         title=f"Объект завершён: {project.name}",
-        link_path="/(customer)/(tabs)/home",
+        link_path="/(customer)/(tabs)/",
     )
     await db.commit()
     snap["archived"] = True

@@ -186,7 +186,7 @@ async def reject_schedule_as_reviewer(
             notification_type="schedule_rejected",
             notification_title="План-график на доработку от технадзора",
             notification_body=clean_reason,
-            return_to="/(contractor)/(tabs)/home",
+            return_to="/(contractor)/(tabs)/",
         )
         if project.customer_id and project.customer_id != actor.id:
             await outbox.enqueue(

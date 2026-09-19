@@ -132,7 +132,7 @@ async def _enqueue_dispute_effects(
                 "title": f"Заказчик оспорил оплату: {payment.title}",
                 "body": reason,
                 "link_path": "/(contractor)/(tabs)/budget?tab=payments",
-                "return_to": "/(contractor)/(tabs)/home",
+                "return_to": "/(contractor)/(tabs)/",
             },
         )
 
@@ -178,7 +178,7 @@ async def _enqueue_resolution_effects(
                 "title": f"Заказчик отозвал спор: {payment.title}",
                 "body": note,
                 "link_path": "/(contractor)/(tabs)/budget?tab=payments",
-                "return_to": "/(contractor)/(tabs)/home",
+                "return_to": "/(contractor)/(tabs)/",
             },
         )
 

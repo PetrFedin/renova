@@ -1,6 +1,8 @@
 """In-app уведомления + push с returnTo для навигации назад."""
 from __future__ import annotations
 
+from urllib.parse import quote
+
 from app.core.timeutil import utc_now
 from datetime import datetime, timedelta
 
@@ -31,10 +33,21 @@ def resolve_notification_type(raw: str) -> NotificationType:
 
 
 def _stored_link(link_path: str | None, return_to: str | None) -> str | None:
+    """Вложить обратный адрес в ссылку уведомления.
+
+    Значение кодируется. Без кодирования обратный адрес со своим запросом —
+    а такие шлют одиннадцать мест — давал два «?» в одной строке:
+
+        /stage/<id>?returnTo=/(customer)/(tabs)/repair?tab=control
+
+    Клиент резал такую ссылку по первому «?» и брал только следующий кусок,
+    поэтому tab=control терялся: человек приходил из уведомления в «Приёмку»,
+    жал «Назад» и оказывался в «Этапах».
+    """
     if not link_path or not return_to:
         return link_path
     separator = "&" if "?" in link_path else "?"
-    return f"{link_path}{separator}returnTo={return_to}"
+    return f"{link_path}{separator}returnTo={quote(return_to, safe='')}"
 
 
 async def notify(
