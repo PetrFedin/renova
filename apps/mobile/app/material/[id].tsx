@@ -166,7 +166,10 @@ export default function MaterialDetailScreen() {
   return (
     <>
       <BackHeader title={pick.name} returnTo={returnTo} subtitle={ST[pick.status] || pick.status} />
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={s.card}>
           <Text style={s.row}><Text style={s.label}>Кол-во</Text> {pick.qty} {pick.unit}</Text>
           <Text style={s.row}><Text style={s.label}>Цена</Text> {formatRub(pick.price)} · итого {formatRub(pick.total)}</Text>

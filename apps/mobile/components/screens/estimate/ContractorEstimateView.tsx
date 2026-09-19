@@ -85,7 +85,10 @@ export function ContractorEstimateView() {
   return (
     <>
       <ReadOnlyBanner />
-      <ScrollView style={styles.wrap} contentContainerStyle={screenLayout.contentStyle}>
+      <ScrollView
+        style={styles.wrap} contentContainerStyle={screenLayout.contentStyle}
+        keyboardShouldPersistTaps="handled"
+      >
         <ObjectTabGuide tab="estimate" />
 
         <View style={styles.totalBox}>

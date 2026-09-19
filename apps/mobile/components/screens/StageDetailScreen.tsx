@@ -334,7 +334,10 @@ export function StageDetailScreen() {
         subtitle={`${STAGE_STATUS_LABEL[stage.status] || stage.status}${isArchived ? ' · Архив' : ''}`}
       />
       <ReadOnlyBanner />
-      <ScrollView style={styles.wrap} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
+      <ScrollView
+        style={styles.wrap} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+        keyboardShouldPersistTaps="handled"
+      >
         {isArchived && (
           <View style={styles.archiveBanner}>
             <Text style={styles.archiveText}>Этап завершён</Text>

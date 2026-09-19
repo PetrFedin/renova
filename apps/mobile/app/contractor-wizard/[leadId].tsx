@@ -209,7 +209,10 @@ export default function ContractorLeadWizard() {
   return (
     <>
       <BackHeader title="Новый объект из заявки" returnTo={returnTo} subtitle={lead.title} />
-      <ScrollView style={s.wrap} contentContainerStyle={{ padding: 16 }}>
+      <ScrollView
+        style={s.wrap} contentContainerStyle={{ padding: 16 }}
+        keyboardShouldPersistTaps="handled"
+      >
         <View pointerEvents={busy ? 'none' : 'auto'}>
           <Text style={s.meta}>{lead.address || '—'} · {lead.renovation_type} · {lead.area_sqm || '?'} м²</Text>
           <View style={s.row}>

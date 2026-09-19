@@ -138,7 +138,10 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
   return (
     <>
       <ReadOnlyBanner />
-      <ScrollView style={styles.wrap} contentContainerStyle={screenLayout.contentStyle}>
+      <ScrollView
+        style={styles.wrap} contentContainerStyle={screenLayout.contentStyle}
+        keyboardShouldPersistTaps="handled"
+      >
         <ObjectTabGuide tab="rooms" onNextTab={onNextTab} />
         {!activeProject.contractor_id && (
           <InfoBanner
@@ -404,7 +407,10 @@ function ContractorRoomsBody() {
   return (
     <>
       <ReadOnlyBanner />
-      <ScrollView style={styles.wrap} contentContainerStyle={screenLayout.contentStyle}>
+      <ScrollView
+        style={styles.wrap} contentContainerStyle={screenLayout.contentStyle}
+        keyboardShouldPersistTaps="handled"
+      >
         <StageRoomMatrix
           rooms={activeRooms}
           stages={activeProject.stages || []}

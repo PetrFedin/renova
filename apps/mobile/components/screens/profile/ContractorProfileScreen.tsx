@@ -119,7 +119,10 @@ export function ContractorProfileScreen() {
   const roleLabel = roleDisplayLabel(user?.role);
 
   return (
-    <ScrollView style={ps.scroll} contentContainerStyle={ps.content}>
+    <ScrollView
+      style={ps.scroll} contentContainerStyle={ps.content}
+      keyboardShouldPersistTaps="handled"
+    >
       <RoleSwitchButton />
 
       <ProfileHeader
