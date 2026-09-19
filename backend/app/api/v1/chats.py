@@ -11,6 +11,7 @@ from app.services import chat_participant_service as chat_participant_svc
 from app.services import chat_service as chat_svc
 from app.services import chat_message_mutation as chat_message_svc
 from app.services.client_write_idempotency import IdempotencyConflict
+from app.api.errors import not_found
 
 router = APIRouter(prefix="/projects", tags=["chats"])
 
@@ -350,7 +351,7 @@ async def pin_msg(project_id: str, thread_id: str, message_id: str, pin: bool = 
     await require_chat_message(db, t, message_id)
     msg = await chat_svc.pin_message(db, message_id, pin)
     if not msg:
-        raise HTTPException(404)
+        raise not_found("chat_message")
     return chat_svc.msg_dict(msg)
 
 

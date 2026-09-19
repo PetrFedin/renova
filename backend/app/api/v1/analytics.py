@@ -6,13 +6,14 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import LineType, Project, User, UserRole
 from app.services import project_service as proj_svc
+from app.api.errors import forbidden
 
 router = APIRouter(tags=["analytics"])
 
 @router.get("/projects/analytics/contractor-summary")
 async def contractor_summary(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if user.role != UserRole.contractor:
-        raise HTTPException(403)
+        raise forbidden("contractor_only")
     r = await db.execute(select(Project).where(Project.contractor_id == user.id))
     out = []
     for p in r.scalars().all():

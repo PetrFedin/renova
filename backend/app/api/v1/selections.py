@@ -11,6 +11,7 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import Project, SelectionItem, SelectionStatus, User, UserRole
 from app.services import activity_service as act
+from app.api.errors import not_found
 
 router = APIRouter(prefix="/projects", tags=["selections"])
 
@@ -140,7 +141,7 @@ async def propose_selection(
     await require_project(db, project_id, user, write=True)
     row = await db.get(SelectionItem, selection_id)
     if not row or row.project_id != project_id:
-        raise HTTPException(404)
+        raise not_found("selection")
     if row.status not in (SelectionStatus.draft, SelectionStatus.rejected):
         raise HTTPException(409, "invalid_status")
     row.status = SelectionStatus.proposed
@@ -174,7 +175,7 @@ async def approve_selection(
         raise HTTPException(403, "Только заказчик")
     row = await db.get(SelectionItem, selection_id)
     if not row or row.project_id != project_id:
-        raise HTTPException(404)
+        raise not_found("selection")
     if row.status != SelectionStatus.proposed:
         raise HTTPException(409, "not_proposed")
     row.status = SelectionStatus.approved
@@ -211,7 +212,7 @@ async def reject_selection(
         raise HTTPException(403, "Только заказчик")
     row = await db.get(SelectionItem, selection_id)
     if not row or row.project_id != project_id:
-        raise HTTPException(404)
+        raise not_found("selection")
     if row.status != SelectionStatus.proposed:
         raise HTTPException(409, "not_proposed")
     row.status = SelectionStatus.rejected

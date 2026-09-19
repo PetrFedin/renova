@@ -10,6 +10,7 @@ from app.db.session import get_db
 from app.models.entities import User
 from app.services import project_service as proj_svc
 from app.services.pdf_helper import new_pdf, pdf_line, pdf_response
+from app.api.errors import not_found
 
 router = APIRouter(prefix="/projects", tags=["export"])
 
@@ -67,7 +68,7 @@ async def export_acceptance(project_id: str, stage_id: str, checks: str | None =
     await require_project(db, project_id, user, write=False)
     stage = await st_svc.get_stage_full(db, stage_id)
     if not stage or stage.project_id != project_id:
-        raise HTTPException(404)
+        raise not_found("stage")
     pdf = new_pdf()
     pdf_line(pdf, f"Priyomka: {stage.name}", size=14)
     pdf_line(pdf, f"Status: {stage.status.value}")
@@ -92,7 +93,7 @@ async def export_room_pdf(project_id: str, room_id: str, user: User = Depends(ge
     await require_project(db, project_id, user, write=False)
     room = await db.get(Room, room_id)
     if not room or room.project_id != project_id:
-        raise HTTPException(404)
+        raise not_found("room")
     d = room_detail(room)
     pdf = new_pdf()
     pdf_line(pdf, f"Komnata: {d['name']}", size=14)
@@ -156,7 +157,7 @@ async def export_room_audit(project_id: str, room_id: str, field: str | None = N
     await require_project(db, project_id, user, write=False)
     room = await db.get(Room, room_id)
     if not room or room.project_id != project_id:
-        raise HTTPException(404)
+        raise not_found("room")
     q = select(RoomChangeLog).where(RoomChangeLog.room_id == room_id)
     if field:
         q = q.where(RoomChangeLog.field_name == field)

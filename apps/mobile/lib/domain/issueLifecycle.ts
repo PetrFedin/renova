@@ -46,6 +46,22 @@ export function isIssueTransitionAllowed(
   return false;
 }
 
+/**
+ * Гарантию закрывает только заказчик и только пока она не закрыта.
+ *
+ * Бэкенд на повторное закрытие отвечает 200 ok — это нужно офлайн-очереди,
+ * которая переигрывает отправку. Но показывать из-за этого кнопку на уже
+ * закрытом обращении нельзя: нажатие отрапортует об успехе, ничего не изменив.
+ */
+export function canCloseWarranty(
+  statusValue: string,
+  role: 'customer' | 'contractor',
+): boolean {
+  if (role !== 'customer') return false;
+  const status = normalizeIssueStatus(statusValue);
+  return status !== null && status !== 'closed';
+}
+
 export function issueActions(
   statusValue: string,
   role: 'customer' | 'contractor',
@@ -108,8 +124,11 @@ export function issueWaitingHint(
   role: 'customer' | 'contractor',
   isWarranty = false,
 ): string | null {
-  if (isWarranty) return role === 'contractor' ? 'Гарантию закрывает заказчик' : null;
   const status = normalizeIssueStatus(statusValue);
+  if (isWarranty) {
+    if (role === 'contractor') return 'Гарантию закрывает заказчик';
+    return status === 'closed' ? 'Гарантия закрыта' : null;
+  }
   if (!status) return null;
   if (role === 'customer' && (status === 'open' || status === 'assigned' || status === 'in_progress')) {
     return 'Ждёт исправления исполнителем';

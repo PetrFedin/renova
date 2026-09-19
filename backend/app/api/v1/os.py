@@ -13,6 +13,7 @@ from app.services import project_service as proj_svc
 from app.services import risk_engine as risk
 from app.services import stage_service as stage_svc
 from app.services import workflow_service as wf
+from app.api.errors import not_found
 
 router = APIRouter(tags=["renova-os"])
 
@@ -39,7 +40,7 @@ async def project_risks(project_id: str, user: User = Depends(get_current_user),
     await require_project(db, project_id, user, write=False)
     p = await risk.load_project_for_risks(db, project_id)
     if not p:
-        raise HTTPException(404)
+        raise not_found("project")
     items = await risk.compute_project_risks(db, p)
     return {"count": len(items), "items": items}
 
@@ -59,7 +60,7 @@ async def stage_workflow(project_id: str, stage_id: str, user: User = Depends(ge
     await require_project(db, project_id, user, write=False)
     stage = await stage_svc.get_stage_full(db, stage_id)
     if not stage or stage.project_id != project_id:
-        raise HTTPException(404)
+        raise not_found("stage")
     await wf.ensure_stage_checklist(db, stage)
     return wf.workflow_dict(stage)
 
@@ -75,7 +76,7 @@ async def toggle_checklist(
     await require_project(db, project_id, user, write=True)
     stage = await stage_svc.get_stage_full(db, stage_id)
     if not stage or stage.project_id != project_id:
-        raise HTTPException(404)
+        raise not_found("stage")
     items = await wf.toggle_checklist_item(db, stage, body.item_id, body.done)
     return {"checklist": items, "progress": wf.checklist_progress(items)}
 
@@ -143,7 +144,7 @@ async def close_issue(project_id: str, issue_id: str, user: User = Depends(get_c
     project = await require_project(db, project_id, user, write=True)
     existing = await db.get(ProjectIssue, issue_id)
     if not existing or existing.project_id != project_id:
-        raise HTTPException(404)
+        raise not_found("issue")
     if (existing.title or "").startswith("[Гарантия]"):
         if user.role != UserRole.customer or user.id != project.customer_id:
             raise HTTPException(403, "warranty_close_customer_only")
@@ -153,7 +154,7 @@ async def close_issue(project_id: str, issue_id: str, user: User = Depends(get_c
         next_status = "fixed"
     issue = await iss.update_issue_status(db, issue_id, next_status)
     if not issue:
-        raise HTTPException(404)
+        raise not_found("issue")
 
     event_kind = "IssueFixed" if next_status == "fixed" else "IssueClosed"
     await act.log_event(
@@ -206,7 +207,7 @@ async def escalate_issue(
     await team_svc.require_capability(db, user, project, "escalate")
     existing = await db.get(ProjectIssue, issue_id)
     if not existing or existing.project_id != project_id:
-        raise HTTPException(404)
+        raise not_found("issue")
     if existing.status == "closed":
         raise HTTPException(409, detail={"code": "issue_closed", "message": "Закрытое замечание нельзя эскалировать"})
     title = existing.title or "Замечание"
@@ -254,7 +255,7 @@ async def calc_room_materials(
     await require_project(db, project_id, user, write=False)
     room = await db.get(Room, room_id)
     if not room or room.project_id != project_id:
-        raise HTTPException(404)
+        raise not_found("room")
     items = calc_fn(room.floor_sq_m, room.wall_sq_m, room.perimeter_m)
     await act.log_event(db, project_id=project_id, user_id=user.id, kind="MaterialCalculated", title=f"Расчёт: {room.name}", body=str(len(items)), room_id=room_id, link_path=f"/room/{room_id}")
     return {"room_id": room_id, "items": items}
@@ -373,7 +374,7 @@ async def patch_os_expense(
     await require_project(db, project_id, user, write=True)
     exp = await bud.get_expense(db, expense_id)
     if not exp or exp.project_id != project_id or exp.status == "deleted":
-        raise HTTPException(404)
+        raise not_found("expense")
     try:
         updated = await bud.update_expense(
             db,
@@ -406,7 +407,7 @@ async def delete_os_expense(
     await require_project(db, project_id, user, write=True)
     exp = await bud.get_expense(db, expense_id)
     if not exp or exp.project_id != project_id or exp.status == "deleted":
-        raise HTTPException(404)
+        raise not_found("expense")
     try:
         await bud.delete_expense(db, exp)
     except ValueError as e:
@@ -435,7 +436,7 @@ async def work_snapshot(project_id: str, stage_id: str, user: User = Depends(get
     p = await require_project(db, project_id, user, write=False)
     stage = await stage_svc.get_stage_full(db, stage_id)
     if not stage or stage.project_id != project_id:
-        raise HTTPException(404)
+        raise not_found("stage")
     role = user.role.value if hasattr(user.role, "value") else str(user.role)
     return await ws.build_work_snapshot(db, stage, p, role=role)
 
@@ -446,7 +447,7 @@ async def completion_check(project_id: str, stage_id: str, user: User = Depends(
     p = await require_project(db, project_id, user, write=False)
     stage = await stage_svc.get_stage_full(db, stage_id)
     if not stage or stage.project_id != project_id:
-        raise HTTPException(404)
+        raise not_found("stage")
     return await ws.completion_check(db, stage, p)
 
 
@@ -466,5 +467,5 @@ async def room_snapshot(project_id: str, room_id: str, user: User = Depends(get_
     p = await require_project(db, project_id, user, write=False)
     room = await db.get(Room, room_id)
     if not room or room.project_id != project_id:
-        raise HTTPException(404)
+        raise not_found("room")
     return await rs.build_room_snapshot(db, p, room)

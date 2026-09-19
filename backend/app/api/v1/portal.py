@@ -10,6 +10,7 @@ from app.db.session import get_db
 from app.models.entities import Project, User, UserRole
 from app.services import portal_token_service as portal_tok
 from app.services import team_service as team_svc
+from app.api.errors import not_found
 
 router = APIRouter(tags=["portal"])
 
@@ -773,7 +774,7 @@ async def portal_approve_change_order(
     user = await db.get(User, claims["user_id"])
     project = await db.get(Project, project_id)
     if not user or not project:
-        raise HTTPException(404)
+        raise not_found("project")
     if user.id != project.customer_id or user.role != UserRole.customer:
         raise HTTPException(403, "change_order_customer_only")
     from app.services import change_order_service as co_svc
@@ -801,7 +802,7 @@ async def portal_reject_change_order(
     user = await db.get(User, claims["user_id"])
     project = await db.get(Project, project_id)
     if not user or not project:
-        raise HTTPException(404)
+        raise not_found("project")
     if user.id != project.customer_id or user.role != UserRole.customer:
         raise HTTPException(403, "change_order_customer_only")
     from app.services import change_order_service as co_svc
