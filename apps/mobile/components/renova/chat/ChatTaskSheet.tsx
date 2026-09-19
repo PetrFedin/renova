@@ -7,6 +7,7 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { api } from '@/lib/api';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { reportError } from '@/lib/reportError';
+import { SHEET_BACKDROP, SheetKeyboardLayer, useSheetBottomPadding } from '@/components/renova/SheetKeyboardLayer';
 
 const DUE_PRESETS = [
   { label: 'Завтра', days: 1 },
@@ -34,6 +35,7 @@ export function ChatTaskSheet({
   onClose: () => void;
   onSubmit: (body: { title: string; assignee_id?: string; due_at?: string }) => Promise<void>;
 }) {
+  const sheetBottom = useSheetBottomPadding();
   const [title, setTitle] = useState(defaultTitle);
   const [dueDays, setDueDays] = useState(3);
   const [assigneeId, setAssigneeId] = useState<string | undefined>();
@@ -63,7 +65,8 @@ export function ChatTaskSheet({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={s.backdrop} onPress={onClose}>
-        <Pressable style={s.sheet} onPress={stopPropagation}>
+        <SheetKeyboardLayer>
+        <Pressable style={[s.sheet, { paddingBottom: sheetBottom }]} onPress={stopPropagation}>
           <Text style={s.head}>Задача из сообщения</Text>
           <TextInput style={s.inp} value={title} onChangeText={setTitle} placeholder="Название задачи" />
           <Text style={s.label}>Срок</Text>
@@ -96,13 +99,14 @@ export function ChatTaskSheet({
           <PrimaryButton title={busy ? 'Создание…' : 'Создать задачу'} onPress={save} disabled={busy} />
           <PrimaryButton title="Отмена" variant="outline" onPress={onClose} />
         </Pressable>
+        </SheetKeyboardLayer>
       </Pressable>
     </Modal>
   );
 }
 
 const s = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
+  backdrop: { flex: 1, backgroundColor: SHEET_BACKDROP, justifyContent: 'flex-end' },
   sheet: { backgroundColor: RenovaTheme.colors.surface, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, paddingBottom: 28 },
   head: { fontSize: 17, fontWeight: '800', marginBottom: 12 },
   inp: { borderWidth: 1, borderColor: RenovaTheme.colors.borderLight, borderRadius: 10, padding: 12, marginBottom: 12, fontSize: 15 },

@@ -10,6 +10,7 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { budgetTabRoute, type OsRole } from '@/constants/osSections';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { SHEET_BACKDROP, SheetKeyboardLayer, useSheetBottomPadding } from '@/components/renova/SheetKeyboardLayer';
 
 type Props = {
   visible: boolean;
@@ -25,6 +26,7 @@ export function BankStatementImportSheet({
   visible, onClose, userId, projectId, role, onDone,
 }: Props) {
   const { user, activeProject } = useRenova();
+  const sheetBottom = useSheetBottomPadding();
   const [csv, setCsv] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -180,7 +182,8 @@ export function BankStatementImportSheet({
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={s.backdrop}>
-        <View style={s.card}>
+        <SheetKeyboardLayer>
+        <View style={[s.card, { paddingBottom: sheetBottom }]}>
           <Text style={s.title}>Импорт банковской выписки</Text>
           <Text style={s.hint}>
             Формат: дата;сумма;назначение. Совпавшие pending-счета можно подтвердить (как в 1С/банке).
@@ -207,6 +210,7 @@ export function BankStatementImportSheet({
             </Pressable>
           </View>
         </View>
+        </SheetKeyboardLayer>
       </View>
     </Modal>
   );
@@ -215,7 +219,7 @@ export function BankStatementImportSheet({
 const s = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: SHEET_BACKDROP,
     justifyContent: 'flex-end',
   },
   card: {

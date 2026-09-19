@@ -9,6 +9,7 @@ import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { alertStageCreated } from '@/lib/fieldCommsNav';
 import type { OsRole } from '@/constants/osSections';
+import { SHEET_BACKDROP, SheetKeyboardLayer, useSheetBottomPadding } from '@/components/renova/SheetKeyboardLayer';
 
 type PropagationEvent = { stopPropagation?: () => void };
 
@@ -23,6 +24,7 @@ export function CreateStageSheet({
   onClose: () => void;
   onCreate: (body: { name: string; planned_start?: string; planned_end?: string; room_ids?: string[] }) => Promise<void>;
 }) {
+  const sheetBottom = useSheetBottomPadding();
   const [name, setName] = useState('');
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
@@ -68,7 +70,8 @@ export function CreateStageSheet({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={s.backdrop} onPress={onClose}>
-        <Pressable style={s.sheet} onPress={(event: PropagationEvent) => event.stopPropagation?.()}>
+        <SheetKeyboardLayer>
+        <Pressable style={[s.sheet, { paddingBottom: sheetBottom }]} onPress={(event: PropagationEvent) => event.stopPropagation?.()}>
           <Text style={s.head}>Новый этап</Text>
           <TextInput style={s.inp} value={name} onChangeText={setName} placeholder="Название (например: Штукатурка)" />
           <TextInput style={s.inp} value={start} onChangeText={setStart} placeholder="Начало ГГГГ-ММ-ДД" />
@@ -79,13 +82,14 @@ export function CreateStageSheet({
           <PrimaryButton title={busy ? 'Создание…' : 'Создать этап'} onPress={submit} disabled={busy} />
           <PrimaryButton title="Отмена" variant="outline" onPress={onClose} />
         </Pressable>
+        </SheetKeyboardLayer>
       </Pressable>
     </Modal>
   );
 }
 
 const s = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
+  backdrop: { flex: 1, backgroundColor: SHEET_BACKDROP, justifyContent: 'flex-end' },
   sheet: { backgroundColor: RenovaTheme.colors.surface, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, paddingBottom: 28 },
   head: { fontSize: 17, fontWeight: '800', marginBottom: 12 },
   inp: { borderWidth: 1, borderColor: RenovaTheme.colors.borderLight, borderRadius: 10, padding: 12, marginBottom: 8, fontSize: 15 },
