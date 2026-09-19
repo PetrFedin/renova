@@ -18,7 +18,12 @@ export default function ArticleScreen() {
 
   return (
     <>
-      <BackHeader title={article.title} returnTo={returnTo} subtitle={article.category_label} />
+      {/*
+        Заголовок статьи выводился дважды: в шапке — обрезанный по одной
+        строке, и тут же под ней полностью. Шапка теперь называет раздел, а
+        сам заголовок остаётся там, где его можно прочитать целиком.
+      */}
+      <BackHeader title={article.category_label || 'Статья'} returnTo={returnTo} />
       <ScrollView style={styles.wrap} contentContainerStyle={{ padding: 16 }}>
         <Text style={styles.title}>{article.title}</Text>
         <Text style={styles.meta}>{article.read_min} мин чтения</Text>
