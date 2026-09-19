@@ -20,10 +20,16 @@ export function useOsBudgetScreen() {
   const [budgetAlerts, setBudgetAlerts] = useState<BudgetAlert[]>([]);
   const [payFilter, setPayFilter] = useState<PaymentFilter>('all');
   const [loadState, setLoadState] = useState<BudgetLoadState>('loading');
+  // Сводка может не загрузиться отдельно от остального: она приходит своим
+  // запросом, и её отказ не повод прятать счета, которые уже пришли.
+  const [summaryFailed, setSummaryFailed] = useState(false);
 
   const reloadLegacy = useCallback(async () => {
     if (!user || !activeProject) return;
-    const [sm, ex, pay, rc, pur, pk, al] = await Promise.all([
+    // allSettled, а не all: раньше один отказ выбрасывал шесть успешных
+    // ответов, и вкладка «Оплаты» показывала ошибку бюджета, хотя счета
+    // загрузились. Сохраняем то, что пришло.
+    const [sm, ex, pay, rc, pur, pk, al] = await Promise.allSettled([
       api.osBudget(user.id, activeProject.id),
       api.osExpenses(user.id, activeProject.id),
       api.listPayments(user.id, activeProject.id),
@@ -32,13 +38,23 @@ export function useOsBudgetScreen() {
       api.listMaterialPicks(user.id, activeProject.id),
       api.budgetAlerts(user.id, activeProject.id),
     ]);
-    setSummary(sm);
-    setExpenses(ex);
-    setPayments(pay);
-    setReceipts(rc);
-    setPurchases(pur);
-    setPicks(pk);
-    setBudgetAlerts(al);
+
+    // Сводку при отказе НЕ обнуляем: ноль читается как «расходов нет», а это
+    // неправда. Пусто остаётся пусто, и вкладка скажет об этом словами.
+    if (sm.status === 'fulfilled') setSummary(sm.value);
+    setSummaryFailed(sm.status === 'rejected');
+    if (ex.status === 'fulfilled') setExpenses(ex.value);
+    if (pay.status === 'fulfilled') setPayments(pay.value);
+    if (rc.status === 'fulfilled') setReceipts(rc.value);
+    if (pur.status === 'fulfilled') setPurchases(pur.value);
+    if (pk.status === 'fulfilled') setPicks(pk.value);
+    if (al.status === 'fulfilled') setBudgetAlerts(al.value);
+
+    const settled = [sm, ex, pay, rc, pur, pk, al];
+    if (settled.every((part) => part.status === 'rejected')) {
+      // Не пришло ничего — это настоящая неудача экрана.
+      throw settled[0].reason;
+    }
   }, [user?.id, activeProject?.id]);
 
   const reload = useCallback(async () => {
@@ -56,6 +72,7 @@ export function useOsBudgetScreen() {
       setPurchases(purchaseRows);
       setPicks(hub.material_picks);
       setBudgetAlerts(hub.budget_alerts);
+      setSummaryFailed(false);
       setLoadState('loaded');
     } catch (e) {
       try {
@@ -97,5 +114,6 @@ export function useOsBudgetScreen() {
     filteredPayments,
     reload,
     loadState,
+    summaryFailed,
   };
 }

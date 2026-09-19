@@ -59,7 +59,7 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
 
   const {
     user, activeProject, summary, expenses, payments, receipts, purchases, picks, budgetAlerts,
-    payFilter, setPayFilter, pending, filteredPayments, reload, loadState,
+    payFilter, setPayFilter, pending, filteredPayments, reload, loadState, summaryFailed,
   } = useOsBudgetScreen();
 
   const { customerBudget } = useCustomerBudget({
@@ -92,6 +92,9 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
     return <ProjectEmptyState role={role} />;
   }
 
+  // Общая ошибка — только когда не загрузилось ничего. Отказ одной сводки не
+  // должен прятать счета и расходы, которые уже пришли: раньше вкладка
+  // «Оплаты» показывала ошибку бюджета при живых счетах.
   if (loadState === 'error') {
     return (
       <View style={{ flex: 1, padding: 16, gap: 12, justifyContent: 'center' }}>
@@ -127,7 +130,21 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
     <>
       <ScrollView style={s.wrap} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
         <ReadOnlyBanner />
-        {resolvedTab === 'summary' && (
+        {resolvedTab === 'summary' && summaryFailed && (
+          // Сводка не пришла. Показать вместо неё нули значило бы сказать
+          // «расходов нет» — это неправда. Остальные вкладки при этом живы.
+          <View style={{ gap: 8, paddingVertical: 12 }}>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: RenovaTheme.colors.text }}>
+              Сводка не загрузилась
+            </Text>
+            <Text style={{ fontSize: 13, color: RenovaTheme.colors.textMuted }}>
+              План и факт показать нечем — это не «0 ₽ расходов». Счета и расходы на соседних
+              вкладках открыты.
+            </Text>
+            <PrimaryButton title="Повторить" compact onPress={() => { void reload(); }} />
+          </View>
+        )}
+        {resolvedTab === 'summary' && !summaryFailed && (
           <BudgetSummarySection
             userId={user.id}
             projectId={activeProject.id}
