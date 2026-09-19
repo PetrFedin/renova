@@ -385,6 +385,7 @@ def payment_dict(payment: Payment, *, receipt_id: str | None = None) -> dict:
         "payment_type": payment.payment_type.value,
         "status": payment.status.value,
         "stage_id": payment.stage_id,
+        "change_order_id": payment.change_order_id,
         "notes": payment.notes,
         "confirmed_at": payment.confirmed_at.isoformat() if payment.confirmed_at else None,
         "created_at": payment.created_at.isoformat(),

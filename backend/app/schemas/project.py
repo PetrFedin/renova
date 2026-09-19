@@ -154,6 +154,7 @@ class PaymentOut(BaseModel):
     payment_type: str
     status: str
     stage_id: str | None
+    change_order_id: str | None = None
     notes: str | None
     confirmed_at: str | None
     created_at: str
