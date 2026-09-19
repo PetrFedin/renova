@@ -11,6 +11,8 @@ from app.services.chat_acl import require_chat_access
 from app.services import technical_supervision_action_service as actions
 from app.services import technical_supervision_service as supervision
 from app.services.client_write_idempotency import IdempotencyConflict
+from app.services import team_service as team_svc
+from app.services import chat_participant_service
 
 router = APIRouter(prefix="/projects", tags=["chats"])
 
@@ -29,13 +31,29 @@ async def post_operational_message(
         thread_id,
         user,
         write=False,
+        # Этот обработчик заменяет собой POST /messages из chats.py
+        # (router.py: _remove_replaced_routes), а там allow_participant был.
+        # Без него приглашённый в чат участник оставался read-only навсегда:
+        # тред открывался, отметка о прочтении ставилась, а отправка отвечала
+        # 403 «Нет доступа». Рабочий обработчик при этом лежал мёртвым кодом.
+        allow_participant=True,
     )
-    actor_mode = await supervision.require_capability(
-        db,
-        user=user,
-        project=project,
-        capability="communication",
-    )
+    # Приглашённый в тред не имеет доступа к проекту — и не должен иметь. Для
+    # него проверка «communication» на уровне проекта неприменима: право ему
+    # даёт участие в этом конкретном треде, которое уже проверено выше.
+    is_thread_guest = await chat_participant_service.is_active_thread_participant(
+        db, thread_id=thread_id, user_id=user.id
+    ) and not await team_svc.can_access_project(db, user, project, write=True)
+
+    if is_thread_guest:
+        actor_mode = "participant"
+    else:
+        actor_mode = await supervision.require_capability(
+            db,
+            user=user,
+            project=project,
+            capability="communication",
+        )
     if actor_mode == "supervisor" and body.message_type not in {"text", "photo", "file"}:
         raise HTTPException(
             403,
