@@ -60,6 +60,9 @@ export function FloorPlanPanel({
   const [drag, setDrag] = useState<{ id: string; x: number; y: number } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [punchMode, setPunchMode] = useState(false);
+  // Ссылка на чертёж, который не открылся. Хранится именно ссылка, а не
+  // флаг: после замены плана прежняя неудача не должна закрывать новый.
+  const [brokenPlanUrl, setBrokenPlanUrl] = useState<string | null>(null);
   const [mapW, setMapW] = useState(0);
   const [addingPunch, setAddingPunch] = useState(false);
   const planRef = useRef<FloorPlan | null>(null);
@@ -300,6 +303,10 @@ export function FloorPlanPanel({
     );
   }
 
+  const planImageUri = plan?.image_url ? `${BASE}${plan.image_url}` : undefined;
+  // Сравниваем со ссылкой, а не с флагом: заменили план — считаем заново.
+  const planImageBroken = Boolean(plan?.image_url) && brokenPlanUrl === plan?.image_url;
+
   return (
     <View style={embedded ? s.embedded : s.box}>
       {!embedded ? <Text style={s.head}>Планировка</Text> : null}
@@ -334,7 +341,32 @@ export function FloorPlanPanel({
             </>
           ) : null}
           <View style={s.mapWrap} onLayout={onMapLayout}>
-            <Image source={{ uri: `${BASE}${plan.image_url}` }} style={s.img} resizeMode="contain" />
+            {planImageBroken ? (
+              // Чертёж не открылся: запись плана есть, файла нет. Раньше здесь
+              // оставался пустой прямоугольник, а подпись сверху продолжала
+              // говорить «план загружен» — пользователь не понимал, что видит.
+              <View style={s.planBroken}>
+                <Text style={s.planBrokenTitle}>Чертёж не открылся</Text>
+                <Text style={s.planBrokenHint}>
+                  Файл плана недоступен в хранилище. Метки и замечания сохранены — они появятся, как
+                  только чертёж снова откроется.
+                </Text>
+                <PrimaryButton
+                  title="Загрузить план заново"
+                  compact
+                  accessibilityLabel="Загрузить план заново"
+                  onPress={() => { void uploadPlan(); }}
+                />
+              </View>
+            ) : (
+              <Image
+                source={{ uri: planImageUri }}
+                style={s.img}
+                resizeMode="contain"
+                accessibilityLabel="Чертёж этажа"
+                onError={() => setBrokenPlanUrl(plan.image_url ?? null)}
+              />
+            )}
             {punchMode ? (
               <Pressable
                 style={s.punchOverlay}
@@ -460,6 +492,20 @@ export function FloorPlanPanel({
 }
 
 const s = StyleSheet.create({
+  planBroken: {
+    padding: RenovaTheme.spacing.lg,
+    gap: RenovaTheme.spacing.sm,
+    alignItems: 'flex-start',
+  },
+  planBrokenTitle: {
+    fontSize: RenovaTheme.fontSize.h3,
+    fontWeight: RenovaTheme.fontWeight.medium,
+    color: RenovaTheme.colors.text,
+  },
+  planBrokenHint: {
+    fontSize: RenovaTheme.fontSize.bodySmall,
+    color: RenovaTheme.colors.textMuted,
+  },
   box: { marginVertical: 10, backgroundColor: RenovaTheme.colors.surface, padding: 12, borderRadius: 10 },
   embedded: { gap: 8 },
   head: { fontWeight: '800', marginBottom: 8 },
