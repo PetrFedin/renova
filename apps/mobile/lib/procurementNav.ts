@@ -22,6 +22,18 @@ export function alertMaterialPickApproved(role: OsRole) {
   });
 }
 
+/** Заказчик отклонил позицию — подрядчик подбирает замену */
+export function alertMaterialPickRejected(role: OsRole) {
+  showActionConfirm({
+    title: 'Материал отклонён',
+    message: 'Исполнитель увидит причину и предложит замену. Закупка по этой позиции недоступна.',
+    primaryLabel: 'К материалам',
+    onPrimary: () => pushOsNav(repairTabRoute(role, 'materials'), undefined, role),
+    secondaryLabel: 'Позже',
+    onSecondary: () => undefined,
+  });
+}
+
 /** Подрядчик отправил на согласование */
 export function alertMaterialPickSubmitted(role: OsRole) {
   showActionConfirm({

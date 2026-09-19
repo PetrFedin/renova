@@ -3,6 +3,7 @@ import { useRef, useState } from 'react';
 import { Linking, Pressable, Text, View } from 'react-native';
 import { usePathname } from 'expo-router';
 
+import { RejectStageModal } from '@/components/renova/RejectStageModal';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { SheetSurface, sheetContentStyles } from '@/components/renova/SheetSurface';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
@@ -15,7 +16,7 @@ import { pushRoomDetail, pushStageDetail } from '@/lib/navigation';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { findDeliveredPurchaseForPick } from '@/lib/domain/findPurchaseForPick';
 import { purchaseAdvanceLabel, purchaseCancelStatus } from '@/lib/domain/purchaseLifecycle';
-import { alertMaterialPickApproved, alertMaterialPickSubmitted } from '@/lib/procurementNav';
+import { alertMaterialPickApproved, alertMaterialPickRejected, alertMaterialPickSubmitted } from '@/lib/procurementNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { resolveSafeDocumentUrl } from '@/lib/documentUrl';
 
@@ -44,7 +45,8 @@ export function MaterialPickDetailSheet({
 }) {
   const { user, activeProject } = useRenova();
   const pathname = usePathname();
-  const [busyAction, setBusyAction] = useState<'approve' | 'submit' | 'rollback' | null>(null);
+  const [busyAction, setBusyAction] = useState<'approve' | 'reject' | 'submit' | 'rollback' | null>(null);
+  const [rejectOpen, setRejectOpen] = useState(false);
   const mutationRef = useRef(false);
 
   if (!pick) return null;
@@ -138,6 +140,31 @@ export function MaterialPickDetailSheet({
     });
   };
 
+  // Согласование было односторонним: заказчику предлагали только «Согласовать».
+  // Маршрут отклонения и клиентский метод существовали и не вызывались ниоткуда.
+  const reject = (reason: string) => {
+    if (mutationRef.current) return;
+    void (async () => {
+      if (!beginMutation('reject')) return;
+      try {
+        await api.rejectMaterialPick(userId, projectId, pick.id, reason);
+        await syncAfterMutation();
+        setRejectOpen(false);
+        onClose();
+        alertMaterialPickRejected(role);
+      } catch (error: unknown) {
+        showActionConfirm({
+          title: 'Материал не отклонён',
+          message: error instanceof Error ? error.message : 'Повторите операцию.',
+          primaryLabel: 'Понятно',
+          onPrimary: () => undefined,
+        });
+      } finally {
+        endMutation();
+      }
+    })();
+  };
+
   const submit = () => {
     if (mutationRef.current) return;
     showActionConfirm({
@@ -201,6 +228,7 @@ export function MaterialPickDetailSheet({
   };
 
   return (
+    <>
     <SheetSurface
       visible
       value={formatRub(pick.total)}
@@ -212,13 +240,23 @@ export function MaterialPickDetailSheet({
       footer={
         <>
           {!readOnly && isCustomer && pick.status === 'pending' ? (
-            <PrimaryButton
-              title="Согласовать"
-              onPress={approve}
-              loading={busyAction === 'approve'}
-              disabled={busy && busyAction !== 'approve'}
-              fullWidth
-            />
+            <>
+              <PrimaryButton
+                title="Согласовать"
+                onPress={approve}
+                loading={busyAction === 'approve'}
+                disabled={busy && busyAction !== 'approve'}
+                fullWidth
+              />
+              <PrimaryButton
+                title="Отклонить"
+                variant="dangerOutline"
+                onPress={() => setRejectOpen(true)}
+                loading={busyAction === 'reject'}
+                disabled={busy && busyAction !== 'reject'}
+                fullWidth
+              />
+            </>
           ) : null}
           {!readOnly && isContractor && pick.status === 'draft' ? (
             <PrimaryButton
@@ -320,5 +358,16 @@ export function MaterialPickDetailSheet({
         <Text style={sheetContentStyles.note}>После согласования подрядчик сможет закупить материал.</Text>
       ) : null}
     </SheetSurface>
+    <RejectStageModal
+      visible={rejectOpen}
+      stageName={pick.name}
+      title={`Отклонить материал: ${pick.name}`}
+      placeholder="Почему не подходит — цвет, цена, срок…"
+      fallbackReason="Не подходит"
+      showTemplates={false}
+      onClose={() => setRejectOpen(false)}
+      onConfirm={reject}
+    />
+    </>
   );
 }

@@ -4,18 +4,52 @@ import { RenovaTheme } from '@/constants/Theme';
 import { RejectTemplates } from '@/components/renova/RejectTemplates';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 
-export function RejectStageModal({ visible, stageName, onClose, onConfirm }: { visible: boolean; stageName: string; onClose: () => void; onConfirm: (reason: string) => void }) {
+export function RejectStageModal({
+  visible,
+  stageName,
+  onClose,
+  onConfirm,
+  title,
+  placeholder,
+  fallbackReason = 'Требуется доработка',
+  showTemplates = true,
+}: {
+  visible: boolean;
+  stageName: string;
+  onClose: () => void;
+  onConfirm: (reason: string) => void;
+  /** Заголовок целиком — когда отклоняют не этап. */
+  title?: string;
+  placeholder?: string;
+  /** Что отправить, если пользователь ничего не написал. */
+  fallbackReason?: string;
+  /** Быстрые причины осмысленны для этапа, но не для материала. */
+  showTemplates?: boolean;
+}) {
   const [reason, setReason] = useState('');
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={s.overlay}>
         <View style={s.box}>
-          <Text style={s.head}>Отклонить: {stageName}</Text>
-          <RejectTemplates onPick={setReason} />
-          <TextInput style={s.input} placeholder="Причина доработки…" value={reason} onChangeText={setReason} multiline />
+          <Text style={s.head}>{title ?? `Отклонить: ${stageName}`}</Text>
+          {showTemplates ? <RejectTemplates onPick={setReason} /> : null}
+          <TextInput
+            style={s.input}
+            placeholder={placeholder ?? 'Причина доработки…'}
+            value={reason}
+            onChangeText={setReason}
+            multiline
+            accessibilityLabel={placeholder ?? 'Причина доработки'}
+          />
           <View style={s.row}>
-            <Pressable onPress={onClose}><Text style={s.cancel}>Отмена</Text></Pressable>
-            <PrimaryButton title="Отклонить" onPress={() => { onConfirm(reason.trim() || 'Требуется доработка'); setReason(''); }} />
+            <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Отмена">
+              <Text style={s.cancel}>Отмена</Text>
+            </Pressable>
+            <PrimaryButton
+              title="Отклонить"
+              accessibilityLabel="Отклонить"
+              onPress={() => { onConfirm(reason.trim() || fallbackReason); setReason(''); }}
+            />
           </View>
         </View>
       </View>
