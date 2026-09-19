@@ -34,6 +34,7 @@ class PaymentType(str, enum.Enum):
     stage = "stage"
     material = "material"
     final = "final"
+    change_order = "change_order"
 
 
 class PaymentStatus(str, enum.Enum):
@@ -224,6 +225,13 @@ class Payment(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"))
     stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id"), nullable=True)
+    change_order_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("change_orders.id", ondelete="SET NULL"),
+        nullable=True,
+        unique=True,
+        index=True,
+    )
     payment_type: Mapped[PaymentType] = mapped_column(Enum(PaymentType))
     status: Mapped[PaymentStatus] = mapped_column(Enum(PaymentStatus), default=PaymentStatus.pending)
     title: Mapped[str] = mapped_column(String(255))
