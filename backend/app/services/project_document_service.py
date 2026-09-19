@@ -464,6 +464,10 @@ async def ensure_contract_draft(
                     ProjectDocument.project_id == project_id,
                     ProjectDocument.document_type == DocumentType.contract.value,
                     ProjectDocument.status != DocumentStatus.deleted.value,
+                    # Приложение на доп. работы создаётся с тем же типом
+                    # `contract`, но договором подряда не является: его подпись
+                    # не должна ни открывать работы, ни занимать место договора.
+                    ProjectDocument.change_order_id.is_(None),
                 )
             )
         ).scalars().all()
@@ -503,6 +507,10 @@ async def project_contract_gate(db: AsyncSession, project_id: str) -> dict:
                     ProjectDocument.project_id == project_id,
                     ProjectDocument.document_type == DocumentType.contract.value,
                     ProjectDocument.status != DocumentStatus.deleted.value,
+                    # Приложение на доп. работы создаётся с тем же типом
+                    # `contract`, но договором подряда не является: его подпись
+                    # не должна ни открывать работы, ни занимать место договора.
+                    ProjectDocument.change_order_id.is_(None),
                 )
             )
         ).scalars().all()
