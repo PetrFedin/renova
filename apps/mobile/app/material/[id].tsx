@@ -7,8 +7,9 @@ import { BackHeader } from '@/components/renova/BackHeader';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
+import { RejectStageModal } from '@/components/renova/RejectStageModal';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
-import { alertMaterialPickApproved, alertMaterialPickSubmitted } from '@/lib/procurementNav';
+import { alertMaterialPickApproved, alertMaterialPickRejected, alertMaterialPickSubmitted } from '@/lib/procurementNav';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { reportError } from '@/lib/reportError';
 import { api, MaterialPick, Purchase } from '@/lib/api';
@@ -49,6 +50,9 @@ export default function MaterialDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [priceTruthError, setPriceTruthError] = useState(false);
+  // Решение по материалу должно быть двусторонним: маршрут отклонения и
+  // клиентский метод существовали, а кнопки не было ни на одном экране.
+  const [rejectOpen, setRejectOpen] = useState(false);
   const [manualPrice, setManualPrice] = useState('');
   const [priceBusy, setPriceBusy] = useState(false);
   const role = user?.role === 'contractor' ? 'contractor' : 'customer';
@@ -264,6 +268,14 @@ export default function MaterialDetailScreen() {
             });
           }} />
         )}
+        {role === 'customer' && pick.status === 'pending' && user && activeProject && (
+          <PrimaryButton
+            title="Отклонить"
+            variant="dangerOutline"
+            accessibilityLabel={`Отклонить материал: ${pick.name}`}
+            onPress={() => setRejectOpen(true)}
+          />
+        )}
         {role === 'contractor' && pick.status === 'draft' && user && activeProject && (
           <PrimaryButton title="На согласование" onPress={async () => {
             try {
@@ -282,6 +294,34 @@ export default function MaterialDetailScreen() {
         )}
         <PrimaryButton title="Все материалы" variant="outline" onPress={() => replaceOsNav(repairTabRoute(role, 'materials'), undefined, role)} />
       </ScrollView>
+      {pick && user && activeProject ? (
+        <RejectStageModal
+          visible={rejectOpen}
+          stageName={pick.name}
+          title={`Отклонить материал: ${pick.name}`}
+          placeholder="Почему не подходит — цвет, цена, срок…"
+          fallbackReason="Не подходит"
+          showTemplates={false}
+          onClose={() => setRejectOpen(false)}
+          onConfirm={(reason) => {
+            void (async () => {
+              try {
+                await api.rejectMaterialPick(user.id, activeProject.id, pick.id, reason);
+                await syncProjectSideEffects({ user, project: activeProject });
+                setRejectOpen(false);
+                reload();
+                alertMaterialPickRejected(role);
+              } catch (e: unknown) {
+                reportError('material.detail.reject', e, { projectId: activeProject.id, materialId: pick.id });
+                showActionConfirm({
+                  title: 'Ошибка',
+                  message: e instanceof Error ? e.message : 'Не удалось отклонить',
+                });
+              }
+            })();
+          }}
+        />
+      ) : null}
     </>
   );
 }
