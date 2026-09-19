@@ -1,5 +1,5 @@
 /** Единый экран «Работы» — фильтры, карточки, SLA исполнителя */
-import { useCallback, useMemo, useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
@@ -119,12 +119,36 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
     if (isContractor && user && activeProject) {
       api.reworkSlaCheck(user.id, activeProject.id).catch(reportCatch('works.reworkSla'));
     }
-  }, [activeProject, loadProject, reloadBlocked, reloadStageCapabilities, isContractor, user]);
+    // Зависимости — идентификаторы, а не объекты. refreshWorks сам вызывает
+    // loadProject, тот кладёт НОВЫЙ объект проекта в контекст, ссылка меняется,
+    // refreshWorks пересоздаётся, useFocusEffect перезапускается — и всё по
+    // кругу. Каждый виток: объект + /blocked на каждый этап + /plan. На живом
+    // стенде это давало сотни запросов и 429, после которого экран этапа
+    // навсегда оставался на «Загрузка…».
+  }, [
+    activeProject?.id,
+    loadProject,
+    reloadBlocked,
+    reloadStageCapabilities,
+    isContractor,
+    user?.id,
+  ]);
 
+  // «Выполнить при фокусе» должно означать один раз за фокус. Раньше эффект
+  // зависел от самой функции: refreshWorks вызывает loadProject, тот кладёт в
+  // контекст новый объект проекта, ссылка меняется, функция пересоздаётся —
+  // и эффект запускается снова. На живом стенде экран давал 419 запросов за
+  // 10 секунд при лимите 120 в минуту; после 429 экран этапа навсегда
+  // оставался на «Загрузка…».
+  //
+  // Ссылка на текущую версию держится в ref — ровно так же это уже сделано в
+  // useProjectDataReload, и там цикла нет.
+  const refreshWorksRef = useRef(refreshWorks);
+  refreshWorksRef.current = refreshWorks;
   useFocusEffect(
     useCallback(() => {
-      refreshWorks();
-    }, [refreshWorks]),
+      refreshWorksRef.current();
+    }, []),
   );
   // W91: соседний таб/мутация → этапы и blockedMap без remount
   useProjectDataReload(refreshWorks);
