@@ -21,10 +21,12 @@ import { api, type ScratchpadLine } from '@/lib/api';
 import { createProjectChat } from '@/lib/createProjectChat';
 import { budgetTabHref, calendarTabHref, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
+import { useTopInset } from '@/lib/useTopInset';
 
 const HINT = 'Пишите что угодно. [ ] пункт · [x] сделано · 🛒 покупка. Нажмите строку — редактирование, → — превратить в задачу, чат или расход.';
 
 export function ScratchpadScreen({ role }: { role: OsRole }) {
+  const topInset = useTopInset();
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
   const { user, activeProject, readOnly } = useRenova();
   const [lines, setLines] = useState<ScratchpadLine[]>([])
@@ -191,7 +193,7 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
   if (!activeProject) {
     return (
       <View style={s.root}>
-        <View style={s.head}>
+        <View style={[s.head, { paddingTop: topInset + 8 }]}>
           <Pressable onPress={() => (returnTo ? router.replace(returnTo as any) : router.back())} style={s.back}>
             <Ionicons name="chevron-back" size={22} color={RenovaTheme.colors.accent} />
             <Text style={s.backT}>Назад</Text>
@@ -206,7 +208,7 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
   return (
     <KeyboardAvoidingView style={s.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ReadOnlyBanner />
-      <View style={s.head}>
+      <View style={[s.head, { paddingTop: topInset + 8 }]}>
         <Pressable onPress={() => (returnTo ? router.replace(returnTo as any) : router.back())} style={s.back}>
           <Ionicons name="chevron-back" size={22} color={RenovaTheme.colors.accent} />
           <Text style={s.backT}>Назад</Text>

@@ -33,6 +33,7 @@ import { buildPaymentRequisites } from '@/lib/paymentRequisites';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { reportError } from '@/lib/reportError';
+import { useTopInset } from '@/lib/useTopInset';
 
 const PORTAL_USER_KEY = 'renova:portal:user';
 
@@ -112,6 +113,7 @@ function PortalState({ title, hint, loading }: { title: string; hint?: string; l
 }
 
 export default function PortalScreen() {
+  const topInset = useTopInset();
   const { token, paid, paymentId } = useLocalSearchParams<{
     token?: string;
     paid?: string;
@@ -594,7 +596,13 @@ export default function PortalScreen() {
 
   return (
     <>
-      <ScrollView ref={scrollRef} style={styles.screen} contentContainerStyle={styles.content}>
+      {/* Гостевой портал открывается по ссылке без оболочки приложения —
+          безопасную зону учитывает сам, иначе «RENOVA» уходит под вырез. */}
+      <ScrollView
+        ref={scrollRef}
+        style={styles.screen}
+        contentContainerStyle={[styles.content, { paddingTop: topInset + 8 }]}
+      >
         <View style={styles.hero}>
           <Text style={styles.brand}>RENOVA</Text>
           <Text style={styles.heroTitle}>{snapshot.project.name}</Text>
