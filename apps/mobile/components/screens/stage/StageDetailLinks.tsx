@@ -74,7 +74,7 @@ export function StageDetailLinks({ role, user, project, stage, stageId, canWrite
   return (
     <View style={s.links}>
       <Text style={s.linksTitle}>Связанные разделы</Text>
-      <Pressable onPress={() => pushOsNav(repairTabRoute(role, 'works'), stageReturn)}>
+      <Pressable style={s.linkRow} onPress={() => pushOsNav(repairTabRoute(role, 'works'), stageReturn)}>
         <Text style={s.link}>→ Этапы</Text>
       </Pressable>
       {project.rooms?.length ? (
@@ -89,11 +89,12 @@ export function StageDetailLinks({ role, user, project, stage, stageId, canWrite
           }}
         />
       ) : (
-        <Pressable onPress={() => pushOsNav(objectTabRoute(role, 'rooms'), stageReturn)}>
+        <Pressable style={s.linkRow} onPress={() => pushOsNav(objectTabRoute(role, 'rooms'), stageReturn)}>
           <Text style={s.link}>→ Комнаты</Text>
         </Pressable>
       )}
       <Pressable
+        style={s.linkRow}
         onPress={() =>
           pushOsNav(
             budgetTabRoute(role, 'expenses', { stageId: stage.id, roomId: stage.room_ids?.[0] }),
@@ -103,15 +104,15 @@ export function StageDetailLinks({ role, user, project, stage, stageId, canWrite
       >
         <Text style={s.link}>→ Расходы этапа</Text>
       </Pressable>
-      <Pressable onPress={() => pushOsNav(tabsRoute(role, 'budget'), stageReturn)}>
+      <Pressable style={s.linkRow} onPress={() => pushOsNav(tabsRoute(role, 'budget'), stageReturn)}>
         <Text style={s.link}>→ Бюджет</Text>
       </Pressable>
-      <Pressable onPress={() => { openStageChat().catch(reportCatch('components.screens.stage.StageDetailLinks.1')); }} disabled={openingChat}>
+      <Pressable style={s.linkRow} onPress={() => { openStageChat().catch(reportCatch('components.screens.stage.StageDetailLinks.1')); }} disabled={openingChat}>
         <Text style={[s.link, openingChat && s.linkBusy]}>
           {openingChat ? '→ Связь…' : '→ Связь'}
         </Text>
       </Pressable>
-      <Pressable onPress={() => pushOsNav(calendarTabRoute(role), stageReturn)}>
+      <Pressable style={s.linkRow} onPress={() => pushOsNav(calendarTabRoute(role), stageReturn)}>
         <Text style={s.link}>→ Сроки</Text>
       </Pressable>
     </View>
@@ -120,6 +121,10 @@ export function StageDetailLinks({ role, user, project, stage, stageId, canWrite
 
 const s = StyleSheet.create({
   links: { marginBottom: 8 },
+  // Строки шли высотой 26 pt (18 текста + 4+4 паддинга) и вплотную друг к
+  // другу: шесть переходов в сплошной полосе, промах уводил не туда.
+  // Минимум по гайдлайну — 44.
+  linkRow: { minHeight: RenovaTheme.minTouch, justifyContent: 'center' },
   linksTitle: { fontWeight: '700', marginBottom: 6 },
   link: { color: RenovaTheme.colors.primary, paddingVertical: 4, fontWeight: '600' },
   linkBusy: { opacity: 0.5 },
