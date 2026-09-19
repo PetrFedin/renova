@@ -624,7 +624,7 @@ const styles = StyleSheet.create({
   chevron: { fontSize: 22, color: RenovaTheme.colors.textMuted },
   name: { ...screenTypography.listTitle, fontSize: 16 },
   meta: { ...screenTypography.listMeta },
-  input: { backgroundColor: '#f9f9f9', borderRadius: 8, padding: 10, marginTop: 8, borderWidth: 1, borderColor: RenovaTheme.colors.border },
+  input: { backgroundColor: RenovaTheme.colors.background, borderRadius: 8, padding: 10, marginTop: 8, borderWidth: 1, borderColor: RenovaTheme.colors.border },
   requestBlock: { gap: 8 },
   section: { ...screenTypography.section, marginTop: 16 },
   req: { ...listRowStyles.row },

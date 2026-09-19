@@ -26,7 +26,7 @@ export function RoomStagesPanel({ room, stages }: { room: Room; stages: Stage[] 
 const s = StyleSheet.create({
   box: { ...card, marginBottom: 12, paddingVertical: 12 },
   head: { fontWeight: '800', marginBottom: 8 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, borderTopWidth: 1, borderTopColor: RenovaTheme.colors.border },
   icon: { width: 24 },
   name: { flex: 1, fontWeight: '600', fontSize: 13 },
   chev: { color: '#999' },

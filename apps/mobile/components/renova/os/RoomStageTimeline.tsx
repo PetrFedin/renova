@@ -12,7 +12,7 @@ import type { OsRole } from '@/constants/osSections';
 
 const ST_COLOR: Record<string, string> = {
   completed: '#22c55e', waiting_acceptance: '#f59e0b', in_progress: RenovaTheme.colors.accent,
-  waiting_materials: '#94a3b8', not_started: '#cbd5e1', preparation: '#60a5fa', paused: '#a78bfa',
+  waiting_materials: RenovaTheme.colors.textSubtle, not_started: '#cbd5e1', preparation: '#60a5fa', paused: '#a78bfa',
 };
 
 export function RoomStageTimeline({ stages, role = 'customer' }: { stages: RoomStageCard[]; role?: OsRole }) {
@@ -77,7 +77,7 @@ const s = StyleSheet.create({
   dot: { width: 10, height: 10, borderRadius: 5, marginTop: 14 },
   dotDone: { backgroundColor: '#22c55e' },
   line: { flex: 1, width: 2, backgroundColor: RenovaTheme.colors.border, marginTop: 2, minHeight: 20 },
-  lineDone: { backgroundColor: '#bbf7d0' },
+  lineDone: { backgroundColor: RenovaTheme.colors.successBorder },
   card: { ...listRowStyles.metricCell, alignItems: 'stretch', flex: 1, marginBottom: 6, padding: 12 },
   cardOpen: { borderColor: RenovaTheme.colors.accent },
   cardCollapsed: { paddingVertical: 10 },

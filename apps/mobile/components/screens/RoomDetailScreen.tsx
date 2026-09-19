@@ -352,10 +352,10 @@ function Field({ label, value, onChange }: { label:string; value:string; onChang
 const s = StyleSheet.create({
   wrap:{ flex:1, backgroundColor: RenovaTheme.colors.background }, center:{ flex:1, alignItems:'center', justifyContent:'center' },
   emptyState:{ gap:12, padding:24 }, emptyHint:{ maxWidth:420, textAlign:'center', color:RenovaTheme.colors.textMuted, lineHeight:19 },
-  metrics:{ flexDirection:'row', flexWrap:'wrap', gap:8, marginBottom:12 }, metric:{ flex:1, minWidth:'45%', backgroundColor:RenovaTheme.colors.surface, borderWidth:1, borderColor:'#E5E7EB', borderRadius:14, padding:12, alignItems:'center' }, metricN:{ fontSize:18, fontWeight:'800' }, metricL:{ fontSize:11, color: RenovaTheme.colors.textMuted, marginTop:2 },
+  metrics:{ flexDirection:'row', flexWrap:'wrap', gap:8, marginBottom:12 }, metric:{ flex:1, minWidth:'45%', backgroundColor:RenovaTheme.colors.surface, borderWidth:1, borderColor:RenovaTheme.colors.border, borderRadius:14, padding:12, alignItems:'center' }, metricN:{ fontSize:18, fontWeight:'800' }, metricL:{ fontSize:11, color: RenovaTheme.colors.textMuted, marginTop:2 },
   card:{ backgroundColor:RenovaTheme.colors.surface, padding:14, borderRadius:12, marginBottom:10 }, h:{ fontWeight:'800', marginBottom:8 },
-  field:{ marginBottom:8 }, lbl:{ fontSize:12, color: RenovaTheme.colors.textMuted }, input:{ backgroundColor:'#f9fafb', borderRadius:8, padding:10, marginTop:4, borderWidth:1, borderColor:RenovaTheme.colors.border }, line:{ paddingVertical:6, fontSize:13 },
-  warn:{ marginBottom:10, backgroundColor:'#fef2f2', padding:12, borderRadius:10 }, warnT:{ fontWeight:'700', color:'#991b1b', marginBottom:4 },
+  field:{ marginBottom:8 }, lbl:{ fontSize:12, color: RenovaTheme.colors.textMuted }, input:{ backgroundColor:RenovaTheme.colors.background, borderRadius:8, padding:10, marginTop:4, borderWidth:1, borderColor:RenovaTheme.colors.border }, line:{ paddingVertical:6, fontSize:13 },
+  warn:{ marginBottom:10, backgroundColor:RenovaTheme.colors.dangerBg, padding:12, borderRadius:10 }, warnT:{ fontWeight:'700', color:RenovaTheme.colors.dangerText, marginBottom:4 },
   over:{ color: RenovaTheme.colors.warning, fontWeight:'700', marginVertical:4 },
   toggle:{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', paddingVertical:14, marginTop:4 },
   toggleT:{ fontWeight:'700', color: RenovaTheme.colors.textMuted, fontSize:13 },

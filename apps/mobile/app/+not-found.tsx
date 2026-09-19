@@ -4,6 +4,7 @@ import { Text } from '@/components/Themed';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { goBack, goHome } from '@/lib/navigation';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { RenovaTheme } from '@/constants/Theme';
 
 export default function NotFoundScreen() {
   const { user } = useRenova();
@@ -26,6 +27,6 @@ export default function NotFoundScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   title: { fontSize: 20, fontWeight: 'bold', marginBottom: 8 },
-  sub: { fontSize: 14, color: '#64748b', textAlign: 'center', marginBottom: 24 },
+  sub: { fontSize: 14, color: RenovaTheme.colors.primaryMuted, textAlign: 'center', marginBottom: 24 },
   actions: { width: '100%', maxWidth: 280, gap: 10 },
 });

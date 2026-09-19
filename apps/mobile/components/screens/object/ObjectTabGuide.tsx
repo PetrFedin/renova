@@ -167,7 +167,7 @@ const s = StyleSheet.create({
     marginBottom: 12,
     borderLeftWidth: 3,
     borderLeftColor: RenovaTheme.colors.primary,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: RenovaTheme.colors.background,
   },
   boxHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   label: {

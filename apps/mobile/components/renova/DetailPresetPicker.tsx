@@ -18,4 +18,4 @@ export function DetailPresetPicker({ onChange }: { onChange?: (p: DetailPreset) 
     </View>
   );
 }
-const s = StyleSheet.create({ row:{ flexDirection:'row', gap:6, marginVertical:8 }, chip:{ paddingHorizontal:10, paddingVertical:6, borderRadius:16, backgroundColor:RenovaTheme.colors.border }, on:{ backgroundColor:'#2563eb' }, t:{ fontSize:12 }, onT:{ color:RenovaTheme.colors.surface, fontWeight:'700' } });
+const s = StyleSheet.create({ row:{ flexDirection:'row', gap:6, marginVertical:8 }, chip:{ paddingHorizontal:10, paddingVertical:6, borderRadius:16, backgroundColor:RenovaTheme.colors.border }, on:{ backgroundColor:RenovaTheme.colors.accent }, t:{ fontSize:12 }, onT:{ color:RenovaTheme.colors.surface, fontWeight:'700' } });

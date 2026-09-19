@@ -55,9 +55,9 @@ export default function DetailQuizScreen() {
 }
 const s = StyleSheet.create({
   wrap:{ flex:1, padding:20, backgroundColor: RenovaTheme.colors.background, justifyContent:'center' },
-  back:{ marginBottom:16, padding:12, borderRadius:10, backgroundColor:RenovaTheme.colors.surface, borderWidth:1, borderColor:'#dbeafe' },
+  back:{ marginBottom:16, padding:12, borderRadius:10, backgroundColor:RenovaTheme.colors.surface, borderWidth:1, borderColor:RenovaTheme.colors.accentMuted },
   backText:{ fontSize:15, fontWeight:'800', color: RenovaTheme.colors.primary },
-  backSub:{ fontSize:12, color:'#64748b', marginTop:2 },
+  backSub:{ fontSize:12, color:RenovaTheme.colors.primaryMuted, marginTop:2 },
   title:{ fontSize:20, fontWeight:'800', marginBottom:16 },
   card:{ backgroundColor:RenovaTheme.colors.surface, padding:14, borderRadius:10, marginBottom:10, borderWidth:2, borderColor:'transparent' },
   on:{ borderColor: RenovaTheme.colors.primary },

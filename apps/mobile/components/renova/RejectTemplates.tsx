@@ -1,4 +1,5 @@
 import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { RenovaTheme } from '@/constants/Theme';
 
 const TPL = ['Качество не соответствует', 'Нужна уборка', 'Доработать стыки', 'Заменить материал', 'Повторная приёмка'];
 
@@ -9,4 +10,4 @@ export function RejectTemplates({ onPick }: { onPick: (t: string) => void }) {
     ))}</View>
   );
 }
-const s = StyleSheet.create({ row:{ flexDirection:'row', flexWrap:'wrap', gap:6, marginBottom:8 }, chip:{ backgroundColor:'#fee2e2', paddingHorizontal:10, paddingVertical:6, borderRadius:14 }, t:{ fontSize:11, color:'#991b1b' } });
+const s = StyleSheet.create({ row:{ flexDirection:'row', flexWrap:'wrap', gap:6, marginBottom:8 }, chip:{ backgroundColor:RenovaTheme.colors.dangerBg, paddingHorizontal:10, paddingVertical:6, borderRadius:14 }, t:{ fontSize:11, color:RenovaTheme.colors.dangerText } });

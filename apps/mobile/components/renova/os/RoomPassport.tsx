@@ -88,7 +88,7 @@ const s = StyleSheet.create({
   fill: { height: 4, backgroundColor: RenovaTheme.colors.accent },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
   cell: { ...listRowStyles.metricCell, width: '48%', minWidth: '46%', flexGrow: 1, padding: 12 },
-  cellWarn: { borderColor: RenovaTheme.colors.warning, backgroundColor: '#fffbeb' },
+  cellWarn: { borderColor: RenovaTheme.colors.warning, backgroundColor: RenovaTheme.colors.warningBg },
   cellL: { ...screenTypography.metricLabel, marginTop: 0 },
   cellV: { ...screenTypography.listTitle, fontSize: 16, marginTop: 4 },
   cellS: { ...screenTypography.listMeta },

@@ -115,7 +115,7 @@ const s = StyleSheet.create({
   barHead: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
   barLabel: { ...screenTypography.metricLabel, marginTop: 0 },
   barPct: { ...screenTypography.listTitle, fontSize: 12 },
-  barTrack: { height: 8, borderRadius: 4, backgroundColor: '#EEF2F6', overflow: 'hidden' },
+  barTrack: { height: 8, borderRadius: 4, backgroundColor: RenovaTheme.colors.surfaceMuted, overflow: 'hidden' },
   barFill: { height: '100%', borderRadius: 4 },
   rows: { marginTop: 12, marginBottom: 16, gap: 8 },
   row: { ...listRowStyles.row, flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingHorizontal: 0 },

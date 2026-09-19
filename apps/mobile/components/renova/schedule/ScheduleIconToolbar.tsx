@@ -185,7 +185,7 @@ const s = StyleSheet.create({
     bottom: 44,
     left: '50%',
     transform: [{ translateX: -50 }],
-    backgroundColor: '#0f172a',
+    backgroundColor: RenovaTheme.colors.text,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,

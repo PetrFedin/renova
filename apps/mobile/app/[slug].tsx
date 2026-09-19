@@ -16,6 +16,7 @@ import S_manager_dashboard from './_stack/manager-dashboard';
 import S_portfolio from './_stack/portfolio';
 import S_reports from './_stack/reports';
 import S_scratchpad from './_stack/scratchpad';
+import { RenovaTheme } from '@/constants/Theme';
 
 /**
  * Stack via catch-all [slug]: reports/guide/scratchpad/… живут только здесь
@@ -95,6 +96,6 @@ export default function RootSlugCatchAll() {
 const styles = StyleSheet.create({
   container: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   title: { fontSize: 20, fontWeight: 'bold', marginBottom: 8 },
-  sub: { fontSize: 14, color: '#64748b', textAlign: 'center', marginBottom: 24 },
+  sub: { fontSize: 14, color: RenovaTheme.colors.primaryMuted, textAlign: 'center', marginBottom: 24 },
   actions: { width: '100%', maxWidth: 280, gap: 10 },
 });

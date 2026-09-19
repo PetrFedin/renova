@@ -269,7 +269,7 @@ const s = StyleSheet.create({
   guide: {
     ...card,
     marginBottom: 12,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: RenovaTheme.colors.background,
     borderLeftWidth: 3,
     borderLeftColor: RenovaTheme.colors.primary,
   },
@@ -297,7 +297,7 @@ const s = StyleSheet.create({
     backgroundColor: RenovaTheme.colors.surface,
   },
   fieldHint: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 4, lineHeight: 14 },
-  preview: { marginTop: 8, padding: 10, borderRadius: 8, backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#A7F3D0' },
+  preview: { marginTop: 8, padding: 10, borderRadius: 8, backgroundColor: RenovaTheme.colors.successBg, borderWidth: 1, borderColor: RenovaTheme.colors.successBorder },
   previewTitle: { fontSize: 11, fontWeight: '700', color: '#065F46', marginBottom: 2 },
   previewLine: { fontSize: 13, fontWeight: '600', color: '#047857' },
 });

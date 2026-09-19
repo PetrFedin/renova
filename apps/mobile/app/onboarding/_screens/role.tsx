@@ -192,6 +192,6 @@ const styles = StyleSheet.create({
   skipJoin: { paddingVertical: 12, alignItems: 'center' },
   skipJoinText: { color: RenovaTheme.colors.textMuted, fontWeight: '600', fontSize: 13 },
   note: { textAlign: 'center', fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 16, lineHeight: 18 },
-  noteHint: { fontSize: 11, color: '#94a3b8', marginTop: 6, textAlign: 'center', lineHeight: 16 },
+  noteHint: { fontSize: 11, color: RenovaTheme.colors.textSubtle, marginTop: 6, textAlign: 'center', lineHeight: 16 },
   error: { color: RenovaTheme.colors.dangerText, fontSize: 13, textAlign: 'center', marginBottom: 10, lineHeight: 18 },
 });

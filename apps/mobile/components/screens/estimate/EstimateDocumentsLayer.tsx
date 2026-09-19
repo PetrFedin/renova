@@ -278,7 +278,7 @@ const s = StyleSheet.create({
     marginBottom: 8,
     gap: 10,
   },
-  rowPressed: { opacity: 0.92, backgroundColor: '#F8FAFC' },
+  rowPressed: { opacity: 0.92, backgroundColor: RenovaTheme.colors.background },
   rowMain: { flex: 1, minWidth: 0 },
   label: { fontSize: 15, fontWeight: '700', color: RenovaTheme.colors.text },
   desc: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 3, lineHeight: 16 },

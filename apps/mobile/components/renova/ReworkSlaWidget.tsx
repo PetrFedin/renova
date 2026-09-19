@@ -6,6 +6,7 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { pushStageDetail } from '@/lib/navigation';
+import { RenovaTheme } from '@/constants/Theme';
 
 export function ReworkSlaWidget({
   stages,
@@ -53,8 +54,8 @@ export function ReworkSlaWidget({
   );
 }
 const s = StyleSheet.create({
-  box:{ backgroundColor:'#fff7ed', padding:12, borderRadius:10, marginBottom:12, borderWidth:1, borderColor:'#fed7aa' },
+  box:{ backgroundColor:RenovaTheme.colors.warningBg, padding:12, borderRadius:10, marginBottom:12, borderWidth:1, borderColor:RenovaTheme.colors.warningBorder },
   head:{ fontWeight:'800', color:'#9a3412', marginBottom:6 },
   row:{ flexDirection:'row', alignItems:'center', gap:8, paddingVertical:4 },
-  line:{ fontSize:12, color:'#c2410c' },
+  line:{ fontSize:12, color:RenovaTheme.colors.warningText },
 });

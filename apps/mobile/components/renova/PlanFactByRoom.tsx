@@ -24,7 +24,7 @@ export function PlanFactByRoom({ rooms, lines }: { rooms: Room[]; lines: Estimat
 const s = StyleSheet.create({
   box: { backgroundColor:RenovaTheme.colors.surface, borderRadius:12, padding:14, marginBottom:12 },
   head: { fontWeight:'800', marginBottom:8 },
-  row: { flexDirection:'row', justifyContent:'space-between', paddingVertical:6, borderTopWidth:1, borderTopColor:'#f0f0f0' },
+  row: { flexDirection:'row', justifyContent:'space-between', paddingVertical:6, borderTopWidth:1, borderTopColor:RenovaTheme.colors.border },
   name: { fontWeight:'600' },
   val: { fontSize:12, color: RenovaTheme.colors.textMuted },
 });

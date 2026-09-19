@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { t } from '@/lib/i18n';
+import { RenovaTheme } from '@/constants/Theme';
 
 export function ReadOnlyBanner() {
   const { readOnly } = useRenova();
@@ -11,4 +12,4 @@ export function useWriteAllowed() {
   const { readOnly } = useRenova();
   return !readOnly;
 }
-const s = StyleSheet.create({ wrap: { backgroundColor: '#fef3c7', padding: 8, borderRadius: 8, marginBottom: 8 }, txt: { fontWeight: '600', fontSize: 12 } });
+const s = StyleSheet.create({ wrap: { backgroundColor: RenovaTheme.colors.warningBg, padding: 8, borderRadius: 8, marginBottom: 8 }, txt: { fontWeight: '600', fontSize: 12 } });

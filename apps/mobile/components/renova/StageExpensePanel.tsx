@@ -144,7 +144,7 @@ const s = StyleSheet.create({
   head: { fontWeight: '800', marginBottom: 4 },
   hintTop: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginBottom: 8, lineHeight: 15 },
   empty: { fontSize: 13, color: RenovaTheme.colors.textMuted, fontStyle: 'italic' },
-  row: { paddingVertical: 6, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
+  row: { paddingVertical: 6, borderTopWidth: 1, borderTopColor: RenovaTheme.colors.border },
   amt: { fontWeight: '700' },
   meta: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 2 },
   picksBlock: { marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: RenovaTheme.colors.border },

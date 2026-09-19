@@ -28,7 +28,7 @@ export function TodayWidget({ stages, role }: { stages: Stage[]; role: 'customer
   );
 }
 const s = StyleSheet.create({
-  box: { backgroundColor:'#ecfdf5', borderRadius:12, padding:12, marginBottom:12, borderWidth:1, borderColor:'#a7f3d0' },
+  box: { backgroundColor:RenovaTheme.colors.successBg, borderRadius:12, padding:12, marginBottom:12, borderWidth:1, borderColor:RenovaTheme.colors.successBorder },
   head: { fontWeight:'800', color:'#065f46', marginBottom:6 },
   row: { paddingVertical:6, borderTopWidth:1, borderTopColor:'#d1fae5' },
   title: { fontWeight:'700' },

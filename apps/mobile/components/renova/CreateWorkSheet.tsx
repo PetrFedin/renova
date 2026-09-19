@@ -440,6 +440,6 @@ const s = StyleSheet.create({
   link: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.primary, marginTop: 4 },
   calcWrap: { gap: 8 },
   calcHint: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 17, marginBottom: 4 },
-  calcWarn: { fontSize: 12, color: '#92400E', backgroundColor: '#FFFBEB', padding: 8, borderRadius: 8 },
+  calcWarn: { fontSize: 12, color: '#92400E', backgroundColor: RenovaTheme.colors.warningBg, padding: 8, borderRadius: 8 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
 });

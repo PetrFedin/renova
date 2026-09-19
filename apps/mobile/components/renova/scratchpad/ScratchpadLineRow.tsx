@@ -52,7 +52,7 @@ const s = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 8, paddingVertical: 10 },
   rowDone: { opacity: 0.72 },
   check: { paddingTop: 2 },
-  dot: { width: 22, height: 22, marginTop: 2, borderRadius: 11, backgroundColor: '#E2E8F0' },
+  dot: { width: 22, height: 22, marginTop: 2, borderRadius: 11, backgroundColor: RenovaTheme.colors.border },
   body: { flex: 1, minWidth: 0 },
   kind: { ...screenTypography.metricLabel, color: RenovaTheme.colors.accent, marginTop: 0 },
   text: { fontSize: 15, fontWeight: '600', color: RenovaTheme.colors.text, marginTop: 2, lineHeight: 20 },

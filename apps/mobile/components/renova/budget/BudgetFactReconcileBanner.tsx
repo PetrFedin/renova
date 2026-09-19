@@ -28,7 +28,7 @@ export function BudgetFactReconcileBanner({ serverFact, listTotal, compact }: Pr
 
 const s = StyleSheet.create({
   box: {
-    backgroundColor: '#FEF3C7',
+    backgroundColor: RenovaTheme.colors.warningBg,
     borderRadius: 10,
     padding: 12,
     marginBottom: 12,

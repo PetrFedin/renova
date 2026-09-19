@@ -59,7 +59,7 @@ const s = StyleSheet.create({
   title: { ...screenTypography.listMeta, color: RenovaTheme.colors.text },
   metaLine: { ...screenTypography.listMeta },
   badge: { fontSize: 11, fontWeight: '600', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  ok: { backgroundColor: '#DCFCE7', color: RenovaTheme.colors.success },
-  pending: { backgroundColor: '#FEF3C7', color: RenovaTheme.colors.warning },
+  ok: { backgroundColor: RenovaTheme.colors.successBg, color: RenovaTheme.colors.success },
+  pending: { backgroundColor: RenovaTheme.colors.warningBg, color: RenovaTheme.colors.warning },
   material: { backgroundColor: '#E0E7FF', color: '#4338CA' },
 });

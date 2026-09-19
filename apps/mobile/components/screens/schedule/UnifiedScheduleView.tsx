@@ -395,7 +395,7 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
             ) : null}
 
             {schedule?.status === 'rejected' && schedule.rejection_reason ? (
-              <Text style={[s.planSub, { color: '#b45309' }]}>
+              <Text style={[s.planSub, { color: RenovaTheme.colors.warning }]}>
                 Причина: {schedule.rejection_reason}
               </Text>
             ) : null}

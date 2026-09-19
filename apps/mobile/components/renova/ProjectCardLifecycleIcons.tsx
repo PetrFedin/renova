@@ -102,7 +102,7 @@ const s = StyleSheet.create({
     borderColor: RenovaTheme.colors.border,
   },
   btnDanger: {
-    backgroundColor: '#FEF2F2',
-    borderColor: '#FECACA',
+    backgroundColor: RenovaTheme.colors.dangerBg,
+    borderColor: RenovaTheme.colors.dangerBorder,
   },
 });

@@ -14,4 +14,4 @@ export function WorkTypeFilter({ value, onChange }: { value?: string; onChange: 
     </ScrollView>
   );
 }
-const s = StyleSheet.create({ row:{ marginBottom:8 }, ch:{ paddingHorizontal:10, paddingVertical:5, borderRadius:12, backgroundColor:RenovaTheme.colors.border, marginRight:6 }, on:{ backgroundColor:'#2563eb' }, t:{ fontSize:11, color:'#333' } });
+const s = StyleSheet.create({ row:{ marginBottom:8 }, ch:{ paddingHorizontal:10, paddingVertical:5, borderRadius:12, backgroundColor:RenovaTheme.colors.border, marginRight:6 }, on:{ backgroundColor:RenovaTheme.colors.accent }, t:{ fontSize:11, color:'#333' } });

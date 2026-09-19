@@ -25,7 +25,7 @@ function DayDots({ mark }: { mark?: DayMark }) {
   if (!mark?.count) return null;
   return (
     <View style={s.dots}>
-      {mark.hasWork && <View style={[s.dot, { backgroundColor: '#2563eb' }]} />}
+      {mark.hasWork && <View style={[s.dot, { backgroundColor: RenovaTheme.colors.accent }]} />}
       {mark.hasStage && <View style={[s.dot, { backgroundColor: '#16a34a' }]} />}
       {mark.hasMaterial && <View style={[s.dot, { backgroundColor: '#d97706' }]} />}
       {mark.overdue && <View style={[s.dot, { backgroundColor: '#dc2626' }]} />}

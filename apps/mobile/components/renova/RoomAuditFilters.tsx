@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { View, TextInput, Text, Pressable, StyleSheet } from 'react-native';
+import { RenovaTheme } from '@/constants/Theme';
 
 export function RoomAuditFilters({ onFilter }: { onFilter: (f: { field?: string; since?: string }) => void }) {
   const [field, setField] = useState('');
@@ -13,4 +14,4 @@ export function RoomAuditFilters({ onFilter }: { onFilter: (f: { field?: string;
     </View>
   );
 }
-const s = StyleSheet.create({ wrap:{ marginVertical:8 }, lbl:{ fontSize:12, fontWeight:'600' }, inp:{ borderWidth:1, borderColor:'#ddd', borderRadius:6, padding:6, marginTop:4, fontSize:12 }, btn:{ color:'#2563eb', marginTop:6, fontSize:12 } });
+const s = StyleSheet.create({ wrap:{ marginVertical:8 }, lbl:{ fontSize:12, fontWeight:'600' }, inp:{ borderWidth:1, borderColor:'#ddd', borderRadius:6, padding:6, marginTop:4, fontSize:12 }, btn:{ color:RenovaTheme.colors.accent, marginTop:6, fontSize:12 } });

@@ -28,7 +28,7 @@ export function NotificationGroups({ items, onRead }: { items: AppNotification[]
 const s = StyleSheet.create({
   grp:{ marginBottom:12 },
   head:{ fontWeight:'800', fontSize:13, color: RenovaTheme.colors.text, marginBottom:6 },
-  row:{ backgroundColor:'#F8FAFC', padding:10, borderRadius:8, marginBottom:4, borderWidth:1, borderColor: RenovaTheme.colors.border },
+  row:{ backgroundColor:RenovaTheme.colors.background, padding:10, borderRadius:8, marginBottom:4, borderWidth:1, borderColor: RenovaTheme.colors.border },
   unread:{ borderLeftWidth:3, borderLeftColor: RenovaTheme.colors.primary },
   t:{ fontWeight:'600' }, b:{ fontSize:12, color: RenovaTheme.colors.textMuted },
 });

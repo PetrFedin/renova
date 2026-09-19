@@ -34,7 +34,7 @@ function punchTone(severity: string, status: string) {
   if (status === 'closed') return RenovaTheme.colors.textMuted;
   if (severity === 'critical' || severity === 'high') return RenovaTheme.colors.dangerText;
   if (severity === 'medium') return RenovaTheme.colors.warningText;
-  return '#2563EB';
+  return RenovaTheme.colors.accent;
 }
 
 export function FloorPlanPanel({
@@ -470,7 +470,7 @@ const s = StyleSheet.create({
   fonT: { fontSize: 11, color: RenovaTheme.colors.surface },
   punchBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
   punchToggle: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14, borderWidth: 1, borderColor: RenovaTheme.colors.border },
-  punchToggleOn: { backgroundColor: '#FEF2F2', borderColor: RenovaTheme.colors.dangerText },
+  punchToggleOn: { backgroundColor: RenovaTheme.colors.dangerBg, borderColor: RenovaTheme.colors.dangerText },
   punchToggleT: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.textMuted },
   punchToggleTOn: { color: RenovaTheme.colors.dangerText },
   punchHint: { fontSize: 11, color: RenovaTheme.colors.textMuted, flex: 1 },
@@ -482,7 +482,7 @@ const s = StyleSheet.create({
   emptyBox: {
     padding: 14,
     borderRadius: 10,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: RenovaTheme.colors.background,
     borderWidth: 1,
     borderColor: RenovaTheme.colors.border,
     gap: 6,
@@ -493,7 +493,7 @@ const s = StyleSheet.create({
   pin: { position: 'absolute', zIndex: 1 },
   pinT: { backgroundColor: RenovaTheme.colors.primary, color: RenovaTheme.colors.surface, fontSize: 10, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10 },
   /** W125: метка после mark_acceptance_pin_on_plan */
-  pinAccepted: { backgroundColor: '#166534', borderWidth: 1, borderColor: '#BBF7D0' },
+  pinAccepted: { backgroundColor: RenovaTheme.colors.success, borderWidth: 1, borderColor: RenovaTheme.colors.successBorder },
   acceptLegend: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 6 },
   punchPin: {
     position: 'absolute',

@@ -109,7 +109,7 @@ const s = StyleSheet.create({
   box: { marginVertical: 8 },
   head: { ...screenTypography.section, marginTop: 0, fontWeight: '700', color: RenovaTheme.colors.text },
   ch: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, backgroundColor: RenovaTheme.colors.border, marginRight: 6 },
-  on: { backgroundColor: '#2563eb' },
+  on: { backgroundColor: RenovaTheme.colors.accent },
   ct: { fontSize: 11 },
   row: { ...listRowStyles.row },
   rowMuted: { opacity: 0.85 },

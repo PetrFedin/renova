@@ -192,10 +192,10 @@ const styles = StyleSheet.create({
   },
   cardTitle: { fontWeight: '800', fontSize: 15, marginBottom: 8, color: RenovaTheme.colors.text },
   templates: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12, paddingHorizontal: 16 },
-  tpl: { backgroundColor: '#e0f2fe', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
+  tpl: { backgroundColor: RenovaTheme.colors.accentMuted, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
   tplText: { color: '#0369a1', fontWeight: '600', fontSize: 12 },
   link: { color: RenovaTheme.colors.primary, fontWeight: '600', marginBottom: 12, textAlign: 'center' },
   validation: { color: RenovaTheme.colors.warning, fontSize: 12, lineHeight: 16, textAlign: 'center', paddingHorizontal: 16, marginBottom: 8 },
   action: { paddingHorizontal: 16 },
-  del: { color: '#b91c1c', fontSize: 12, marginTop: 6, textAlign: 'right' },
+  del: { color: RenovaTheme.colors.danger, fontSize: 12, marginTop: 6, textAlign: 'right' },
 });
