@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import Payment, PaymentStatus, Receipt, Room, Stage
 from app.services.client_write_side_effects import PreparedSideEffect, activate_client_write_side_effects
+from app.db.locking import lock_rows
 
 
 @dataclass(frozen=True)
@@ -28,10 +29,7 @@ class ReceiptDeletion:
 async def get_receipt(db: AsyncSession, *, project_id: str, receipt_id: str, for_update: bool = False) -> Receipt | None:
     query = select(Receipt).where(Receipt.id == receipt_id, Receipt.project_id == project_id)
     if for_update:
-        try:
-            query = query.with_for_update()
-        except Exception:
-            pass
+        query = lock_rows(query, db)
     return (await db.execute(query.limit(1))).scalar_one_or_none()
 
 

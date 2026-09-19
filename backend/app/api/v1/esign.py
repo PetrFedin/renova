@@ -15,6 +15,7 @@ from app.models.entities import User
 from app.models.project_documents import DocumentSignature
 from app.services import project_document_service as docs_svc
 from app.services.esign import list_providers
+from app.db.locking import lock_rows
 
 router = APIRouter(prefix="/esign", tags=["esign"])
 
@@ -179,10 +180,7 @@ async def _process_provider_webhook(
         DocumentSignature.provider_name == provider,
         DocumentSignature.provider_external_id == external_id,
     )
-    try:
-        existing_query = existing_query.with_for_update()
-    except Exception:
-        pass
+    existing_query = lock_rows(existing_query, db)
     rows = list((await db.execute(existing_query)).scalars().all())
     if not rows:
         raise HTTPException(404, "signature_not_found")

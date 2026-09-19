@@ -19,6 +19,7 @@ from app.models.entities import (
 )
 from app.services import material_supply_service
 from app.services.client_write_side_effects import PreparedSideEffect, activate_client_write_side_effects
+from app.db.locking import lock_rows
 
 MaterialPickAction = Literal["submit", "approve", "reject"]
 
@@ -64,10 +65,7 @@ async def get_pick(
         MaterialPick.project_id == project_id,
     )
     if for_update:
-        try:
-            query = query.with_for_update()
-        except Exception:
-            pass
+        query = lock_rows(query, db)
     return (await db.execute(query.limit(1))).scalar_one_or_none()
 
 

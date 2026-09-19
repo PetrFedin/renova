@@ -22,6 +22,7 @@ from app.models.entities import (
 )
 from app.services import budget_service_legacy as _legacy
 from app.services.budget_service_legacy import *  # noqa: F401,F403
+from app.db.locking import lock_rows
 
 SOURCE_PROTECTED_EXPENSE_STATUSES = frozenset({"disputed", "refund", "deleted"})
 ACTIVE_BUDGET_EXPENSE_STATUSES = frozenset({"confirmed", "pending_receipt"})
@@ -123,10 +124,7 @@ async def _dedupe_linked_expenses(
         query = query.where(Expense.purchase_id == purchase_id)
     else:
         return None
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     rows = list((await db.execute(query)).scalars().all())
     return await _collapse_linked_candidates(db, rows)
 

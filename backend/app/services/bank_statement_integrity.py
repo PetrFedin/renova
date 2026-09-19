@@ -27,6 +27,7 @@ from app.models.entities import (
     Stage,
     _uuid,
 )
+from app.db.locking import lock_rows
 
 _BANK_MARKER_PREFIX = "bank_statement:v1:"
 _MATCH_TOKEN_TTL_SECONDS = 30 * 60
@@ -170,10 +171,7 @@ def verify_match_token(
 
 async def _lock_project(db: AsyncSession, project_id: str) -> None:
     query = select(Project.id).where(Project.id == project_id)
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     if (await db.execute(query.limit(1))).scalar_one_or_none() is None:
         raise ValueError("bank_project_not_found")
 
@@ -278,10 +276,7 @@ async def confirm_matches(
             Payment.id == claim.payment_id,
             Payment.project_id == project.id,
         )
-        try:
-            query = query.with_for_update()
-        except Exception:
-            pass
+        query = lock_rows(query, db)
         payment = (await db.execute(query.limit(1))).scalar_one_or_none()
         if not payment or round(float(payment.amount or 0), 2) != claim.amount:
             blocked.append(claim.payment_id)

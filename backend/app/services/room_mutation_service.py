@@ -10,6 +10,7 @@ from app.models.entities import EstimateLine, Project, Room, User, UserRole
 from app.services import outbox_service as outbox
 from app.services import room_service
 from app.services import team_service
+from app.db.locking import lock_rows
 
 ROOM_CREATE_SCOPE = "room.create"
 _DIRECT_NULLABLE_FIELDS = frozenset({"room_type", "notes", "budget_alert_pct"})
@@ -260,10 +261,7 @@ async def update_room(
         Room.id == room_id,
         Room.project_id == project.id,
     )
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     room = (await db.execute(query)).scalar_one_or_none()
     if room is None:
         return None

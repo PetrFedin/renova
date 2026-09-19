@@ -18,6 +18,7 @@ from app.models.entities import (
 from app.services import outbox_service as outbox
 from app.services import room_service
 from app.services import team_service
+from app.db.locking import lock_rows
 
 RoomDecision = Literal["approve", "reject"]
 
@@ -208,10 +209,7 @@ async def decide_request(
         RoomChangeRequest.id == request_id,
         RoomChangeRequest.project_id == project.id,
     )
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     request = (await db.execute(query)).scalar_one_or_none()
     if request is None:
         return None, None, False, {}
