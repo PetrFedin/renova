@@ -11,6 +11,7 @@ import { pushOsNav, replaceOsNav } from '@/lib/pushOsNav';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
+import { leadPriceLine } from '@/lib/domain/leadPriceLine';
 import {
   alertJobLeadAssigned,
   alertJobLeadCreated,
@@ -169,7 +170,7 @@ export function JobLeadsBoard({ userId, role }: { userId: string; role: string }
               {l.description}
             </Text>
           ) : null}
-          {l.pre_estimate ? <Text style={s.q}>Оценка: {formatRub(l.pre_estimate)}</Text> : null}
+          {leadPriceLine(l, osRole) ? <Text style={s.q}>{leadPriceLine(l, osRole)}</Text> : null}
           <LeadChat userId={userId} leadId={l.id} />
           {role === 'customer' && l.status === 'open' && (l.quotes?.length ?? 0) > 0 ? (
             <View style={{ gap: 6, marginTop: 6 }}>
