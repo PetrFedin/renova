@@ -19,6 +19,7 @@ from app.models.entities import (
 )
 from app.models import material_price_truth
 from app.services import material_supply_service
+from app.db.locking import lock_rows
 
 
 def _uuid() -> str:
@@ -55,10 +56,7 @@ async def prepare_purchase_from_picks(
         MaterialPick.id.in_(canonical_ids),
         MaterialPick.project_id == project_id,
     )
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     picks = list((await db.execute(query)).scalars().all())
     if len(picks) != len(canonical_ids):
         raise ValueError("purchase_picks_not_found")

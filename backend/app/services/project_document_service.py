@@ -14,6 +14,7 @@ from app.models.project_documents import (
     DocumentVersion,
     ProjectDocument,
 )
+from app.db.locking import lock_rows
 
 
 def document_dict(
@@ -253,10 +254,7 @@ async def sign_document(
         DocumentSignature.provider_name == esign.name,
         DocumentSignature.status.in_(("submitting", "pending", "signed")),
     )
-    try:
-        existing_query = existing_query.with_for_update()
-    except Exception:
-        pass
+    existing_query = lock_rows(existing_query, db)
     existing_rows = list((await db.execute(existing_query)).scalars().all())
     if existing_rows:
         existing = min(
@@ -544,10 +542,7 @@ async def complete_external_signature(
         DocumentSignature.provider_name == provider_name,
         DocumentSignature.provider_external_id == external_id,
     )
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     rows = list((await db.execute(query)).scalars().all())
     if not rows:
         return None

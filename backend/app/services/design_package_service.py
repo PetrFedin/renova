@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.entities import DesignPackage, Project, User
 from app.services import outbox_service as outbox
 from app.services import team_service
+from app.db.locking import lock_rows
 
 DesignAction = Literal["submit", "approve", "reject"]
 
@@ -99,10 +100,7 @@ async def create_package(
     normalized_notes = (notes or "").strip() or None
 
     lock_query = select(Project.id).where(Project.id == project.id)
-    try:
-        lock_query = lock_query.with_for_update()
-    except Exception:
-        pass
+    lock_query = lock_rows(lock_query, db)
     await db.execute(lock_query)
     version = int(
         await db.scalar(
@@ -211,10 +209,7 @@ async def transition_package(
         DesignPackage.id == package_id,
         DesignPackage.project_id == project.id,
     )
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     package = (await db.execute(query)).scalar_one_or_none()
     if package is None:
         return None, False

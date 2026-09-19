@@ -21,6 +21,7 @@ from app.models.entities import (
 )
 from app.services import outbox_service as outbox
 from app.services.team_service import project_team_membership
+from app.db.locking import lock_rows
 
 ALLOWED: dict[str, set[str]] = {
     WorkOrderStatus.draft.value: {WorkOrderStatus.published.value, WorkOrderStatus.cancelled.value},
@@ -317,10 +318,7 @@ async def _lock_work_order_for_patch(
         )
         .execution_options(populate_existing=True)
     )
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     current = (await db.execute(query)).scalar_one_or_none()
     if current is None:
         await db.rollback()
@@ -561,10 +559,7 @@ async def _lock_current_work_order(
         )
         .execution_options(populate_existing=True)
     )
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     current = (await db.execute(query)).scalar_one_or_none()
     if current is None:
         await db.rollback()
