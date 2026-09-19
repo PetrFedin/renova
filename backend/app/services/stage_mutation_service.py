@@ -395,6 +395,11 @@ async def start_stage(
     # A customer doing their own renovation has no contractor agreement to sign.
     if not is_self_managed_customer(project, actor):
         gate = await project_document_service.project_contract_gate(db, project.id)
+        # Объект с исполнителем не начинает работы без подписанного договора —
+        # это намеренное правило, закреплённое тестом. Тупик, из-за которого
+        # исполнитель не мог стартовать ни один этап, лечится не здесь:
+        # договор создаётся при назначении исполнителя, чтобы было что
+        # подписывать (ensure_contract_draft).
         if not gate.get("ok") or gate.get("reason") == "no_contract_required":
             await db.rollback()
             return None, {
