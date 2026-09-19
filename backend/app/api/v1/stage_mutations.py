@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, require_project
+from app.api.deps import get_current_user, require_project, require_project_scope
 from app.db.session import get_db
 from app.models.entities import User
 from app.services import stage_mutation_service as mutations
@@ -107,7 +107,9 @@ async def start_stage(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_project(db, project_id, user, write=True)
+    await require_project_scope(
+        db, project_id, user, stage_id=stage_id, write=True
+    )
     try:
         result, error = await mutations.start_stage(
             db,
@@ -137,7 +139,9 @@ async def mark_ready(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    project = await require_project(db, project_id, user, write=True)
+    project = await require_project_scope(
+        db, project_id, user, stage_id=stage_id, write=True
+    )
     try:
         result, error = await stage_review_service.submit_for_review(
             db,

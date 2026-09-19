@@ -135,6 +135,55 @@ async def require_project(
     return p
 
 
+
+async def require_project_scope(
+    db: AsyncSession,
+    project_id: str,
+    user: User,
+    *,
+    stage_id: str | None = None,
+    room_id: str | None = None,
+    work_type: str | None = None,
+    write: bool = True,
+) -> Project:
+    """Доступ к объекту или к конкретной области работ внутри него.
+
+    Общий доступ к объекту у участника закрыт намеренно: субподрядчик,
+    добавленный на один этап, не должен видеть объект целиком. Но без
+    адресного входа получалось, что ``scope_allows`` отвечает «да», а до неё
+    никто не доходит — участника отсекал общий гейт, и вся возможность
+    добавлять участников не делала ничего.
+
+    Здесь общий путь идёт первым и не ослабляется; область проверяется только
+    после его отказа и только для названной области.
+    """
+    try:
+        return await require_project(db, project_id, user, write=write)
+    except HTTPException as denied:
+        if denied.status_code != 403:
+            raise
+
+    project = await proj_svc.get_project(db, project_id)
+    if not project:
+        raise HTTPException(404, "Проект не найден")
+    if getattr(project, "trashed_at", None):
+        raise HTTPException(404, "Проект в корзине")
+
+    from app.services import project_participant_service as participants
+
+    allowed = await participants.scope_allows(
+        db,
+        project=project,
+        user_id=user.id,
+        stage_id=stage_id,
+        room_id=room_id,
+        work_type=work_type,
+    )
+    if not allowed:
+        raise HTTPException(403, "Нет доступа")
+    return project
+
+
 def require_project_dep(write: bool = False):
     """FastAPI Depends-обёртка для require_project (совместимость роутов)."""
 
