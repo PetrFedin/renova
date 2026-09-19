@@ -119,6 +119,7 @@ export function IntegrationHonestyBadge() {
         onPress={() => setExpanded((v) => !v)}
         accessibilityRole="button"
         accessibilityState={{ expanded }}
+        accessibilityLabel={`${summary}. ${expanded ? 'Свернуть' : 'Подробнее'}`}
         hitSlop={6}
       >
         <Text style={s.summary}>
