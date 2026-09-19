@@ -15,6 +15,7 @@ from app.services.document_media_acl import (
     parse_document_media_key,
 )
 from sqlalchemy import select
+from app.api.errors import not_found
 
 router = APIRouter(prefix="/media", tags=["media"])
 
@@ -55,7 +56,7 @@ async def presign_media(
         await assert_document_media_access(db, user, key, write=False)
     url = storage_svc.presigned_url(key)
     if not url:
-        raise HTTPException(404)
+        raise not_found("media")
     return RedirectResponse(url, status_code=302)
 
 
@@ -87,7 +88,7 @@ async def get_media(
         )
     data = await storage_svc.read_image(key)
     if not data:
-        raise HTTPException(404)
+        raise not_found("media")
     name = key.rsplit("/", 1)[-1]
     mime = mimetypes.guess_type(name)[0] or "application/octet-stream"
     cache = (

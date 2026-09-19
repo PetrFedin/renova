@@ -9,6 +9,7 @@ from app.db.session import get_db
 from app.models.entities import User
 from app.services import report_service as rep
 from app.services.pdf_helper import new_pdf, pdf_line, pdf_response
+from app.api.errors import not_found
 
 router = APIRouter(prefix="/projects/{project_id}/reports", tags=["reports"])
 
@@ -37,7 +38,7 @@ async def report_daily_pdf(project_id: str, user: User = Depends(get_current_use
     await require_project(db, project_id, user, write=False)
     data = await rep.daily_report(db, project_id)
     if not data:
-        raise HTTPException(404)
+        raise not_found("report")
     pdf = new_pdf()
     pdf_line(pdf, f"Ежедневный отчёт: {data.get('project_name', '')}", size=14)
     pdf_line(pdf, f"Дата: {data.get('date', '')}", size=11)
@@ -56,7 +57,7 @@ async def report_weekly_pdf(project_id: str, user: User = Depends(get_current_us
     await require_project(db, project_id, user, write=False)
     data = await rep.weekly_report(db, project_id)
     if not data:
-        raise HTTPException(404)
+        raise not_found("report")
     pdf = new_pdf()
     pdf_line(pdf, f"Недельный отчёт: {data.get('project_name', '')}", size=14)
     pdf_line(pdf, f"Прогресс: {data.get('progress_percent', 0)}%", size=11)
@@ -77,7 +78,7 @@ async def report_final_pdf(
     await require_project(db, project_id, user, write=False)
     data = await rep.final_report(db, project_id)
     if not data:
-        raise HTTPException(404)
+        raise not_found("report")
     picked_sections = rep.parse_report_sections(sections)
     picked_categories = rep.parse_expense_categories(categories)
     pdf = rep.build_final_pdf(data, picked_sections, picked_categories)

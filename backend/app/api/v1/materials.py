@@ -10,6 +10,7 @@ from app.services import activity_service as act
 from app.services import material_pick_service as pick_svc
 from app.services import material_supply_service as supply_svc
 from app.services import notification_service as notif
+from app.api.errors import forbidden, not_found
 
 router = APIRouter(prefix="/projects", tags=["materials"])
 MATERIAL_PICK_CREATE_SCOPE = "material_pick.create"
@@ -342,7 +343,7 @@ async def update_supply(
     except ValueError as error:
         raise _transition_error(error) from error
     if not pick:
-        raise HTTPException(404)
+        raise not_found("room")
     if change:
         old_label = supply_svc.source_label(change.old_source)
         new_label = supply_svc.source_label(change.new_source)
@@ -401,7 +402,7 @@ async def _transition_endpoint(
     except ValueError as error:
         raise _transition_error(error) from error
     if not pick:
-        raise HTTPException(404)
+        raise not_found("room")
     if changed and event:
         await _deliver_transition(
             db,
@@ -441,7 +442,7 @@ async def approve_pick(
 ):
     await require_project(db, project_id, user, write=True)
     if user.role != UserRole.customer:
-        raise HTTPException(403)
+        raise forbidden("customer_only")
     return await _transition_endpoint(
         db,
         project_id=project_id,
@@ -461,7 +462,7 @@ async def reject_pick(
 ):
     await require_project(db, project_id, user, write=True)
     if user.role != UserRole.customer:
-        raise HTTPException(403)
+        raise forbidden("customer_only")
     return await _transition_endpoint(
         db,
         project_id=project_id,
@@ -483,7 +484,7 @@ async def add_analog(
     project = await require_project(db, project_id, user, write=True)
     original = await pick_svc.get_pick(db, project_id=project_id, pick_id=pick_id)
     if not original:
-        raise HTTPException(404)
+        raise not_found("room")
     pick, replayed = await _create_pick(
         db,
         project=project,

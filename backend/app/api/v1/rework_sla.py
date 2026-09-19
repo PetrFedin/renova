@@ -8,6 +8,7 @@ from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.entities import User, Stage, Project
 from app.services import notification_service as ns
+from app.api.errors import not_found
 
 router = APIRouter(prefix="/projects", tags=["rework-sla"])
 
@@ -34,7 +35,7 @@ async def extend_rework_sla(project_id: str, stage_id: str, days: int = 1, user:
     st = await db.get(Stage, stage_id)
     if not st or st.project_id != project_id:
         from fastapi import HTTPException
-        raise HTTPException(404)
+        raise not_found("stage")
     st.rework_deadline = (st.rework_deadline or utc_now()) + timedelta(days=max(1, min(7, days)))
     await db.commit()
     return {"ok": True, "rework_deadline": st.rework_deadline.isoformat()}

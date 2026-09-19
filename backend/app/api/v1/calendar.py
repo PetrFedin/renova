@@ -8,6 +8,7 @@ from app.db.session import get_db
 from app.models.entities import User, UserRole
 from app.services import calendar_service as cal_svc
 from app.services import stage_service as stage_svc
+from app.api.errors import not_found
 
 router = APIRouter(prefix="/projects", tags=["calendar"])
 
@@ -39,7 +40,7 @@ async def update_stage_dates(
         raise HTTPException(403, "Только исполнитель меняет даты")
     stage = await stage_svc.update_stage_dates(db, body.stage_id, body.planned_start, body.planned_end)
     if not stage or stage.project_id != project_id:
-        raise HTTPException(404)
+        raise not_found("stage")
     from sqlalchemy import select
     from app.models.entities import WasteOrder
     p = await require_project(db, project_id, user, write=False)

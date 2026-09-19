@@ -7,6 +7,7 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import User
 from app.services import scratchpad_service as sp
+from app.api.errors import not_found
 
 router = APIRouter(prefix="/projects", tags=["scratchpad"])
 
@@ -55,7 +56,7 @@ async def patch_scratchpad_line(
     await require_project(db, project_id, user, write=True)
     line = await sp.get_line(db, line_id)
     if not line or line.project_id != project_id:
-        raise HTTPException(404)
+        raise not_found("scratchpad_line")
     line = await sp.update_line(db, line, body.model_dump(exclude_unset=True))
     await db.commit()
     return sp.line_dict(line)
@@ -71,7 +72,7 @@ async def delete_scratchpad_line(
     await require_project(db, project_id, user, write=True)
     line = await sp.get_line(db, line_id)
     if not line or line.project_id != project_id:
-        raise HTTPException(404)
+        raise not_found("scratchpad_line")
     await sp.delete_line(db, line)
     await db.commit()
     return {"ok": True}

@@ -21,6 +21,7 @@ from app.services.webhook_delivery_service import (
     fail_delivery,
 )
 from app.core.config import settings
+from app.api.errors import forbidden
 
 router = APIRouter(prefix="/subscription", tags=["subscription"])
 _RETRYABLE_PROVIDER_REASONS = {
@@ -47,7 +48,7 @@ async def my_sub(user: User = Depends(get_current_user), db: AsyncSession = Depe
 async def start_pro_trial(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """H1.1: 14 дней Pro без карты (один раз)."""
     if user.role != UserRole.contractor:
-        raise HTTPException(403)
+        raise forbidden("contractor_only")
     sub, result = await start_trial(db, user.id)
     if result.get("code") == "trial_used":
         raise HTTPException(409, detail=result)
@@ -59,7 +60,7 @@ async def start_pro_trial(user: User = Depends(get_current_user), db: AsyncSessi
 @router.post("/checkout")
 async def checkout(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if user.role != UserRole.contractor:
-        raise HTTPException(403)
+        raise forbidden("customer_only")
     # Deep link return — не localhost (H0 honesty для TestFlight)
     return_url = "renova://subscription-return"
     pay = await create_payment(

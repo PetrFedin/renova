@@ -20,6 +20,7 @@ import { alertWarrantyClosed } from '@/lib/warrantyNav';
 import { reportError } from '@/lib/reportError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import {
+  canCloseWarranty,
   issueActions,
   issueWaitingHint,
   type IssueTransitionAction,
@@ -280,7 +281,8 @@ export function QualityControlScreen() {
   };
 
   const closeWarranty = (issue: ProjectIssue) => {
-    if (readOnly || role !== 'customer' || !user || !activeProject || mutationRef.current) return;
+    if (readOnly || !user || !activeProject || mutationRef.current) return;
+    if (!canCloseWarranty(issue.status, role)) return;
     showActionConfirm({
       title: 'Закрыть гарантию?',
       message: `«${issue.title}»`,
@@ -368,7 +370,9 @@ export function QualityControlScreen() {
         item={item}
         actions={actions}
         onTransition={transitionIssue}
-        onWarrantyClose={!readOnly && role === 'customer' && isWarranty ? closeWarranty : undefined}
+        onWarrantyClose={
+          !readOnly && isWarranty && canCloseWarranty(item.status, role) ? closeWarranty : undefined
+        }
         onEscalate={!readOnly && item.status !== 'closed' ? escalateIssue : undefined}
         mutationKey={mutationKey}
         busy={busy}

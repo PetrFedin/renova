@@ -9,6 +9,7 @@ from app.models.entities import Project, PurchaseStatus, User
 from app.services import activity_service as act
 from app.services import notification_service as notif
 from app.services import purchase_service as pur
+from app.api.errors import not_found
 
 router = APIRouter(prefix="/projects", tags=["purchases"])
 PURCHASE_CREATE_SCOPE = "purchase.create"
@@ -286,7 +287,7 @@ async def update_purchase_status(
         ) from error
 
     if not purchase:
-        raise HTTPException(404)
+        raise not_found("purchase")
     if not changed:
         response = pur.purchase_dict(purchase)
         response["replayed"] = True

@@ -15,6 +15,7 @@ from app.services import project_document_service as docs_svc
 from app.services import dashboard_integrity_service as dashboard_svc
 from app.services import project_viewer_service as viewer_svc
 from app.services import technical_supervision_service as supervision
+from app.api.errors import forbidden, not_found
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -265,7 +266,7 @@ async def restore_project(project_id: str, user: User = Depends(get_current_user
 @router.delete("/trash/empty")
 async def empty_trash(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if user.role != UserRole.customer:
-        raise HTTPException(403)
+        raise forbidden("customer_only")
     if not await svc.user_owns_any_project(db, user.id):
         raise HTTPException(403, "Только владелец объекта может выполнить это действие")
     n = await svc.empty_trash(db, user)
@@ -348,7 +349,7 @@ async def reject_stage(project_id: str, stage_id: str, body: dict, user: User = 
         raise HTTPException(403, "Только заказчик")
     stage = await svc.reject_stage(db, stage_id, user.id, body.get("text"))
     if not stage or stage.project_id != project_id:
-        raise HTTPException(404)
+        raise not_found("stage")
     return {"ok": True, "status": stage.status.value}
 
 
@@ -461,7 +462,7 @@ async def remove_viewer(project_id: str, viewer_user_id: str, user: User = Depen
     from app.models.entities import ProjectViewer
     p = await require_project(db, project_id, user, write=True)
     if user.id != p.customer_id:
-        raise HTTPException(403)
+        raise forbidden("owner_only")
     await db.execute(delete(ProjectViewer).where(ProjectViewer.project_id == project_id, ProjectViewer.user_id == viewer_user_id))
     await db.commit()
     return {"ok": True}

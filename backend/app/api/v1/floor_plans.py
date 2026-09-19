@@ -6,6 +6,7 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import User, FloorPlan, FloorPlanPin, FurnitureItem, Room, ProjectIssue
 from app.services import activity_service as act
+from app.api.errors import not_found
 
 router = APIRouter(prefix="/projects", tags=["floor-plans"])
 
@@ -95,7 +96,7 @@ async def create_plan(project_id: str, body: PlanIn, user: User = Depends(get_cu
 async def upsert_pin(project_id: str, plan_id: str, body: PinIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=True)
     plan = await db.get(FloorPlan, plan_id)
-    if not plan or plan.project_id != project_id: raise HTTPException(404)
+    if not plan or plan.project_id != project_id: raise not_found("floor_plan")
     room = await db.get(Room, body.room_id)
     if not room or room.project_id != project_id: raise HTTPException(400, "room not in project")
     r = await db.execute(select(FloorPlanPin).where(FloorPlanPin.floor_plan_id == plan_id, FloorPlanPin.room_id == body.room_id))
@@ -129,7 +130,7 @@ async def create_furniture(project_id: str, body: FurnitureIn, user: User = Depe
 async def move_pin(project_id: str, plan_id: str, pin_id: str, body: PinPatch, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=True)
     pin = await db.get(FloorPlanPin, pin_id)
-    if not pin: raise HTTPException(404)
+    if not pin: raise not_found("floor_plan_pin")
     pin.x_pct, pin.y_pct = body.x_pct, body.y_pct
     await db.commit()
     return {"id": pin.id, "x_pct": pin.x_pct, "y_pct": pin.y_pct}
@@ -142,7 +143,7 @@ class FurnitureMove(BaseModel):
 async def move_furniture(project_id: str, item_id: str, body: FurnitureMove, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=True)
     f = await db.get(FurnitureItem, item_id)
-    if not f or f.project_id != project_id: raise HTTPException(404)
+    if not f or f.project_id != project_id: raise not_found("furniture")
     f.x_pct, f.y_pct = body.x_pct, body.y_pct
     await db.commit()
     return {"ok": True, "x_pct": f.x_pct, "y_pct": f.y_pct}

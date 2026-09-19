@@ -7,6 +7,7 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import ProjectIssue, User
 from app.services import issue_service as issue_svc
+from app.api.errors import not_found
 
 router = APIRouter(tags=["issue-transitions"])
 
@@ -26,7 +27,7 @@ async def transition_issue(
     project = await require_project(db, project_id, user, write=True)
     issue = await db.get(ProjectIssue, issue_id)
     if not issue or issue.project_id != project_id:
-        raise HTTPException(404)
+        raise not_found("issue")
     if (issue.title or "").startswith("[Гарантия]"):
         raise HTTPException(
             409,

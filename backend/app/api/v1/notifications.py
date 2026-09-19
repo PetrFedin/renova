@@ -33,11 +33,12 @@ async def mark_all(user: User = Depends(get_current_user), db: AsyncSession = De
 async def snooze_notif(notification_id: str, hours: int = 24, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     ok = await notif_svc.snooze(db, notification_id, user.id, max(1, min(168, hours)))
     if not ok:
-        raise HTTPException(404)
+        raise not_found("notification")
     return {"ok": True}
 
 from datetime import datetime
 from pydantic import BaseModel
+from app.api.errors import not_found
 
 class SnoozeUntilIn(BaseModel):
     until_iso: str
@@ -52,7 +53,7 @@ async def snooze_until_notif(notification_id: str, body: SnoozeUntilIn, user: Us
     ok = await notif_svc.snooze_until(db, notification_id, user.id, until)
     if not ok:
         from fastapi import HTTPException
-        raise HTTPException(404)
+        raise not_found("notification")
     return {"ok": True}
 
 @router.get("/reaction-digest")

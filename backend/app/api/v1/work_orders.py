@@ -9,6 +9,7 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import User
 from app.services import work_order_service as wo_svc
+from app.api.errors import not_found
 
 router = APIRouter(prefix="/projects", tags=["work-orders"])
 
@@ -82,7 +83,7 @@ async def get_work_order(project_id: str, work_order_id: str, user: User = Depen
     await require_project(db, project_id, user, write=False)
     work_order = await wo_svc.get_work_order(db, work_order_id)
     if not work_order or work_order.project_id != project_id:
-        raise HTTPException(404)
+        raise not_found("work_order")
     return wo_svc.wo_dict(work_order)
 
 
@@ -91,7 +92,7 @@ async def patch_work_order(project_id: str, work_order_id: str, body: WorkOrderP
     project = await require_project(db, project_id, user, write=True)
     work_order = await wo_svc.get_work_order(db, work_order_id)
     if not work_order or work_order.project_id != project_id:
-        raise HTTPException(404)
+        raise not_found("work_order")
 
     patch = body.model_dump(exclude_unset=True)
     expected_updated_at = patch.pop("expected_updated_at")
@@ -121,7 +122,7 @@ async def transition_work_order(project_id: str, work_order_id: str, body: WorkO
     project = await require_project(db, project_id, user, write=True)
     work_order = await wo_svc.get_work_order(db, work_order_id)
     if not work_order or work_order.project_id != project_id:
-        raise HTTPException(404)
+        raise not_found("work_order")
     try:
         work_order = await wo_svc.transition(
             db,

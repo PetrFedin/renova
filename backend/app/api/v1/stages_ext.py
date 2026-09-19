@@ -19,6 +19,7 @@ from app.schemas.project import StageCommentIn, StageDatesIn, StagePhotoIn
 from app.services import stage_mutation_service as stage_mutation_svc
 from app.services import stage_review_service as stage_review_svc
 from app.services import stage_service as stage_svc
+from app.api.errors import not_found
 
 router = APIRouter(prefix="/projects", tags=["stages"])
 
@@ -374,7 +375,7 @@ async def stage_blocked(
 
     stage = await db.get(Stage, stage_id)
     if not stage or stage.project_id != project_id:
-        raise HTTPException(404)
+        raise not_found("stage")
     return await dependency_svc.evaluate_stage(
         db,
         stage,

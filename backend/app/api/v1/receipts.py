@@ -9,6 +9,7 @@ from app.models.entities import Payment, PaymentStatus, Receipt, Stage, User
 from app.services import receipt_integrity_service as receipt_svc
 from app.services.client_write_idempotency import IdempotencyConflict, commit_client_write, replay_entity_id
 from app.services.fns.receipt_verify import parse_receipt_qr, receipt_meta, verify_receipt
+from app.api.errors import not_found
 
 
 router = APIRouter(prefix="/projects/{project_id}/receipts", tags=["receipts"])
@@ -394,7 +395,7 @@ async def patch_receipt(
     except ValueError as error:
         raise _receipt_error(error) from error
     if not rec:
-        raise HTTPException(404)
+        raise not_found("receipt")
     return {
         "ok": True,
         "amount": rec.amount,
@@ -422,7 +423,7 @@ async def delete_receipt(
     except ValueError as error:
         raise _receipt_error(error) from error
     if not result:
-        raise HTTPException(404)
+        raise not_found("receipt")
 
     from app.services import activity_service as activity
     from app.services.client_write_side_effects import clear_request_side_effect_context

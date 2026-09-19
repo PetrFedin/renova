@@ -9,6 +9,7 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import DesignPackage, Project, User
 from app.services import design_package_service as design_svc
+from app.api.errors import not_found
 
 router = APIRouter(prefix="/projects", tags=["design"])
 
@@ -176,7 +177,7 @@ async def design_diff(
     items = {package.version: package for package in result.scalars().all()}
     first, second = items.get(v1), items.get(v2)
     if not first or not second:
-        raise HTTPException(404)
+        raise not_found("design_package")
     return {
         "v1": {"title": first.title, "notes": first.notes, "status": first.status},
         "v2": {"title": second.title, "notes": second.notes, "status": second.status},

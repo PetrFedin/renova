@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.models.entities import RepairArticle
 from app.data.repair_articles import ARTICLES as STATIC, CATEGORIES
+from app.api.errors import not_found
 
 router = APIRouter(prefix="/articles", tags=["articles"])
 
@@ -58,5 +59,5 @@ async def get_article(slug: str, db: AsyncSession = Depends(get_db)):
         }
     static = next((x for x in STATIC if x["slug"] == slug), None)
     if not static:
-        raise HTTPException(404)
+        raise not_found("article")
     return {**static, "category_label": CATEGORIES.get(static["category"], static["category"])}

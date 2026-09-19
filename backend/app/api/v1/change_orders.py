@@ -5,6 +5,7 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import ChangeOrder, User, UserRole
 from app.services import change_order_service as co_svc
+from app.api.errors import forbidden, not_found
 
 router = APIRouter(prefix="/projects/{project_id}/change-orders", tags=["change-orders"])
 CHANGE_ORDER_CREATE_SCOPE = "change_order.create"
@@ -36,7 +37,7 @@ async def list_co(project_id: str, user: User = Depends(get_current_user), db: A
 async def create_co(project_id: str, body: ChangeOrderCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=True)
     if user.role != UserRole.contractor:
-        raise HTTPException(403)
+        raise forbidden("contractor_only")
 
     from app.services.change_order_create_service import prepare_order
     from app.services.client_write_idempotency import (
@@ -115,7 +116,7 @@ async def create_co(project_id: str, body: ChangeOrderCreate, user: User = Depen
 async def approve_co(project_id: str, order_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=True)
     if user.role != UserRole.customer:
-        raise HTTPException(403)
+        raise forbidden("customer_only")
     co, draft_meta = await co_svc.approve_with_sign_draft(
         db,
         project_id=project_id,
@@ -123,7 +124,7 @@ async def approve_co(project_id: str, order_id: str, user: User = Depends(get_cu
         created_by=user.id,
     )
     if not co:
-        raise HTTPException(404)
+        raise not_found("change_order")
 
     draft_id = (draft_meta or {}).get("id")
     replayed = bool((draft_meta or {}).get("replayed"))
@@ -145,7 +146,7 @@ async def approve_co(project_id: str, order_id: str, user: User = Depends(get_cu
 async def reject_co(project_id: str, order_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=True)
     if user.role != UserRole.customer:
-        raise HTTPException(403)
+        raise forbidden("customer_only")
     co, replayed = await co_svc.reject_with_effects(
         db,
         project_id=project_id,
@@ -153,7 +154,7 @@ async def reject_co(project_id: str, order_id: str, user: User = Depends(get_cur
         rejected_by=user.id,
     )
     if not co:
-        raise HTTPException(404)
+        raise not_found("change_order")
 
     if not replayed:
         await _dispatch_prepared_effects(db, source="change_order.reject")
