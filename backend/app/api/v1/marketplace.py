@@ -458,13 +458,6 @@ async def convert_lead(
         total_area_sqm=lead.area_sqm,
         property_type=property_type,
     )
-    # Объект из заявки сразу с исполнителем — договор нужен с первого дня,
-    # иначе работы заблокированы, а подписывать нечего.
-    from app.services import project_document_service as documents
-
-    await documents.ensure_contract_draft(
-        db, project_id=project.id, created_by=lead.customer_id,
-    )
     lead.status = JobLeadStatus.taken
     await db.commit()
     return {"project_id": project.id, "name": project.name}

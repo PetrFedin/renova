@@ -175,3 +175,34 @@ async def test_assignment_creates_something_to_sign(db):
         "отказ без списка документов — тупик: пользователю нечего открыть"
     )
     assert "Договор подряда" in gate["pending_titles"]
+
+
+@pytest.mark.asyncio
+async def test_lead_conversion_creates_the_contract_on_the_live_route(db):
+    """Договор должен появляться на том маршруте, который действительно работает.
+
+    Маршрут конвертации в `marketplace.py` снимается `_remove_replaced_routes`
+    в пользу `marketplace_conversion_integrity`. Правка, положенная в снятый
+    маршрут, не выполнится никогда — и это не видно ни по одному тесту,
+    который смотрит только на код.
+    """
+    # Снятие маршрута выполняет сам app.api.v1.router при импорте — без него
+    # marketplace.router ещё содержит мёртвый маршрут.
+    import app.api.v1.router  # noqa: F401
+    from app.api.v1 import marketplace
+    from app.services import marketplace_conversion_service as conversion
+
+    live_paths = {
+        (getattr(route, "path", None), method)
+        for route in marketplace.router.routes
+        for method in (getattr(route, "methods", set()) or set())
+    }
+    assert ("/job-leads/{lead_id}/convert", "POST") not in live_paths, (
+        "маршрут конвертации в marketplace.py снят — правки в нём мертвы"
+    )
+    import inspect
+
+    source = inspect.getsource(conversion.convert_lead)
+    assert "ensure_contract_draft" in source, (
+        "договор не создаётся в живом пути конвертации заявки"
+    )
