@@ -76,7 +76,7 @@ async def seed_stage(
         assignee_id=contractor.id,
         actual_start=date(2026, 8, 1),
         checklist_json=json.dumps(
-            [{"id": "finish", "title": "Завершить работы", "done": True}],
+            [{"id": "finish", "text": "Завершить работы", "done": True}],
             ensure_ascii=False,
         ),
         room_ids_json=json.dumps([room.id]),
@@ -273,7 +273,12 @@ async def test_reject_returns_acceptance_adds_sla_task_and_is_replay_safe(db):
     rework_items = [item for item in checklist if str(item.get("id", "")).startswith("rework-")]
     assert len(rework_items) == 1
     assert rework_items[0]["done"] is False
-    assert "примыкание" in rework_items[0]["title"].lower()
+    # Ключ `text`, как у всех остальных пунктов: экран этапа читает только его,
+    # и с ключом `title` пункт рисовался пустой строкой — исполнитель видел,
+    # что что-то добавилось, и не видел что именно.
+    assert "примыкание" in rework_items[0]["text"].lower()
+    shapes = {tuple(sorted(item.keys())) for item in checklist}
+    assert len(shapes) == 1, f"пункты чек-листа разной формы: {shapes}"
     assert await db.scalar(
         select(func.count())
         .select_from(StageComment)
