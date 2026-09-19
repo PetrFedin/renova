@@ -242,7 +242,7 @@ async def set_thread_state(
     return {"is_pinned": row.is_pinned, "is_archived": row.is_archived, "pinned_at": row.pinned_at.isoformat() if row.pinned_at else None}
 
 
-async def send_message(
+async def prepare_message(
     db: AsyncSession,
     thread: ChatThread,
     user_id: str,
@@ -253,6 +253,12 @@ async def send_message(
     reply_to_id: str | None = None,
     meta: dict | None = None,
 ) -> ChatMessage:
+    """Сложить сообщение в сессию без коммита.
+
+    Нужно там, где сообщение обязано попасть в базу одной транзакцией вместе
+    с чем-то ещё — например, счёт из чата вместе с самим платежом и записью
+    журнала идемпотентности.
+    """
     storage_key, image_url = None, None
     mt = ChatMessageType(message_type)
     if mt in (ChatMessageType.photo, ChatMessageType.file) and image_data:
@@ -270,11 +276,20 @@ async def send_message(
     )
     db.add(msg)
     thread.updated_at = utc_now()
-    await db.commit()
-    await db.refresh(msg)
+    await db.flush()
+    return msg
 
-    proj = await db.get(Project, thread.project_id)
+
+async def deliver_message(
+    db: AsyncSession,
+    thread: ChatThread,
+    msg: ChatMessage,
+    user_id: str,
+    text: str | None,
+) -> ChatMessage:
+    """Оповестить участников об уже сохранённом сообщении."""
     recipients: dict[str, User] = {}
+    proj = await db.get(Project, thread.project_id)
     if proj:
         target_ids = {proj.customer_id, proj.contractor_id}
         invited_ids = set(
@@ -315,6 +330,34 @@ async def send_message(
         for uid in recipients:
             await broadcast_inbox(uid, payload)
     return msg
+
+
+async def send_message(
+    db: AsyncSession,
+    thread: ChatThread,
+    user_id: str,
+    role: str,
+    text: str | None,
+    message_type: str = "text",
+    image_data: str | None = None,
+    reply_to_id: str | None = None,
+    meta: dict | None = None,
+) -> ChatMessage:
+    """Сохранить сообщение и оповестить участников — прежнее поведение."""
+    msg = await prepare_message(
+        db,
+        thread,
+        user_id,
+        role,
+        text,
+        message_type=message_type,
+        image_data=image_data,
+        reply_to_id=reply_to_id,
+        meta=meta,
+    )
+    await db.commit()
+    await db.refresh(msg)
+    return await deliver_message(db, thread, msg, user_id, text)
 
 
 def thread_dict(
@@ -782,6 +825,40 @@ async def create_task_from_message(
     return msg
 
 
+def payment_message_text(title: str, amount: float) -> str:
+    return f"💳 Счёт: {title} · {amount:.0f} ₽"
+
+
+async def prepare_payment_message(
+    db: AsyncSession,
+    thread: ChatThread,
+    user_id: str,
+    role: str,
+    *,
+    title: str,
+    amount: float,
+    payment_type: str,
+) -> tuple[ChatMessage, "object"]:
+    """Счёт и сообщение о нём — в одну транзакцию, без коммита.
+
+    Коммит остаётся за вызывающим: он же кладёт запись журнала
+    идемпотентности, иначе повтор после потери ответа создаст второй счёт.
+    """
+    from app.services import payment_service as pay_svc
+
+    pay = await pay_svc.prepare_payment(db, thread.project_id, user_id, title, amount, payment_type)
+    msg = await prepare_message(
+        db,
+        thread,
+        user_id,
+        role,
+        payment_message_text(title, amount),
+        "payment",
+        meta={"payment_id": pay.id, "amount": amount},
+    )
+    return msg, pay
+
+
 async def create_payment_message(
     db: AsyncSession,
     thread: ChatThread,
@@ -792,9 +869,10 @@ async def create_payment_message(
     amount: float,
     payment_type: str,
 ) -> ChatMessage:
+    """Прежний неидемпотентный путь — оставлен для существующих вызовов."""
     from app.services import payment_service as pay_svc
 
     pay = await pay_svc.create_payment(db, thread.project_id, user_id, title, amount, payment_type)
-    text = f"💳 Счёт: {title} · {amount:.0f} ₽"
+    text = payment_message_text(title, amount)
     meta = {"payment_id": pay.id, "amount": amount}
     return await send_message(db, thread, user_id, role, text, "payment", meta=meta)

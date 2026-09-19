@@ -6,12 +6,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_project, require_project_dep
 from app.services.chat_acl import require_chat_access, require_chat_message
 from app.db.session import get_db
-from app.models.entities import User
+from app.models.entities import ChatMessage, User
 from app.services import chat_participant_service as chat_participant_svc
 from app.services import chat_service as chat_svc
 from app.services import chat_message_mutation as chat_message_svc
-from app.services.client_write_idempotency import IdempotencyConflict
+from app.services.client_write_idempotency import (
+    IdempotencyConflict,
+    commit_client_write,
+    replay_entity_id,
+)
 
+CHAT_INVOICE_SCOPE = "chat.invoice"
 router = APIRouter(prefix="/projects", tags=["chats"])
 
 
@@ -130,6 +135,7 @@ class PaymentFromChat(BaseModel):
     title: str
     amount: float = Field(gt=0)
     payment_type: str = "stage"
+    client_request_id: str | None = Field(default=None, min_length=8, max_length=80)
 
 
 @router.get("/{project_id}/chats")
@@ -370,7 +376,52 @@ async def invoice_from_chat(project_id: str, thread_id: str, body: PaymentFromCh
     _p, t = await require_chat_access(db, project_id, thread_id, user, write=True)
     if user.role.value != "contractor":
         raise HTTPException(403, "only_contractor_can_invoice_from_chat")
-    msg = await chat_svc.create_payment_message(
-        db, t, user.id, user.role.value, title=body.title, amount=body.amount, payment_type=body.payment_type,
+
+    payload = {
+        "title": body.title,
+        "amount": round(float(body.amount), 2),
+        "payment_type": body.payment_type,
+        "thread_id": thread_id,
+    }
+    try:
+        replay_id = await replay_entity_id(
+            db,
+            scope=CHAT_INVOICE_SCOPE,
+            project_id=project_id,
+            user_id=user.id,
+            request_id=body.client_request_id,
+            payload=payload,
+        )
+    except IdempotencyConflict as exc:
+        raise HTTPException(
+            409,
+            detail={
+                "code": "idempotency_conflict",
+                "message": "Тот же запрос уже отправлен с другими данными",
+            },
+        ) from exc
+
+    if replay_id:
+        # Повтор после потери ответа: возвращаем то же сообщение, а не новое.
+        existing = await db.get(ChatMessage, replay_id)
+        if not existing or existing.thread_id != thread_id:
+            raise HTTPException(409, detail={"code": "idempotency_target_missing"})
+        return chat_svc.msg_dict(existing)
+
+    msg, _payment = await chat_svc.prepare_payment_message(
+        db, t, user.id, user.role.value,
+        title=body.title, amount=body.amount, payment_type=body.payment_type,
     )
+    message_id = msg.id
+    await commit_client_write(
+        db,
+        scope=CHAT_INVOICE_SCOPE,
+        project_id=project_id,
+        user_id=user.id,
+        request_id=body.client_request_id,
+        payload=payload,
+        entity_id=message_id,
+    )
+    await db.refresh(msg)
+    await chat_svc.deliver_message(db, t, msg, user.id, msg.text)
     return chat_svc.msg_dict(msg)
