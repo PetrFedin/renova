@@ -1,6 +1,7 @@
 /** API: rooms */
 import { req, cachedGet, API_BASE, OFFLINE_ROOMS, ApiError } from './client';
 import type { Room, RoomChangeRequest, RoomSnapshot, User } from './types';
+import type { MaterialItem } from '@/lib/domain/groupMaterialEstimate';
 
 function roomCacheKey(projectId: string, archived: boolean | undefined): string {
   const scope = archived === true ? 'archived' : archived === false ? 'active' : 'default';
@@ -84,7 +85,7 @@ export const roomsApi = {
     const qs = q.toString();
     return req<{ field: string; old: string; new: string; at: string }[]>(`/api/v1/projects/${projectId}/rooms/${roomId}/change-log${qs ? `?${qs}` : ''}`, {}, userId);
   },
-  calcRoomMaterials: (userId: string, projectId: string, roomId: string) => req<{ room_id: string; items: { name: string; unit: string; qty: number; category: string; note?: string }[] }>(`/api/v1/projects/${projectId}/rooms/${roomId}/calc-materials`, { method: 'POST' }, userId),
+  calcRoomMaterials: (userId: string, projectId: string, roomId: string) => req<{ room_id: string; items: MaterialItem[] }>(`/api/v1/projects/${projectId}/rooms/${roomId}/calc-materials`, { method: 'POST' }, userId),
   exportRoomPdf: async (userId: string, projectId: string, roomId: string) => {
     const { downloadApiPath } = await import('@/lib/downloadFile');
     await downloadApiPath(userId, `/api/v1/projects/${projectId}/rooms/${roomId}/export.pdf`, `room-${roomId.slice(0, 8)}.pdf`);

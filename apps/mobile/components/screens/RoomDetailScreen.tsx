@@ -27,6 +27,7 @@ import { DOCUMENTS_MENU_HINT } from '@/lib/documentsNav';
 import { screenLayout } from '@/constants/screenLayout';
 import { reportCatch, reportError } from '@/lib/reportError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { groupMaterialEstimate, type MaterialItem } from '@/lib/domain/groupMaterialEstimate';
 
 type RoomMutation = 'archive' | 'save' | 'materials';
 type RoomLoadState = 'loading' | 'ready' | 'error';
@@ -47,7 +48,7 @@ export function RoomDetailScreen() {
   const [picks, setPicks] = useState<MaterialPick[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [overrunLines, setOverrunLines] = useState<{ name: string; over: number }[]>([]);
-  const [calcItems, setCalcItems] = useState<{ name: string; qty: number; unit: string; note?: string }[]>([]);
+  const [calcItems, setCalcItems] = useState<MaterialItem[]>([]);
   const [roomSnap, setRoomSnap] = useState<RoomSnapshot | null>(null);
   const [mutation, setMutation] = useState<RoomMutation | null>(null);
   const mutationRef = useRef(false);
@@ -256,7 +257,38 @@ export function RoomDetailScreen() {
         <View style={s.card}>
           <Text style={s.h}>Калькулятор материалов</Text>
           {!calcItems.length && <Text style={s.line}>Плитка, краска, ламинат — по размерам комнаты</Text>}
-          {calcItems.map((it) => <Text key={it.name} style={s.line}>{it.name}: {it.qty} {it.unit}{it.note ? ` · ${it.note}` : ''}</Text>)}
+          {/*
+            Плитка и ламинат ложатся на один пол, краска и обои — на одни
+            стены. Раньше они шли подряд, и человек читал это как список
+            покупок, закладывая в смету оба покрытия. Показываем как выбор.
+          */}
+          {groupMaterialEstimate(calcItems).map((surface) => (
+            <View key={surface.surface} style={s.calcSurface}>
+              <Text style={s.calcSurfaceTitle}>{surface.label}</Text>
+              {surface.choices.length > 1 ? (
+                <Text style={s.calcHint}>Варианты отделки — нужен один из них</Text>
+              ) : null}
+              {surface.choices.map((choice) => (
+                <View key={choice.name}>
+                  <Text style={s.line}>
+                    {choice.name}: {choice.qty} {choice.unit}
+                    {choice.note ? ` · ${choice.note}` : ''}
+                  </Text>
+                  {choice.companions.map((companion) => (
+                    <Text key={companion.name} style={s.calcCompanion}>
+                      + {companion.name}: {companion.qty} {companion.unit}
+                    </Text>
+                  ))}
+                </View>
+              ))}
+              {surface.always.map((item) => (
+                <Text key={item.name} style={s.line}>
+                  {item.name}: {item.qty} {item.unit}
+                  {item.note ? ` · ${item.note}` : ''}
+                </Text>
+              ))}
+            </View>
+          ))}
           {canWrite && (
             <PrimaryButton
               title="Рассчитать материалы"
@@ -350,6 +382,10 @@ function Field({ label, value, onChange }: { label:string; value:string; onChang
   return <View style={s.field}><Text style={s.lbl}>{label}</Text><TextInput style={s.input} keyboardType="decimal-pad" value={value} onChangeText={onChange} /></View>;
 }
 const s = StyleSheet.create({
+  calcSurface: { marginTop: 8, gap: 2 },
+  calcSurfaceTitle: { fontWeight: '700', fontSize: 13 },
+  calcHint: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginBottom: 2 },
+  calcCompanion: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginLeft: 12 },
   wrap:{ flex:1, backgroundColor: RenovaTheme.colors.background }, center:{ flex:1, alignItems:'center', justifyContent:'center' },
   emptyState:{ gap:12, padding:24 }, emptyHint:{ maxWidth:420, textAlign:'center', color:RenovaTheme.colors.textMuted, lineHeight:19 },
   metrics:{ flexDirection:'row', flexWrap:'wrap', gap:8, marginBottom:12 }, metric:{ flex:1, minWidth:'45%', backgroundColor:RenovaTheme.colors.surface, borderWidth:1, borderColor:'#E5E7EB', borderRadius:14, padding:12, alignItems:'center' }, metricN:{ fontSize:18, fontWeight:'800' }, metricL:{ fontSize:11, color: RenovaTheme.colors.textMuted, marginTop:2 },
