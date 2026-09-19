@@ -422,7 +422,10 @@ function ContractorRoomsBody() {
           }}
         />
         {canWrite && roomFilter === 'active' && (
-          <PrimaryButton title="+ Комната" onPress={() => setShowCreate(true)} disabled={busy} />
+          <PrimaryButton title="+ Комната"
+            // Запрос исполнителя ждёт решения — оно важнее добавления.
+            variant={requests.length > 0 ? 'outline' : 'primary'}
+            onPress={() => setShowCreate(true)} disabled={busy} />
         )}
         <SearchFilter query={query} onQuery={setQuery} filters={ROOM_FILTERS} active={roomFilter} onFilter={setRoomFilter} />
         {requests.filter((r) => r.status === 'pending').map((r) => (

@@ -196,7 +196,7 @@ export default function MaterialDetailScreen() {
               editable={!priceBusy}
               placeholder="Цена, ₽"
             />
-            <PrimaryButton title="Сохранить цену вручную" loading={priceBusy} disabled={priceBusy} onPress={() => { void saveManualPrice(); }} />
+            <PrimaryButton title="Сохранить цену вручную" variant="outline" loading={priceBusy} disabled={priceBusy} onPress={() => { void saveManualPrice(); }} />
             {pick.shop_url && (
               <PrimaryButton title="Проверить по ссылке поставщика" variant="outline" loading={priceBusy} disabled={priceBusy} onPress={() => { void verifySupplierPrice(); }} />
             )}

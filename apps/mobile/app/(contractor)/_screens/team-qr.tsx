@@ -110,7 +110,10 @@ export default function TeamQrScreen() {
         </View>
         <PrimaryButton title="Обновить QR" variant="outline" disabled={busy} onPress={refreshLink} />
 
-        <PrimaryButton title={scan ? 'Стоп сканер' : 'Сканировать invite'} onPress={() => setScan(!scan)} />
+        <PrimaryButton title={scan ? 'Стоп сканер' : 'Сканировать invite'}
+          // Без доступа к камере сканировать нечем — главное там.
+          variant={scan && !perm?.granted ? 'outline' : 'primary'}
+          onPress={() => setScan(!scan)} />
         {!perm?.granted && scan ? <PrimaryButton title="Разрешить камеру" onPress={req} /> : null}
         {scan && perm?.granted ? (
           <CameraView
