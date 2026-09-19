@@ -69,13 +69,27 @@ async def prepare_client_write_side_effects(db: AsyncSession, *, scope: str, pro
         if not evidence or not project:
             return effects
         approved = evidence.status == "approved"
-        activity_row = await outbox.enqueue(db, aggregate_type="payment_evidence", aggregate_id=evidence.id, event_type=outbox.ACTIVITY_EVENT, payload={"project_id": project_id, "user_id": user_id, "kind": "PaymentEvidenceApproved" if approved else "PaymentEvidenceRejected", "title": "Подтверждение перевода принято" if approved else "Подтверждение перевода отклонено", "body": evidence.rejection_reason, "link_path": "/(customer)/(tabs)/budget?tab=payments"})
+        activity_row = await outbox.enqueue(db, aggregate_type="payment_evidence", aggregate_id=evidence.id, event_type=outbox.ACTIVITY_EVENT, payload={"project_id": project_id, "user_id": user_id, "kind": "PaymentEvidenceApproved" if approved else "PaymentEvidenceRejected", "title": "Подтверждение перевода принято" if approved else "Подтверждение перевода отклонено", "body": _evidence_body(approved, evidence.rejection_reason), "link_path": "/(customer)/(tabs)/budget?tab=payments"})
         effects.append(PreparedSideEffect(effect_type="activity", outbox_id=activity_row.id))
         if project.customer_id:
-            notification_row = await outbox.enqueue(db, aggregate_type="payment_evidence", aggregate_id=evidence.id, event_type=outbox.NOTIFICATION_EVENT, payload={"user_id": project.customer_id, "project_id": project_id, "notification_type": "payment_confirmed" if approved else "payment_pending", "title": "Перевод подтверждён" if approved else "Нужно повторно приложить подтверждение перевода", "body": evidence.rejection_reason, "link_path": "/(customer)/(tabs)/budget?tab=payments", "return_to": "/(customer)/(tabs)/home"})
+            notification_row = await outbox.enqueue(db, aggregate_type="payment_evidence", aggregate_id=evidence.id, event_type=outbox.NOTIFICATION_EVENT, payload={"user_id": project.customer_id, "project_id": project_id, "notification_type": "payment_confirmed" if approved else "payment_pending", "title": "Перевод подтверждён" if approved else "Нужно повторно приложить подтверждение перевода", "body": _evidence_body(approved, evidence.rejection_reason), "link_path": "/(customer)/(tabs)/budget?tab=payments", "return_to": "/(customer)/(tabs)/home"})
             effects.append(PreparedSideEffect(effect_type="notification", outbox_id=notification_row.id, match_key=project.customer_id))
         return effects
     return effects
+
+
+def _evidence_body(approved: bool, rejection_reason: str | None) -> str:
+    """Текст уведомления о разборе подтверждения перевода.
+
+    У одобренного подтверждения причины отказа нет — а ``AppNotification.body``
+    NOT NULL. Пустое значение превращало строку outbox в вечно падающую: сама
+    она не доставлялась, а её откат ронял посторонние запросы.
+    """
+    reason = (rejection_reason or "").strip()
+    if approved:
+        return reason or "Перевод принят к учёту"
+    return reason or "Подтверждение перевода отклонено — приложите документ заново"
+
 
 async def prepare_client_write_side_effect(db: AsyncSession, *, scope: str, project_id: str, user_id: str, entity_id: str) -> PreparedSideEffect | None:
     effects = await prepare_client_write_side_effects(db, scope=scope, project_id=project_id, user_id=user_id, entity_id=entity_id)

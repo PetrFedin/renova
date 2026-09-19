@@ -30,6 +30,19 @@ def resolve_notification_type(raw: str) -> NotificationType:
         return NotificationType.other
 
 
+
+def notification_body(body: str | None, title: str) -> str:
+    """Текст уведомления никогда не бывает пустым.
+
+    ``AppNotification.body`` NOT NULL. Producer, приславший пустое значение,
+    раньше делал строку outbox вечно падающей — и её откат ронял посторонние
+    запросы. Здесь падение заменяется заголовком: уведомление без подробностей
+    полезнее, чем неотправляемое. Сам producer чинится отдельно, это рубеж.
+    """
+    text = (body or "").strip()
+    return text or (title or "").strip() or "Обновление по объекту"
+
+
 def _stored_link(link_path: str | None, return_to: str | None) -> str | None:
     if not link_path or not return_to:
         return link_path
@@ -78,7 +91,7 @@ async def notify(
         project_id=project_id,
         notification_type=resolve_notification_type(notification_type),
         title=title,
-        body=body,
+        body=notification_body(body, title),
         link_path=_stored_link(link_path, return_to),
     )
     db.add(notification)
@@ -124,7 +137,7 @@ async def notify_from_outbox(
             project_id=project_id,
             notification_type=resolve_notification_type(notification_type),
             title=title,
-            body=body,
+            body=notification_body(body, title),
             link_path=_stored_link(link_path, return_to),
         )
         db.add(notification)
