@@ -2,6 +2,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { evaluateApiBaseGuard } from '@/lib/apiBaseGuard';
 import { isAuthoritativeRefreshRejection, shouldFallbackToDurableCache } from './failurePolicy';
+import { messageForErrorCode } from './errorMessages';
 
 export class ApiError extends Error {
   status: number;
@@ -28,41 +29,39 @@ export function isRateLimitError(e: unknown): boolean {
   return e instanceof ApiError && (e.code === 'rate_limit' || e.status === 429);
 }
 
-function parseApiErrorBody(txt: string, status: number): { message: string; code?: string; detail?: unknown } {
+/**
+ * Сообщение об ошибке для человека.
+ *
+ * Раньше код ошибки уходил в интерфейс как есть — пользователь видел в алерте
+ * `technical_supervision_customer_only`, а на пятисотке «HTTP 500» или сырое
+ * тело ответа. Теперь код разбирает `messageForErrorCode`; сам код остаётся в
+ * `code` для логики и логов.
+ */
+export function parseApiErrorBody(txt: string, status: number): { message: string; code?: string; detail?: unknown } {
   let code: string | undefined;
+  let serverMessage: string | undefined;
   let detail: unknown;
   try {
     const j = JSON.parse(txt) as { detail?: unknown; code?: string; message?: string };
     detail = j.detail;
     if (typeof j.detail === 'string') {
-      if (j.detail === 'rate_limit' || status === 429) {
-        return {
-          message: 'Слишком много запросов. Подождите несколько секунд и повторите.',
-          code: 'rate_limit',
-          detail,
-        };
-      }
-      return { message: j.detail, code: j.detail, detail };
-    }
-    if (typeof j.message === 'string' && j.message) {
-      return { message: j.message, code: j.code, detail };
-    }
-    if (typeof j.detail === 'object' && j.detail) {
+      code = j.detail;
+    } else if (typeof j.detail === 'object' && j.detail) {
       const d = j.detail as { code?: string; message?: string };
-      if (typeof d.message === 'string' && d.message) {
-        return { message: d.message, code: d.code || j.code, detail };
-      }
-      if (typeof d.code === 'string') code = d.code;
+      code = d.code || j.code;
+      if (typeof d.message === 'string' && d.message) serverMessage = d.message;
     } else if (typeof j.code === 'string') {
       code = j.code;
+    }
+    if (!serverMessage && typeof j.message === 'string' && j.message) {
+      serverMessage = j.message;
+      code = code || j.code;
     }
   } catch {
     /* plain text body */
   }
-  if (code === 'rate_limit' || status === 429) {
-    return { message: 'Слишком много запросов. Подождите несколько секунд и повторите.', code: 'rate_limit', detail };
-  }
-  return { message: txt || `HTTP ${status}`, code, detail };
+  if (status === 429) code = 'rate_limit';
+  return { message: messageForErrorCode(code, serverMessage, status), code, detail };
 }
 
 const OFFLINE_ROOMS = 'renova_cache_rooms';
