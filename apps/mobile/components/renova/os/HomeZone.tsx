@@ -18,7 +18,15 @@ export function HomeZone({ title, linkLabel, onLinkPress, children }: Props) {
         <View style={homeRowStyles.zoneHead}>
           <Text style={homeTypography.zoneLabel}>{title}</Text>
           {linkLabel && onLinkPress ? (
-            <Pressable onPress={onLinkPress} hitSlop={8} accessibilityRole="button">
+            <Pressable
+              onPress={onLinkPress}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={
+                // «Подробнее» в отрыве от раздела не говорит, к чему оно.
+                title ? `${linkLabel.replace(/\s*→\s*$/, "")}: ${title}` : linkLabel
+              }
+            >
               <Text style={homeTypography.link}>{linkLabel}</Text>
             </Pressable>
           ) : null}

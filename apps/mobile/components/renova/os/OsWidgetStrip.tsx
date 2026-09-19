@@ -53,9 +53,18 @@ function WidgetCell({
         : pushOsNav(it.href!, undefined, role))
       : undefined;
 
+  // Плитка состоит из трёх отдельных Text; без общей подписи озвучка
+  // читает её как безымянную кнопку, а значение и подсказка теряются.
+  const spokenLabel = [it.label, it.value, it.hint].filter(Boolean).join(', ');
+
   if (onPress) {
     return (
-      <Pressable style={s.cell} onPress={onPress} accessibilityRole="button">
+      <Pressable
+        style={s.cell}
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={spokenLabel}
+      >
         {body}
       </Pressable>
     );

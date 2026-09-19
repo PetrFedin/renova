@@ -16,7 +16,13 @@ type Props = {
 export function HomeLinkRow({ title, onPress, variant = 'row', muted, leading }: Props) {
   if (variant === 'trailingLink') {
     return (
-      <Pressable style={homeRowStyles.linkRow} onPress={onPress} hitSlop={8} accessibilityRole="button">
+      <Pressable
+        style={homeRowStyles.linkRow}
+        onPress={onPress}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel={leading ? `${leading}: ${title}` : title}
+      >
         {leading ? (
           <Text style={[homeTypography.actionRowMuted, homeRowStyles.linkRowLeading]} numberOfLines={1}>
             {leading}
@@ -28,14 +34,21 @@ export function HomeLinkRow({ title, onPress, variant = 'row', muted, leading }:
   }
 
   return (
-    <Pressable style={homeRowStyles.linkRow} onPress={onPress} accessibilityRole="button">
+    <Pressable
+      style={homeRowStyles.linkRow}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={title}
+    >
       <Text
         style={[muted ? homeTypography.actionRowMuted : homeTypography.actionRow, homeRowStyles.linkRowLeading]}
         numberOfLines={1}
       >
         {title}
       </Text>
-      <Text style={homeTypography.link}>→</Text>
+      <Text style={homeTypography.link} accessibilityElementsHidden importantForAccessibility="no">
+        →
+      </Text>
     </Pressable>
   );
 }
