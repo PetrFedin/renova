@@ -41,10 +41,13 @@ export function PlanTabOverview({ role, project, userId }: Props) {
   const stagesCount = project.stages?.length || 0;
   const roomsCount = project.rooms?.length || project.rooms_count || 0;
   const dates = formatScheduleRange(project.planned_start_date, project.planned_end_date);
+  // «Прикреплён» — про запись плана, и это правда даже когда сам файл не
+  // открывается. «Загружен» рядом с сообщением «Чертёж не открылся» читалось
+  // как противоречие: сверху говорим, что всё на месте, снизу — что нет.
   const planStatus = floorCount
     ? designPending
-      ? `план есть · дизайн на согласовании (${designPending})`
-      : 'план загружен'
+      ? `чертёж прикреплён · дизайн на согласовании (${designPending})`
+      : 'чертёж прикреплён'
     : 'план этажа ещё не загружен';
 
   return (
