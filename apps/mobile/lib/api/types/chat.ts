@@ -56,6 +56,12 @@ export type ChatCapabilities = {
  */
 export type ChatDetail = ChatThread & {
   messages: ChatMessage[];
+  /**
+   * Закреплённые сообщения для шапки переписки. Отдельный список, а не
+   * перестановка в `messages`: сообщение остаётся на своём месте в истории.
+   * Необязателен ради совместимости при постепенном выкате.
+   */
+  pinned_messages?: ChatMessage[];
   participants?: ChatParticipant[];
   capabilities?: ChatCapabilities;
 };

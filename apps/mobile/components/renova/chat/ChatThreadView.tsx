@@ -10,6 +10,8 @@ import { screenTypography } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { ChatInThreadSearch } from '@/components/renova/ChatInThreadSearch';
+import { PinnedMessagesBar } from '@/components/renova/chat/PinnedMessagesBar';
+import { pinnedEntries } from '@/lib/domain/pinnedMessages';
 import { HighlightText } from '@/components/renova/HighlightText';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { reportError, reportCatch } from '@/lib/reportError';
@@ -413,6 +415,10 @@ export function ChatThreadView({
         </Pressable>
       </View>
       <ChatInThreadSearch messages={chat.messages} onJump={(id) => router.setParams({ highlightId: id })} onQueryChange={setChatQuery} />
+      <PinnedMessagesBar
+        entries={pinnedEntries(chat.pinned_messages, chat.messages)}
+        onJump={(id) => router.setParams({ highlightId: id })}
+      />
       <ReadOnlyBanner />
       <ScrollView ref={scrollRef} style={s.wrap} contentContainerStyle={{ padding: 16 }}>
         {chat.messages.filter((m) => !isChatCreationSystemMessage(m)).map((m) => (

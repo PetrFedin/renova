@@ -29,9 +29,11 @@ async def _msgs_with_read(db, thread_id, messages):
     for m in sorted(messages, key=lambda x: x.created_at):
         other_read = any(uid != m.user_id and ts >= m.created_at for uid, ts in reads.items())
         out.append(chat_svc.msg_dict(m, read_by_other=other_read))
-    pinned = [x for x in out if x.get("is_pinned")]
-    rest = [x for x in out if not x.get("is_pinned")]
-    return pinned + rest
+    # Хронология не переставляется. Раньше закреплённые переносились в начало
+    # массива — то есть в самое начало истории, куда переписка не скроллится:
+    # закрепление не поднимало сообщение, а прятало его, да ещё и отрывало от
+    # соседних реплик. Наверх идёт отдельный список — см. pinned_messages.
+    return out
 
 
 async def _project_unread_for_actor(
@@ -232,6 +234,9 @@ async def get_chat(project_id: str, thread_id: str, user: User = Depends(get_cur
             pinned_at=state.pinned_at if state else None,
         ),
         "messages": await _msgs_with_read(db, thread_id, t.messages),
+        # Отдельный список для шапки переписки: сообщения при этом остаются
+        # на своих местах в истории.
+        "pinned_messages": await chat_svc.pinned_messages(db, thread_id),
         "participants": await chat_svc.list_participants(db, thread_id),
         "capabilities": await _chat_capabilities(db, project_id=project_id, user=user),
     }
