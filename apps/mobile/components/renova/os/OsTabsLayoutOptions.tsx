@@ -29,7 +29,7 @@ export function OsTabsHeaderBar({ role }: { role: OsRole }) {
       <OsAppHeader
         left={<OsHeaderLogo role={role} />}
         right={
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
             {activeProject && user && role === 'contractor' && (
               <Pressable
                 style={profileBtn.btn}

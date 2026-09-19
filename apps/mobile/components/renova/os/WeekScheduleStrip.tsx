@@ -168,7 +168,10 @@ const s = StyleSheet.create({
   summaryRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    // Стрелка «в календарь» имеет hitSlop 8 — при зазоре 8 её зона вплотную
+    // примыкала к ссылке слева, и тап у правого края строки уводил в
+    // календарь вместо разворачивания списка.
+    gap: 16,
   },
   summaryLink: { flex: 1, minWidth: 0, paddingVertical: 6 },
   calendarArrow: { flexShrink: 0, paddingVertical: 6, paddingLeft: 4 },

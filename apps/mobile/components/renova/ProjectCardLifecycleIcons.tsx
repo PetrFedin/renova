@@ -39,7 +39,7 @@ function IconBtn({
         event.preventDefault?.();
         onPress();
       }}
-      hitSlop={8}
+      hitSlop={HIT_SLOP}
       accessibilityRole="button"
       accessibilityLabel={name}
     >
@@ -80,6 +80,9 @@ export function ProjectCardLifecycleIcons({
   );
 }
 
+/** Запас на промах у каждой иконки. */
+const HIT_SLOP = 8;
+
 const s = StyleSheet.create({
   wrap: {
     position: 'absolute',
@@ -87,7 +90,10 @@ const s = StyleSheet.create({
     bottom: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    // Зазор не меньше суммы hitSlop соседей (8 + 8), иначе зоны нажатия
+    // накладываются на 10 px — и в этой полосе выигрывает «Удалить», потому
+    // что она отрисована второй. Промах по «В архив» удалял объект.
+    gap: HIT_SLOP * 2 + 4,
     zIndex: 10,
     elevation: 10,
   },
