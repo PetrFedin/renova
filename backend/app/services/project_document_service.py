@@ -7,6 +7,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.entities import UserRole
 from app.models.project_documents import (
     DocumentSignature,
     DocumentStatus,
@@ -509,23 +510,28 @@ async def project_contract_gate(db: AsyncSession, project_id: str) -> dict:
     if not contracts:
         return {"ok": True, "reason": "no_contract_required"}
     for doc in contracts:
-        signatures = list(
-            (
-                await db.execute(
-                    select(DocumentSignature).where(
-                        DocumentSignature.document_id == doc.id,
-                        DocumentSignature.status == "signed",
-                    )
+        # Гейт существует ради согласия ЗАКАЗЧИКА: работы не начинаются, пока
+        # он не подписал. Любая подпись подряд означала, что исполнитель
+        # подписывает договор в одиночку и сам себе открывает работы.
+        customer_signature = (
+            await db.execute(
+                select(DocumentSignature).where(
+                    DocumentSignature.document_id == doc.id,
+                    DocumentSignature.status == "signed",
+                    DocumentSignature.signer_role == UserRole.customer.value,
+                    DocumentSignature.revoked_at.is_(None),
                 )
-            ).scalars().all()
-        )
-        if signatures:
+            )
+        ).scalars().first()
+        if customer_signature:
             return {"ok": True, "document_id": doc.id}
-    pending = [document.title for document in contracts if document.status == DocumentStatus.draft.value]
+    # Договор, ждущий подписи заказчика, может быть уже не draft — назвать
+    # его всё равно нужно, иначе пользователю нечего открыть.
+    pending = [document.title for document in contracts]
     return {
         "ok": False,
         "code": "contract_not_signed",
-        "message": "Подпишите договор перед началом работ",
+        "message": "Договор ждёт подписи заказчика",
         "pending_titles": pending[:3],
     }
 
