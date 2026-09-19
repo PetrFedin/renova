@@ -170,7 +170,17 @@ async def list_threads_enriched(db: AsyncSession, project_id: str, user_id: str)
                 pinned_at=state.pinned_at if state else None,
             )
         )
-    out.sort(key=lambda x: (not x.get("is_pinned"), x.get("updated_at") or ""), reverse=True)
+    # `not is_pinned` вместе с reverse=True даёт обратный порядок: у
+    # закреплённого ключ 0, у обычного 1, и обратная сортировка ставит
+    # единицу первой. Закреплённые чаты уезжали в самый низ списка.
+    out.sort(
+        key=lambda x: (
+            bool(x.get("is_pinned")),
+            x.get("pinned_at") or "",
+            x.get("updated_at") or "",
+        ),
+        reverse=True,
+    )
     return out
 
 
@@ -183,7 +193,7 @@ async def list_inbox(db: AsyncSession, user_id: str, project_ids: list[tuple[str
             inbox.append(th)
     inbox.sort(
         key=lambda x: (
-            not x.get("is_pinned"),
+            bool(x.get("is_pinned")),
             x.get("pinned_at") or "",
             x.get("updated_at") or "",
         ),
@@ -454,6 +464,25 @@ async def mark_thread_read(
 async def read_map(db: AsyncSession, thread_id: str) -> dict[str, datetime]:
     r = await db.execute(select(ChatThreadRead).where(ChatThreadRead.thread_id == thread_id))
     return {x.user_id: x.last_read_at for x in r.scalars().all()}
+
+
+
+async def pinned_messages(db: AsyncSession, thread_id: str) -> list[dict]:
+    """Закреплённые сообщения треда — свежие первыми.
+
+    Отдаются отдельным списком, а не переставляются в истории: закрепление
+    не должно вырывать реплику из разговора, где у неё есть соседи.
+    """
+    rows = list(
+        (
+            await db.execute(
+                select(ChatMessage)
+                .where(ChatMessage.thread_id == thread_id, ChatMessage.is_pinned.is_(True))
+                .order_by(ChatMessage.created_at.desc())
+            )
+        ).scalars().all()
+    )
+    return [msg_dict(row) for row in rows]
 
 
 async def toggle_reaction(db: AsyncSession, message_id: str, user_id: str, emoji: str) -> dict:
