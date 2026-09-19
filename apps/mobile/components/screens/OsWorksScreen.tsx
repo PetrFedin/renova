@@ -203,7 +203,7 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
   return (
     <>
       <ReadOnlyBanner />
-      <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
+      <ScrollView style={s.wrap} contentContainerStyle={screenLayout.tabContentStyle}>
         {isContractor && user && (
           <>
             <ReworkSlaWidget stages={activeProject.stages} userId={user.id} projectId={activeProject.id} role="contractor" onExtended={() => loadProject(activeProject.id)} />

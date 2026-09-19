@@ -211,7 +211,7 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
 
   return (
     <View style={s.root}>
-      <ScrollView style={s.body} contentContainerStyle={screenLayout.contentStyle}>
+      <ScrollView style={s.body} contentContainerStyle={screenLayout.tabContentStyle}>
         <View style={s.summary}>
           <View style={s.cell}>
             <Text style={s.n}>{needBuy}</Text>

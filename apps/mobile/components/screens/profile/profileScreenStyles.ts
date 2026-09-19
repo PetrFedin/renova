@@ -8,7 +8,8 @@ export const profileScreenStyles = StyleSheet.create({
     flex: 1,
     backgroundColor: RenovaTheme.colors.background,
   },
-  content: screenLayout.contentStyle,
+  // Профиль — экран вкладки: под ним лежит плавающая кнопка.
+  content: screenLayout.tabContentStyle,
   headerBlock: {
     marginBottom: 4,
   },
