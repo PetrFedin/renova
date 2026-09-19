@@ -9,7 +9,13 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import User
 from app.services import work_order_service as wo_svc
+from app.services.client_write_idempotency import (
+    IdempotencyConflict,
+    commit_client_write,
+    replay_entity_id,
+)
 
+WORK_ORDER_CREATE_SCOPE = "work_order.create"
 router = APIRouter(prefix="/projects", tags=["work-orders"])
 
 
@@ -23,6 +29,7 @@ class WorkOrderCreate(BaseModel):
     budget_planned: float = 0
     notes: str | None = None
     publish: bool = False
+    client_request_id: str | None = Field(default=None, min_length=8, max_length=80)
 
 
 class WorkOrderPatch(BaseModel):
@@ -57,8 +64,45 @@ async def list_work_orders(project_id: str, user: User = Depends(get_current_use
 @router.post("/{project_id}/work-orders")
 async def create_work_order(project_id: str, body: WorkOrderCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=True)
+
+    payload = {
+        "title": body.title,
+        "work_type": body.work_type,
+        "room_id": body.room_id,
+        "stage_id": body.stage_id,
+        "planned_start": body.planned_start.isoformat() if body.planned_start else None,
+        "planned_end": body.planned_end.isoformat() if body.planned_end else None,
+        "budget_planned": round(float(body.budget_planned or 0), 2),
+        "notes": body.notes,
+        "publish": body.publish,
+    }
     try:
-        work_order = await wo_svc.create_work_order(
+        replay_id = await replay_entity_id(
+            db,
+            scope=WORK_ORDER_CREATE_SCOPE,
+            project_id=project_id,
+            user_id=user.id,
+            request_id=body.client_request_id,
+            payload=payload,
+        )
+    except IdempotencyConflict as exc:
+        raise HTTPException(
+            409,
+            detail={
+                "code": "idempotency_conflict",
+                "message": "Тот же запрос уже отправлен с другими данными",
+            },
+        ) from exc
+
+    if replay_id:
+        # Повтор после потери ответа: тот же наряд, а не второй.
+        existing = await wo_svc.get_work_order(db, replay_id)
+        if not existing or existing.project_id != project_id:
+            raise HTTPException(409, detail={"code": "idempotency_target_missing"})
+        return wo_svc.wo_dict(existing)
+
+    try:
+        work_order = await wo_svc.prepare_work_order(
             db,
             project_id=project_id,
             user_id=user.id,
@@ -74,6 +118,17 @@ async def create_work_order(project_id: str, body: WorkOrderCreate, user: User =
         )
     except ValueError as error:
         raise HTTPException(400, str(error)) from error
+
+    await commit_client_write(
+        db,
+        scope=WORK_ORDER_CREATE_SCOPE,
+        project_id=project_id,
+        user_id=user.id,
+        request_id=body.client_request_id,
+        payload=payload,
+        entity_id=work_order.id,
+    )
+    await wo_svc.deliver_work_order(db, work_order)
     return wo_svc.wo_dict(work_order)
 
 

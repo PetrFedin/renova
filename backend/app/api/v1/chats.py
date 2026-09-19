@@ -17,6 +17,7 @@ from app.services.client_write_idempotency import (
 )
 
 CHAT_INVOICE_SCOPE = "chat.invoice"
+CHAT_TASK_SCOPE = "chat.task"
 router = APIRouter(prefix="/projects", tags=["chats"])
 
 
@@ -129,6 +130,7 @@ class TaskFromMessage(BaseModel):
     assignee_id: str | None = None
     due_at: str | None = None
     work_type: str = "general"
+    client_request_id: str | None = Field(default=None, min_length=8, max_length=80)
 
 
 class PaymentFromChat(BaseModel):
@@ -364,10 +366,56 @@ async def pin_msg(project_id: str, thread_id: str, message_id: str, pin: bool = 
 async def task_from_message(project_id: str, thread_id: str, message_id: str, body: TaskFromMessage, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     _p, t = await require_chat_access(db, project_id, thread_id, user, write=True)
     await require_chat_message(db, t, message_id)
-    msg = await chat_svc.create_task_from_message(
+
+    payload = {
+        "title": body.title,
+        "assignee_id": body.assignee_id,
+        "due_at": body.due_at,
+        "work_type": body.work_type,
+        "message_id": message_id,
+    }
+    try:
+        replay_id = await replay_entity_id(
+            db,
+            scope=CHAT_TASK_SCOPE,
+            project_id=project_id,
+            user_id=user.id,
+            request_id=body.client_request_id,
+            payload=payload,
+        )
+    except IdempotencyConflict as exc:
+        raise HTTPException(
+            409,
+            detail={
+                "code": "idempotency_conflict",
+                "message": "Тот же запрос уже отправлен с другими данными",
+            },
+        ) from exc
+
+    if replay_id:
+        existing = await db.get(ChatMessage, replay_id)
+        if not existing or existing.thread_id != thread_id:
+            raise HTTPException(409, detail={"code": "idempotency_target_missing"})
+        return chat_svc.msg_dict(existing)
+
+    msg, work_order = await chat_svc.prepare_task_from_message(
         db, t, user.id, user.role.value, message_id,
         title=body.title, assignee_id=body.assignee_id, due_at=body.due_at, work_type=body.work_type,
     )
+    await commit_client_write(
+        db,
+        scope=CHAT_TASK_SCOPE,
+        project_id=project_id,
+        user_id=user.id,
+        request_id=body.client_request_id,
+        payload=payload,
+        entity_id=msg.id,
+    )
+    await db.refresh(msg)
+    from app.services import work_order_service as wo_svc
+
+    await wo_svc.deliver_work_order(db, work_order)
+    await chat_svc.deliver_message(db, t, msg, user.id, msg.text)
     return chat_svc.msg_dict(msg)
 
 
