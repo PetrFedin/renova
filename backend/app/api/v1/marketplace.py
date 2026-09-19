@@ -67,6 +67,14 @@ def _can_see_full_address(lead: JobLead, user: User) -> bool:
     )
 
 
+
+def _can_see_lead_price(lead: JobLead, user: User) -> bool:
+    """Цена заявки — это согласованная цена, а не чужое предложение."""
+    if user.id == lead.customer_id:
+        return True
+    return lead.assigned_contractor_id is not None and user.id == lead.assigned_contractor_id
+
+
 def _lead_dict(lead: JobLead, viewer: User, quotes: list[JobLeadQuote] | None = None) -> dict:
     pub = _location_public(lead.address)
     full = _can_see_full_address(lead, viewer)
@@ -81,7 +89,10 @@ def _lead_dict(lead: JobLead, viewer: User, quotes: list[JobLeadQuote] | None = 
         "budget_hint": lead.budget_hint,
         "description": lead.description,
         "status": lead.status.value,
-        "pre_estimate": lead.pre_estimate,
+        # Исполнителю, который не выбран на заявку, цена не показывается:
+        # это защищает и старые заявки, где lead.pre_estimate уже успел
+        # перезаписаться чужим предложением.
+        "pre_estimate": lead.pre_estimate if _can_see_lead_price(lead, viewer) else None,
         "assigned_contractor_id": lead.assigned_contractor_id,
         "quotes_count": len(quotes) if quotes is not None else 0,
     }
@@ -293,8 +304,10 @@ async def quote_lead(
             pre_estimate=body.pre_estimate,
         )
         db.add(quote)
-    # Keep lead open until customer accepts a quote; mirror latest for board display
-    lead.pre_estimate = body.pre_estimate
+    # lead.pre_estimate здесь НЕ трогаем: это поле отдаётся всем, кто видит
+    # заявку, и «зеркалирование последнего предложения» показывало цену
+    # одного исполнителя его конкурентам. Цена заявки появляется только
+    # после выбора заказчиком — см. accept_quote.
     if lead.status == JobLeadStatus.open:
         pass  # stay open — multiple quotes allowed
     await db.commit()
