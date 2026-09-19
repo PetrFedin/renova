@@ -1,5 +1,6 @@
 /** Модал приглашения исполнителя — из PostCreate и чеклиста */
-import { Modal, View, StyleSheet, Pressable, ScrollView } from 'react-native';
+import { Modal, View, StyleSheet, ScrollView } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ContractorInvitePanel } from '@/components/renova/ContractorInvitePanel';

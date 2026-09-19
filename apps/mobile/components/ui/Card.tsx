@@ -1,6 +1,7 @@
 /** Базовые контейнеры Renova — base | action | status | metric */
 import type { ReactNode } from 'react';
-import { View, Pressable, StyleSheet, type ViewStyle } from 'react-native';
+import { View, StyleSheet, type ViewStyle } from 'react-native';
+import { PRESSED_OPACITY, Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme, card as baseCard } from '@/constants/Theme';
 import { dangerSurface, infoSurface, successSurface, warningSurface } from '@/constants/uiTokens';
 
@@ -51,5 +52,5 @@ export function Card({ children, variant = 'base', style, onPress }: Props) {
 const s = StyleSheet.create({
   metric: { paddingVertical: RenovaTheme.spacing.sm, alignItems: 'center' },
   action: { minHeight: 64, justifyContent: 'center' },
-  pressed: { opacity: 0.88 },
+  pressed: { opacity: PRESSED_OPACITY },
 });

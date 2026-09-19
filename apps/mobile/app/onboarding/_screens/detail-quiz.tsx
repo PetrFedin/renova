@@ -1,6 +1,7 @@
 /** Квиз детализации при первом входе */
 import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';

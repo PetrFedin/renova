@@ -1,5 +1,6 @@
 /** Поля профиля проекта — wizard создания и редактирование в «Объект → Профиль» */
-import { View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
+import { View, Text, TextInput, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme } from '@/constants/Theme';
 import { normalizeIsoDateInput } from '@/lib/validateDate';
 import { ObjectProfileSection } from '@/components/screens/object/ObjectProfileSection';

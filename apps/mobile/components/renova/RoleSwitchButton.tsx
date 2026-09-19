@@ -1,5 +1,6 @@
 /** Возврат на экран «Заказчик / Исполнитель» */
-import { Pressable, Text, StyleSheet } from 'react-native';
+import { Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { replaceOsNav } from '@/lib/pushOsNav';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { useRenova } from '@/lib/context/RenovaContext';

@@ -1,6 +1,7 @@
 /** Добавление строки в смету — работа или материал */
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Text, TextInput, View } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RoomPickerChips } from '@/components/renova/RoomPickerChips';

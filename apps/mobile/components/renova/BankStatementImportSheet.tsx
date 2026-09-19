@@ -1,8 +1,7 @@
 /** W123: импорт банковской выписки → матч → confirm оплат → бюджет (Smetter/Gectaro) */
 import { useState } from 'react';
-import {
-  View, Text, Modal, TextInput, Pressable, StyleSheet, ActivityIndicator,
-} from 'react-native';
+import { View, Text, Modal, TextInput, StyleSheet, ActivityIndicator } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme } from '@/constants/Theme';
 import { api } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';

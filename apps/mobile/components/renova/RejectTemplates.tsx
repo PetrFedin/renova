@@ -1,4 +1,5 @@
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 
 const TPL = ['Качество не соответствует', 'Нужна уборка', 'Доработать стыки', 'Заменить материал', 'Повторная приёмка'];
 

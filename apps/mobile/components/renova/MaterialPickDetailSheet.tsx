@@ -1,6 +1,7 @@
 /** Sheet детали подбора материала — shared operational sheet */
 import { useRef, useState } from 'react';
-import { Linking, Pressable, Text, View } from 'react-native';
+import { Linking, Text, View } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { usePathname } from 'expo-router';
 
 import { PrimaryButton } from '@/components/renova/PrimaryButton';

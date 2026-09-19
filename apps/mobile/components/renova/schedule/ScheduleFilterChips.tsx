@@ -1,5 +1,6 @@
 /** Горизонтальные фильтры — Clarity V: общий filterChipStyles SoT */
-import { ScrollView, View, Text, Pressable } from 'react-native';
+import { ScrollView, View, Text } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { filterChipStyles } from '@/constants/screenTypography';
 
 export function ScheduleFilterChips({

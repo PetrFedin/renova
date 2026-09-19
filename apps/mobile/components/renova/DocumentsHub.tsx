@@ -1,9 +1,8 @@
 import { reportError, reportCatch } from '@/lib/reportError';
 /** Документы проекта — по разделам + единый индекс Document Center */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  View, Text, Pressable, StyleSheet, ActivityIndicator, Alert, Platform, Linking,
-} from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, Alert, Platform, Linking } from 'react-native';
+import { PRESSED_OPACITY, Pressable } from '@/components/ui/Pressable';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
@@ -1056,7 +1055,7 @@ const s = StyleSheet.create({
     borderBottomColor: RenovaTheme.colors.border,
     backgroundColor: 'transparent',
   },
-  rowPressed: { opacity: 0.85, backgroundColor: RenovaTheme.colors.infoBg },
+  rowPressed: { opacity: PRESSED_OPACITY, backgroundColor: RenovaTheme.colors.infoBg },
   rowMain: { flex: 1, minWidth: 0 },
   label: { fontSize: 15, fontWeight: '600', color: RenovaTheme.colors.text },
   desc: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 3, lineHeight: 16 },

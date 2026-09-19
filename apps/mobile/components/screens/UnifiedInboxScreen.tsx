@@ -1,5 +1,6 @@
 /** Полный экран единого inbox — чат · оплаты · согласования · приёмка · этапы · offline */
-import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { BackHeader } from '@/components/renova/BackHeader';

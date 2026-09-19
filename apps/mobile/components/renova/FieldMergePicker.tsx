@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { RenovaTheme } from '@/constants/Theme';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { fieldDiff } from '@/lib/fieldDiff';
 import { MergePreview } from '@/components/renova/MergePreview';
 

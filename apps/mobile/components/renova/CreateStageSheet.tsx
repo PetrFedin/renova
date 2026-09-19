@@ -1,6 +1,7 @@
 /** Создание нового этапа ремонта — исполнитель */
 import { useState } from 'react';
-import { Modal, View, Text, TextInput, StyleSheet, Pressable, Alert } from 'react-native';
+import { Modal, View, Text, TextInput, StyleSheet, Alert } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RoomPickerChips } from '@/components/renova/RoomPickerChips';

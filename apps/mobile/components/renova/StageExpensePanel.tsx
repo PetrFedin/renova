@@ -1,6 +1,7 @@
 /** Расходы этапа: чеки + материалы + ручные — единый список без дублей */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { usePathname } from 'expo-router';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { ExpenseDetailSheet, type ExpenseDetailTarget } from '@/components/renova/ExpenseDetailSheet';

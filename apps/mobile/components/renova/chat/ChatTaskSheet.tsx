@@ -1,6 +1,7 @@
 /** Форма задачи из чата — название, ответственный, срок */
 import { useCallback, useEffect, useState } from 'react';
-import { Modal, View, Text, TextInput, StyleSheet, Pressable, ScrollView } from 'react-native';
+import { Modal, View, Text, TextInput, StyleSheet, ScrollView } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';

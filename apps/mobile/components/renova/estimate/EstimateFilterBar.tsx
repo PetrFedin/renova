@@ -1,6 +1,7 @@
 /** Фильтры сметы — тип строки и статья расхода */
 import { useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { screenTypography, filterChipStyles } from '@/constants/screenTypography';
 import { api } from '@/lib/api';
 import type { EstimateLine } from '@/lib/api';

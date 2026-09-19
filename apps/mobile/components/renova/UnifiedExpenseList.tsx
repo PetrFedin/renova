@@ -1,5 +1,6 @@
 /** Объединённый список чеков и osExpenses — одна лента на вкладке «Расходы» */
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import type { ExpenseDetailRow } from '@/lib/domain/expenseAnalytics';

@@ -1,6 +1,7 @@
 /** Обзор вкладки «План» — 2 строки meta + CTA (Clarity A: без flow/chip-шума) */
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import {

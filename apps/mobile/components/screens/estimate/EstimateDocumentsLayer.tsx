@@ -1,6 +1,7 @@
 /** Слой «Документы» — PDF / Excel / CSV сметы + переход в полный раздел документов */
 import { useRef, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, ActivityIndicator, Alert, Platform, Modal, TextInput, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, Alert, Platform, Modal, TextInput, ScrollView } from 'react-native';
+import { DISABLED_OPACITY, PRESSED_OPACITY, Pressable } from '@/components/ui/Pressable';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -278,7 +279,7 @@ const s = StyleSheet.create({
     marginBottom: 8,
     gap: 10,
   },
-  rowPressed: { opacity: 0.92, backgroundColor: '#F8FAFC' },
+  rowPressed: { opacity: PRESSED_OPACITY, backgroundColor: '#F8FAFC' },
   rowMain: { flex: 1, minWidth: 0 },
   label: { fontSize: 15, fontWeight: '700', color: RenovaTheme.colors.text },
   desc: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 3, lineHeight: 16 },
@@ -331,6 +332,6 @@ const s = StyleSheet.create({
     paddingHorizontal: 12,
     backgroundColor: RenovaTheme.colors.primary,
   },
-  modalBtnDisabled: { opacity: 0.65 },
+  modalBtnDisabled: { opacity: DISABLED_OPACITY },
   modalBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
 });

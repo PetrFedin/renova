@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { View, TextInput, Text, Pressable, StyleSheet } from 'react-native';
+import { View, TextInput, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';
 import { searchProject } from '@/lib/globalSearch';

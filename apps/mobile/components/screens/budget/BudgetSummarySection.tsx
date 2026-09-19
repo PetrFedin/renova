@@ -1,5 +1,6 @@
 /** Вкладка «Бюджет → Сводка» — состояние, решение, затем детали */
-import { View, Text, Pressable } from 'react-native';
+import { View, Text } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { router, usePathname } from 'expo-router';
 import { formatRub, RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';

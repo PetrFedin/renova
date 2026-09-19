@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Modal, View, Text, TextInput, Pressable, StyleSheet } from 'react-native';
+import { Modal, View, Text, TextInput, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme } from '@/constants/Theme';
 import { RejectTemplates } from '@/components/renova/RejectTemplates';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';

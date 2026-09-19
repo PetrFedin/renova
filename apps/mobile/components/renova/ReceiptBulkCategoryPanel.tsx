@@ -1,6 +1,7 @@
 /** Массовая категоризация чеков — для отфильтрованного списка на «Бюджет → Расходы» */
 import { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, Alert } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { EXPENSE_CATEGORIES, type ExpenseCategoryId } from '@/constants/expenseCategories';

@@ -1,6 +1,7 @@
 /** Исполнитель: согласованная заявка -> комнаты -> подтверждённый проект. */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, ScrollView, View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
+import { ActivityIndicator, ScrollView, View, Text, TextInput, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { useLocalSearchParams } from 'expo-router';
 import { replaceOsNav } from '@/lib/pushOsNav';
 import { tabsRoute } from '@/constants/osSections';

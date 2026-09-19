@@ -1,5 +1,6 @@
 /** Переключатель корзина / архив / активные объекты */
-import { View, Pressable, StyleSheet, Text } from 'react-native';
+import { View, StyleSheet, Text } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
 

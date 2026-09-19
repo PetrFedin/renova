@@ -1,6 +1,7 @@
 /** Нижняя панель — 5 кнопок, dynamic preset или настройки пользователя */
 import { useCallback, useMemo, useState, useEffect } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { PRESSED_OPACITY, Pressable } from '@/components/ui/Pressable';
 import type { PressableStateCallbackType } from 'react-native';
 import { router, usePathname, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
@@ -139,7 +140,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 2,
     paddingVertical: 4,
   },
-  pressed: { opacity: 0.65 },
+  pressed: { opacity: PRESSED_OPACITY },
   iconWrap: {
     position: 'relative',
     width: 32,

@@ -1,14 +1,7 @@
 /** Создание чата — модал: название, объект, тема, участники */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Modal,
-  View,
-  Text,
-  TextInput,
-  StyleSheet,
-  Pressable,
-  ScrollView,
-} from 'react-native';
+import { Modal, View, Text, TextInput, StyleSheet, ScrollView } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme } from '@/constants/Theme';
 import { filterChipStyles, screenTypography } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';

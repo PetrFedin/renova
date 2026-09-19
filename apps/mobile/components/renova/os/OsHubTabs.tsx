@@ -1,6 +1,7 @@
 /** Горизонтальные вкладки hub — Clarity C: underline, не pill-карточки */
 import { useMemo, useState } from 'react';
-import { ScrollView, Pressable, Text, StyleSheet, View } from 'react-native';
+import { ScrollView, Text, StyleSheet, View } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme } from '@/constants/Theme';
 
 export type HubTab = {

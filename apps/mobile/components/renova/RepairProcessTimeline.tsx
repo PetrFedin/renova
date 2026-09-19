@@ -1,5 +1,6 @@
 /** Хронология ремонта: этапы + статус + переход — Clarity M: list-row без card */
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { usePathname } from 'expo-router';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';

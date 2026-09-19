@@ -1,6 +1,7 @@
 /** Настройка нижней панели — 2 обязательных + 3 из 4 дополнительных */
 import { useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';
 import {

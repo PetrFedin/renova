@@ -1,5 +1,6 @@
 /** Sheet детализации KPI на главной — кратко, без ухода в раздел */
-import { Modal, View, Text, StyleSheet, Pressable } from 'react-native';
+import { Modal, View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { homeTypography } from '@/constants/homeTypography';

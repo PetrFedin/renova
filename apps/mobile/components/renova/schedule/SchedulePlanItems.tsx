@@ -3,7 +3,8 @@
  * Одна primary CTA на пункт; offline → очередь.
  */
 import { useState } from 'react';
-import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme } from '@/constants/Theme';
 import { api, type WorkSchedule, type WorkScheduleItem, type WorkScheduleItemStatus } from '@/lib/api';
 import { repairTabRoute, type OsRole } from '@/constants/osSections';

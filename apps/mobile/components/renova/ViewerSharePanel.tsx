@@ -1,6 +1,7 @@
 /** Заказчик: гостевой доступ (только просмотр) */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, StyleSheet, ActivityIndicator } from 'react-native';
+import { PRESSED_OPACITY, Pressable } from '@/components/ui/Pressable';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RenovaTheme } from '@/constants/Theme';
 import { api } from '@/lib/api';
@@ -313,7 +314,7 @@ const s = StyleSheet.create({
     backgroundColor: '#E0F2FE',
     marginRight: 6,
   },
-  pressed: { opacity: 0.72 },
+  pressed: { opacity: PRESSED_OPACITY },
   disabled: { opacity: 0.45 },
   linkBtnT: { fontSize: 14 },
   removeT: { color: '#B91C1C', fontWeight: '800', fontSize: 14 },

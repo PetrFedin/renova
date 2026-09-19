@@ -1,6 +1,7 @@
 /** Единая точка «+» — расход (scan/manual) · работа · чат */
 import { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Modal, Platform, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, Modal, Platform, TextInput, Alert } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';

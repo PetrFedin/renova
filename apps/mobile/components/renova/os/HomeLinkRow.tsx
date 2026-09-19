@@ -1,5 +1,6 @@
 /** Строка-ссылка на главной — единые отступы и шрифты */
-import { Pressable, Text } from 'react-native';
+import { Text } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { homeRowStyles, homeTypography } from '@/constants/homeTypography';
 
 type Props = {

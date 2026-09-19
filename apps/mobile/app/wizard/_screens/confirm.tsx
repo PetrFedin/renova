@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { router, useLocalSearchParams } from 'expo-router';
 import { calcRoomMetrics, generateTemplateLines, calcEstimateSummary } from '@/lib/calc-engine';
 import { resolveRenovationType, roomTypeLabel } from '@/constants/roomTypes';

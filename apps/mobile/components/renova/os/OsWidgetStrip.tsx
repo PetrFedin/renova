@@ -1,6 +1,7 @@
 /** Сетка виджетов 2×N — без горизонтальной прокрутки */
 import type { ReactNode } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { pushOsHrefWithReturn } from '@/lib/osTabNav';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { homeLayout, homeTypography } from '@/constants/homeTypography';

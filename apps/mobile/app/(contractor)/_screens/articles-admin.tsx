@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { View, TextInput, ScrollView, StyleSheet, Alert, Text, Pressable } from "react-native";
+import { View, TextInput, ScrollView, StyleSheet, Alert, Text } from "react-native";
+import { Pressable } from '@/components/ui/Pressable';
 import { useLocalSearchParams } from 'expo-router';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { PrimaryButton } from "@/components/renova/PrimaryButton";

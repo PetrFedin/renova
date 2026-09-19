@@ -1,5 +1,6 @@
 /** Выбор объектов для расчёта портфеля */
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import type { PortfolioProjectRow } from '@/lib/domain/portfolioProjects';

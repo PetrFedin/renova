@@ -1,6 +1,7 @@
 /** Подбор материалов с привязкой к комнате */
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, Pressable, Linking, StyleSheet, TextInput } from 'react-native';
+import { View, Text, Linking, StyleSheet, TextInput } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { api, type MaterialPick, type MaterialSupplySource, type Room, type Stage } from '@/lib/api';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RenovaTheme, formatRub } from '@/constants/Theme';

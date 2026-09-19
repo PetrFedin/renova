@@ -1,5 +1,6 @@
 /** Выбор этапа для финансовых и операционных форм */
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 
 import { formSurfaceStyles } from '@/constants/formStyles';
 import { filterChipStyles } from '@/constants/screenTypography';

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 
 import { api, type WorkSchedule } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';

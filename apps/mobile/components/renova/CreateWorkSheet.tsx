@@ -1,6 +1,7 @@
 /** Форма создания работы — секции: что · где · когда · бюджет */
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Pressable, ScrollView, Modal, Alert } from 'react-native';
+import { View, Text, TextInput, StyleSheet, ScrollView, Modal, Alert } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';

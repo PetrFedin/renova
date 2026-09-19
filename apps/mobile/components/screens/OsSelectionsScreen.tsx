@@ -1,6 +1,7 @@
 /** P2.2: Подбор чистовых материалов — room × category × approve */
 import { useCallback, useMemo, useState } from 'react';
-import { ScrollView, View, Text, StyleSheet, Pressable, Alert, TextInput } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, Alert, TextInput } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { useFocusEffect, usePathname } from 'expo-router';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';

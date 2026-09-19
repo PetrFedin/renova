@@ -1,8 +1,7 @@
 /** Черновик — записная книжка проекта с превращением в задачи и расходы */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  View, Text, TextInput, StyleSheet, ScrollView, Pressable, Alert, KeyboardAvoidingView, Platform, Modal,
-} from 'react-native';
+import { View, Text, TextInput, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform, Modal } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';

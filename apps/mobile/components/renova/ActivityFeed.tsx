@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { RenovaTheme } from '@/constants/Theme';
-import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { useFocusEffect } from 'expo-router';
 import { api, ActivityItem } from '@/lib/api';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';

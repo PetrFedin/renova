@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
-import { View, Text, Image, Pressable, StyleSheet, PanResponder, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, Image, StyleSheet, PanResponder, Alert, ActivityIndicator } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { useLocalSearchParams, usePathname } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { api, FloorPlan } from '@/lib/api';

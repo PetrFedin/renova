@@ -1,4 +1,5 @@
-import { TextInput, View, Text, Pressable, StyleSheet } from 'react-native';
+import { TextInput, View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme } from '@/constants/Theme';
 import { filterChipStyles } from '@/constants/screenTypography';
 

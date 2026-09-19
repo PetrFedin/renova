@@ -1,4 +1,5 @@
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { usePathname } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { Stage } from '@/lib/api';

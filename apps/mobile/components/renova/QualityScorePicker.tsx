@@ -1,5 +1,6 @@
 /** W139: явная оценка 0–10 или «без оценки» — никогда не подставляем 10/5 автоматически */
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme } from '@/constants/Theme';
 
 const PRESETS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;

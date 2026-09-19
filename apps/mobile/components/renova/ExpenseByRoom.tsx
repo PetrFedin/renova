@@ -1,5 +1,6 @@
 /** Расходы по комнатам: план сметы vs единый факт (чеки + os + материалы) */
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { roomTypeLabel } from '@/constants/roomTypes';

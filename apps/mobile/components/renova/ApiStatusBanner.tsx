@@ -1,6 +1,7 @@
 /** Баннер когда API недоступен или сессия без данных — с кнопкой восстановления */
 import { useState } from 'react';
-import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme } from '@/constants/Theme';
 import { useRenova } from '@/lib/context/RenovaContext';
 

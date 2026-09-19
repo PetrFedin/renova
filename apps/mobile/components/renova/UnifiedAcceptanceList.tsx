@@ -1,6 +1,7 @@
 /** Единый список приёмки — Clarity D: поверхность «Решение» (accept/return SoT) */
 import { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, Alert } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { pushStageDetail } from '@/lib/navigation';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';

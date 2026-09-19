@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { router } from 'expo-router';
 import { AppNotification } from '@/lib/api';
 import { RenovaTheme } from '@/constants/Theme';

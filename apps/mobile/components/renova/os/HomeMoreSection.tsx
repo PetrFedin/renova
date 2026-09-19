@@ -1,6 +1,7 @@
 /** Сворачиваемый блок «Сводка» на Home — не путать с шапкой «Ещё» */
 import { useState, type ReactNode } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
 import { homeLayout, homeTypography } from '@/constants/homeTypography';

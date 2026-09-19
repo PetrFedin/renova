@@ -1,6 +1,7 @@
 /** Одна строка редактора сметы — свёрнута по умолчанию, заметки при раскрытии */
 import { useState } from 'react';
-import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native';
+import { View, Text, TextInput, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';
 import type { EstimateLine } from '@/lib/api';

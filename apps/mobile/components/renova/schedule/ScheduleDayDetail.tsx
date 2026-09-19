@@ -1,5 +1,6 @@
 /** Детализация выбранного дня — события и быстрые действия по задачам */
-import { View, Text, StyleSheet, Pressable, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';

@@ -1,7 +1,8 @@
 /** Панель «Ещё» в шапке — без дубля dock (столпы + чат уже внизу) */
 import { useEffect, useState } from 'react';
 import type { ComponentProps } from 'react';
-import { View, Text, Pressable, StyleSheet, Modal } from 'react-native';
+import { View, Text, StyleSheet, Modal } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { Ionicons } from '@expo/vector-icons';
 import { usePathname } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';

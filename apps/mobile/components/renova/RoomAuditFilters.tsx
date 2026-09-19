@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { View, TextInput, Text, Pressable, StyleSheet } from 'react-native';
+import { View, TextInput, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 
 export function RoomAuditFilters({ onFilter }: { onFilter: (f: { field?: string; since?: string }) => void }) {
   const [field, setField] = useState('');

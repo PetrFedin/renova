@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { RenovaTheme } from '@/constants/Theme';
-import { TextInput, View, Text, Pressable, StyleSheet } from 'react-native';
+import { TextInput, View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { HighlightText } from '@/components/renova/HighlightText';
 
 type SearchableMessage = { id: string; text: string | null };

@@ -1,5 +1,6 @@
 /** «N ждут приёмки» на главной — роль-зависимый CTA (W56/W107) */
-import { Text, StyleSheet, Pressable } from 'react-native';
+import { Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';
 import { repairTabRoute, type OsRole } from '@/constants/osSections';

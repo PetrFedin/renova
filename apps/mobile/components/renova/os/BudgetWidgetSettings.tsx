@@ -1,6 +1,7 @@
 /** Настройка блоков «Бюджет → Сводка» */
 import { useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Alert } from 'react-native';
+import { View, Text, StyleSheet, Alert } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme, card } from '@/constants/Theme';
 import {
   BUDGET_WIDGET_CATALOG,

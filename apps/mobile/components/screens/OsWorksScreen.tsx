@@ -1,7 +1,8 @@
 /** Единый экран «Работы» — фильтры, карточки, SLA исполнителя */
 import { useCallback, useMemo, useState, useEffect } from 'react';
 import { useLocalSearchParams, useFocusEffect } from 'expo-router';
-import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
+import { ScrollView, View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme } from '@/constants/Theme';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';

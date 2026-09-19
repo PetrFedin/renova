@@ -1,6 +1,7 @@
 /** Связанные разделы на экране этапа */
 import { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, Alert } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme } from '@/constants/Theme';
 import { StageRoomPicker } from '@/components/renova/StageRoomPicker';
 import type { ProjectDetail, StageDetail, User } from '@/lib/api';

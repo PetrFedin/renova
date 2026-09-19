@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  Alert,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 
 import { api, type TechnicalSupervisionProviderType, type TechnicalSupervisionStatus } from '@/lib/api';
 import { RenovaTheme, card } from '@/constants/Theme';

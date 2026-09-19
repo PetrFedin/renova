@@ -1,7 +1,8 @@
 /** Drag розеток на схеме */
 import { useEffect, useRef, useState } from 'react';
 import { RenovaTheme } from '@/constants/Theme';
-import { View, Text, Pressable, StyleSheet, PanResponder } from 'react-native';
+import { View, Text, StyleSheet, PanResponder } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Room } from '@/lib/api';
 import { reportCatch, reportError } from '@/lib/reportError';

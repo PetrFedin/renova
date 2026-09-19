@@ -1,6 +1,7 @@
 import { reportError } from '@/lib/reportError';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { PRESSED_OPACITY, Pressable } from '@/components/ui/Pressable';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 
@@ -186,6 +187,6 @@ const styles = StyleSheet.create({
   title: { fontSize: 14, fontWeight: '800', color: RenovaTheme.colors.text },
   hint: { marginTop: 2, fontSize: 12, lineHeight: 16, color: RenovaTheme.colors.textMuted },
   button: { alignSelf: 'flex-start', borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: RenovaTheme.colors.surface },
-  pressed: { opacity: 0.85 },
+  pressed: { opacity: PRESSED_OPACITY },
   buttonText: { fontSize: 12, fontWeight: '800', color: RenovaTheme.colors.primary },
 });

@@ -1,6 +1,7 @@
 /** Экран этапа: приёмка above fold, вторичное — в accordion */
 import { useEffect, useState, useCallback } from 'react';
-import { ScrollView, View, Text, Alert, TextInput, StyleSheet, Pressable, Image } from 'react-native';
+import { ScrollView, View, Text, Alert, TextInput, StyleSheet, Image } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { useLocalSearchParams } from 'expo-router';
 import { BackHeader } from '@/components/renova/BackHeader';
 import * as ImagePicker from 'expo-image-picker';

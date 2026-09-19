@@ -1,6 +1,7 @@
 /** Подсказка на вкладках hub «Объект» — dismissible, по умолчанию compact */
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, usePathname } from 'expo-router';
 import { RenovaTheme, card } from '@/constants/Theme';

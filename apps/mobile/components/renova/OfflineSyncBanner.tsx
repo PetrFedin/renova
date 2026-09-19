@@ -1,6 +1,7 @@
 /** Баннер очереди офлайн-изменений — только для исполнителя (заказчику в demo не показываем) */
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { useFocusEffect } from 'expo-router';
 import NetInfo from '@react-native-community/netinfo';
 import { RenovaTheme } from '@/constants/Theme';

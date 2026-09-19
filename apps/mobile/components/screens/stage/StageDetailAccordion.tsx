@@ -1,6 +1,7 @@
 /** Сворачиваемая секция — вторичный контент ниже fold */
 import { useState, type ReactNode } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme, card } from '@/constants/Theme';
 

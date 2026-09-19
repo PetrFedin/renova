@@ -1,6 +1,7 @@
 /** Приёмка above fold: фото результата → чеклист → принять/вернуть (W139: оценка только явно) */
 import { useRef, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, TextInput, Image } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Image } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { inputField } from '@/constants/uiTokens';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';

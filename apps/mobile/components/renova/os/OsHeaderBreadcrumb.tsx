@@ -3,7 +3,8 @@
  * Единая полоска пути: «← Назад · Главная · Данные объекта»
  * (returnTo + крошки в одном ряду — без второго бара).
  */
-import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { Pressable } from '@/components/ui/Pressable';
 import { usePathname, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
