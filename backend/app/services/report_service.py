@@ -7,7 +7,15 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import ActivityEvent, Expense, Project, Stage, StageStatus
+from app.models.entities import (
+    ActivityEvent,
+    Expense,
+    Payment,
+    PaymentStatus,
+    Project,
+    Stage,
+    StageStatus,
+)
 from app.services import budget_service as bud
 from app.services import issue_service as iss
 from app.services import risk_engine as risk
@@ -96,6 +104,24 @@ async def weekly_report(db: AsyncSession, project_id: str) -> dict:
     }
 
 
+
+# Деньги, которые ещё покинут проект: перевод без подтверждающего документа
+# (budget_spent его не учитывает) и выставленный, но не закрытый счёт.
+_AWAITING_VERIFICATION = (PaymentStatus.paid_unverified,)
+_OUTSTANDING = (PaymentStatus.pending, PaymentStatus.processing)
+
+
+async def _money_still_owed(db: AsyncSession, project_id: str) -> tuple[float, float]:
+    payments = list(
+        (
+            await db.execute(select(Payment).where(Payment.project_id == project_id))
+        ).scalars().all()
+    )
+    awaiting = sum(float(p.amount or 0) for p in payments if p.status in _AWAITING_VERIFICATION)
+    outstanding = sum(float(p.amount or 0) for p in payments if p.status in _OUTSTANDING)
+    return round(awaiting, 2), round(outstanding, 2)
+
+
 async def final_report(db: AsyncSession, project_id: str) -> dict:
     p = await risk.load_project_for_risks(db, project_id)
     if not p:
@@ -106,7 +132,11 @@ async def final_report(db: AsyncSession, project_id: str) -> dict:
     expenses = await bud.list_expenses(db, project_id, limit=500)
     stages = (await db.execute(select(Stage).where(Stage.project_id == project_id))).scalars().all()
     works = [{"name": s.name, "status": s.status.value, "amount": s.payment_amount} for s in stages]
-    savings = round(summary["budget_planned"] - summary["budget_spent"], 2)
+    awaiting_verification, outstanding = await _money_still_owed(db, project_id)
+    # Непотраченный остаток — это экономия только за вычетом денег, которые уже
+    # переведены без подтверждения, и счетов, которые ещё предстоит закрыть.
+    unspent = summary["budget_planned"] - summary["budget_spent"]
+    savings = round(unspent - awaiting_verification - outstanding, 2)
     over = max(0, summary["budget_spent"] - summary["budget_planned"])
     by_category = await _expenses_by_category(db, project_id)
     return {
@@ -114,6 +144,8 @@ async def final_report(db: AsyncSession, project_id: str) -> dict:
         "budget_planned": summary["budget_planned"],
         "budget_spent": summary["budget_spent"],
         "savings": savings if savings > 0 else 0,
+        "awaiting_verification": awaiting_verification,
+        "outstanding": outstanding,
         "overrun": over,
         "forecast_total": summary["forecast_total"],
         "works": works,
@@ -183,6 +215,14 @@ def build_final_pdf(data: dict, sections: set[str], categories: set[str] | None 
         pdf_line(pdf, "Сводка бюджета", size=12)
         pdf_line(pdf, f"План: {data.get('budget_planned', 0):.0f} ₽", size=11)
         pdf_line(pdf, f"Факт: {data.get('budget_spent', 0):.0f} ₽", size=11)
+        if data.get("awaiting_verification"):
+            pdf_line(
+                pdf,
+                f"Переведено, ждёт подтверждения: {data['awaiting_verification']:.0f} ₽",
+                size=11,
+            )
+        if data.get("outstanding"):
+            pdf_line(pdf, f"Счета к оплате: {data['outstanding']:.0f} ₽", size=11)
         if data.get("overrun"):
             pdf_line(pdf, f"Перерасход: {data['overrun']:.0f} ₽", size=11)
         elif data.get("savings"):
