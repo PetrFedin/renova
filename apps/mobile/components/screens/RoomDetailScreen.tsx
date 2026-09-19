@@ -37,6 +37,9 @@ export function RoomDetailScreen() {
   const { loading, projectResolving, user, activeProject, loadProject, readOnly } = useRenova();
   const canWrite = useWriteAllowed();
   const [showDetails, setShowDetails] = useState(false);
+  // Какая именно выгрузка идёт: две кнопки рядом, и общий флаг «занято» не
+  // показал бы, которую из них нажали.
+  const [exporting, setExporting] = useState<'room' | 'audit' | null>(null);
   const [history, setHistory] = useState<{field:string;old:string;new:string;at:string}[]>([]);
   const [room, setRoom] = useState<Room | null>(null);
   const [loadState, setLoadState] = useState<RoomLoadState>('loading');
@@ -226,6 +229,28 @@ export function RoomDetailScreen() {
       </>
     );
   }
+  const exportPdf = async (kind: 'room' | 'audit') => {
+    if (!user || !activeProject || !room || exporting) return;
+    setExporting(kind);
+    try {
+      if (kind === 'room') {
+        await api.exportRoomPdf(user.id, activeProject.id, room.id);
+      } else {
+        await api.exportRoomAuditPdf(user.id, activeProject.id, room.id);
+      }
+    } catch (error: unknown) {
+      reportError('room.export.pdf', error, { projectId: activeProject.id, roomId: room.id, kind });
+      showActionConfirm({
+        title: kind === 'room' ? 'Паспорт комнаты не сформирован' : 'Акт не сформирован',
+        message: error instanceof Error ? error.message : 'Проверьте связь и повторите.',
+        primaryLabel: 'Понятно',
+        onPrimary: () => undefined,
+      });
+    } finally {
+      setExporting(null);
+    }
+  };
+
   if (!room) return (<><BackHeader title="Комната" returnTo={returnTo} /><View style={s.center}><Text>Загрузка комнаты…</Text></View></>);
 
   const project = activeProject;
@@ -302,6 +327,34 @@ export function RoomDetailScreen() {
             <Text style={s.fabHint}>Скан чека — кнопка + внизу экрана (с привязкой к комнате)</Text>
           </View>
         ); })()}
+
+        {/* Выгрузки были построены целиком — и на сервере, и в клиенте — но
+            кнопок не существовало ни на одном экране: PDF комнаты и акт
+            обследования можно было получить только запросом к API. */}
+        <View style={s.card}>
+          <Text style={s.h}>Документы по комнате</Text>
+          <Text style={s.line}>Размеры, отделка, инженерия и расходы одним файлом.</Text>
+          <View style={s.row}>
+            <PrimaryButton
+              title="Паспорт комнаты"
+              variant="outline"
+              compact
+              disabled={busy || exporting !== null}
+              loading={exporting === 'room'}
+              accessibilityLabel={`Скачать паспорт комнаты: ${room.name}`}
+              onPress={() => { void exportPdf('room'); }}
+            />
+            <PrimaryButton
+              title="Акт обследования"
+              variant="outline"
+              compact
+              disabled={busy || exporting !== null}
+              loading={exporting === 'audit'}
+              accessibilityLabel={`Скачать акт обследования комнаты: ${room.name}`}
+              onPress={() => { void exportPdf('audit'); }}
+            />
+          </View>
+        </View>
 
         <Pressable style={s.toggle} disabled={busy} onPress={() => setShowDetails(v => !v)}>
           <Text style={s.toggleT}>{showDetails ? 'Скрыть детали' : 'Детали комнаты и журнал'}</Text>
