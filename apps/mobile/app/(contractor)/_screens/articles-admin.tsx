@@ -29,7 +29,10 @@ export default function ArticlesAdmin() {
   return (
     <>
       <BackHeader title="Статьи" returnTo={returnTo} />
-      <ScrollView style={s.wrap} contentContainerStyle={{ padding: 16, gap: 8 }}>
+      <ScrollView
+        style={s.wrap} contentContainerStyle={{ padding: 16, gap: 8 }}
+        keyboardShouldPersistTaps="handled"
+      >
         {list.map((a) => (
           <Pressable key={a.slug} style={s.row} onPress={() => { setEditSlug(a.slug); setSlug(a.slug); setTitle(a.title); }}>
             <Text style={s.rowT}>{a.title}</Text>

@@ -233,7 +233,10 @@ export function RoomDetailScreen() {
   return (
     <>
       <BackHeader title={room.name} subtitle={`${roomTypeLabel(room.room_type)}${room.floor_level && room.floor_level > 1 ? ` · ${room.floor_level} эт.` : ''}${room.is_archived ? ' · Архив' : ''}`} returnTo={returnTo} />
-      <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
+      <ScrollView
+        style={s.wrap} contentContainerStyle={screenLayout.contentStyle}
+        keyboardShouldPersistTaps="handled"
+      >
         {isContractor && canWrite && (
           <PrimaryButton
             title={room.is_archived ? 'Восстановить из архива' : 'В архив'}

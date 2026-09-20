@@ -71,7 +71,10 @@ export default function ApprovalsScreen() {
   return (
     <>
       <BackHeader title="Согласования" returnTo={returnTo} subtitle={isCustomer ? undefined : 'Только просмотр — решает заказчик'} />
-      <ScrollView style={s.wrap} contentContainerStyle={{ paddingBottom: 24 }}>
+      <ScrollView
+        style={s.wrap} contentContainerStyle={{ paddingBottom: 24 }}
+        keyboardShouldPersistTaps="handled"
+      >
         {!isCustomer && items.length > 0 && (
           <Text style={s.hint}>Отправлено заказчику на подтверждение. Вы получите уведомление после решения.</Text>
         )}
