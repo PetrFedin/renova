@@ -344,6 +344,44 @@ async def react_message(project_id: str, thread_id: str, message_id: str, body: 
     return {"reactions": reactions}
 
 
+class ForwardBody(BaseModel):
+    target_thread_id: str
+    comment: str | None = Field(default=None, max_length=2000)
+
+
+@router.post("/{project_id}/chats/{thread_id}/messages/{message_id}/forward")
+async def forward_message(
+    project_id: str,
+    thread_id: str,
+    message_id: str,
+    body: ForwardBody,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Переслать сообщение в другую ветку того же объекта."""
+    _project, source_thread = await require_chat_access(
+        db, project_id, thread_id, user, write=False, allow_participant=True,
+    )
+    source = await require_chat_message(db, source_thread, message_id)
+    # Право писать проверяем в ветке-получателе: пересылка — это отправка.
+    _target_project, target_thread = await require_chat_access(
+        db, project_id, body.target_thread_id, user, write=True, allow_participant=True,
+    )
+    try:
+        copy = await chat_svc.forward_message(
+            db,
+            source=source,
+            source_thread=source_thread,
+            target_thread=target_thread,
+            user_id=user.id,
+            role=user.role.value,
+            comment=body.comment,
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return chat_svc.msg_dict(copy)
+
+
 @router.post("/{project_id}/chats/{thread_id}/messages/{message_id}/pin")
 async def pin_msg(project_id: str, thread_id: str, message_id: str, pin: bool = True, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     _p, t = await require_chat_access(db, project_id, thread_id, user, write=True)

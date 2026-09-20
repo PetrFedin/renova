@@ -10,6 +10,14 @@ export type ChatMessage = {
   read?: boolean;
   is_pinned?: boolean;
   reply_to_id?: string | null;
+  /** Откуда переслано: копия, а не ссылка — исходное сообщение живёт своей жизнью. */
+  forwarded_from?: {
+    message_id: string;
+    thread_id: string;
+    thread_title?: string | null;
+    author_role?: string | null;
+    created_at?: string | null;
+  } | null;
   reactions?: Record<string, string[]>;
   work_order_id?: string | null;
   payment_id?: string | null;
