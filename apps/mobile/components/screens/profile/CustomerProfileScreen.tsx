@@ -15,6 +15,7 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { api } from '@/lib/api';
 import { ProfileHeader } from './ProfileHeader';
 import { ProfileSection } from './ProfileSection';
+import { AccountDeleteBlock } from './AccountDeleteBlock';
 import { ProfileNotifications } from './ProfileNotifications';
 import { profileScreenStyles as ps } from './profileScreenStyles';
 import { pushOsNav } from '@/lib/pushOsNav';
@@ -44,7 +45,7 @@ function customerProfileLayoutY(event: unknown): number | null {
 export function CustomerProfileScreen() {
   const pathname = usePathname();
   const { focus } = useLocalSearchParams<{ focus?: string }>();
-  const { user, activeProject, readOnly, loadProject } = useRenova();
+  const { user, activeProject, readOnly, loadProject, logout } = useRenova();
   const showAccess = Boolean(user && activeProject && !readOnly);
   const hasContractor = Boolean(activeProject?.contractor_id);
   const extraItems = hasContractor ? [...EXTRA_BASIC, ...EXTRA_WITH_CONTRACTOR] : EXTRA_BASIC;
@@ -141,6 +142,12 @@ export function CustomerProfileScreen() {
               } catch (e) {
                 Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось');
               }
+            }}
+          />
+          <AccountDeleteBlock
+            userId={user?.id || ''}
+            onDeleted={async () => {
+              await logout();
             }}
           />
         </View>

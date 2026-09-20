@@ -18,6 +18,7 @@ import { api } from '@/lib/api';
 import { exportGdprJsonFile } from '@/lib/exportGdprJson';
 import { ProfileHeader } from './ProfileHeader';
 import { ProfileSection } from './ProfileSection';
+import { AccountDeleteBlock } from './AccountDeleteBlock';
 import { profileScreenStyles as ps } from './profileScreenStyles';
 import { alertTeamInviteSent, alertTeamCreated, alertRequisitesSaved } from '@/lib/fieldCommsNav';
 import * as WebBrowser from 'expo-web-browser';
@@ -102,7 +103,7 @@ function TeamSection() {
 
 export function ContractorProfileScreen() {
   const nav = useNavFromHere();
-  const { user, refreshMe, activeProject } = useRenova();
+  const { user, refreshMe, activeProject, logout } = useRenova();
   const [inn, setInn] = useState(user?.inn || '');
   const [msg, setMsg] = useState(user?.npd_verified ? 'НПД подтверждён' : '');
   const [payReq, setPayReq] = useState('');
@@ -325,6 +326,12 @@ export function ContractorProfileScreen() {
               } catch (e) {
                 Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось');
               }
+            }}
+          />
+          <AccountDeleteBlock
+            userId={user?.id || ''}
+            onDeleted={async () => {
+              await logout();
             }}
           />
         </View>
