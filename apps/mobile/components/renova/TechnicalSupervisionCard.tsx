@@ -8,7 +8,13 @@ import {
   View,
 } from 'react-native';
 
-import { api, type TechnicalSupervisionProviderType, type TechnicalSupervisionStatus } from '@/lib/api';
+import {
+  api,
+  type TechnicalSupervisionAssignment,
+  type TechnicalSupervisionProviderType,
+  type TechnicalSupervisionStatus,
+} from '@/lib/api';
+import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { reportError } from '@/lib/reportError';
 
@@ -16,10 +22,15 @@ export function TechnicalSupervisionCard({
   userId,
   projectId,
   canManage,
+  canViewHistory = canManage,
 }: {
   userId: string;
   projectId: string;
   canManage: boolean;
+  /** Историю читает владелец-заказчик — тот же, кому её отдаёт сервер.
+   *  По умолчанию совпадает с правом управлять, чтобы вызовы без этого
+   *  параметра вели себя как раньше. */
+  canViewHistory?: boolean;
 }) {
   const [status, setStatus] = useState<TechnicalSupervisionStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -28,6 +39,10 @@ export function TechnicalSupervisionCard({
   const [profileCode, setProfileCode] = useState('');
   const [providerType, setProviderType] = useState<TechnicalSupervisionProviderType>('individual');
   const [providerName, setProviderName] = useState('');
+  const [history, setHistory] = useState<TechnicalSupervisionAssignment[] | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyBusy, setHistoryBusy] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,6 +70,25 @@ export function TechnicalSupervisionCard({
   useEffect(() => {
     void load();
   }, [load]);
+
+  const loadHistory = useCallback(async () => {
+    setHistoryBusy(true);
+    setHistoryError(null);
+    try {
+      setHistory(await api.getTechnicalSupervisionHistory(userId, projectId));
+    } catch (cause) {
+      reportError('technicalSupervision.history', cause, { projectId });
+      setHistoryError('Не удалось загрузить историю назначений.');
+    } finally {
+      setHistoryBusy(false);
+    }
+  }, [projectId, userId]);
+
+  // Замена и отзыв обещают, что прежнее назначение останется в истории —
+  // значит после них история обязана быть актуальной, а не прошлой.
+  useEffect(() => {
+    if (historyOpen) void loadHistory();
+  }, [historyOpen, loadHistory, status?.active?.id]);
 
   async function persistAssignment() {
     const code = profileCode.trim().toUpperCase();
@@ -232,6 +266,61 @@ export function TechnicalSupervisionCard({
           ) : null}
         </View>
       ) : null}
+
+      {/* Карточка дважды обещает, что прежнее назначение «останется в истории»
+          и «история назначения сохранится». Сервер эту историю отдаёт, метод
+          клиента написан — и показать её было негде. */}
+      {canViewHistory ? (
+        <View style={s.history}>
+          <Pressable
+            onPress={() => setHistoryOpen((open) => !open)}
+            accessibilityRole="button"
+            accessibilityLabel={historyOpen ? 'Скрыть историю назначений' : 'Показать историю назначений'}
+            style={s.historyToggle}
+          >
+            <Text style={s.historyToggleText}>
+              {historyOpen ? 'Скрыть историю назначений' : 'История назначений'}
+            </Text>
+            <Text style={s.historyChevron}>{historyOpen ? '▲' : '▼'}</Text>
+          </Pressable>
+
+          {historyOpen && historyBusy ? <Text style={s.muted}>Загрузка истории…</Text> : null}
+
+          {historyOpen && historyError ? (
+            <View style={s.errorBox}>
+              <Text style={s.errorText}>{historyError}</Text>
+              <Pressable onPress={() => void loadHistory()} disabled={historyBusy}>
+                <Text style={s.retry}>Повторить</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+          {historyOpen && !historyBusy && !historyError && history?.length === 0 ? (
+            <Text style={s.muted}>Технадзор на этом объекте ещё не назначался.</Text>
+          ) : null}
+
+          {historyOpen && !historyBusy && !historyError
+            ? (history ?? []).map((row) => (
+                <View key={row.id} style={s.historyRow}>
+                  <View style={s.historyHead}>
+                    <Text style={s.historyName}>{row.provider_name}</Text>
+                    <Text style={row.revoked_at ? s.historyRevoked : s.historyActive}>
+                      {row.revoked_at ? 'Отозван' : 'Действует'}
+                    </Text>
+                  </View>
+                  <Text style={s.muted}>
+                    {row.provider_type === 'company' ? 'Компания' : 'Специалист'}
+                    {row.representative_full_name ? ` · ${row.representative_full_name}` : ''}
+                  </Text>
+                  <Text style={s.code}>
+                    {`Назначен ${formatScheduleDayFull(row.appointed_at)}`}
+                    {row.revoked_at ? ` · отозван ${formatScheduleDayFull(row.revoked_at)}` : ''}
+                  </Text>
+                </View>
+              ))
+            : null}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -249,6 +338,15 @@ const s = StyleSheet.create({
   currentName: { fontSize: RenovaTheme.fontSize.body, fontWeight: RenovaTheme.fontWeight.semibold, color: RenovaTheme.colors.text },
   muted: { marginTop: 8, fontSize: RenovaTheme.fontSize.bodySmall, color: RenovaTheme.colors.textMuted },
   code: { marginTop: 4, fontSize: RenovaTheme.fontSize.caption, color: RenovaTheme.colors.textMuted },
+  history: { marginTop: 14, borderTopWidth: 1, borderTopColor: RenovaTheme.colors.border, paddingTop: 10 },
+  historyToggle: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  historyToggleText: { fontSize: RenovaTheme.fontSize.bodySmall, fontWeight: RenovaTheme.fontWeight.semibold, color: RenovaTheme.colors.text },
+  historyChevron: { fontSize: RenovaTheme.fontSize.caption, color: RenovaTheme.colors.textMuted },
+  historyRow: { marginTop: 8, padding: 10, backgroundColor: RenovaTheme.colors.surfaceMuted, borderRadius: RenovaTheme.radius.sm },
+  historyHead: { flexDirection: 'row', gap: RenovaTheme.spacing.sm, alignItems: 'center', justifyContent: 'space-between' },
+  historyName: { flex: 1, fontSize: RenovaTheme.fontSize.body, fontWeight: RenovaTheme.fontWeight.semibold, color: RenovaTheme.colors.text },
+  historyActive: { fontSize: RenovaTheme.fontSize.caption, fontWeight: RenovaTheme.fontWeight.semibold, color: RenovaTheme.colors.successText },
+  historyRevoked: { fontSize: RenovaTheme.fontSize.caption, fontWeight: RenovaTheme.fontWeight.semibold, color: RenovaTheme.colors.textMuted },
   form: { marginTop: 14, gap: 8 },
   label: { fontSize: RenovaTheme.fontSize.bodySmall, fontWeight: RenovaTheme.fontWeight.semibold, color: RenovaTheme.colors.text },
   input: { minHeight: 44, borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: RenovaTheme.radius.sm, paddingHorizontal: 12, paddingVertical: 10, color: RenovaTheme.colors.text, backgroundColor: RenovaTheme.colors.surface },

@@ -95,6 +95,10 @@ export function OsProjectProfileScreen({
     role === 'customer'
     && project.access_mode === 'owner'
     && !readOnly;
+  // Историю отдаёт сервер владельцу-заказчику. Режим «только чтение» ограничивает
+  // изменения, а не чтение, поэтому здесь `readOnly` не участвует.
+  const canViewTechnicalSupervisionHistory =
+    role === 'customer' && project.access_mode === 'owner';
 
   async function onSave() {
     const projectId = project.id;
@@ -179,6 +183,7 @@ export function OsProjectProfileScreen({
           userId={user.id}
           projectId={project.id}
           canManage={canManageTechnicalSupervision}
+          canViewHistory={canViewTechnicalSupervisionHistory}
         />
       ) : null}
       <View style={s.footer}>
