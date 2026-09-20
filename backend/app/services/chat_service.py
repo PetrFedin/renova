@@ -340,6 +340,71 @@ def thread_dict(
     }
 
 
+async def forward_message(
+    db: AsyncSession,
+    *,
+    source: ChatMessage,
+    source_thread: ChatThread,
+    target_thread: ChatThread,
+    user_id: str,
+    role: str,
+    comment: str | None = None,
+) -> ChatMessage:
+    """Копия сообщения в другой ветке того же объекта.
+
+    Пересылка — это новое сообщение, а не ссылка: исходное остаётся в своей
+    ветке нетронутым, и его удаление или правка не могут задним числом менять
+    то, что уже прочитали в другой ветке. Откуда пришло, помним в `meta`.
+
+    Границы объекта не пересекаем: чат привязан к объекту, и доступ к ветке
+    проверяется по объекту. Пересылка в чужой объект вынесла бы переписку за
+    периметр, где её никто не разрешал читать.
+    """
+    if target_thread.project_id != source_thread.project_id:
+        raise ValueError("forward_cross_project_forbidden")
+    if target_thread.id == source_thread.id:
+        raise ValueError("forward_same_thread")
+
+    meta = {
+        "forwarded_from": {
+            "message_id": source.id,
+            "thread_id": source_thread.id,
+            "thread_title": source_thread.title,
+            "author_role": source.author_role,
+            "created_at": source.created_at.isoformat() if source.created_at else None,
+        }
+    }
+    original = _parse_meta(source.meta_json)
+    # Переносим только то, что делает копию читаемой. Реакции, закрепление,
+    # привязанные задачи и счета остаются у исходного сообщения: они про ту
+    # ветку и про тех людей.
+    for key in ("file_name",):
+        if original.get(key) is not None:
+            meta[key] = original[key]
+
+    text = source.text
+    if comment and comment.strip():
+        text = f"{comment.strip()}\n\n{text or ''}".strip()
+
+    copy = await send_message(
+        db,
+        target_thread,
+        user_id,
+        role,
+        text,
+        source.message_type.value,
+        meta=meta,
+    )
+    # Вложение показываем то же самое, а не копию файла: в хранилище ничего не
+    # дублируется, а пересланное фото открывается как исходное.
+    if source.image_url or source.storage_key:
+        copy.image_url = source.image_url
+        copy.storage_key = source.storage_key
+        await db.commit()
+        await db.refresh(copy)
+    return copy
+
+
 def msg_dict(m: ChatMessage, read_by_other: bool = False) -> dict:
     meta = _parse_meta(m.meta_json)
     return {
@@ -359,6 +424,7 @@ def msg_dict(m: ChatMessage, read_by_other: bool = False) -> dict:
         "file_name": meta.get("file_name"),
         "assignee_id": meta.get("assignee_id"),
         "due_at": meta.get("due_at"),
+        "forwarded_from": meta.get("forwarded_from"),
     }
 
 

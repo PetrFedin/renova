@@ -4,6 +4,7 @@ import {
   AppState, ScrollView, View, Text, TextInput, StyleSheet, Image, Pressable, Alert, Modal,
 } from 'react-native';
 import { useFocusEffect, usePathname } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';
@@ -13,13 +14,14 @@ import { ChatInThreadSearch } from '@/components/renova/ChatInThreadSearch';
 import { HighlightText } from '@/components/renova/HighlightText';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { reportError, reportCatch } from '@/lib/reportError';
-import { api, ChatDetail, ChatMessage } from '@/lib/api';
+import { api, ChatDetail, ChatMessage, ChatThread } from '@/lib/api';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { compressDataUrl } from '@/lib/compressImage';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { ChatTaskSheet } from '@/components/renova/chat/ChatTaskSheet';
+import { SheetSurface } from '@/components/renova/SheetSurface';
 import { useChatReadSync } from '@/lib/useChatUnread';
 import { useChatWebSocket, useChatFallbackPoll } from '@/lib/useChatWebSocket';
 import { isChatCreationSystemMessage } from '@/lib/chatPreview';
@@ -28,6 +30,7 @@ import { pushOsNav } from '@/lib/pushOsNav';
 import { alertChatInviteSent } from '@/lib/fieldCommsNav';
 import { alertChatInvoiceCreated, alertChatTaskCreated } from '@/lib/estimatePayNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { textWithoutReplyPrefix } from '@/lib/domain/chatReplyPrefix';
 import { router } from 'expo-router';
 
 const REACTIONS = ['👍', '✅', '❤️', '🔥', '❓'];
@@ -42,6 +45,35 @@ function latestRenderedMessageId(messages: ChatMessage[]): string | null {
     .slice(-1)[0]?.id ?? null;
 }
 
+/** Одно действие над сообщением: иконка с подписью для скринридера. */
+function MessageAction({
+  icon,
+  label,
+  onPress,
+  active,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+  active?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      hitSlop={8}
+      style={s.msgAction}
+    >
+      <Ionicons
+        name={icon}
+        size={16}
+        color={active ? RenovaTheme.colors.accent : RenovaTheme.colors.textMuted}
+      />
+    </Pressable>
+  );
+}
+
 function MessageBubble({
   m,
   mine,
@@ -54,8 +86,11 @@ function MessageBubble({
   onPin,
   onReply,
   onTask,
+  onForward,
   onConfirm,
   onPay,
+  repliedTo,
+  onOpenReplied,
 }: {
   m: ChatMessage;
   mine: boolean;
@@ -68,8 +103,11 @@ function MessageBubble({
   onPin?: () => void;
   onReply: () => void;
   onTask?: () => void;
+  onForward?: () => void;
   onConfirm?: () => void;
   onPay?: () => void;
+  repliedTo?: ChatMessage | null;
+  onOpenReplied?: () => void;
 }) {
   const roleLabel = m.author_role === 'customer' ? 'Заказчик' : m.author_role === 'contractor' ? 'Исполнитель' : 'Система';
   const isSystem = m.author_role === 'system' || m.message_type === 'system';
@@ -101,7 +139,33 @@ function MessageBubble({
     >
       {m.is_pinned ? <Text style={s.pinTag}>📌 Закреплено</Text> : null}
       <Text style={s.role}>{roleLabel}</Text>
-      {m.text && <HighlightText text={m.text} query={query} />}
+      {/* Сервер хранит связь ответа в `reply_to_id`, но экран её не показывал:
+          от ответа оставалась только строчка «↩ …» внутри текста. */}
+      {/* Пересылка — копия, а не ссылка: помечаем происхождение, чтобы
+          сообщение в новой ветке не читалось как сказанное здесь. */}
+      {m.forwarded_from ? (
+        <Text style={s.forwardTag}>
+          ↪ Переслано{m.forwarded_from.thread_title ? ` из «${m.forwarded_from.thread_title}»` : ''}
+        </Text>
+      ) : null}
+      {repliedTo ? (
+        <Pressable
+          onPress={onOpenReplied}
+          accessibilityRole="button"
+          accessibilityLabel={`Перейти к сообщению, на которое отвечают: ${repliedTo.text || 'вложение'}`}
+          style={s.quote}
+        >
+          <Text style={s.quoteRole}>
+            {repliedTo.author_role === 'customer' ? 'Заказчик' : repliedTo.author_role === 'contractor' ? 'Исполнитель' : 'Система'}
+          </Text>
+          <Text style={s.quoteText} numberOfLines={2}>
+            {repliedTo.text || 'Вложение'}
+          </Text>
+        </Pressable>
+      ) : null}
+      {m.text ? (
+        <HighlightText text={textWithoutReplyPrefix(m.text, !!repliedTo)} query={query} />
+      ) : null}
       {m.message_type === 'payment' && m.confirmed !== true && onPay && (
         <PrimaryButton title="Перейти к оплате" compact onPress={onPay} />
       )}
@@ -133,9 +197,39 @@ function MessageBubble({
           ))}
         </View>
       )}
-      <Text style={s.time}>
-        {m.created_at.slice(11, 16)}{mine && m.read ? ' ✓✓' : ''}
-      </Text>
+      {/* Все эти действия существовали и раньше — но только через долгое
+          нажатие, о котором ничто на экране не сообщало. */}
+      <View style={s.msgActions}>
+        <MessageAction
+          icon="happy-outline"
+          label="Поставить реакцию"
+          onPress={() =>
+            showActionConfirm({
+              title: 'Реакция',
+              message: 'Выберите реакцию на сообщение',
+              actions: REACTIONS.map((emoji) => ({ label: emoji, onPress: () => onReact(emoji) })),
+            })
+          }
+        />
+        <MessageAction icon="arrow-undo-outline" label="Ответить на сообщение" onPress={onReply} />
+        {onPin ? (
+          <MessageAction
+            icon={m.is_pinned ? 'bookmark' : 'bookmark-outline'}
+            label={m.is_pinned ? 'Открепить сообщение' : 'Закрепить сообщение'}
+            active={m.is_pinned}
+            onPress={onPin}
+          />
+        ) : null}
+        {onTask ? (
+          <MessageAction icon="checkbox-outline" label="Создать задачу из сообщения" onPress={onTask} />
+        ) : null}
+        {onForward ? (
+          <MessageAction icon="arrow-redo-outline" label="Переслать в другой чат" onPress={onForward} />
+        ) : null}
+        <Text style={[s.time, s.timeInRow]}>
+          {m.created_at.slice(11, 16)}{mine && m.read ? ' ✓✓' : ''}
+        </Text>
+      </View>
     </Pressable>
   );
 }
@@ -169,6 +263,8 @@ export function ChatThreadView({
   const [invitePhone, setInvitePhone] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [taskMsg, setTaskMsg] = useState<ChatMessage | null>(null);
+  const [forwardMsg, setForwardMsg] = useState<ChatMessage | null>(null);
+  const [forwardTargets, setForwardTargets] = useState<ChatThread[] | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const loadGenerationRef = useRef(0);
@@ -367,6 +463,19 @@ export function ChatThreadView({
     if (hasProjectScope) await refreshProjectAfterCommit(action);
   };
 
+  /** Список веток объекта, куда можно переслать: текущая исключена. */
+  const openForward = async (message: ChatMessage) => {
+    setForwardMsg(message);
+    if (forwardTargets) return;
+    try {
+      const all = await api.listChats(user.id, projectId);
+      setForwardTargets(all.filter((t) => t.id !== threadId));
+    } catch (error) {
+      reportError('ChatThreadView.Forward.Load', error, { threadId, projectId });
+      setForwardTargets([]);
+    }
+  };
+
   const sendText = async (body: string, type = 'text', image?: string) => {
     const prefix = replyTo?.text ? `↩ ${replyTo.text.slice(0, 40)}…\n` : '';
     try {
@@ -455,6 +564,7 @@ export function ChatThreadView({
             } : undefined}
             onReply={() => setReplyTo(m)}
             onTask={canCreateTask ? () => setTaskMsg(m) : undefined}
+            onForward={canWrite ? () => { void openForward(m); } : undefined}
             onConfirm={canManageParticipants && m.message_type === 'confirm' ? async () => {
               try {
                 await api.confirmChatMessage(user.id, projectId, threadId, m.id);
@@ -469,6 +579,8 @@ export function ChatThreadView({
               }
               await reconcileCommittedChatMutation('Confirm');
             } : undefined}
+            repliedTo={m.reply_to_id ? chat.messages.find((x) => x.id === m.reply_to_id) ?? null : null}
+            onOpenReplied={m.reply_to_id ? () => router.setParams({ highlightId: m.reply_to_id! }) : undefined}
             onPay={canViewProjectActions && m.message_type === 'payment' ? () => {
               const meta = (m as { meta?: { payment_id?: string }; payment_id?: string });
               openPaymentFlow(meta.meta?.payment_id || meta.payment_id);
@@ -644,6 +756,58 @@ export function ChatThreadView({
         </View>
       </Modal>
 
+      <SheetSurface
+        visible={!!forwardMsg}
+        title="Переслать в другой чат"
+        subtitle="Копия уйдёт в выбранную ветку этого объекта. Исходное сообщение останется на месте."
+        onClose={() => setForwardMsg(null)}
+      >
+        {forwardTargets === null ? (
+          <Text style={s.forwardHint}>Загрузка чатов…</Text>
+        ) : forwardTargets.length === 0 ? (
+          <Text style={s.forwardHint}>
+            На этом объекте других чатов нет. Создайте чат в разделе «Сообщения».
+          </Text>
+        ) : (
+          forwardTargets.map((target) => (
+            <PrimaryButton
+              key={target.id}
+              title={target.title || 'Чат объекта'}
+              variant="outline"
+              fullWidth
+              accessibilityLabel={`Переслать в «${target.title || 'Чат объекта'}»`}
+              onPress={async () => {
+                const message = forwardMsg;
+                setForwardMsg(null);
+                if (!message) return;
+                try {
+                  await api.forwardChatMessage(user.id, projectId, threadId, message.id, target.id);
+                } catch (e) {
+                  if (isOfflineQueued(e)) {
+                    notifyOfflineQueued('Пересылка');
+                    return;
+                  }
+                  reportError('ChatThreadView.Forward.Mutation', e, { threadId, projectId, messageId: message.id });
+                  showActionConfirm({
+                    title: 'Не переслано',
+                    message: e instanceof Error ? e.message : 'Проверьте связь и повторите.',
+                    primaryLabel: 'Понятно',
+                    onPrimary: () => undefined,
+                  });
+                  return;
+                }
+                showActionConfirm({
+                  title: 'Переслано',
+                  message: `Копия в «${target.title || 'чате объекта'}». Исходное сообщение осталось здесь.`,
+                  primaryLabel: 'Понятно',
+                  onPrimary: () => undefined,
+                });
+              }}
+            />
+          ))
+        )}
+      </SheetSurface>
+
       <ChatTaskSheet
         visible={canCreateTask && !!taskMsg}
         defaultTitle={taskMsg?.text?.slice(0, 80) || 'Задача из чата'}
@@ -693,6 +857,14 @@ const s = StyleSheet.create({
   link: { color: RenovaTheme.colors.accent, fontWeight: '600', marginTop: 4 },
   file: { fontSize: 12, marginTop: 4, color: RenovaTheme.colors.text },
   img: { width: 200, height: 140, borderRadius: 8, marginTop: 6 },
+  msgActions: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 6 },
+  timeInRow: { flex: 1, marginTop: 0 },
+  msgAction: { minWidth: 28, minHeight: 28, alignItems: 'center', justifyContent: 'center' },
+  forwardHint: { fontSize: RenovaTheme.fontSize.bodySmall, color: RenovaTheme.colors.textMuted, paddingVertical: 8 },
+  forwardTag: { fontSize: 10, color: RenovaTheme.colors.textMuted, fontWeight: '700', marginBottom: 2 },
+  quote: { borderLeftWidth: 3, borderLeftColor: RenovaTheme.colors.accent, paddingLeft: 8, marginBottom: 6, opacity: 0.85 },
+  quoteRole: { fontSize: 10, color: RenovaTheme.colors.accent, fontWeight: '700' },
+  quoteText: { fontSize: 12, color: RenovaTheme.colors.textMuted },
   reactions: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6 },
   reactChip: { backgroundColor: '#f1f5f9', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2 },
   reactText: { fontSize: 12 },

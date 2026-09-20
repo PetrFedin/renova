@@ -110,6 +110,26 @@ export const chatsApi = {
     }
   },
   /** W115: закрепление сообщения — очередь офлайн */
+  /** Переслать сообщение в другую ветку того же объекта. */
+  forwardChatMessage: async (
+    userId: string,
+    projectId: string,
+    threadId: string,
+    messageId: string,
+    targetThreadId: string,
+    comment?: string,
+  ) => {
+    const body = JSON.stringify({ target_thread_id: targetThreadId, comment: comment || null });
+    const path = `/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/forward`;
+    try {
+      return await req(path, { method: 'POST', body }, userId);
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path, method: 'POST', body, userId });
+      throw new Error('offline_queued');
+    }
+  },
   pinChatMessage: async (
     userId: string,
     projectId: string,
