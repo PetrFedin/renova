@@ -62,10 +62,14 @@ export function SheetSurface({
       onRequestClose={closeSafely}
     >
       <View style={styles.backdrop} testID={testID}>
+        {/* Подложка закрывает окно. Раньше она брала имя самого окна, и на
+            подтверждении получалась кнопка «Подтверждение: Принять КП?»,
+            которая на самом деле отменяет. Имя подложки должно говорить о
+            закрытии — и только о нём. */}
         <Pressable
           style={StyleSheet.absoluteFill}
           accessibilityRole="button"
-          accessibilityLabel={accessibilityLabel ?? 'Закрыть окно'}
+          accessibilityLabel={title ? `Закрыть: ${title}` : 'Закрыть окно'}
           accessibilityState={{ disabled: busy }}
           disabled={busy}
           onPress={closeSafely}
