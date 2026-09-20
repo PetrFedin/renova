@@ -26,6 +26,10 @@ export function OsPendingProjectPickEffect() {
       return;
     }
     if (pathname.includes('/onboarding/')) return;
+    // Профиль — единственный экран, который осмыслен без объекта: там карточка
+    // компании, бригада и выход. Возврат отсюда на выбор объекта замыкал
+    // новую организацию в экране, где выбирать нечего.
+    if (pathname.endsWith('/profile')) return;
     if (pickNavLock.current) return;
     pickNavLock.current = true;
     replaceOsNav(projectPickRoute());
