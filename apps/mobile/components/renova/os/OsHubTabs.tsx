@@ -37,6 +37,9 @@ export function OsHubTabs({ tabs, value, onChange }: Props) {
               style={[s.tab, on && s.tabOn]}
               onPress={() => onChange(t.id)}
               accessibilityRole="tab"
+              // Роль была, имени не было: в дереве доступности вкладки читались
+              // как безымянные `tab`.
+              accessibilityLabel={t.badge != null && t.badge > 0 ? `${t.label}, ${t.badge}` : t.label}
               accessibilityState={{ selected: on }}
             >
               <Text style={[s.label, on && s.labelOn]}>{t.label}</Text>

@@ -22,6 +22,11 @@ export function SearchFilter({ query, onQuery, filters, active, onFilter }: Prop
               key={f.key}
               style={[filterChipStyles.chip, active === f.key && filterChipStyles.chipOn]}
               onPress={() => onFilter(f.key)}
+              accessibilityRole="button"
+              // Подпись чипа содержит счётчик («Проблемы (0)») — он и есть
+              // самое полезное в озвучке, поэтому берём её целиком.
+              accessibilityLabel={f.label}
+              accessibilityState={{ selected: active === f.key }}
             >
               <Text style={[filterChipStyles.chipT, active === f.key && filterChipStyles.chipTOn]}>{f.label}</Text>
             </Pressable>
