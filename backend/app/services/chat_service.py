@@ -491,19 +491,123 @@ async def pin_message(db: AsyncSession, message_id: str, pin: bool = True) -> Ch
     return msg
 
 
+def _participant_row(
+    *,
+    row_id: str,
+    user: User | None,
+    source: str,
+    role_label: str,
+    status: str = "active",
+    phone: str | None = None,
+    profile_code: str | None = None,
+) -> dict:
+    return {
+        "id": row_id,
+        "user_id": user.id if user else None,
+        # Телефон показываем только там, где он и есть адрес приглашения.
+        # Для доступа по роли имени и кода профиля достаточно.
+        "phone": phone,
+        "profile_code": profile_code or (user.profile_code if user else None),
+        "full_name": user.full_name if user else None,
+        "status": status,
+        "source": source,
+        "role_label": role_label,
+    }
+
+
+async def _project_role_participants(db: AsyncSession, project_id: str) -> list[dict]:
+    """Кто читает этот чат по роли на объекте, а не по приглашению.
+
+    Ровно те, кого пускает `require_chat_access` → `require_project`:
+    заказчик, исполнитель, бригада исполнителя, наблюдатели объекта и
+    действующий технадзор. Список собран из тех же источников, что и проверка
+    доступа, чтобы «участники» и «кто может читать» не разошлись.
+    """
+    from app.models.entities import ProjectViewer, Team, TeamMember
+    from app.services import technical_supervision_service as supervision
+
+    project = await db.get(Project, project_id)
+    if project is None:
+        return []
+
+    rows: list[dict] = []
+    seen: set[str] = set()
+
+    async def add(user_id: str | None, source: str, role_label: str) -> None:
+        if not user_id or user_id in seen:
+            return
+        seen.add(user_id)
+        user = await db.get(User, user_id)
+        rows.append(
+            _participant_row(
+                row_id=f"{source}:{user_id}",
+                user=user,
+                source=source,
+                role_label=role_label,
+            )
+        )
+
+    await add(project.customer_id, "project", "Заказчик")
+    await add(project.contractor_id, "project", "Исполнитель")
+
+    if project.contractor_id:
+        members = (
+            await db.execute(
+                select(TeamMember)
+                .join(Team, Team.id == TeamMember.team_id)
+                .where(Team.owner_id == project.contractor_id)
+                .order_by(TeamMember.created_at.asc(), TeamMember.id.asc())
+            )
+        ).scalars().all()
+        for member in members:
+            await add(member.user_id, "team", f"Бригада · {member.role}")
+
+    viewers = (
+        await db.execute(select(ProjectViewer).where(ProjectViewer.project_id == project_id))
+    ).scalars().all()
+    for viewer in viewers:
+        await add(viewer.user_id, "guest", "Наблюдатель")
+
+    active = await supervision.active_assignment(db, project_id)
+    if active is not None:
+        await add(active.representative_user_id, "supervision", "Технадзор")
+
+    return rows
+
+
 async def list_participants(db: AsyncSession, thread_id: str) -> list[dict]:
+    """Все, кто видит этот чат: по роли на объекте и по приглашению.
+
+    Раньше возвращались только приглашённые, поэтому в чате, где переписываются
+    заказчик с исполнителем, список участников был пуст, а блок «Участники» в
+    настройках чата не отрисовывался вовсе.
+    """
+    thread = await db.get(ChatThread, thread_id)
+    out: list[dict] = []
+    seen_users: set[str] = set()
+    if thread is not None:
+        out = await _project_role_participants(db, thread.project_id)
+        seen_users = {row["user_id"] for row in out if row["user_id"]}
+
     r = await db.execute(select(ChatThreadParticipant).where(ChatThreadParticipant.thread_id == thread_id))
-    out = []
     for p in r.scalars().all():
         u = await db.get(User, p.user_id) if p.user_id else None
-        out.append({
-            "id": p.id,
-            "user_id": p.user_id,
-            "phone": p.phone or (u.phone if u else None),
-            "profile_code": p.profile_code or (u.profile_code if u else None),
-            "full_name": u.full_name if u else None,
-            "status": p.status,
-        })
+        if p.user_id and p.user_id in seen_users:
+            # Человек уже в списке по роли на объекте: приглашение ничего не
+            # добавляет к его доступу, а вторая строка читалась бы как второй
+            # участник.
+            continue
+        out.append(
+            _participant_row(
+                row_id=p.id,
+                user=u,
+                source="invite",
+                role_label="Приглашён в чат",
+                status=p.status,
+                phone=p.phone or (u.phone if u else None),
+                profile_code=p.profile_code,
+            )
+        )
     return out
 
 

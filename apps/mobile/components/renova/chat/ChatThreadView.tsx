@@ -596,13 +596,17 @@ export function ChatThreadView({
             <Text style={s.hint}>Чат привязан к объекту при создании. Для другого объекта создайте новый чат.</Text>
             {chat.participants && chat.participants.length > 0 && (
               <>
-                <Text style={s.settingLabel}>Участники</Text>
+                <Text style={s.settingLabel}>Кто видит этот чат</Text>
                 {chat.participants.map((p) => (
                   <Text key={p.id} style={s.participant}>
                     {p.full_name || p.phone || p.profile_code || 'Участник'}
+                    {p.role_label ? ` · ${p.role_label}` : ''}
                     {p.status === 'active' ? '' : ` · ${p.status}`}
                   </Text>
                 ))}
+                <Text style={s.hint}>
+                  Доступ к чату объекта дают роль на объекте и приглашение именно в этот чат.
+                </Text>
               </>
             )}
             <PrimaryButton title="Закрыть" variant="outline" onPress={() => setSettingsOpen(false)} />
