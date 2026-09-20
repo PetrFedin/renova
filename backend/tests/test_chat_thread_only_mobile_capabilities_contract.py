@@ -31,7 +31,10 @@ def test_thread_only_chat_keeps_composer_but_hides_project_authority_dead_ends()
     assert "const canManageParticipants = hasProjectScope && chat?.capabilities?.can_manage_participants === true;" in source
     assert "const canCreateTask = hasProjectScope && chat?.capabilities?.can_create_task === true;" in source
     assert "const canCreateInvoice = hasProjectScope && chat?.capabilities?.can_create_invoice === true;" in source
-    assert "<View style={s.composer}>" in source
+    # Проверка держит смысл «поле ввода не исчезло», а не точную запись стиля:
+    # поднятие композера над клавиатурой добавляет к нему отступ снизу, и
+    # дословное `<View style={s.composer}>` запрещало бы саму эту правку.
+    assert "s.composer" in source
     assert "await api.sendChatMessage(user.id, projectId, threadId" in source
 
     # Load exact-thread chat first. A thread-only actor must not probe the
