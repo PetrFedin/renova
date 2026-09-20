@@ -3,6 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { evaluateApiBaseGuard } from '@/lib/apiBaseGuard';
 import { isAuthoritativeRefreshRejection, shouldFallbackToDurableCache } from './failurePolicy';
 
+import { isHumanMessage, validationMessage } from './validationMessage';
+
 export class ApiError extends Error {
   status: number;
   code?: string;
@@ -47,6 +49,10 @@ function parseApiErrorBody(txt: string, status: number): { message: string; code
     if (typeof j.message === 'string' && j.message) {
       return { message: j.message, code: j.code, detail };
     }
+    const validation = validationMessage(j.detail);
+    if (validation) {
+      return { message: validation, code: 'validation_error', detail };
+    }
     if (typeof j.detail === 'object' && j.detail) {
       const d = j.detail as { code?: string; message?: string };
       if (typeof d.message === 'string' && d.message) {
@@ -62,7 +68,11 @@ function parseApiErrorBody(txt: string, status: number): { message: string; code
   if (code === 'rate_limit' || status === 429) {
     return { message: 'Слишком много запросов. Подождите несколько секунд и повторите.', code: 'rate_limit', detail };
   }
-  return { message: txt || `HTTP ${status}`, code, detail };
+  // Тело ответа целиком — это JSON или HTML-страница ошибки; показывать её
+  // пользователю значит показывать внутренности вместо подсказки. Сам текст
+  // остаётся в `detail`, его видит `reportError`.
+  if (isHumanMessage(txt)) return { message: txt, code, detail };
+  return { message: `Сервер вернул ошибку (${status}). Повторите позже.`, code, detail: detail ?? txt };
 }
 
 const OFFLINE_ROOMS = 'renova_cache_rooms';
