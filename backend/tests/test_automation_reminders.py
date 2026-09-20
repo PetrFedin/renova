@@ -5,6 +5,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
+from app.core.timeutil import utc_now
 from app.db.session import init_db
 from app.db import session as sess
 from app.main import app
@@ -112,7 +113,12 @@ async def test_waste_reminders_manual_endpoint():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         pid, _, h_cust, _ = await _demo_project(client)
-        tomorrow = date.today() + timedelta(days=1)
+        # Ручка не принимает дату и берёт её у `utc_now()`. Локальная
+        # `date.today()` расходится с UTC в те часы, когда местная дата уже
+        # сменилась, а UTC ещё нет: в MSK это каждую ночь с 00:00 до 03:00, и
+        # тест падал у всех веток разом. Заказ ставим по тем же часам, по
+        # которым ручка ищет — иначе проверяется рассинхрон часов, а не вывоз.
+        tomorrow = utc_now().date() + timedelta(days=1)
         async with sess.SessionLocal() as db:
             db.add(
                 WasteOrder(
@@ -126,3 +132,25 @@ async def test_waste_reminders_manual_endpoint():
         r = await client.post("/api/v1/notifications/waste-reminders/check", headers=h_cust)
         assert r.status_code == 200
         assert r.json()["sent"] >= 1
+
+
+async def test_waste_reminder_day_comes_from_the_same_clock_as_the_endpoint():
+    """Ручка и сканер обязаны считать «завтра» одними часами.
+
+    Сейчас это UTC. Правильный ли это выбор для пользователя в MSK — вопрос
+    открытый: в ночные часы местное «завтра» и UTC-«завтра» — разные дни, и
+    уведомление «Завтра вывоз мусора» уезжает на сутки. Часового пояса бизнеса
+    в бэкенде пока нет вовсе (`app/core/timeutil.py` знает только UTC), поэтому
+    здесь закреплено текущее поведение: смена часов станет видимой правкой, а
+    не тихим изменением смысла уведомления.
+    """
+    import inspect
+
+    from app.services import automation_reminders_worker as worker
+
+    source = inspect.getsource(worker.scan_waste_reminders)
+    assert "scan_date = on_date or utc_now().date()" in source
+    assert "date.today()" not in source, (
+        "сканер перешёл на локальные часы — решение о часовом поясе принято, "
+        "и его нужно провести по всем датам, а не только здесь"
+    )
