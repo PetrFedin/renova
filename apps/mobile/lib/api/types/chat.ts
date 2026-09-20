@@ -39,6 +39,10 @@ export type ChatParticipant = {
   profile_code?: string | null;
   full_name?: string | null;
   status: string;
+  /** Откуда доступ: роль на объекте или приглашение именно в этот чат. */
+  source?: 'project' | 'team' | 'guest' | 'supervision' | 'invite';
+  /** Готовая подпись роли с сервера: «Заказчик», «Бригада · foreman», … */
+  role_label?: string | null;
 };
 
 export type ChatCapabilities = {
