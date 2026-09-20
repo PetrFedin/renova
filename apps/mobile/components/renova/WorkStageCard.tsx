@@ -41,6 +41,20 @@ export function WorkStageCard({ stage, roomLabel, onOpen, onPrimary, primaryLabe
       ]}
       onPress={onOpen}
       onLongPress={onLongPress}
+      accessibilityRole="button"
+      // Читалка объявляет строку целиком: что за этап, в каком он состоянии,
+      // к какому сроку и на какую сумму. Без этого карточка была `generic` —
+      // её не найти и не нажать ничем, кроме зрячего касания.
+      accessibilityLabel={[
+        stage.name,
+        stage.display_status_label || WORK_CARD_STATUS_LABEL[stage.status] || stage.status,
+        roomLabel || null,
+        blocked ? `заблокировано${blockedReason ? `: ${blockedReason}` : ''}` : null,
+        stage.planned_end ? `срок ${stage.planned_end}` : 'без срока',
+        overdue ? 'просрочено' : null,
+        formatRub(stage.payment_amount || 0),
+      ].filter(Boolean).join(' · ')}
+      accessibilityState={{ selected: !!selected, disabled: !!blocked }}
     >
       <View style={s.top}>
         <Text style={screenTypography.listTitle} numberOfLines={1}>{stage.name}</Text>

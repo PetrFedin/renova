@@ -132,6 +132,7 @@ export function OsPathBar({ role }: { role: OsRole }) {
                     onPress={() => goCrumb(role, c.routeName, ctx)}
                     hitSlop={6}
                     accessibilityRole="button"
+                    accessibilityLabel={isLast ? `${c.label}, текущий раздел` : c.label}
                     accessibilityState={{ disabled: isLast }}
                     disabled={isLast}
                   >
