@@ -198,6 +198,11 @@ class ProjectOut(BaseModel):
     estimate_locked_at: str | None = None
     estimate_lock_proposed_at: str | None = None
     estimate_lock_proposed_by: str | None = None
+    # Кто ведёт работы. Приложение ветвится по этому полю в семи местах —
+    # от «Исполнитель не подключён» до правила «после подключения изменения
+    # только через запрос», — а в ответе его не было вовсе, и для клиента
+    # исполнителя не существовало ни на одном объекте.
+    contractor_id: str | None = None
     # owner | contractor | guest | supervisor | none — archive/trash только для owner
     access_mode: str = "owner"
     # Capabilities are explicit and empty unless access_mode == supervisor.

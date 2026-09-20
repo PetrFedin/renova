@@ -61,6 +61,7 @@ def _project_out(
         estimate_locked_at=p.estimate_locked_at.isoformat() if getattr(p, "estimate_locked_at", None) else None,
         estimate_lock_proposed_at=p.estimate_lock_proposed_at.isoformat() if getattr(p, "estimate_lock_proposed_at", None) else None,
         estimate_lock_proposed_by=getattr(p, "estimate_lock_proposed_by", None),
+        contractor_id=getattr(p, "contractor_id", None),
         access_mode=access_mode,
         technical_capabilities=technical_capabilities or [],
     )
