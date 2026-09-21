@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Pressable, ScrollView, Linking } from 'react-native';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { trendBarShare, trendMonthLabel, trendSummary, trendSummaryText } from '@/lib/domain/priceTrend';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { WORK_TYPES_FALLBACK, groupWorkTypes } from '@/constants/workCatalog';
@@ -191,19 +192,40 @@ export function BudgetPlannerPanel({
             <View style={[s.split, s.splitMat, { flex: est.materials_share }]}><Text style={s.splitT}>Материалы</Text><Text style={s.splitV}>{formatRub(est.materials_total)}</Text></View>
           </View>
 
-          {est.price_trend_6m.length > 0 && (
-            <>
-              <Text style={s.section}>Динамика за 6 мес.</Text>
-              {est.price_trend_6m.map((p) => (
-                <View key={p.month} style={s.trendRow}>
-                  <Text style={s.trendLabel}>{p.label}</Text>
-                  <View style={s.trendBarWrap}><View style={[s.trendBar, { width: `${Math.min(100, p.index)}%` }]} /></View>
-                  <Text style={s.trendVal}>{formatRub(p.total)}</Text>
-                </View>
-              ))}
-              <Text style={s.hint}>{est.disclaimer}</Text>
-            </>
-          )}
+          {est.price_trend_6m.length > 0 && (() => {
+            // Полоса раньше считалась как min(100, index), а index держится
+            // около 103–108 — все шесть упирались в 100 % и выходили
+            // одинаковыми. Растягиваем по фактическому размаху, иначе разница
+            // в проценты не видна вовсе.
+            const summary = trendSummary(est.price_trend_6m);
+            return (
+              <>
+                <Text style={s.section}>Как менялась цена этого набора работ</Text>
+                {summary ? <Text style={s.trendSummary}>{trendSummaryText(summary)}</Text> : null}
+                {est.price_trend_6m.map((p) => {
+                  const share = summary ? trendBarShare(p.total, summary.min, summary.max) : 1;
+                  const isMax = summary ? p.total === summary.max : false;
+                  return (
+                    <View
+                      key={p.month}
+                      style={s.trendRow}
+                      accessibilityLabel={`${trendMonthLabel(p.month, p.label)}: ${formatRub(p.total)}`}
+                    >
+                      <Text style={s.trendLabel}>{trendMonthLabel(p.month, p.label)}</Text>
+                      <View style={s.trendBarWrap}>
+                        <View style={[s.trendBar, isMax && s.trendBarMax, { width: `${Math.round(share * 100)}%` }]} />
+                      </View>
+                      <Text style={s.trendVal}>{formatRub(p.total)}</Text>
+                    </View>
+                  );
+                })}
+                <Text style={s.hint}>
+                  Длина полосы — цена месяца относительно самого дешёвого и самого дорогого за период.
+                  {' '}{est.disclaimer}
+                </Text>
+              </>
+            );
+          })()}
 
           {est.lemana_suggestions.length > 0 && (
             <>
@@ -265,6 +287,9 @@ const s = StyleSheet.create({
   trendLabel: { width: 72, fontSize: 10, color: RenovaTheme.colors.textMuted },
   trendBarWrap: { flex: 1, height: 8, backgroundColor: RenovaTheme.colors.border, borderRadius: 4, overflow: 'hidden' },
   trendBar: { height: 8, backgroundColor: RenovaTheme.colors.accent },
+  // Самый дорогой месяц выделен: иначе глазу не за что зацепиться.
+  trendBarMax: { backgroundColor: RenovaTheme.colors.primary },
+  trendSummary: { fontSize: RenovaTheme.fontSize.bodySmall, color: RenovaTheme.colors.text, marginBottom: 6 },
   trendVal: { width: 72, fontSize: 10, fontWeight: '600', textAlign: 'right' },
   hint: { fontSize: 10, color: RenovaTheme.colors.textMuted, marginTop: 6, lineHeight: 14 },
   lemana: { paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
