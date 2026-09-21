@@ -186,6 +186,25 @@ export function BudgetPlannerPanel({
         <View style={s.summary}>
           <Text style={s.total}>{formatRub(est.grand_total)}</Text>
           <Text style={s.sub}>ориентир · ~{est.days_estimated} раб. дней · резерв {formatRub(est.reserve)} · не в учёт проекта</Text>
+          {/* Запасной расчёт полезен без связи, но выдавать его за рыночную
+              оценку нельзя: по нему принимают решение о деньгах. */}
+          {est.computed_locally ? (
+            <View style={s.localWarn}>
+              <Text style={s.localWarnT}>
+                Рыночные цены не загрузились — расчёт сделан на устройстве по средним ставкам региона.
+                Цифры грубые.
+              </Text>
+              <PrimaryButton
+                title="Повторить"
+                variant="outline"
+                compact
+                loading={loading}
+                disabled={loading}
+                accessibilityLabel="Повторить загрузку рыночных цен"
+                onPress={() => { void recalc(); }}
+              />
+            </View>
+          ) : null}
           <View style={s.splitRow}>
             <View style={[s.split, { flex: est.labor_share }]}><Text style={s.splitT}>Работы</Text><Text style={s.splitV}>{formatRub(est.labor_total)}</Text></View>
             <View style={[s.split, s.splitMat, { flex: est.materials_share }]}><Text style={s.splitT}>Материалы</Text><Text style={s.splitV}>{formatRub(est.materials_total)}</Text></View>
@@ -253,6 +272,16 @@ const s = StyleSheet.create({
   row: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   input: { borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: 8, padding: 8, backgroundColor: RenovaTheme.colors.surface },
   summary: { ...listRowStyles.metricCell, alignItems: 'stretch', marginTop: 12, padding: 12 },
+  localWarn: {
+    marginTop: 8,
+    gap: 8,
+    padding: 10,
+    borderRadius: RenovaTheme.radius.sm,
+    borderWidth: 1,
+    borderColor: RenovaTheme.colors.warningBorder,
+    backgroundColor: RenovaTheme.colors.warningBg,
+  },
+  localWarnT: { fontSize: RenovaTheme.fontSize.caption, color: RenovaTheme.colors.warningText, lineHeight: 17 },
   total: { fontSize: 28, fontWeight: '800', color: RenovaTheme.colors.primary },
   sub: { ...screenTypography.listMeta },
   splitRow: { flexDirection: 'row', marginTop: 12, gap: 4, height: 48 },
