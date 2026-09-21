@@ -248,7 +248,7 @@ async def _prepare_status_side_effects(
                 "title": title,
                 "body": body or "Откройте материалы и проверьте влияние на ближайшие этапы.",
                 "link_path": "/(customer)/(tabs)/repair?tab=materials",
-                "return_to": "/(customer)/(tabs)/home",
+                "return_to": "/(customer)/(tabs)/",
             },
         )
         effects.append(

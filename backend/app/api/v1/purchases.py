@@ -61,7 +61,7 @@ async def _notify_purchase_status(
             title=title,
             body=body or "Откройте материалы и проверьте, как это влияет на ближайшие этапы.",
             link_path="/(customer)/(tabs)/repair?tab=materials",
-            return_to="/(customer)/(tabs)/home",
+            return_to="/(customer)/(tabs)/",
         )
 
 

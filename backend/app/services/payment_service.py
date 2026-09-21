@@ -155,7 +155,7 @@ async def _prepare_transition_side_effects(
                 "link_path": "/(customer)/(tabs)/budget" if customer_link else "/(contractor)/(tabs)/budget",
                 "return_to": None
                 if machine_settlement
-                else ("/(customer)/(tabs)/home" if customer_link else "/(contractor)/(tabs)/home"),
+                else ("/(customer)/(tabs)/" if customer_link else "/(contractor)/(tabs)/"),
             },
         )
         effects.append(

@@ -25,7 +25,7 @@ async def prepare_client_write_side_effects(db: AsyncSession, *, scope: str, pro
         project = await db.get(Project, project_id)
         if not payment or not project or not project.customer_id or project.customer_id == user_id:
             return effects
-        row = await outbox.enqueue(db, aggregate_type="payment", aggregate_id=payment.id, event_type=outbox.PAYMENT_CREATED_EVENT, payload={"user_id": project.customer_id, "project_id": project_id, "notification_type": "payment_pending", "title": f"Счёт к оплате: {payment.title}", "body": str(payment.amount), "link_path": "/(customer)/(tabs)/budget?tab=payments", "return_to": "/(customer)/(tabs)/home"})
+        row = await outbox.enqueue(db, aggregate_type="payment", aggregate_id=payment.id, event_type=outbox.PAYMENT_CREATED_EVENT, payload={"user_id": project.customer_id, "project_id": project_id, "notification_type": "payment_pending", "title": f"Счёт к оплате: {payment.title}", "body": str(payment.amount), "link_path": "/(customer)/(tabs)/budget?tab=payments", "return_to": "/(customer)/(tabs)/"})
         effects.append(PreparedSideEffect(effect_type="notification", outbox_id=row.id, match_key=project.customer_id))
         return effects
     if scope in {"receipt.scan", "receipt.manual"}:
@@ -60,7 +60,7 @@ async def prepare_client_write_side_effects(db: AsyncSession, *, scope: str, pro
         other_user_id = project.contractor_id if user_id == project.customer_id else project.customer_id
         if other_user_id:
             recipient_is_contractor = other_user_id == project.contractor_id
-            notification_row = await outbox.enqueue(db, aggregate_type="warranty_claim", aggregate_id=issue.id, event_type=outbox.NOTIFICATION_EVENT, payload={"user_id": other_user_id, "project_id": project_id, "notification_type": "issue", "title": issue.title, "body": issue.description or "Новое гарантийное обращение", "link_path": "/quality-control" if recipient_is_contractor else "/documents", "return_to": "/(contractor)/(tabs)/home" if recipient_is_contractor else "/(customer)/(tabs)/home"})
+            notification_row = await outbox.enqueue(db, aggregate_type="warranty_claim", aggregate_id=issue.id, event_type=outbox.NOTIFICATION_EVENT, payload={"user_id": other_user_id, "project_id": project_id, "notification_type": "issue", "title": issue.title, "body": issue.description or "Новое гарантийное обращение", "link_path": "/quality-control" if recipient_is_contractor else "/documents", "return_to": "/(contractor)/(tabs)/" if recipient_is_contractor else "/(customer)/(tabs)/"})
             effects.append(PreparedSideEffect(effect_type="notification", outbox_id=notification_row.id, match_key=other_user_id))
         return effects
     if scope == "payment_evidence.review":
@@ -72,7 +72,7 @@ async def prepare_client_write_side_effects(db: AsyncSession, *, scope: str, pro
         activity_row = await outbox.enqueue(db, aggregate_type="payment_evidence", aggregate_id=evidence.id, event_type=outbox.ACTIVITY_EVENT, payload={"project_id": project_id, "user_id": user_id, "kind": "PaymentEvidenceApproved" if approved else "PaymentEvidenceRejected", "title": "Подтверждение перевода принято" if approved else "Подтверждение перевода отклонено", "body": evidence.rejection_reason, "link_path": "/(customer)/(tabs)/budget?tab=payments"})
         effects.append(PreparedSideEffect(effect_type="activity", outbox_id=activity_row.id))
         if project.customer_id:
-            notification_row = await outbox.enqueue(db, aggregate_type="payment_evidence", aggregate_id=evidence.id, event_type=outbox.NOTIFICATION_EVENT, payload={"user_id": project.customer_id, "project_id": project_id, "notification_type": "payment_confirmed" if approved else "payment_pending", "title": "Перевод подтверждён" if approved else "Нужно повторно приложить подтверждение перевода", "body": evidence.rejection_reason, "link_path": "/(customer)/(tabs)/budget?tab=payments", "return_to": "/(customer)/(tabs)/home"})
+            notification_row = await outbox.enqueue(db, aggregate_type="payment_evidence", aggregate_id=evidence.id, event_type=outbox.NOTIFICATION_EVENT, payload={"user_id": project.customer_id, "project_id": project_id, "notification_type": "payment_confirmed" if approved else "payment_pending", "title": "Перевод подтверждён" if approved else "Нужно повторно приложить подтверждение перевода", "body": evidence.rejection_reason, "link_path": "/(customer)/(tabs)/budget?tab=payments", "return_to": "/(customer)/(tabs)/"})
             effects.append(PreparedSideEffect(effect_type="notification", outbox_id=notification_row.id, match_key=project.customer_id))
         return effects
     return effects

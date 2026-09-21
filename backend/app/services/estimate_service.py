@@ -171,7 +171,7 @@ async def propose_estimate_lock(db: AsyncSession, project_id: str, *, proposed_b
             title="Смета на согласование",
             body=f"Исполнитель отправил смету на фиксацию (действует {PROPOSE_TTL_DAYS} дн.). Проверьте и согласуйте.",
             link_path="/(customer)/(tabs)/object?tab=estimate",
-            return_to="/(customer)/(tabs)/home",
+            return_to="/(customer)/(tabs)/",
         )
     await db.commit()
     await db.refresh(proj)
@@ -281,7 +281,7 @@ async def clear_estimate_proposal(
             title="Смета: предложение снято" if mode == "withdraw" else "Смета: нужна правка",
             body=body,
             link_path="/(contractor)/(tabs)/object?tab=estimate" if mode == "reject" else "/(customer)/(tabs)/object?tab=estimate",
-            return_to="/(contractor)/(tabs)/home" if mode == "reject" else "/(customer)/(tabs)/home",
+            return_to="/(contractor)/(tabs)/" if mode == "reject" else "/(customer)/(tabs)/",
         )
     await db.commit()
     await db.refresh(proj)
