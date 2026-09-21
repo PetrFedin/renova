@@ -125,11 +125,21 @@ async def budget_category_alerts(project_id: str, threshold_pct: float = 10, use
 @router.get("/projects/{project_id}/analytics/budget-forecast")
 async def budget_forecast(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     p = await require_project(db, project_id, user, write=False)
-    prog = max(p.progress_percent, 1) / 100
-    burn = p.budget_spent / prog if prog else p.budget_spent
-    forecast = burn
+    from app.services import stage_status_service as st_status
+
+    progress = st_status.project_progress(p)
+    forecast = st_status.burn_forecast(
+        spent=p.budget_spent, planned=p.budget_planned, progress_percent=progress
+    )
     over = max(0, forecast - p.budget_planned)
-    return {"budget_planned": p.budget_planned, "budget_spent": p.budget_spent, "progress_percent": p.progress_percent, "forecast_total": round(forecast, 2), "forecast_over": round(over, 2), "risk": "high" if over > p.budget_planned * 0.05 else "ok"}
+    return {
+        "budget_planned": p.budget_planned,
+        "budget_spent": p.budget_spent,
+        "progress_percent": progress,
+        "forecast_total": forecast,
+        "forecast_over": round(over, 2),
+        "risk": "high" if over > p.budget_planned * 0.05 else "ok",
+    }
 
 @router.get("/projects/{project_id}/analytics/budget-scenario")
 async def budget_scenario(project_id: str, materials_pct: float = 10, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):

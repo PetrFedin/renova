@@ -18,6 +18,7 @@ from app.models.entities import (
     Purchase,
     PurchaseStatus,
     Receipt,
+    Stage,
 )
 
 RESERVE_PCT = 0.12
@@ -483,8 +484,19 @@ async def budget_summary(db: AsyncSession, project_id: str) -> dict:
     actual = proj.budget_spent
     deviation = round(actual - total_plan, 2)
     deviation_pct = round(deviation / total_plan * 100, 1) if total_plan else 0
-    progress = proj.progress_percent or 0
-    forecast = round(actual / (progress / 100), 2) if progress > 5 else total_plan
+    from app.services import stage_status_service as st_status
+
+    # Этапы читаем запросом, а не через `proj.stages`: объект получен
+    # `db.get`, связи у него не загружены, а ленивое обращение после
+    # `db.refresh` уходит вне greenlet — ровно тот отказ, из-за которого
+    # сводка бюджета уже падала.
+    stages = list(
+        (await db.execute(select(Stage).where(Stage.project_id == project_id))).scalars().all()
+    )
+    progress = st_status.weighted_progress(stages)
+    forecast = st_status.burn_forecast(
+        spent=actual, planned=total_plan, progress_percent=progress
+    )
     over_risk = round(forecast - total_plan, 2)
     segments = {}
     for cat in ("works", "materials", "delivery", "tools", "other", "reserve"):

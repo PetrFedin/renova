@@ -72,6 +72,35 @@ def weighted_progress(stages: list[Stage]) -> float:
     return round(acc / total_w, 1)
 
 
+# Ниже этой доли выполненных работ прогноз по темпу не имеет смысла: делить
+# факт на почти нулевой прогресс — значит получать любое число. При таком
+# прогрессе прогнозом остаётся план.
+FORECAST_MIN_PROGRESS_PCT = 5.0
+
+
+def burn_forecast(*, spent: float, planned: float, progress_percent: float) -> float:
+    """Прогноз итоговой суммы по темпу расходования.
+
+    Одна формула на весь продукт. До неё их было две: сводка бюджета делила
+    факт на прогресс только при прогрессе выше 5 %, а аналитика делила всегда,
+    подставляя вместо нуля единицу — и превращала факт в стократный прогноз.
+    """
+    if progress_percent > FORECAST_MIN_PROGRESS_PCT:
+        return round(spent / (progress_percent / 100), 2)
+    return round(planned, 2)
+
+
+def project_progress(project) -> float:
+    """Прогресс объекта — всегда по этапам, а не по колонке в проекте.
+
+    `projects.progress_percent` в продукте не вычисляется ни одной записью:
+    единственное присваивание живёт в демо-заполнении. Все, кто её читал,
+    получали ноль, а экран объекта показывал «работы 0 %» на объекте, где
+    работы идут.
+    """
+    return weighted_progress(list(getattr(project, "stages", None) or []))
+
+
 def delay_days(stage: Stage, today: date | None = None) -> int:
     today = today or date.today()
     if not stage.planned_end or stage.status == StageStatus.done:
