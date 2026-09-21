@@ -23,6 +23,7 @@ import { chatListPreview, sortChatThreads } from '@/lib/chatPreview';
 import { threadAwaitingReply } from '@/lib/chatAttention';
 import { resolveChatCreateProject } from '@/lib/resolveChatCreateProject';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
+import { explainMutationFailure } from '@/lib/mutationFailure';
 import { reportCatch } from '@/lib/reportError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 
@@ -194,7 +195,11 @@ export function ChatListView() {
                 await api.patchChatState(user.id, t.project_id, t.id, { is_pinned: !t.is_pinned });
                 await reload();
               } catch (e) {
-                if (isOfflineQueued(e)) notifyOfflineQueued(t.is_pinned ? 'Открепление чата' : 'Закрепление чата');
+                explainMutationFailure(e, {
+                  action: t.is_pinned ? 'Открепление чата' : 'Закрепление чата',
+                  scope: 'chatList.pin',
+                  context: { projectId: t.project_id, threadId: t.id },
+                });
               }
             })();
           },
@@ -207,7 +212,11 @@ export function ChatListView() {
                 await api.patchChatState(user.id, t.project_id, t.id, { is_archived: folder !== 'archive' });
                 await reload();
               } catch (e) {
-                if (isOfflineQueued(e)) notifyOfflineQueued(folder === 'archive' ? 'Восстановление чата' : 'Архивация чата');
+                explainMutationFailure(e, {
+                  action: folder === 'archive' ? 'Восстановление чата' : 'Архивация чата',
+                  scope: 'chatList.archive',
+                  context: { projectId: t.project_id, threadId: t.id },
+                });
               }
             })();
           },

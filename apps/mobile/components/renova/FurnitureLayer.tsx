@@ -5,6 +5,7 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, FurnitureItem } from '@/lib/api';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
+import { explainMutationFailure } from '@/lib/mutationFailure';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { reportCatch } from '@/lib/reportError';
 
@@ -23,7 +24,14 @@ export function FurnitureLayer({ userId, projectId, planId, role }: { userId: st
       await api.moveFurniture(userId, projectId, id, nx, ny);
       load();
     } catch (e) {
-      if (isOfflineQueued(e)) notifyOfflineQueued('Мебель на плане');
+      explainMutationFailure(e, {
+        action: 'Мебель на плане',
+        scope: 'floorPlan.moveFurniture',
+        context: { projectId, furnitureId: id },
+      });
+      // Положение вернётся к сохранённому: иначе на экране осталась бы
+      // расстановка, которой нет на сервере.
+      load();
     }
   };
   return (
