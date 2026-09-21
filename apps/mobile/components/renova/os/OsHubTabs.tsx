@@ -1,8 +1,17 @@
 /** Горизонтальные вкладки hub — Clarity C: underline, не pill-карточки */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, Pressable, Text, StyleSheet, View } from 'react-native';
-import type { LayoutChangeEvent } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
+
+/**
+ * Замеры из `onLayout` и `onScroll`.
+ *
+ * Типы react-native в этой сборке не отдают `LayoutChangeEvent` с
+ * `nativeEvent`, поэтому описываем ровно то, что читаем, — как это уже
+ * сделано в `FloorPlanPanel`.
+ */
+type LayoutEvent = { nativeEvent?: { layout?: { x?: number; width?: number } } };
+type ScrollEvent = { nativeEvent?: { contentOffset?: { x?: number } } };
 
 export type HubTab = {
   id: string;
@@ -46,8 +55,12 @@ export function OsHubTabs({ tabs, value, onChange }: Props) {
   const reveal = useRef<() => void>(() => {});
 
   const onTabLayout = useCallback(
-    (id: string) => (e: LayoutChangeEvent) => {
-      const { x, width } = e.nativeEvent.layout;
+    (id: string) => (e: LayoutEvent) => {
+      const x = e.nativeEvent?.layout?.x;
+      const width = e.nativeEvent?.layout?.width;
+      // Без обоих чисел замер бесполезен, а подставлять ноль опаснее: ряд
+      // уехал бы в начало на первом же кадре.
+      if (typeof x !== 'number' || typeof width !== 'number') return;
       layouts.current[id] = { x, width };
       // Замер вкладок приходит **после** замера контейнера: если не позвать
       // подкрутку отсюда, звать её будет уже некому, и выбранная вкладка
@@ -84,12 +97,15 @@ export function OsHubTabs({ tabs, value, onChange }: Props) {
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={s.row}
-        onLayout={(e) => {
-          viewport.current = e.nativeEvent.layout.width;
+        onLayout={(e: LayoutEvent) => {
+          const width = e.nativeEvent?.layout?.width;
+          if (typeof width !== 'number') return;
+          viewport.current = width;
           revealSelected();
         }}
-        onScroll={(e) => {
-          offset.current = e.nativeEvent.contentOffset.x;
+        onScroll={(e: ScrollEvent) => {
+          const x = e.nativeEvent?.contentOffset?.x;
+          if (typeof x === 'number') offset.current = x;
         }}
         scrollEventThrottle={16}
       >

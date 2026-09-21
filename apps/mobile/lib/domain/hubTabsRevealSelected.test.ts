@@ -64,7 +64,8 @@ test('ряд не прокручивается левее начала', () => {
 test('ручная прокрутка не сбрасывается подкруткой', () => {
   // Позицию берём из onScroll, а не из своей памяти: иначе жест пользователя
   // и подкрутка спорили бы друг с другом.
-  assert.match(source, /offset\.current = e\.nativeEvent\.contentOffset\.x/);
+  assert.match(source, /onScroll=\{\(e: ScrollEvent\)/);
+  assert.match(source, /if \(typeof x === 'number'\) offset\.current = x;/);
   assert.match(source, /if \(Math\.abs\(next - offset\.current\) < 1\) return;/);
 });
 
@@ -75,4 +76,17 @@ test('прежнее поведение ряда сохранено', () => {
   assert.match(source, /accessibilityLabel="Все вкладки"/);
   assert.match(source, /accessibilityRole="tab"/);
   assert.match(source, /accessibilityState=\{\{ selected: on \}\}/);
+});
+
+test('замер без чисел не двигает ряд', () => {
+  // Подставить ноль было бы опаснее: ряд уехал бы в начало на первом кадре.
+  assert.match(source, /if \(typeof x !== 'number' \|\| typeof width !== 'number'\) return;/);
+  assert.match(source, /if \(typeof width !== 'number'\) return;/);
+});
+
+test('замеры описаны своим типом, а не any', () => {
+  // Типы react-native в этой сборке не отдают LayoutChangeEvent с nativeEvent;
+  // в проекте это уже решено локальным типом (FloorPlanPanel).
+  assert.match(source, /type LayoutEvent = \{ nativeEvent\?: \{ layout\?: \{ x\?: number; width\?: number \} \} \};/);
+  assert.match(source, /type ScrollEvent = \{ nativeEvent\?: \{ contentOffset\?: \{ x\?: number \} \} \};/);
 });
