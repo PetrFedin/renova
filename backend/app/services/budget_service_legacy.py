@@ -21,6 +21,9 @@ from app.models.entities import (
 )
 
 RESERVE_PCT = 0.12
+#: Статьи бюджета в порядке показа. Раньше этот кортеж был записан прямо в
+#: сводке и расходился с раскладкой расходов по статьям.
+CATEGORY_KEYS = ("works", "materials", "delivery", "tools", "other", "reserve")
 CATEGORY_MAP = {
     LineType.work: ("works", "works"),
     LineType.material: ("materials", "materials"),
@@ -486,12 +489,39 @@ async def budget_summary(db: AsyncSession, project_id: str) -> dict:
     progress = proj.progress_percent or 0
     forecast = round(actual / (progress / 100), 2) if progress > 5 else total_plan
     over_risk = round(forecast - total_plan, 2)
+    # Строки бюджета проецируют расходы со статусами «подтверждён» и «ждёт
+    # чека», а `budget_spent` считает только подтверждённые. Обе величины
+    # уходят в один ответ, и сумма плиток оказывалась больше итога, как только
+    # появлялся непроверенный чек. Ни одно из чисел не переопределяем: вторую
+    # часть показываем отдельно, чтобы плитки сходились с итогом явно.
+    pending_by_cat: dict[str, float] = {}
+    pending_rows = (
+        await db.execute(
+            select(Expense).where(
+                Expense.project_id == project_id,
+                Expense.status == "pending_receipt",
+            )
+        )
+    ).scalars().all()
+    for expense in pending_rows:
+        cat = expense.category if expense.category in CATEGORY_KEYS else "other"
+        pending_by_cat[cat] = round(pending_by_cat.get(cat, 0.0) + float(expense.amount or 0), 2)
+    budget_pending = round(sum(pending_by_cat.values()), 2)
+
     segments = {}
-    for cat in ("works", "materials", "delivery", "tools", "other", "reserve"):
+    for cat in CATEGORY_KEYS:
         seg_plan = sum(bl.planned_amount for bl in lines if bl.category == cat)
         seg_fact = sum(bl.actual_amount for bl in lines if bl.category == cat)
+        seg_pending = pending_by_cat.get(cat, 0.0)
         if seg_plan or seg_fact:
-            segments[cat] = {"planned": round(seg_plan, 2), "actual": round(seg_fact, 2)}
+            segments[cat] = {
+                "planned": round(seg_plan, 2),
+                "actual": round(seg_fact, 2),
+                # Сколько из «факта» этой плитки ещё не подтверждено чеком.
+                "pending": round(seg_pending, 2),
+                # Подтверждённая часть — та, что входит в итог «Факт».
+                "confirmed": round(seg_fact - seg_pending, 2),
+            }
     # W71: ДО в сводке бюджета — связь смета ↔ change orders ↔ plan
     from app.models.entities import ChangeOrder, ChangeOrderStatus
 
@@ -522,6 +552,10 @@ async def budget_summary(db: AsyncSession, project_id: str) -> dict:
     return {
         "budget_planned": round(total_plan, 2),
         "budget_spent": round(actual, 2),
+        # Деньги, которые уже потрачены, но чек по ним ещё не подтверждён.
+        # Вместе с `budget_spent` они дают сумму плиток — иначе разбивка
+        # оказывалась больше итога без объяснения.
+        "budget_pending_receipt": budget_pending,
         "reserve": round(reserve, 2),
         "deviation": deviation,
         "deviation_pct": deviation_pct,
