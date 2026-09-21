@@ -5,7 +5,7 @@
 .expo/
 .sync-last
 .sync.log
-backend/.venv/
+backend/.venv
 backend/__pycache__/
 backend/logs/
 backend/renova.db
