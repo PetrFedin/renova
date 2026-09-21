@@ -392,7 +392,7 @@ export function CreateWorkSheet({
 }
 
 const s = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  backdrop: { flex: 1, backgroundColor: RenovaTheme.colors.scrim, justifyContent: 'flex-end' },
   sheet: { ...card, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, padding: 16, maxHeight: '92%' },
   head: { fontSize: 18, fontWeight: '800', marginBottom: 4 },
   guide: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 17, marginBottom: 10 },

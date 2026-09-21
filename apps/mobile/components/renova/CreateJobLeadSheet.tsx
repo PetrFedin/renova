@@ -232,7 +232,7 @@ export function CreateJobLeadSheet({
 
 const s = StyleSheet.create({
   flex: { flex: 1 },
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
+  backdrop: { flex: 1, backgroundColor: RenovaTheme.colors.scrim, justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: RenovaTheme.colors.surface,
     borderTopLeftRadius: 16,

@@ -23,7 +23,7 @@ export function RejectStageModal({ visible, stageName, onClose, onConfirm }: { v
   );
 }
 const s = StyleSheet.create({
-  overlay:{ flex:1, backgroundColor:'rgba(0,0,0,0.4)', justifyContent:'center', padding:24 },
+  overlay:{ flex:1, backgroundColor:RenovaTheme.colors.scrim, justifyContent:'center', padding:24 },
   box:{ backgroundColor:RenovaTheme.colors.surface, borderRadius:12, padding:16 },
   head:{ fontWeight:'800', marginBottom:12 },
   input:{ borderWidth:1, borderColor:RenovaTheme.colors.border, borderRadius:8, padding:10, minHeight:80, marginBottom:12 },

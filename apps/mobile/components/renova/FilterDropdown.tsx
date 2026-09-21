@@ -112,7 +112,7 @@ const s = StyleSheet.create({
   placeholderText: { color: RenovaTheme.colors.textMuted, fontWeight: '500' },
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: RenovaTheme.colors.scrim,
     justifyContent: 'center',
     padding: 24,
   },

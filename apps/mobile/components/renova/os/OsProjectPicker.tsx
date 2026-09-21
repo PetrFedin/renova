@@ -378,7 +378,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 3,
   },
   countBadgeT: { color: RenovaTheme.colors.surface, fontSize: 8, fontWeight: '800' },
-  backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.35)' },
+  backdrop: { flex: 1, backgroundColor: RenovaTheme.colors.scrim },
   menuWrap: {
     position: 'absolute',
     top: 0,

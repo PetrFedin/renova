@@ -91,7 +91,7 @@ export function HomeKpiDetailSheet({ widgetId, snap, role, onClose }: Props) {
 }
 
 const s = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
+  backdrop: { flex: 1, backgroundColor: RenovaTheme.colors.scrim, justifyContent: 'flex-end' },
   sheet: {
     ...card,
     marginBottom: 0,

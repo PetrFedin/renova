@@ -288,7 +288,7 @@ const s = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     padding: 16,
-    backgroundColor: 'rgba(15,23,42,0.5)',
+    backgroundColor: RenovaTheme.colors.scrim,
   },
   modalCard: {
     ...card,
