@@ -107,6 +107,42 @@ async def test_project_without_stages_is_zero(prog_db):
     assert st_status.project_progress(fresh) == 0.0
 
 
+def test_no_endpoint_computes_progress_on_its_own():
+    """Пять источников прогресса обязаны звать одну функцию.
+
+    Сверка ответов на живом стенде показывала по одному объекту четыре разных
+    числа: карточка 0.0, сводка проекта 4.5, аналитика 11.2, план-график 11.2.
+    Взвешенное среднее против невзвешенного плюс мёртвая колонка.
+    """
+    import re
+    from pathlib import Path
+
+    from app.api.v1 import analytics, projects
+    from app.services import project_service, schedule_service
+
+    hand_rolled = re.compile(r"sum\(s\.percent_complete for s in [^)]+\)\s*/")
+    for module in (analytics, projects, project_service, schedule_service):
+        source = Path(module.__file__).read_text(encoding="utf-8")
+        assert not hand_rolled.search(source), (
+            f"{module.__name__} снова считает прогресс сам, мимо weighted_progress"
+        )
+
+
+def test_progress_helper_is_imported_where_it_is_used():
+    # Импорт внутри одной функции не виден остальным: так `/analytics` уже
+    # падал с NameError после переключения на общую формулу.
+    from pathlib import Path
+
+    from app.api.v1 import analytics
+
+    source = Path(analytics.__file__).read_text(encoding="utf-8")
+    module_level = [
+        line for line in source.splitlines()
+        if line.startswith("from app.services import stage_status_service")
+    ]
+    assert module_level, "общая формула зовётся без импорта на уровне модуля"
+
+
 def test_both_consumers_call_the_same_helper():
     # Смысл правки: одно число — одна формула. Разъедется снова, если кто-то
     # вернётся к чтению колонки или заведёт свой делитель.

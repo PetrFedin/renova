@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import MaterialPick, Project, Purchase, Stage, StageStatus
+from app.services import stage_status_service as st_status
 
 
 def _today() -> date:
@@ -35,7 +36,9 @@ async def build_schedule_summary(db: AsyncSession, project: Project) -> dict:
     current = review or active
 
     remaining = [s for s in stages if s.status not in (StageStatus.done,)]
-    progress = sum(s.percent_complete for s in stages) / (len(stages) or 1)
+    # Та же формула, что в сводке проекта и в прогнозе бюджета: вес этапа
+    # имеет значение, иначе мелкий готовый этап весит как крупный начатый.
+    progress = st_status.weighted_progress(stages)
 
     # Прогноз: сегодня + оставшаяся длительность по плану + накопленная задержка
     remaining_days = 0
