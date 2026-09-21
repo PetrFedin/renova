@@ -25,6 +25,21 @@ def _utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+def _for_storage(value: datetime | None) -> datetime | None:
+    """Наивный UTC — в том виде, в каком колонка его принимает.
+
+    `calendar_items.start_at`, `end_at` и `reminder_at` объявлены как
+    `DateTime` без `timezone=True`; в проекте принято хранить в них наивный
+    UTC (`app/core/timeutil.py`). Клиент присылает ISO-дату с поясом — `Z` или
+    смещение, — FastAPI разбирает её в дату с часовым поясом, и PostgreSQL
+    отказывался такую запись принимать: создание события отвечало 500 на
+    любой обычный запрос. На SQLite это проходило, поэтому тесты молчали.
+    """
+    if value is None:
+        return None
+    return _utc(value).replace(tzinfo=None)
+
+
 def _clean_text(value: str | None, *, limit: int, required: bool = False) -> str | None:
     normalized = (value or "").strip()
     if required and not normalized:
@@ -146,15 +161,15 @@ async def create_item(
         user_id=actor.id,
         title=clean_title,
         description=clean_description,
-        start_at=start_at,
-        end_at=end_at,
+        start_at=_for_storage(start_at),
+        end_at=_for_storage(end_at),
         all_day=all_day,
         event_type=clean_event_type,
         color=clean_color,
         is_public=is_public,
         recurrence=clean_recurrence,
         location=clean_location,
-        reminder_at=reminder_at,
+        reminder_at=_for_storage(reminder_at),
         reminder_sent=False,
         project_id=resolved_project_id,
         stage_id=resolved_stage_id,
@@ -231,9 +246,9 @@ async def update_item(
     next_end = changes.get("end_at", item.end_at)
     next_reminder = changes.get("reminder_at", item.reminder_at)
     _validate_timing(
-        start_at=next_start,
-        end_at=next_end,
-        reminder_at=next_reminder,
+        start_at=_for_storage(next_start),
+        end_at=_for_storage(next_end),
+        reminder_at=_for_storage(next_reminder),
     )
 
     desired = {
