@@ -89,6 +89,8 @@ export type Dashboard = {
   /** W76: очередь с бэкенда (согласовано с home nextAction) */
   pending_acceptances?: number;
   pending_change_orders?: number;
+  /** Сумма одобренных доп. работ — слагаемое `budget_planned`. */
+  approved_change_orders_sum?: number;
   warranty_open?: number;
   warranty_overdue?: number;
   pending_sign_docs?: number;
