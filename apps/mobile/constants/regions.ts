@@ -56,6 +56,14 @@ export type MarketEstimate = {
   lemana_suggestions: LemanaSuggestion[];
   price_trend_6m: PriceTrendPoint[];
   disclaimer: string;
+  /**
+   * Оценка посчитана на устройстве, потому что сервер не ответил.
+   *
+   * Запасной расчёт полезен — без связи лучше грубый ориентир, чем пустой
+   * экран. Но показывать его теми же словами и цифрами, что и настоящую
+   * рыночную оценку, нельзя: человек принимает по ней решение о деньгах.
+   */
+  computed_locally?: boolean;
 };
 
 export type BudgetPlanInput = {
@@ -90,6 +98,7 @@ export function fallbackMarketEstimate(input: BudgetPlanInput): MarketEstimate {
     days_estimated: Math.max(1, Math.round(area / 8 * input.work_types.length)),
     reserve: Math.round(sub * 0.05),
     grand_total: Math.round(sub * 1.05),
+    computed_locally: true,
     lines: input.work_types.map((wt) => ({ work_type: wt, qty: area, unit: 'm2', labor: labor / input.work_types.length, materials: materials / input.work_types.length, days: 2 })),
     consumables: [],
     lemana_suggestions: [],
