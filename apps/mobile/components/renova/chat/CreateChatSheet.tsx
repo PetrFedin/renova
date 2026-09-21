@@ -288,7 +288,7 @@ export function CreateChatSheet({
 }
 
 const s = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
+  backdrop: { flex: 1, backgroundColor: RenovaTheme.colors.scrim, justifyContent: 'flex-end' },
   sheet: {
     maxHeight: '92%',
     backgroundColor: RenovaTheme.colors.surface,

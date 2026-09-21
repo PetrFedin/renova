@@ -151,7 +151,7 @@ const s = StyleSheet.create({
   fieldText: { flex: 1, fontSize: 15, fontWeight: '600', color: RenovaTheme.colors.text },
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: RenovaTheme.colors.scrim,
     justifyContent: 'center',
     padding: 24,
   },

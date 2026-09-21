@@ -238,7 +238,7 @@ const s = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     zIndex: 20,
   },
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
+  backdrop: { flex: 1, backgroundColor: RenovaTheme.colors.scrim, justifyContent: 'flex-end' },
   sheet: { backgroundColor: RenovaTheme.colors.surface, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, paddingBottom: 28 },
   head: { fontSize: 16, fontWeight: '800', marginBottom: 12, color: RenovaTheme.colors.text },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderTopWidth: 1, borderTopColor: '#f0f0f0' },

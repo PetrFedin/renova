@@ -705,7 +705,7 @@ const s = StyleSheet.create({
   replyBar: { flexDirection: 'row', alignItems: 'center', padding: 8, backgroundColor: '#f1f5f9', gap: 8 },
   replyText: { flex: 1, fontSize: 12, color: RenovaTheme.colors.textMuted },
   replyX: { fontSize: 16, padding: 4 },
-  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  modalBg: { flex: 1, backgroundColor: RenovaTheme.colors.scrim, justifyContent: 'flex-end' },
   modal: { backgroundColor: RenovaTheme.colors.surface, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, gap: 10 },
   modalTitle: { fontSize: 18, fontWeight: '700' },
   or: { textAlign: 'center', color: RenovaTheme.colors.textMuted, fontSize: 12 },

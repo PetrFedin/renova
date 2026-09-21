@@ -179,7 +179,7 @@ const s = StyleSheet.create({
   badgeTasks: { backgroundColor: RenovaTheme.colors.warning },
   badgeChat: { backgroundColor: RenovaTheme.colors.danger },
   badgeT: { color: RenovaTheme.colors.surface, fontSize: 9, fontWeight: '700' },
-  backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.35)' },
+  backdrop: { flex: 1, backgroundColor: RenovaTheme.colors.scrim },
   menuWrap: { flex: 1, alignItems: 'flex-end', paddingRight: 12 },
   menu: {
     minWidth: 220,

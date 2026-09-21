@@ -348,7 +348,7 @@ const s = StyleSheet.create({
     fontSize: 15,
     backgroundColor: RenovaTheme.colors.surface,
   },
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', padding: 20 },
+  modalBackdrop: { flex: 1, backgroundColor: RenovaTheme.colors.scrim, justifyContent: 'center', padding: 20 },
   modalSheet: { backgroundColor: RenovaTheme.colors.surface, borderRadius: 14, padding: 16, gap: 10 },
   modalTitle: { fontSize: 17, fontWeight: '800', color: RenovaTheme.colors.text },
 });

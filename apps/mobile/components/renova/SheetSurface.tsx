@@ -136,7 +136,7 @@ const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    backgroundColor: RenovaTheme.colors.scrim,
   },
   keyboardLayer: { flex: 1, justifyContent: 'flex-end' },
   sheet: {
