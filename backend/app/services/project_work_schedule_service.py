@@ -398,7 +398,7 @@ async def submit_schedule(
             notification_type="schedule_review",
             notification_title="Согласуйте план-график",
             notification_body=schedule.title,
-            return_to="/(customer)/(tabs)/home",
+            return_to="/(customer)/(tabs)/",
         )
         await db.commit()
     except BaseException:
@@ -440,7 +440,7 @@ async def confirm_schedule(
             notification_type="schedule_confirmed",
             notification_title="План-график согласован",
             notification_body=schedule.title,
-            return_to="/(contractor)/(tabs)/home",
+            return_to="/(contractor)/(tabs)/",
         )
         await db.commit()
     except BaseException:
@@ -483,7 +483,7 @@ async def reject_schedule(
             notification_type="schedule_rejected",
             notification_title="План-график на доработку",
             notification_body=reason or schedule.title,
-            return_to="/(contractor)/(tabs)/home",
+            return_to="/(contractor)/(tabs)/",
         )
         await db.commit()
     except BaseException:

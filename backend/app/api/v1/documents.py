@@ -333,7 +333,7 @@ async def sign_project_document(
                 title=f"Документ подписан: {doc.title}",
                 body=getattr(user.role, "value", str(user.role)),
                 link_path="/documents",
-                return_to="/(customer)/(tabs)/home" if recipient_id == proj.customer_id else "/(contractor)/(tabs)/home",
+                return_to="/(customer)/(tabs)/" if recipient_id == proj.customer_id else "/(contractor)/(tabs)/",
             )
     await db.commit()
     version = await docs_svc.get_current_version(db, doc.id)
@@ -384,7 +384,7 @@ async def archive_project_document(
             title=f"Документ в архиве: {doc.title}",
             body=doc.document_type or doc.kind or "",
             link_path="/documents",
-            return_to="/(customer)/(tabs)/home",
+            return_to="/(customer)/(tabs)/",
         )
     await db.commit()
     version = await docs_svc.get_current_version(db, doc.id)

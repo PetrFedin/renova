@@ -132,7 +132,7 @@ async def _prepare_approval_side_effects(
                 "title": f"Доп. работы согласованы: {order.title}",
                 "body": str(order.amount),
                 "link_path": "/(contractor)/(tabs)/budget",
-                "return_to": "/(contractor)/(tabs)/home",
+                "return_to": "/(contractor)/(tabs)/",
             },
         )
         effects.append(
@@ -208,7 +208,7 @@ async def _prepare_rejection_side_effects(
                 "title": f"Доп. работы отклонены: {order.title}",
                 "body": order.description or "",
                 "link_path": "/(contractor)/(tabs)/budget",
-                "return_to": "/(contractor)/(tabs)/home",
+                "return_to": "/(contractor)/(tabs)/",
             },
         )
         effects.append(

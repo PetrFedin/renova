@@ -360,7 +360,7 @@ async def confirm_matches(
                     "title": f"Оплата подтверждена по выписке: {payment.title}",
                     "body": str(payment.amount),
                     "link_path": "/(customer)/(tabs)/budget?tab=payments" if customer_link else "/(contractor)/(tabs)/budget?tab=payments",
-                    "return_to": "/(customer)/(tabs)/home" if customer_link else "/(contractor)/(tabs)/home",
+                    "return_to": "/(customer)/(tabs)/" if customer_link else "/(contractor)/(tabs)/",
                 },
             )
 

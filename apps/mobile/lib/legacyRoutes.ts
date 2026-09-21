@@ -22,6 +22,11 @@ export const TAB_ALIASES: Record<string, string> = {
   '/(contractor)/(tabs)/estimate': '/(contractor)/(tabs)/object?tab=estimate',
   '/(contractor)/(tabs)/plan': '/(contractor)/(tabs)/object?tab=plan',
   '/(contractor)/(tabs)/objects': '/(contractor)/(tabs)/',
+  // Главная живёт по корню группы вкладок, файла `home.tsx` нет. Сервер долго
+  // слал в уведомлениях `…/(tabs)/home`, и такие пуши уже лежат на телефонах:
+  // алиас нужен, даже когда сам сервер исправлен.
+  '/(customer)/(tabs)/home': '/(customer)/(tabs)/',
+  '/(contractor)/(tabs)/home': '/(contractor)/(tabs)/',
 };
 
 const logged = new Set<string>();

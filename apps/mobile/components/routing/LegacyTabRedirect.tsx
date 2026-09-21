@@ -35,8 +35,11 @@ export function LegacyTabRedirect({ path }: { path: string }) {
     }
     if (!TAB_ALIASES[path]) {
       // Неизвестный сегмент: не Redirect на себя (цикл). На главную роли.
+      // Главная — это корень группы вкладок: файла `index` в адресе нет, и
+      // ссылка на него приводила туда же, откуда мы уходим, — в «Такого
+      // экрана нет».
       const role = path.includes('(contractor)') ? 'contractor' : 'customer';
-      return { pathname: `/(${role})/(tabs)/index` as const };
+      return { pathname: `/(${role})/(tabs)/` as const };
     }
     const route = resolveLegacyRoute(path);
     return {

@@ -122,7 +122,7 @@ async def create_request(
                 "title": "Запрос на изменение комнаты",
                 "body": normalized_message[:500],
                 "link_path": "/(contractor)/(tabs)/object?tab=rooms",
-                "return_to": "/(contractor)/(tabs)/home",
+                "return_to": "/(contractor)/(tabs)/",
             },
         )
     try:
