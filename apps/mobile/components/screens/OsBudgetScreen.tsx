@@ -23,6 +23,7 @@ import { buildUnifiedBudgetExpenses, unifiedExpenseTotal } from '@/lib/domain/bu
 import { budgetScreenStyles as s } from '@/components/screens/budget/budgetScreenStyles';
 import type { BudgetTab, ExpenseView } from '@/constants/budgetTabs';
 import { normalizeBudgetTab } from '@/constants/budgetTabs';
+import { StagePaymentPlanPanel } from '@/components/renova/StagePaymentPlanPanel';
 
 export type { BudgetTab } from '@/constants/budgetTabs';
 
@@ -178,6 +179,9 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
             onReload={reload}
             onExpensePress={setDetailTarget}
           />
+        )}
+        {resolvedTab === 'payments' && (
+          <StagePaymentPlanPanel userId={user.id} projectId={activeProject.id} canEdit={canWrite && !readOnly} />
         )}
         {resolvedTab === 'payments' && (
           <BudgetPaymentsSection
