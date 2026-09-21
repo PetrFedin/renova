@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 const IGNORED_CODES = new Set(['2786', '2607']);
@@ -106,8 +106,33 @@ export function runTypecheckReport(args) {
   });
 }
 
-const invokedDirectly = process.argv[1]
-  && import.meta.url === pathToFileURL(process.argv[1]).href;
+/**
+ * Запущен ли модуль напрямую.
+ *
+ * Сравнивать `import.meta.url` с `pathToFileURL(process.argv[1])` напрямую
+ * нельзя: `import.meta.url` уже разыменован, а argv — нет. На macOS `/tmp`
+ * это симлинк на `/private/tmp`, и запуск рубежа по пути внутри такого
+ * каталога давал несовпадение. Модуль тихо ничего не делал: ни строки
+ * вывода, код возврата 0 — то есть проверка типов «проходила» при любых
+ * ошибках. Найдено так: в рабочем дереве под /tmp скрипт возвращал 0, хотя
+ * tsc сообщал `TS2307: Cannot find module`.
+ */
+function isInvokedDirectly() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  const candidates = new Set([entry]);
+  try {
+    candidates.add(realpathSync(entry));
+  } catch {
+    // Точка входа может быть недоступна для realpath — тогда сравниваем как есть.
+  }
+  for (const candidate of candidates) {
+    if (import.meta.url === pathToFileURL(candidate).href) return true;
+  }
+  return false;
+}
+
+const invokedDirectly = isInvokedDirectly();
 
 if (invokedDirectly) {
   try {
