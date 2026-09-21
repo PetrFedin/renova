@@ -102,6 +102,12 @@ export function OsHubTabs({ tabs, value, onChange }: Props) {
               onLayout={onTabLayout(t.id)}
               onPress={() => onChange(t.id)}
               accessibilityRole="tab"
+              // Роль была, имени не было: читалка объявляла «вкладка» столько
+              // раз, сколько их в ряду, и ни одной не называла. Счётчик входит
+              // в имя — иначе о нём не узнать вовсе.
+              accessibilityLabel={
+                t.badge != null && t.badge > 0 ? `${t.label}, ${t.badge}` : t.label
+              }
               accessibilityState={{ selected: on }}
             >
               <Text style={[s.label, on && s.labelOn]}>{t.label}</Text>
