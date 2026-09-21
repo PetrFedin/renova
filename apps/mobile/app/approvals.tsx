@@ -13,6 +13,7 @@ import { RenovaTheme } from '@/constants/Theme';
 import { APPROVAL_TYPE_LABEL, approvalSourceLabel, resolveApprovalHref } from '@/lib/approvalLinks';
 import { navigateApproval } from '@/lib/navigation';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
+import { explainMutationFailure } from '@/lib/mutationFailure';
 import { objectTabRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
@@ -64,7 +65,11 @@ export default function ApprovalsScreen() {
         alertApprovalApproved('customer', it.type);
       }
     } catch (e) {
-      if (isOfflineQueued(e)) notifyOfflineQueued('Согласование');
+      explainMutationFailure(e, {
+        action: 'Согласование',
+        scope: 'approvals.approve',
+        context: { projectId: pid, approvalId: it.id, type: it.type },
+      });
     }
   };
 
@@ -122,7 +127,11 @@ export default function ApprovalsScreen() {
                             load();
                             alertApprovalRejected('customer', it.type);
                           } catch (e) {
-                            if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение');
+                            explainMutationFailure(e, {
+                              action: 'Отклонение',
+                              scope: 'approvals.reject',
+                              context: { projectId: activeProject.id, approvalId: it.id, type: it.type },
+                            });
                           }
                         })();
                       },
