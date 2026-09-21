@@ -101,7 +101,13 @@ async def sync_budget_lines_from_estimate(db: AsyncSession, project_id: str) -> 
 
 
 async def _cleanup_receipt_orphans(db: AsyncSession, rec: Receipt) -> None:
-    """Удаляет Expense-сироты без receipt_id (создавались до flush чека)."""
+    """Удаляет Expense-сироты без receipt_id (создавались до flush чека).
+
+    Здесь удаление остаётся физическим намеренно: это не история расходов, а
+    временный артефакт создания чека, который схлопывается в каноническую
+    строку. Мягкое удаление оставляло бы рядом с каждым чеком двойника,
+    снятого с учёта, — и ломало бы фискальную дедупликацию.
+    """
     if not rec.id:
         await db.flush()
     q = select(Expense).where(
@@ -168,14 +174,37 @@ async def _dedupe_linked_expenses(
     return keep
 
 
-async def delete_receipt_expenses(db: AsyncSession, receipt_id: str, rec: Receipt | None = None) -> float:
-    """Удаляет все Expense, привязанные к чеку, и сироты по сумме/комнате."""
+async def delete_receipt_expenses(
+    db: AsyncSession,
+    receipt_id: str,
+    rec: Receipt | None = None,
+    *,
+    collapsing_duplicate: bool = False,
+) -> float:
+    """Убирает из бюджета все Expense, привязанные к чеку, и сироты по сумме/комнате.
+
+    По умолчанию — **мягко**: `status = "deleted"`. Из бюджета такие строки
+    уходят (`refresh_budget_facts` и все денежные выборки берут только
+    `confirmed` и `pending_receipt`), но остаются в истории.
+
+    Раньше здесь стоял `db.delete(e)`: удаление чека переписывало историю
+    расходов без следа и без отмены. При этом обычный путь удаления расхода
+    такие строки трогать **запрещает** (`expense_source_locked:receipt`) — то
+    есть продукт отказывался их удалять, а через удаление чека уничтожал.
+
+    `collapsing_duplicate=True` — вызов из фискальной дедупликации, где
+    схлопывается технический дубль чека. Там строка не история, а артефакт, и
+    оставлять рядом с каждым чеком снятого с учёта двойника незачем.
+    """
     rows = (await db.execute(select(Expense).where(Expense.receipt_id == receipt_id))).scalars().all()
     removed = 0.0
     for e in rows:
         if e.status == "confirmed":
             removed += e.amount
-        await db.delete(e)
+        if collapsing_duplicate:
+            await db.delete(e)
+        else:
+            e.status = "deleted"
     if rec:
         await _cleanup_receipt_orphans(db, rec)
     await db.flush()
