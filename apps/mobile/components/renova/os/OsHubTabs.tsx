@@ -1,6 +1,7 @@
 /** Горизонтальные вкладки hub — Clarity C: underline, не pill-карточки */
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, Pressable, Text, StyleSheet, View } from 'react-native';
+import type { LayoutChangeEvent } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 
 export type HubTab = {
@@ -26,15 +27,79 @@ export function OsHubTabs({ tabs, value, onChange }: Props) {
   const expanded = moreOpen || valueIsSecondary;
   const visible = expanded || secondary.length === 0 ? tabs : primary;
 
+  /**
+   * Подкрутка к выбранной вкладке.
+   *
+   * Ряд вкладок прокручивается вбок, и на экране айфона (375 pt) последняя не
+   * помещается. Выбранной она при этом быть может: открываешь «Деньги» —
+   * активны «Отклонения», а видно от них полторы буквы, и подсказки, что ряд
+   * прокручивается, нет никакой.
+   */
+  const scroller = useRef<ScrollView>(null);
+  const layouts = useRef<Record<string, { x: number; width: number }>>({});
+  const viewport = useRef(0);
+  const offset = useRef(0);
+
+  // `revealSelected` объявлена ниже и зовётся из замера вкладки. Держим её в
+  // ref: иначе обработчик замера пришлось бы пересоздавать на каждый рендер,
+  // а это новый `onLayout` у каждой вкладки и лишний круг замеров.
+  const reveal = useRef<() => void>(() => {});
+
+  const onTabLayout = useCallback(
+    (id: string) => (e: LayoutChangeEvent) => {
+      const { x, width } = e.nativeEvent.layout;
+      layouts.current[id] = { x, width };
+      // Замер вкладок приходит **после** замера контейнера: если не позвать
+      // подкрутку отсюда, звать её будет уже некому, и выбранная вкладка
+      // останется за обрезом — ровно то, что и было видно на экране.
+      reveal.current();
+    },
+    [],
+  );
+
+  const revealSelected = useCallback(() => {
+    const box = layouts.current[value];
+    const width = viewport.current;
+    // Пока замеров нет, двигать нечего: первый onLayout позовёт снова.
+    if (!box || width <= 0) return;
+    const left = box.x - GUTTER;
+    const right = box.x + box.width + GUTTER;
+    let next = offset.current;
+    if (right > offset.current + width) next = right - width;
+    if (left < next) next = left;
+    next = Math.max(0, next);
+    if (Math.abs(next - offset.current) < 1) return;
+    offset.current = next;
+    scroller.current?.scrollTo({ x: next, animated: true });
+  }, [value]);
+
+  reveal.current = revealSelected;
+
+  useEffect(revealSelected, [revealSelected, visible.length]);
+
   return (
     <View style={s.wrap}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.row}>
+      <ScrollView
+        ref={scroller}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={s.row}
+        onLayout={(e) => {
+          viewport.current = e.nativeEvent.layout.width;
+          revealSelected();
+        }}
+        onScroll={(e) => {
+          offset.current = e.nativeEvent.contentOffset.x;
+        }}
+        scrollEventThrottle={16}
+      >
         {visible.map((t) => {
           const on = t.id === value;
           return (
             <Pressable
               key={t.id}
               style={[s.tab, on && s.tabOn]}
+              onLayout={onTabLayout(t.id)}
               onPress={() => onChange(t.id)}
               accessibilityRole="tab"
               accessibilityState={{ selected: on }}
@@ -72,6 +137,9 @@ export function OsHubTabs({ tabs, value, onChange }: Props) {
     </View>
   );
 }
+
+/** Запас по краям, чтобы выбранная вкладка не липла к обрезу. */
+const GUTTER = 12;
 
 const s = StyleSheet.create({
   wrap: {
