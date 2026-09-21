@@ -2,6 +2,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { evaluateApiBaseGuard } from '@/lib/apiBaseGuard';
 import { isAuthoritativeRefreshRejection, shouldFallbackToDurableCache } from './failurePolicy';
+import { guardPath } from '@/lib/api/pathGuard';
 
 export class ApiError extends Error {
   status: number;
@@ -305,6 +306,10 @@ export type ReqOptions = RequestInit & {
 };
 
 export async function req<T>(path: string, opts: ReqOptions = {}, userId?: string): Promise<T> {
+  // Пустой сегмент адреса — это потерянный идентификатор. Такой запрос не
+  // может сработать: сервер ответит 404, а человек прочитает «не найдено»
+  // про то, что у него перед глазами. Не отправляем вовсе.
+  guardPath(path);
   const { cacheFallback = true, ...fetchOpts } = opts;
   const isFormData = typeof FormData !== 'undefined' && fetchOpts.body instanceof FormData;
   const headers: Record<string, string> = {
