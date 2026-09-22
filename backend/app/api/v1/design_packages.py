@@ -13,6 +13,13 @@ from app.services import design_package_service as design_svc
 router = APIRouter(prefix="/projects", tags=["design"])
 
 
+class DesignRejectIn(BaseModel):
+    """Причина доработки. Сервис уже кладёт её в ленту и в уведомление —
+    маршрут просто перестаёт её терять."""
+
+    reason: str | None = Field(default=None, max_length=500)
+
+
 class DesignIn(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     file_key: str | None = Field(default=None, max_length=512)
@@ -96,6 +103,7 @@ async def _transition(
     action: design_svc.DesignAction,
     user: User,
     db: AsyncSession,
+    reason: str | None = None,
 ) -> dict:
     project: Project = await require_project(db, project_id, user, write=True)
     try:
@@ -105,6 +113,7 @@ async def _transition(
             package_id=package_id,
             actor=user,
             action=action,
+            reason=reason,
         )
     except ValueError as error:
         raise _design_error(error) from error
@@ -149,15 +158,18 @@ async def approve_design(
 async def reject_design(
     project_id: str,
     pkg_id: str,
+    body: DesignRejectIn | None = None,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """Вернуть дизайн на доработку. Причина необязательна, но доходит до автора."""
     return await _transition(
         project_id=project_id,
         package_id=pkg_id,
         action="reject",
         user=user,
         db=db,
+        reason=(body.reason if body else None),
     )
 
 

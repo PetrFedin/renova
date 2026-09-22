@@ -8,6 +8,7 @@ import { uploadMediaBlob } from '@/lib/mediaUpload';
 import { pickDocumentForUpload } from '@/lib/documentUploadPick';
 import { designPackageStatusLabel } from '@/constants/labels';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { DesignRejectModal } from '@/components/renova/DesignRejectModal';
 import { reportCatch } from '@/lib/reportError';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { EmptyActionState } from '@/components/ui/EmptyActionState';
@@ -34,6 +35,7 @@ export function DesignPackageList({
   const [items, setItems] = useState<DP[]>([]);
   const [uploading, setUploading] = useState(false);
   const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'error'>('loading');
+  const [rejecting, setRejecting] = useState<DP | null>(null);
   const load = useCallback(() => {
     setLoadState('loading');
     api
@@ -66,6 +68,27 @@ export function DesignPackageList({
       Alert.alert('Загрузка', 'Не удалось загрузить документ');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const rejectPackage = async (pkg: DP, reason: string) => {
+    setRejecting(null);
+    try {
+      await api.rejectDesignPackage(userId, projectId, pkg.id, reason);
+      await syncProjectSideEffects({
+        user: user ?? ({ id: userId } as any),
+        project: activeProject ?? ({ id: projectId } as any),
+      });
+      load();
+      showActionConfirm({
+        title: 'Пакет вернулся к автору',
+        message: `v${pkg.version} · ${pkg.title}. Причина ушла уведомлением и осталась в ленте проекта.`,
+      });
+    } catch (e: unknown) {
+      showActionConfirm({
+        title: 'Не удалось вернуть',
+        message: e instanceof Error ? e.message : 'Ошибка возврата на доработку',
+      });
     }
   };
 
@@ -115,7 +138,6 @@ export function DesignPackageList({
                 title="Согласовать"
                 compact
                 onPress={() => {
-                  // Clarity U: design approve — confirm (reject API в mobile пока нет)
                   showActionConfirm({
                     title: 'Согласовать дизайн?',
                     message: `v${d.version} · ${d.title}. После согласия можно закупать по этому пакету.`,
@@ -143,6 +165,14 @@ export function DesignPackageList({
                 }}
               />
             )}
+            {role === 'customer' && d.status === 'pending' && (
+              <PrimaryButton
+                title="На доработку"
+                variant="outline"
+                compact
+                onPress={() => setRejecting(d)}
+              />
+            )}
             {role === 'contractor' && (d.status === 'draft' || d.status === 'published') && (
               <PrimaryButton title="На соглас." variant="outline" compact onPress={async () => { await api.submitDesignPackage(userId, projectId, d.id); await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any) }); load(); }} />
             )}
@@ -152,6 +182,12 @@ export function DesignPackageList({
       {role === 'contractor' && (
         <PrimaryButton title={uploading ? 'Загрузка…' : '+ Новая версия PDF'} variant="outline" disabled={uploading} onPress={uploadPdf} />
       )}
+      <DesignRejectModal
+        visible={Boolean(rejecting)}
+        packageTitle={rejecting ? `v${rejecting.version} · ${rejecting.title}` : ''}
+        onClose={() => setRejecting(null)}
+        onConfirm={(reason) => { if (rejecting) void rejectPackage(rejecting, reason); }}
+      />
     </View>
   );
 }
