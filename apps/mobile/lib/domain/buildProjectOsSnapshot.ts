@@ -6,6 +6,7 @@ import { formatRub } from '@/constants/Theme';
 import type { ProjectOsSnapshot } from './osTypes';
 import { computeProjectHealth, forecastFinalCost, capOverrunRisk } from './projectHealth';
 import { sanitizeRiskImpact } from './sanitizeRiskImpact';
+import { reworkStages, stageShortStatusLabel } from '@/lib/domain/stageRework';
 import { resolveProjectProgress } from './resolveProjectProgress';
 import { repairTabRoute, budgetTabRoute, calendarTabRoute, objectTabRoute, customerProfileTabHref } from '@/constants/osSections';
 import { closeoutNextActionTitle } from './closeoutHome';
@@ -38,7 +39,7 @@ export type WorkScheduleHint = {
 export type NextActionHints = WorkScheduleHint;
 
 const ST_SHORT: Record<string, string> = {
-  done: 'Завершено', review: 'Ждёт приёмки', active: 'В работе', planned: 'Не начато', rework: 'Доработка',
+  done: 'Завершено', review: 'Ждёт приёмки', active: 'В работе', planned: 'Не начато',
 };
 
 /** Риски без дублей оплаты — inbox уже показывает «Ожидают оплаты» */
@@ -70,7 +71,7 @@ export function buildProjectOsSnapshot(
   const stages = project.stages || [];
   const overdue = stages.filter((s) => s.planned_end && s.planned_end < today && s.status !== 'done');
   const review = stages.filter((s) => s.status === 'review');
-  const rework = stages.filter((s) => s.status === 'rework');
+  const rework = reworkStages(stages);
   const active = stages.filter((s) => s.status === 'active' || s.status === 'review');
   const budgetFigures = resolveBudgetFigures(project, osBudget);
   const spent = budgetFigures.spent;
@@ -481,7 +482,7 @@ export function buildProjectOsSnapshot(
       id: s.id,
       name: s.name,
       room: s.room_ids?.[0] ? roomName(s.room_ids[0]) : undefined,
-      status: ST_SHORT[s.status] || s.status,
+      status: stageShortStatusLabel(s, ST_SHORT),
       end: s.planned_end || undefined,
       href: `/stage/${s.id}`,
     })),

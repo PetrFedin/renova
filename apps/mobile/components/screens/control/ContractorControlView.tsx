@@ -22,6 +22,7 @@ import { useNavFromHere } from '@/lib/navigation';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { reworkStages } from '@/lib/domain/stageRework';
 
 export function ContractorControlView() {
   const pathname = usePathname();
@@ -65,7 +66,7 @@ export function ContractorControlView() {
   }
 
   const pendingCount = computePendingAcceptanceCount(activeProject.stages, acceptances);
-  const rework = activeProject.stages.filter((s) => s.status === 'rework');
+  const rework = reworkStages(activeProject.stages);
 
   return (
     <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>

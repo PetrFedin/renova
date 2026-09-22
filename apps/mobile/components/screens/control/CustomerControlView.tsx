@@ -23,6 +23,7 @@ import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { objectTabRoute } from '@/constants/osSections';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { reworkStages } from '@/lib/domain/stageRework';
 
 export function CustomerControlView() {
   const pathname = usePathname();
@@ -78,7 +79,7 @@ export function CustomerControlView() {
   }
 
   const pendingCount = computePendingAcceptanceCount(activeProject.stages, acceptances);
-  const rework = activeProject.stages.filter((s) => s.status === 'rework');
+  const rework = reworkStages(activeProject.stages);
   const openIssues = issues.filter((i) => i.status !== 'closed');
   const sortedIssues = focusIssueId
     ? [...openIssues].sort((a, b) => Number(b.id === focusIssueId) - Number(a.id === focusIssueId))
