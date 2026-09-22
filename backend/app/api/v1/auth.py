@@ -255,8 +255,11 @@ async def refresh_tokens(body: RefreshRequest, db: AsyncSession = Depends(get_db
 @router.post("/logout")
 async def logout_session(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
     from app.services import session_service as sess_svc
-    await sess_svc.revoke_session(db, body.refresh_token)
-    return {"ok": True}
+
+    # revoke_session возвращает, была ли живая сессия: повтор выхода и выход по
+    # уже отозванному токену — не ошибка, но и не отзыв, и врать об этом незачем.
+    revoked = await sess_svc.revoke_session(db, body.refresh_token)
+    return {"ok": True, "revoked": revoked}
 
 
 @router.post("/sessions/revoke-all")

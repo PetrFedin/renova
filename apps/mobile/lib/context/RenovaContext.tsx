@@ -16,7 +16,7 @@ function signalPreviewReady() {
 }
 
 import { ApiError, api, isRateLimitError, ProjectDetail, ProjectSummary, User, UserRole } from '@/lib/api';
-import { setAccessToken, setRefreshToken } from '@/lib/api/client';
+import { getRefreshToken, setAccessToken, setRefreshToken } from '@/lib/api/client';
 import { isAuthoritativeSessionFailure } from '@/lib/api/failurePolicy';
 import { secureGet, secureSet, secureMultiRemove } from '@/lib/secureTokenStore';
 import {
@@ -682,6 +682,17 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
   }, [loading, user?.id, activeProject?.id, projects.length, ensureActiveProject]);
 
   const logout = useCallback(async () => {
+    // Сначала гасим сессию на сервере: после очистки хранилища токена уже не
+    // будет, и отозвать его станет нечем — refresh остался бы живым до срока.
+    // Неудача отзыва не держит выход: уйти с устройства человек вправе всегда.
+    const refreshToken = getRefreshToken();
+    if (refreshToken) {
+      try {
+        await api.logoutSession(refreshToken);
+      } catch (error) {
+        reportError('lib.context.RenovaContext.logoutRevoke', error);
+      }
+    }
     await AsyncStorage.multiRemove([
       KEYS.userId,
       KEYS.userRole,
