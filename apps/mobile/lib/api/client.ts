@@ -42,7 +42,10 @@ function parseApiErrorBody(txt: string, status: number): { message: string; code
           detail,
         };
       }
-      return { message: j.detail, code: j.detail, detail };
+      // FastAPI по соглашению кладёт код в `detail` — это и оставляем.
+      // Но если сервер прислал `code` отдельно, он точнее: иначе кодом
+      // ошибки становился целый русский текст сообщения.
+      return { message: j.detail, code: j.code || j.detail, detail };
     }
     if (typeof j.message === 'string' && j.message) {
       return { message: j.message, code: j.code, detail };
