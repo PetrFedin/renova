@@ -12,6 +12,10 @@ import type { Payment, ProjectDetail } from '@/lib/api';
 import type { PaymentFilter } from '@/lib/hooks/useOsBudgetScreen';
 import type { OsRole } from '@/constants/osSections';
 import { budgetScreenStyles as s } from '@/components/screens/budget/budgetScreenStyles';
+import { api } from '@/lib/api';
+import { apiErrorMessage } from '@/lib/formatPhone';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { reportError } from '@/lib/reportError';
 
 const PAYMENT_FILTERS: { id: PaymentFilter; label: string }[] = [
   { id: 'all', label: 'Все' },
@@ -61,6 +65,7 @@ export function BudgetPaymentsSection({
   const [bankOpen, setBankOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [evidencePayment, setEvidencePayment] = useState<Payment | null>(null);
+  const [cancelling, setCancelling] = useState<string | null>(null);
   const canOperate = canWrite && !readOnly;
   const canCreate = role === 'contractor' && canOperate;
 
@@ -140,6 +145,36 @@ export function BudgetPaymentsSection({
         </View>
       ) : null}
 
+  const askCancel = (payment: Payment) => {
+    // Деньги: спрашиваем до действия и называем сумму, а не только счёт.
+    showActionConfirm({
+      title: 'Отменить счёт?',
+      message: `${payment.title} · ${formatRub(payment.amount)}. Счёт пропадёт из ожидаемых расходов. Отмена не возвращает деньги — если перевод уже сделан, приложите подтверждение.`,
+      primaryLabel: 'Отменить счёт',
+      onPrimary: () => { void runCancel(payment); },
+      secondaryLabel: 'Оставить',
+      onSecondary: () => undefined,
+    });
+  };
+
+  const runCancel = async (payment: Payment) => {
+    setCancelling(payment.id);
+    try {
+      await api.cancelPayment(userId, project.id, payment.id);
+      onSaved();
+    } catch (error: unknown) {
+      // Молчаливый провал здесь означал бы, что человек считает счёт
+      // отменённым, а он остался в ожидаемых расходах.
+      reportError('BudgetPaymentsSection.cancel', error, { projectId: project.id });
+      showActionConfirm({
+        title: 'Не удалось отменить счёт',
+        message: apiErrorMessage(error, 'Проверьте связь и повторите'),
+      });
+    } finally {
+      setCancelling(null);
+    }
+  };
+
       {filteredPayments.map((payment) => {
         const confirmedDate = formatConfirmedDate(payment.confirmed_at);
         const statusColor = payment.status === 'pending' || payment.status === 'paid_unverified'
@@ -159,6 +194,16 @@ export function BudgetPaymentsSection({
         const evidenceTitle = payment.status === 'pending'
           ? 'Я перевёл — приложить подтверждение'
           : 'Подтверждение перевода';
+        // Отменить можно только ожидающий счёт: подтверждённый — состоявшийся
+        // расчёт, и для него есть спор, а не отмена.
+        //
+        // И только свой тип — то же правило, что при создании: заказчик
+        // выставляет аванс и финал, исполнитель — этап и материалы. Иначе
+        // кнопка обещала бы то, в чём сервер откажет.
+        const ownPaymentType = role === 'customer'
+          ? payment.payment_type === 'advance' || payment.payment_type === 'final'
+          : payment.payment_type === 'stage' || payment.payment_type === 'material';
+        const canCancel = canOperate && payment.status === 'pending' && ownPaymentType;
 
         return (
           <View key={payment.id}>
@@ -184,6 +229,15 @@ export function BudgetPaymentsSection({
                 title={evidenceTitle}
                 variant="outline"
                 onPress={() => setEvidencePayment(payment)}
+                fullWidth
+              />
+            ) : null}
+            {canCancel ? (
+              <PrimaryButton
+                title={cancelling === payment.id ? 'Отмена…' : 'Отменить счёт'}
+                variant="outline"
+                disabled={cancelling === payment.id}
+                onPress={() => askCancel(payment)}
                 fullWidth
               />
             ) : null}

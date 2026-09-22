@@ -21,10 +21,23 @@ export const PAYMENT_TYPE_LABEL: Record<string, string> = {
   final: 'Финал',
 };
 
+/**
+ * Статусы счёта. Значения повторяют `PaymentStatus` из
+ * `backend/app/models/entities.py`.
+ *
+ * Словарь знал четыре из семи, и `disputed`, `cancelled`, `processing`,
+ * `refunded` выходили на экран латиницей: строка рисуется как
+ * `PAYMENT_STATUS_LABEL[status] || status`.
+ */
 export const PAYMENT_STATUS_LABEL: Record<string, string> = {
   pending: 'Ожидает оплаты',
+  processing: 'Оплата начата',
   paid_unverified: 'Оплачено без чека',
   confirmed: 'Оплачено',
+  cancelled: 'Отменён',
+  disputed: 'Спор',
+  refunded: 'Возвращено',
+  // `rejected` в PaymentStatus нет; запись оставлена на случай старых данных.
   rejected: 'Отклонено',
 };
 
