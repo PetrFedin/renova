@@ -56,6 +56,19 @@ export const designApi = {
       throw new Error('offline_queued');
     }
   },
+  /** Вернуть дизайн на доработку с причиной — она доходит до автора пакета. */
+  rejectDesignPackage: async (userId: string, projectId: string, id: string, reason?: string) => {
+    const path = `/api/v1/projects/${projectId}/design-packages/${id}/reject`;
+    const body = JSON.stringify({ reason: reason?.trim() || null });
+    try {
+      return await req(path, { method: 'POST', body }, userId);
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path, method: 'POST', body, userId });
+      throw new Error('offline_queued');
+    }
+  },
   designDiff: (userId: string, projectId: string, v1?: number, v2?: number) =>
     req(`/api/v1/projects/${projectId}/design-packages/diff?v1=${v1 || 1}&v2=${v2 || 2}`, {}, userId),
 };
