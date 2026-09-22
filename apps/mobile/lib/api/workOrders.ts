@@ -1,6 +1,7 @@
 /** API: workOrders — W111 offline queue for field transitions */
 import { req, ApiError } from './client';
 import type { WorkOrder } from './types';
+import { createClientRequestId } from '@/lib/clientRequestId';
 
 export type WorkOrderPatchBody = {
   expected_updated_at: string;
@@ -22,21 +23,21 @@ export const workOrdersApi = {
   getWorkOrder: (userId: string, projectId: string, workOrderId: string) =>
     req<WorkOrder>(`/api/v1/projects/${projectId}/work-orders/${workOrderId}`, {}, userId),
   createWorkOrder: async (userId: string, projectId: string, body: object) => {
+    // Тело сериализуется один раз: в очередь обязан уйти ровно тот же текст,
+    // что ушёл в первую попытку, иначе сервер увидит другой запрос и создаст
+    // второй наряд. Ключ добавляем, если вызывающий его не дал.
+    const input = body as Record<string, unknown> & { client_request_id?: string };
+    const serialized = JSON.stringify({
+      ...input,
+      client_request_id: input.client_request_id ?? createClientRequestId('work-order'),
+    });
+    const path = `/api/v1/projects/${projectId}/work-orders`;
     try {
-      return await req<WorkOrder>(
-        `/api/v1/projects/${projectId}/work-orders`,
-        { method: 'POST', body: JSON.stringify(body) },
-        userId,
-      );
+      return await req<WorkOrder>(path, { method: 'POST', body: serialized }, userId);
     } catch (e) {
       if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({
-        path: `/api/v1/projects/${projectId}/work-orders`,
-        method: 'POST',
-        body: JSON.stringify(body),
-        userId,
-      });
+      await enqueue({ path, method: 'POST', body: serialized, userId });
       throw new Error('offline_queued');
     }
   },

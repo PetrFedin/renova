@@ -1,5 +1,5 @@
 /** Форма создания работы — секции: что · где · когда · бюджет */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Pressable, ScrollView, Modal, Alert } from 'react-native';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';
@@ -17,6 +17,7 @@ import { alertWorkCreated } from '@/lib/fieldCreateNav';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import type { OsRole } from '@/constants/osSections';
 import { reportError } from '@/lib/reportError';
+import { createClientRequestId } from '@/lib/clientRequestId';
 
 type Props = {
   visible: boolean;
@@ -60,6 +61,9 @@ export function CreateWorkSheet({
 }: Props) {
   const { user, activeProject } = useRenova();
   const isCustomer = variant === 'customer';
+  // Ключ запроса живёт до успеха: повтор после потери ответа или после
+  // офлайн-очереди обязан прийти с тем же ключом, иначе появится второй наряд.
+  const requestIdRef = useRef(createClientRequestId('work-order'));
   const [types, setTypes] = useState(WORK_TYPES_FALLBACK);
   const [workType, setWorkType] = useState('electrical');
   const [category, setCategory] = useState('engineering');
@@ -164,6 +168,7 @@ export function CreateWorkSheet({
           budget_planned: budget ? +budget : 0,
           notes: notes || null,
           publish,
+          client_request_id: requestIdRef.current,
         });
       } catch (error) {
         if (isRateLimitError(error)) {
@@ -205,6 +210,8 @@ export function CreateWorkSheet({
         reportError('createWorkSheet.onCreated', error, { projectId, workOrderId: wo.id });
       }
 
+      // Наряд создан — дальше уже новая работа, нужен новый ключ.
+      requestIdRef.current = createClientRequestId('work-order');
       onClose();
       setCustomTitle('');
       setNotes('');
