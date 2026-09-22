@@ -20,6 +20,12 @@ async def setup_db(tmp_path, monkeypatch):
 
     from app.core import config
 
+    # Движок и адрес базы — глобальные: без возврата назад следующий файл тестов
+    # получит ссылку на уже удалённый временный файл и упадёт на «no such table».
+    previous_engine = sess.engine
+    previous_session = sess.SessionLocal
+    previous_url = config.settings.database_url
+
     config.settings.database_url = database_url
     sess.engine = __import__(
         "sqlalchemy.ext.asyncio", fromlist=["create_async_engine"]
@@ -28,6 +34,13 @@ async def setup_db(tmp_path, monkeypatch):
         "sqlalchemy.ext.asyncio", fromlist=["async_sessionmaker"]
     ).async_sessionmaker(sess.engine, expire_on_commit=False)
     await init_db()
+
+    yield
+
+    await sess.engine.dispose()
+    sess.engine = previous_engine
+    sess.SessionLocal = previous_session
+    config.settings.database_url = previous_url
 
 
 def _client() -> AsyncClient:
