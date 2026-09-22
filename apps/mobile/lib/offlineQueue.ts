@@ -16,6 +16,7 @@ import {
 } from '@/lib/offlineQueueStorage';
 import { authHeaders } from '@/lib/api/client';
 import { reportError } from '@/lib/reportError';
+import { guardPath } from '@/lib/api/pathGuard';
 
 const KEY = 'renova_offline_queue';
 /** Legacy keys from parallel outbox stacks — migrate once into KEY. */
@@ -263,6 +264,9 @@ function buildQueuedJob(job: OfflineJobInput): OfflineJob {
 }
 
 async function appendJob(job: OfflineJobInput): Promise<{ item: OfflineJob; length: number }> {
+  // Запрос с потерянным идентификатором в очереди — худший случай: он будет
+  // повторяться при каждом восстановлении связи и не пройдёт никогда.
+  guardPath(job.path);
   return withQueueLock(async () => {
     const queue = await getQueueUnlocked();
     const item = buildQueuedJob(job);
