@@ -400,10 +400,17 @@ async def upload_project_document(
     stage_id: str | None = Form(None),
     payment_id: str | None = Form(None),
     notes: str | None = Form(None),
+    document_id: str | None = Form(None),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """D-06: multipart upload → storage + ProjectDocument + DocumentVersion."""
+    """D-06: multipart upload → storage + ProjectDocument + DocumentVersion.
+
+    С ``document_id`` файл становится новой версией уже существующего
+    документа. Без него — новым документом, как раньше: исправленный файл
+    иначе превращался во второй документ, и какой из них действующий,
+    не знал никто.
+    """
     await require_project_docs(db, project_id, user, write=True)
 
     data = await file.read()
@@ -426,21 +433,35 @@ async def upload_project_document(
     )
 
     doc_title = (title or file.filename or "Загруженный документ").strip()[:255]
-    doc = await docs_svc.create_document(
-        db,
-        project_id=project_id,
-        created_by=user.id,
-        title=doc_title,
-        document_type=document_type or DocumentType.upload.value,
-        stage_id=stage_id,
-        payment_id=payment_id,
-        notes=notes,
-        href=href,
-        storage_key=storage_key,
-        mime_type=content_type,
-        file_size=len(data),
-        checksum_sha256=checksum,
-    )
+    if document_id:
+        doc = await _get_project_document(db, project_id, document_id)
+        await docs_svc.add_version(
+            db,
+            doc,
+            created_by=user.id,
+            href=href,
+            storage_key=storage_key,
+            mime_type=content_type,
+            file_size=len(data),
+            checksum_sha256=checksum,
+            notes=notes,
+        )
+    else:
+        doc = await docs_svc.create_document(
+            db,
+            project_id=project_id,
+            created_by=user.id,
+            title=doc_title,
+            document_type=document_type or DocumentType.upload.value,
+            stage_id=stage_id,
+            payment_id=payment_id,
+            notes=notes,
+            href=href,
+            storage_key=storage_key,
+            mime_type=content_type,
+            file_size=len(data),
+            checksum_sha256=checksum,
+        )
     # Wave 3b/3c: OCR — sync classify in-request или async enqueue для worker
     from app.core.config import settings as app_settings
     from app.services import document_ocr_service as ocr_svc

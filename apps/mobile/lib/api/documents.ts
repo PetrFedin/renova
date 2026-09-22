@@ -133,13 +133,15 @@ export const documentsApi = {
     userId: string,
     projectId: string,
     file: { uri: string; name: string; type: string },
-    fields?: { title?: string; document_type?: string; notes?: string },
+    /** document_id — загрузить как новую версию существующего документа. */
+    fields?: { title?: string; document_type?: string; notes?: string; document_id?: string },
   ) => {
     const form = new FormData();
     form.append('file', file as unknown as Blob);
     if (fields?.title) form.append('title', fields.title);
     if (fields?.document_type) form.append('document_type', fields.document_type);
     if (fields?.notes) form.append('notes', fields.notes);
+    if (fields?.document_id) form.append('document_id', fields.document_id);
     try {
       return await req(`/api/v1/projects/${projectId}/documents/upload`, {
         method: 'POST',
