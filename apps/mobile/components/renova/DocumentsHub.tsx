@@ -720,6 +720,28 @@ export function DocumentsHub({
         }),
       }] : []),
       {
+        text: 'Загрузить новую версию',
+        onPress: () => {
+          void (async () => {
+            try {
+              const file = await pickDocumentForUpload();
+              if (!file) return;
+              await withBusy(`ver-${doc.id}`, async () => {
+                await api.uploadProjectDocument(userId, projectId, file, { document_id: doc.id });
+                await reloadIndex();
+                void reconcileProjectAfterCommit('DocumentVersion');
+              });
+              showActionConfirm({
+                title: 'Новая версия загружена',
+                message: `«${doc.title}» остался одним документом — действующей стала свежая версия.`,
+              });
+            } catch (e: any) {
+              Alert.alert('Ошибка загрузки', String(e?.message || e));
+            }
+          })();
+        },
+      },
+      {
         text: 'Распознать тип (OCR)',
         onPress: () => withBusy(`ocr-${doc.id}`, async () => {
           await api.runDocumentOcr(userId, projectId, doc.id, true);
