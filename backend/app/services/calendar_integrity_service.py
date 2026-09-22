@@ -1,12 +1,15 @@
 """Canonical calendar visibility and stage-to-calendar synchronization."""
 from __future__ import annotations
 
+import secrets
+
 from dataclasses import dataclass
 from datetime import datetime, time, timezone
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.entities import (
     CalendarItem,
     Project,
@@ -56,6 +59,33 @@ def visible_items_query(user: User):
             ),
         )
     )
+
+
+def subscription_url(token: str) -> str:
+    """Адрес ленты, который понимают Google Calendar и Apple Calendar."""
+    base = (settings.public_base_url or "http://127.0.0.1:8100").rstrip("/")
+    return f"{base}/api/v1/calendar/ics?token={token}"
+
+
+async def issue_ics_token(db: AsyncSession, *, user: User, rotate: bool = False) -> str:
+    """Выдать токен ленты. Повтор без rotate возвращает прежний: ссылка у
+    человека уже может быть подписана в календаре, и менять её молча нельзя."""
+    current = getattr(user, "ics_token", None)
+    if current and not rotate:
+        return current
+    token = secrets.token_urlsafe(32)
+    user.ics_token = token
+    await db.commit()
+    return token
+
+
+async def revoke_ics_token(db: AsyncSession, *, user: User) -> bool:
+    """Отключить ленту. Возвращает, было ли что отключать."""
+    if not getattr(user, "ics_token", None):
+        return False
+    user.ics_token = None
+    await db.commit()
+    return True
 
 
 async def visible_items(

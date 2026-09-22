@@ -4,9 +4,13 @@ import { pushOsNav } from '@/lib/pushOsNav';
 import { calendarTabRoute, type OsRole } from '@/constants/osSections';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 
-/** Разовый файл, не двусторонняя синхронизация с Google/Apple */
+/**
+ * Разовый файл против живой ленты: после появления подписки прежняя формулировка
+ * «не live-синхронизация» стала неправдой про календарь вообще, хотя про сам
+ * экспорт остаётся верной. Поэтому говорим про оба пути сразу.
+ */
 export const ICS_SYNC_HONESTY =
-  'Это разовый .ics-файл для импорта в Google/Apple Calendar — не live-синхронизация. После изменений в Renova экспортируйте снова.';
+  'Экспорт — разовый .ics-файл: после изменений в Renova выгрузите снова. Нужны обновления сами — заведите подписку на календарь, она отдаёт живую ленту в одну сторону: правки в Google или Apple Calendar в Renova не вернутся.';
 
 export function alertIcalExported(role: OsRole) {
   showActionConfirm({

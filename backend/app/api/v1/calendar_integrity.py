@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -141,6 +142,50 @@ def _ics_event(item: CalendarItem) -> list[str]:
         lines.append(f"LOCATION:{_ics_escape(item.location)}")
     lines.extend(["END:VEVENT"])
     return lines
+
+
+class IcsSubscriptionIn(BaseModel):
+    """rotate=true выдаёт новый адрес и гасит прежний."""
+
+    rotate: bool = False
+
+
+def _subscription_out(token: str | None) -> dict:
+    return {
+        "active": bool(token),
+        "url": calendar_svc.subscription_url(token) if token else None,
+    }
+
+
+@router.get("/subscription")
+async def calendar_subscription(user: User = Depends(get_current_user)):
+    """Показать ленту, не заводя её: чтение не должно создавать доступ."""
+    return _subscription_out(getattr(user, "ics_token", None))
+
+
+@router.post("/subscription")
+async def issue_calendar_subscription(
+    body: IcsSubscriptionIn | None = None,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Выдать адрес ленты. Повтор без rotate возвращает прежний адрес."""
+    token = await calendar_svc.issue_ics_token(
+        db,
+        user=user,
+        rotate=bool(body and body.rotate),
+    )
+    return _subscription_out(token)
+
+
+@router.delete("/subscription")
+async def revoke_calendar_subscription(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Отключить ленту: прежний адрес перестаёт открываться."""
+    revoked = await calendar_svc.revoke_ics_token(db, user=user)
+    return {"ok": True, "revoked": revoked, "active": False, "url": None}
 
 
 @router.get("/ics", response_class=PlainTextResponse)

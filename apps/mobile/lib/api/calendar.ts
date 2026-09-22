@@ -68,6 +68,20 @@ export const calendarApi = {
   },
 
   /** W124: .ics → Share/download (native + web); не live Google/Apple sync */
+  /** Ссылка-подписка на календарь: её понимают Google и Apple Calendar. */
+  calendarSubscription: (userId: string) =>
+    req<{ active: boolean; url: string | null }>('/api/v1/calendar/subscription', {}, userId),
+  issueCalendarSubscription: (userId: string, rotate = false) =>
+    req<{ active: boolean; url: string | null }>('/api/v1/calendar/subscription', {
+      method: 'POST',
+      body: JSON.stringify({ rotate }),
+    }, userId),
+  revokeCalendarSubscription: (userId: string) =>
+    req<{ ok: boolean; revoked: boolean; active: boolean; url: string | null }>(
+      '/api/v1/calendar/subscription',
+      { method: 'DELETE' },
+      userId,
+    ),
   exportIcal: async (userId: string, projectId: string) => {
     const { exportIcalFile } = await import('@/lib/exportIcalFile');
     await exportIcalFile(userId, projectId, `renova-${projectId.slice(0, 8)}.ics`);

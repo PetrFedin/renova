@@ -11,6 +11,7 @@ import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { alertIcalExported, alertIcalImported, ICS_SYNC_HONESTY } from '@/lib/calendarIcsNav';
 import { reportError } from '@/lib/reportError';
 import type { OsRole } from '@/constants/osSections';
+import { CalendarSubscriptionSheet } from '@/components/renova/schedule/CalendarSubscriptionSheet';
 
 type Action = {
   id: string;
@@ -70,6 +71,7 @@ export function ScheduleIconToolbar({
 }) {
   const { user, activeProject } = useRenova();
   const [busy, setBusy] = useState(false);
+  const [subscriptionOpen, setSubscriptionOpen] = useState(false);
   const role = (user?.role === 'contractor' ? 'contractor' : 'customer') as OsRole;
 
   const importIcal = async () => {
@@ -133,6 +135,8 @@ export function ScheduleIconToolbar({
       { id: 'ical-in', icon: 'cloud-upload-outline' as const, label: 'Импорт .ics', onPress: importIcal, disabled: readOnly || busy },
     ] : []),
     { id: 'ical-out', icon: 'cloud-download-outline' as const, label: 'Экспорт .ics', onPress: exportIcal, disabled: busy },
+    // Выгрузка отдаёт снимок, подписка — живую ленту: это разные действия.
+    { id: 'ical-sub', icon: 'link-outline' as const, label: 'Подписка на календарь', onPress: () => setSubscriptionOpen(true), disabled: busy },
     ...(canAddTask && !canManageWorks ? [
       { id: 'task', icon: 'add-circle-outline' as const, label: 'Добавить задачу', onPress: onCreateWork, disabled: readOnly },
     ] : []),
@@ -156,6 +160,11 @@ export function ScheduleIconToolbar({
       <Text style={s.honesty} accessibilityHint="ics-honesty">
         {ICS_SYNC_HONESTY}
       </Text>
+      <CalendarSubscriptionSheet
+        visible={subscriptionOpen}
+        userId={userId}
+        onClose={() => setSubscriptionOpen(false)}
+      />
     </View>
   );
 }
