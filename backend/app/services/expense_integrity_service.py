@@ -195,6 +195,62 @@ async def patch_expense(
     return ExpenseMutation(expense=expense, changed=changed, replayed=not changed)
 
 
+async def restore_expense(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    expense_id: str,
+    actor_id: str,
+) -> ExpenseMutation | None:
+    """Вернуть снятый с учёта расход в бюджет.
+
+    Удаление расхода мягкое — `status = "deleted"`, — но вернуть строку было
+    нечем: создать расход напрямую нельзя (ручки нет, он появляется только из
+    чека, оплаты, закупки или подбора), а восстановления не существовало.
+    Случайно удалённый расход не возвращался никак.
+
+    Возвращаем в `confirmed`: снимали с учёта именно подтверждённый расход, и
+    `pending_receipt` означал бы, что чек ещё ждут, — это была бы другая
+    неправда.
+    """
+    from app.services import budget_service as budget
+    from app.services import outbox_service as outbox
+
+    expense = await get_expense(
+        db,
+        project_id=project_id,
+        expense_id=expense_id,
+        for_update=True,
+    )
+    if not expense:
+        return None
+    if expense.status != "deleted":
+        # Повтор — не ошибка: строка уже в бюджете.
+        await db.commit()
+        return ExpenseMutation(expense=expense, changed=False, replayed=True)
+
+    expense.status = "confirmed"
+    await db.flush()
+    await budget.refresh_budget_facts(db, project_id)
+    await outbox.enqueue(
+        db,
+        aggregate_type="expense",
+        aggregate_id=expense.id,
+        event_type=outbox.RECEIPT_CREATED_EVENT,
+        payload={
+            "project_id": project_id,
+            "user_id": actor_id,
+            "kind": "ExpenseRestored",
+            "title": f"Расход возвращён: {expense.title}",
+            "body": f"{expense.amount} ₽",
+            "room_id": expense.room_id,
+            "link_path": "/(customer)/(tabs)/budget?tab=expenses",
+        },
+    )
+    await db.commit()
+    return ExpenseMutation(expense=expense, changed=True)
+
+
 async def delete_expense(
     db: AsyncSession,
     *,
