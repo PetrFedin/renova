@@ -291,8 +291,26 @@ async def enrich_dashboard_actions(
         or 0
     )
 
+    # `budget_planned` = строки сметы + одобренные доп. работы
+    # (`sync_project_budget_planned`). Экран сметы показывал это число под
+    # подписью «Итого по смете», а разбивку под ним считал только по строкам —
+    # и числа не сходились, причём молча. Отдаём слагаемое явно, чтобы клиенту
+    # не приходилось выводить его вычитанием.
+    approved_co_sum = float(
+        (
+            await db.execute(
+                sa_select(func.coalesce(func.sum(ChangeOrder.amount), 0.0)).where(
+                    ChangeOrder.project_id == project_id,
+                    ChangeOrder.status == ChangeOrderStatus.approved,
+                )
+            )
+        ).scalar_one()
+        or 0.0
+    )
+
     dash["pending_acceptances"] = pending_acc
     dash["pending_change_orders"] = pending_co
+    dash["approved_change_orders_sum"] = round(approved_co_sum, 2)
     dash["warranty_open"] = warranty_open
     dash["warranty_overdue"] = warranty_overdue
     dash["pending_sign_docs"] = pending_sign

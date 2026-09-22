@@ -8,6 +8,7 @@ import { budgetTabRoute, objectTabRoute, repairTabRoute } from '@/constants/osSe
 import { pushOsNav } from '@/lib/pushOsNav';
 import type { ProjectDetail } from '@/lib/api';
 import { estimateTotals } from '@/lib/domain/estimateFilters';
+import { estimateHeadline } from '@/lib/domain/estimateHeadline';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 type Props = {
@@ -57,11 +58,17 @@ export function EstimateSummaryLayer({
   lockDiff,
 }: Props) {
   const lockedAt = project.estimate_locked_at;
+  // Крупное число и подпись к нему должны сходиться с разбивкой ниже.
+  const headline = estimateHeadline({
+    estimateTotal: totals.total,
+    budgetPlanned: project.budget_planned,
+    approvedChangeOrders: project.approved_change_orders_sum,
+  });
   return (
     <View style={s.wrap}>
       <View style={s.totalBox}>
-        <Text style={s.totalLabel}>Итого по смете</Text>
-        <Text style={s.total}>{formatRub(project.budget_planned)}</Text>
+        <Text style={s.totalLabel}>{headline.label}</Text>
+        <Text style={s.total}>{formatRub(headline.total)}</Text>
         {(project.vat_rate ?? 0) > 0 ? (
           <Text style={s.breakdown}>
             НДС {project.vat_rate}% · сумма в смете с учётом ставки
@@ -80,6 +87,12 @@ export function EstimateSummaryLayer({
           Работы {formatRub(totals.works)} ({totals.worksCount}) · Материалы {formatRub(totals.materials)} (
           {totals.materialsCount})
         </Text>
+        {headline.changeOrders != null ? (
+          // Без этой строки итог и разбивка под ним не сходились молча.
+          <Text style={s.breakdown}>
+            Смета {formatRub(totals.total)} · Доп. работы (согласованы) {formatRub(headline.changeOrders)}
+          </Text>
+        ) : null}
         {lockDiff?.has_baseline ? (
           <Text style={s.breakdown}>
             {lockDiff.has_changes
@@ -109,7 +122,18 @@ export function EstimateSummaryLayer({
             // Clarity S: фиксация сметы — money-critical confirm
             showActionConfirm({
               title: 'Зафиксировать смету?',
-              message: `Итого ${formatRub(project.budget_planned)}. После фиксации базовые строки нельзя свободно менять.`,
+              // Момент обязательства: число и его состав называем так же, как
+              // на экране. Раньше здесь стояло `budget_planned` без пояснения,
+              // и человек подтверждал сумму, которую не мог сверить с разбивкой.
+              message: [
+                `${headline.label}: ${formatRub(headline.total)}.`,
+                headline.changeOrders != null
+                  ? `Смета ${formatRub(totals.total)} + доп. работы ${formatRub(headline.changeOrders)}.`
+                  : null,
+                'После фиксации базовые строки нельзя свободно менять.',
+              ]
+                .filter(Boolean)
+                .join(' '),
               primaryLabel: 'Зафиксировать',
               onPrimary: () => {
                 void onLockEstimate().catch((e: unknown) => {
