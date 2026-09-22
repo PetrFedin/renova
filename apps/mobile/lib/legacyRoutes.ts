@@ -3,6 +3,10 @@ import { parseOsHref, type OsTabRoute } from '../constants/osSections';
 
 /** Legacy tab-маршруты → канонические hub-пути */
 export const TAB_ALIASES: Record<string, string> = {
+  // Сервер шлёт «home» в return_to уведомлений, а вкладка главной — index.
+  // Без этой пары путь попадал в ветку «неизвестный сегмент» и терял returnTo.
+  '/(customer)/(tabs)/home': '/(customer)/(tabs)/',
+  '/(contractor)/(tabs)/home': '/(contractor)/(tabs)/',
   '/(customer)/(tabs)/finance': '/(customer)/(tabs)/budget',
   '/(customer)/(tabs)/more': '/(customer)/(tabs)/profile',
   '/(customer)/(tabs)/works': '/(customer)/(tabs)/repair?tab=works',
