@@ -20,6 +20,23 @@ export const materialsApi = {
       throw new Error('offline_queued');
     }
   },
+  /** Аналог исходному подбору: тот же объём, другое название и цена. */
+  addMaterialAnalog: async (userId: string, projectId: string, pickId: string, body: object) => {
+    const input = body as Record<string, unknown> & { client_request_id?: string };
+    const serialized = JSON.stringify({
+      ...input,
+      client_request_id: input.client_request_id ?? createClientRequestId('material-analog'),
+    });
+    const path = `/api/v1/projects/${projectId}/material-picks/${pickId}/analog`;
+    try {
+      return await req<MaterialPick>(path, { method: 'POST', body: serialized }, userId);
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path, method: 'POST', body: serialized, userId });
+      throw new Error('offline_queued');
+    }
+  },
   submitMaterialPick: async (userId: string, projectId: string, id: string) => {
     try {
       return await req(`/api/v1/projects/${projectId}/material-picks/${id}/submit`, { method: 'POST' }, userId);

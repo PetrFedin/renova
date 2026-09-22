@@ -26,6 +26,15 @@ import {
   alertMaterialPickSubmitted,
 } from '@/lib/procurementNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
+import {
+  analogDelta,
+  analogDeltaLabel,
+  analogParentLabel,
+  buildAnalogDraft,
+  canOfferAnalog,
+  parsePriceInput,
+} from '@/lib/domain/materialAnalogs';
 
 const fmtQty = (value: number) => Number(value.toFixed(3)).toLocaleString('ru-RU');
 
@@ -62,6 +71,10 @@ export function MaterialPickList({
   const [editSource, setEditSource] = useState<MaterialSupplySource>('contractor_to_buy');
   const [editAvailable, setEditAvailable] = useState('0');
   const [supplyBusyId, setSupplyBusyId] = useState<string | null>(null);
+  const [analogForId, setAnalogForId] = useState<string | null>(null);
+  const [analogName, setAnalogName] = useState('');
+  const [analogPrice, setAnalogPrice] = useState('');
+  const [analogBusy, setAnalogBusy] = useState(false);
 
   const load = useCallback(() => {
     api.listMaterialPicks(userId, projectId, wt).then(setItems).catch(reportCatch('components.renova.MaterialPickList.1'));
@@ -86,6 +99,42 @@ export function MaterialPickList({
   useEffect(() => { if (picksOverride) setItems(picksOverride); }, [picksOverride]);
   const visible = picksOverride ?? items;
   const roomName = (id?: string | null) => rooms.find((r) => r.id === id)?.name;
+
+  const openAnalogForm = (pick: MaterialPick) => {
+    setAnalogForId(pick.id);
+    setAnalogName('');
+    setAnalogPrice(String(pick.price));
+  };
+
+  const saveAnalog = async (original: MaterialPick) => {
+    if (analogBusy) return;
+    const draft = buildAnalogDraft(original, { name: analogName, price: analogPrice });
+    if (!draft.ok) {
+      showActionConfirm({ title: 'Аналог не сохранён', message: draft.message });
+      return;
+    }
+    setAnalogBusy(true);
+    try {
+      await api.addMaterialAnalog(userId, projectId, original.id, draft.draft);
+      setAnalogForId(null);
+      setAnalogName('');
+      setAnalogPrice('');
+      await syncAfter();
+      await refresh();
+    } catch (error: unknown) {
+      if (isOfflineQueued(error)) {
+        notifyOfflineQueued('Аналог материала');
+        setAnalogForId(null);
+        return;
+      }
+      showActionConfirm({
+        title: 'Аналог не сохранён',
+        message: error instanceof Error ? error.message : 'Повторите действие.',
+      });
+    } finally {
+      setAnalogBusy(false);
+    }
+  };
 
   const openSupplyEditor = (pick: MaterialPick) => {
     setEditingSupplyId(pick.id);
@@ -145,7 +194,10 @@ export function MaterialPickList({
               onPress={() => nav.material(p.id)}
             >
               <Text style={s.n}>{p.name} · {materialPickStatusLabel(p.status)}{p.room_id && roomName(p.room_id) ? ` · ${roomName(p.room_id)}` : ''}</Text>
-              <Text style={s.m}>{p.qty} {p.unit} · {formatRub(p.total)} {p.analog_of_id ? '· аналог' : ''}</Text>
+              <Text style={s.m}>
+                {p.qty} {p.unit} · {formatRub(p.total)}
+                {p.analog_of_id ? ` · ${analogParentLabel(p, visible)}` : ''}
+              </Text>
             </Pressable>
             <Text style={s.supplyMeta}>{supplyLabel(p.supply_source)}</Text>
             <Text style={s.m}>
@@ -206,6 +258,57 @@ export function MaterialPickList({
                   loading={supplyBusyId === p.id}
                   disabled={Boolean(supplyBusyId) && supplyBusyId !== p.id}
                   onPress={() => { void saveSupply(p); }}
+                  fullWidth
+                />
+              </View>
+            ) : null}
+
+            {!readOnly && role === 'contractor' && canOfferAnalog(p) ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Предложить аналог материала: ${p.name}`}
+                accessibilityState={{ expanded: analogForId === p.id, disabled: analogBusy }}
+                style={s.supplyToggle}
+                disabled={analogBusy}
+                onPress={() => (analogForId === p.id ? setAnalogForId(null) : openAnalogForm(p))}
+              >
+                <Text style={s.link}>{analogForId === p.id ? 'Скрыть аналог' : 'Предложить аналог'}</Text>
+              </Pressable>
+            ) : null}
+
+            {analogForId === p.id ? (
+              <View style={s.supplyEditor}>
+                <Text style={s.editorLabel}>Чем заменяем «{p.name}»</Text>
+                <TextInput
+                  style={s.inp}
+                  accessibilityLabel="Название аналога"
+                  placeholder="Название аналога"
+                  value={analogName}
+                  onChangeText={setAnalogName}
+                  editable={!analogBusy}
+                />
+                <TextInput
+                  style={s.inp}
+                  accessibilityLabel="Цена аналога за единицу"
+                  placeholder={`Цена за ${p.unit}`}
+                  value={analogPrice}
+                  onChangeText={setAnalogPrice}
+                  keyboardType="decimal-pad"
+                  editable={!analogBusy}
+                />
+                {parsePriceInput(analogPrice) !== null ? (
+                  <Text style={s.m}>
+                    {analogDeltaLabel(analogDelta(p, parsePriceInput(analogPrice) as number))} · тот же объём {p.qty} {p.unit}
+                  </Text>
+                ) : null}
+                <Text style={s.reapprovalHint}>
+                  Аналог сохранится отдельной строкой рядом с исходным материалом и пойдёт на согласование как обычный подбор.
+                </Text>
+                <PrimaryButton
+                  title={analogBusy ? 'Сохранение…' : 'Сохранить аналог'}
+                  loading={analogBusy}
+                  disabled={analogBusy}
+                  onPress={() => { void saveAnalog(p); }}
                   fullWidth
                 />
               </View>
