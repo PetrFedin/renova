@@ -62,11 +62,19 @@ export function formatCalendarEventDates(e: CalendarEvent): string {
   return formatScheduleDayShort(e.date);
 }
 
-/** Заказчику — периоды без legacy «старт/финиш» и приёмок. */
+/**
+ * Заказчику — периоды без отметок старта и приёмок.
+ *
+ * Имена сверены с `calendar_service.build_calendar`: прежний список содержал
+ * четыре вида, которых сервер не отдаёт вовсе (`stage_start`, `stage_end`,
+ * `work_start`, `work_due`), а настоящий старт называется `stage_started` —
+ * из-за расхождения имён отметки «Старт: …» заказчику всё-таки показывались.
+ */
+const HIDDEN_FROM_CUSTOMER = new Set(['stage_started', 'contractor_ready', 'customer_accepted']);
+
 export function filterCalendarEventsForRole(events: CalendarEvent[], role: 'customer' | 'contractor'): CalendarEvent[] {
   if (role !== 'customer') return events;
-  const legacy = new Set(['contractor_ready', 'customer_accepted', 'stage_start', 'stage_end', 'work_start', 'work_due']);
-  return events.filter((e) => !legacy.has(e.kind));
+  return events.filter((e) => !HIDDEN_FROM_CUSTOMER.has(e.kind));
 }
 
 /** Сортировка дня: задачи → этапы → остальное. */
@@ -83,5 +91,6 @@ export function sortDayCalendarEvents(events: CalendarEvent[]): CalendarEvent[] 
 }
 
 export function dayTaskCount(events: CalendarEvent[]): number {
-  return events.filter((e) => e.kind === 'work_period' || e.kind === 'work_start').length;
+  // `work_start` сервер не отдаёт: период работы — это `work_period`.
+  return events.filter((e) => e.kind === 'work_period').length;
 }

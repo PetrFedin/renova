@@ -41,12 +41,24 @@ assert.equal(day.filter((e) => e.kind === 'work_period').length, 2);
 assert.equal(day[0].kind, 'work_period');
 assert.equal(dayTaskCount([taskA, taskB, period]), 2);
 
+// Виды событий — те, что реально отдаёт calendar_service.build_calendar.
+// Прежде здесь стояли stage_start и work_start, которых сервер не отдаёт:
+// тест подтверждал отсев того, что и так никогда не приходило.
 const noisy = filterCalendarEventsForRole([
   period,
   { id: '4', kind: 'contractor_ready', title: 'Готово', date: '2026-07-06' },
-  { id: '5', kind: 'work_start', title: 'Старт', date: '2026-07-09' },
-  { id: '6', kind: 'stage_start', title: 'Старт этапа', date: '2026-07-06' },
+  { id: '5', kind: 'customer_accepted', title: 'Принято', date: '2026-07-07' },
+  { id: '6', kind: 'stage_started', title: 'Старт: Подготовка', date: '2026-07-06' },
+  { id: '7', kind: 'payment', title: 'Оплата этапа', date: '2026-07-08' },
 ], 'customer');
-assert.equal(noisy.length, 1);
+assert.equal(noisy.map((e) => e.kind).join(','), 'stage_period,payment');
+
+const forContractor = filterCalendarEventsForRole([
+  period,
+  { id: '6', kind: 'stage_started', title: 'Старт: Подготовка', date: '2026-07-06' },
+], 'contractor');
+assert.equal(forContractor.length, 2);
+
+assert.equal(dayTaskCount([{ id: '8', kind: 'work_done', title: 'Готово', date: '2026-07-09' }]), 0);
 
 console.log('calendarEvents.test.ts ok');
