@@ -11,6 +11,7 @@ import type { OsRole } from '@/constants/osSections';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { reportCatch } from '@/lib/reportError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { wasteOrderStatusLabel } from '@/constants/labels';
 
 /** W114: UI офлайн для вывоза мусора (API уже в offlineQueue) */
 async function runWasteAction(
@@ -48,7 +49,7 @@ export function WasteOrderList({ userId, projectId, role }: { userId: string; pr
       <Text style={s.head}>Вывоз мусора</Text>
       {items.map(w => (
         <View key={w.id} style={s.row}>
-          <Text style={s.n}>{w.volume_m3} м³ · {w.status}</Text>
+          <Text style={s.n}>{w.volume_m3} м³ · {wasteOrderStatusLabel(w.status)}</Text>
           <Text style={s.m}>{formatRub(w.total || w.price)}</Text>
           {role === 'contractor' && w.status === 'draft' && (
             <PrimaryButton
@@ -83,7 +84,32 @@ export function WasteOrderList({ userId, projectId, role }: { userId: string; pr
               }}
             />
           )}
-          {role === 'contractor' && w.status === 'approved' && (
+          {role === 'customer' && w.status === 'requested' && (
+            <PrimaryButton
+              title="Отклонить"
+              variant="outline"
+              onPress={() => {
+                showActionConfirm({
+                  title: 'Отклонить заявку?',
+                  message: `${w.volume_m3} м³ · ${formatRub(w.total || w.price)}. Заявка закроется, в бюджет ничего не попадёт.`,
+                  primaryLabel: 'Отклонить',
+                  primaryDestructive: true,
+                  onPrimary: () => {
+                    void runWasteAction(
+                      'Отказ от вывоза',
+                      () => api.rejectWasteOrder(userId, projectId, w.id),
+                      async () => { await syncAfter(); load(); },
+                    );
+                  },
+                  secondaryLabel: 'Отмена',
+                  onSecondary: () => undefined,
+                });
+              }}
+            />
+          )}
+          {/* Согласование переводит заявку в scheduled: статуса approved у WasteOrderStatus нет,
+              и прежняя сверка с ним никогда не совпадала — кнопка «Вывезено» не появлялась. */}
+          {role === 'contractor' && w.status === 'scheduled' && (
             <PrimaryButton
               title="Вывезено"
               onPress={() => runWasteAction('Завершение вывоза', () => api.completeWasteOrder(userId, projectId, w.id), async () => { await syncAfter(); load(); alertWasteOrderAdvanced(role as OsRole, 'completed'); })}
