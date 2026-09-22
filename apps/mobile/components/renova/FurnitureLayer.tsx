@@ -7,6 +7,8 @@ import { api, FurnitureItem } from '@/lib/api';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { reportCatch } from '@/lib/reportError';
+import { confirmDestructive } from '@/lib/confirmAlert';
+import { RenovaTheme } from '@/constants/Theme';
 
 export function FurnitureLayer({ userId, projectId, planId, role }: { userId: string; projectId: string; planId?: string; role: string }) {
   const { user, activeProject } = useRenova();
@@ -26,14 +28,57 @@ export function FurnitureLayer({ userId, projectId, planId, role }: { userId: st
       if (isOfflineQueued(e)) notifyOfflineQueued('Мебель на плане');
     }
   };
+  const remove = async (item: FurnitureItem) => {
+    const ok = await confirmDestructive(
+      'Убрать предмет?',
+      `«${item.name}» исчезнет из списка мебели и с плана.`,
+    );
+    if (!ok) return;
+    try {
+      await api.deleteFurniture(userId, projectId, item.id);
+      load();
+    } catch (e) {
+      if (isOfflineQueued(e)) notifyOfflineQueued('Удаление мебели');
+    }
+  };
+
   return (
     <View style={s.box}>
       <Text style={s.head}>Мебель</Text>
       {items.map(f => (
         <View key={f.id} style={s.row}>
           <Text style={s.t}>{f.name} {f.width_m}×{f.depth_m}м</Text>
-          {role === 'contractor' && f.x_pct != null && (
-            <View style={s.ar}><Pressable onPress={() => move(f.id, -5, 0, f.x_pct, f.y_pct)}><Text>←</Text></Pressable><Pressable onPress={() => move(f.id, 5, 0, f.x_pct, f.y_pct)}><Text>→</Text></Pressable></View>
+          {role === 'contractor' && (
+            <View style={s.ar}>
+              {f.x_pct != null ? (
+                <>
+                  <Pressable
+                    style={s.tap}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Сдвинуть «${f.name}» влево`}
+                    onPress={() => move(f.id, -5, 0, f.x_pct, f.y_pct)}
+                  >
+                    <Text style={s.tapT}>←</Text>
+                  </Pressable>
+                  <Pressable
+                    style={s.tap}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Сдвинуть «${f.name}» вправо`}
+                    onPress={() => move(f.id, 5, 0, f.x_pct, f.y_pct)}
+                  >
+                    <Text style={s.tapT}>→</Text>
+                  </Pressable>
+                </>
+              ) : null}
+              <Pressable
+                style={s.tap}
+                accessibilityRole="button"
+                accessibilityLabel={`Убрать «${f.name}»`}
+                onPress={() => { void remove(f); }}
+              >
+                <Text style={s.tapT}>✕</Text>
+              </Pressable>
+            </View>
           )}
         </View>
       ))}
@@ -41,4 +86,13 @@ export function FurnitureLayer({ userId, projectId, planId, role }: { userId: st
     </View>
   );
 }
-const s = StyleSheet.create({ box:{ marginTop:8 }, head:{ fontWeight:'700', fontSize:12 }, row:{ flexDirection:'row', justifyContent:'space-between', marginBottom:4 }, t:{ fontSize:12 }, ar:{ flexDirection:'row', gap:8 } });
+const s = StyleSheet.create({
+  box: { marginTop: 8 },
+  head: { fontWeight: '700', fontSize: 12 },
+  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  t: { flex: 1, fontSize: 12 },
+  ar: { flexDirection: 'row', gap: 8 },
+  // Стрелки и крестик были голым текстом ~14px — меньше порога касания.
+  tap: { minWidth: RenovaTheme.minTouch, minHeight: RenovaTheme.minTouch, alignItems: 'center', justifyContent: 'center' },
+  tapT: { fontSize: RenovaTheme.fontSize.h3, color: RenovaTheme.colors.text },
+});

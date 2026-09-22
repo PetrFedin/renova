@@ -18,6 +18,8 @@ import { openQcIssue } from '@/lib/qcNav';
 import { ActionConfirmSheet } from '@/components/renova/ActionConfirmSheet';
 import { tabsRoute, type OsRole } from '@/constants/osSections';
 import { reportCatch, reportError } from '@/lib/reportError';
+import { confirmDestructive } from '@/lib/confirmAlert';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { EmptyActionState } from '@/components/ui/EmptyActionState';
 
@@ -62,6 +64,7 @@ export function FloorPlanPanel({
   const [punchMode, setPunchMode] = useState(false);
   const [mapW, setMapW] = useState(0);
   const [addingPunch, setAddingPunch] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const planRef = useRef<FloorPlan | null>(null);
   /** Clarity B: sheet вместо Alert после punch / upload */
   const [punchSheet, setPunchSheet] = useState<{
@@ -99,6 +102,56 @@ export function FloorPlanPanel({
   planRef.current = plan || null;
   const punchItems = plan?.punch ?? [];
   const openPunch = punchItems.filter((p) => p.status !== 'closed');
+
+  const removePlan = async () => {
+    if (!plan || removing) return;
+    const ok = await confirmDestructive(
+      'Убрать план этажа?',
+      'Метки комнат уйдут вместе с планом, мебель останется в проекте без привязки к чертежу. Замечания и фото сохранятся.',
+    );
+    if (!ok) return;
+    setRemoving(true);
+    try {
+      const result = await api.deleteFloorPlan(userId, projectId, plan.id);
+      load();
+      showActionConfirm({
+        title: 'План убран',
+        message: `Снято меток: ${result.pins_removed}. Мебель откреплена: ${result.furniture_detached}.`,
+      });
+    } catch (error: unknown) {
+      if (isOfflineQueued(error)) {
+        notifyOfflineQueued('Удаление плана');
+        return;
+      }
+      reportError('components.renova.FloorPlanPanel.removePlan', error, { projectId, floorPlanId: plan.id });
+      Alert.alert('План не убран', 'Не удалось убрать план этажа. Повторите действие.');
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  const removePin = async (pinId: string, label: string) => {
+    if (!plan || removing) return;
+    const ok = await confirmDestructive(
+      'Снять метку с плана?',
+      `Метка «${label}» исчезнет с чертежа. Сама комната и её данные останутся.`,
+    );
+    if (!ok) return;
+    setRemoving(true);
+    try {
+      await api.deleteFloorPin(userId, projectId, plan.id, pinId);
+      load();
+    } catch (error: unknown) {
+      if (isOfflineQueued(error)) {
+        notifyOfflineQueued('Снятие метки');
+        return;
+      }
+      reportError('components.renova.FloorPlanPanel.removePin', error, { projectId, floorPlanId: plan.id, pinId });
+      Alert.alert('Метка осталась', 'Не удалось снять метку с плана. Повторите действие.');
+    } finally {
+      setRemoving(false);
+    }
+  };
 
   const savePin = async (pinId: string, x: number, y: number) => {
     if (!plan) return;
@@ -378,7 +431,12 @@ export function FloorPlanPanel({
               const y = drag?.id === p.id ? drag.y : p.y_pct;
               return (
                 <View key={p.id} {...pan.panHandlers} style={[s.pin, { left: `${x}%`, top: `${y}%` }]}>
-                  <Pressable onPress={() => pushRoomDetail(p.room_id, pathname)}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Метка комнаты ${p.label || 'без названия'}${role === 'contractor' ? ', долгое нажатие — снять с плана' : ''}`}
+                    onPress={() => pushRoomDetail(p.room_id, pathname)}
+                    onLongPress={role === 'contractor' ? () => { void removePin(p.id, p.label || 'без названия'); } : undefined}
+                  >
                     <Text style={[s.pinT, accepted && s.pinAccepted]}>{p.label || '·'}</Text>
                   </Pressable>
                 </View>
@@ -423,12 +481,24 @@ export function FloorPlanPanel({
       {plan && <FurnitureLayer userId={userId} projectId={projectId} planId={plan.id} role={role} />}
       {/* Clarity G: upload в empty — primary; outline только для замены */}
       {role === 'contractor' && plan ? (
-        <PrimaryButton
-          title={uploading ? 'Загрузка…' : 'Заменить план этажа'}
-          variant="outline"
-          disabled={uploading}
-          onPress={uploadPlan}
-        />
+        <>
+          <PrimaryButton
+            title={uploading ? 'Загрузка…' : 'Заменить план этажа'}
+            variant="outline"
+            disabled={uploading || removing}
+            onPress={uploadPlan}
+          />
+          <PrimaryButton
+            title={removing ? 'Убираем…' : 'Убрать план этажа'}
+            variant="ghost"
+            compact
+            disabled={uploading || removing}
+            onPress={() => { void removePlan(); }}
+          />
+          {plan.pins?.length ? (
+            <Text style={s.pinHint}>Долгое нажатие на метку комнаты — снять её с плана.</Text>
+          ) : null}
+        </>
       ) : null}
 
       <ActionConfirmSheet
@@ -460,6 +530,7 @@ export function FloorPlanPanel({
 }
 
 const s = StyleSheet.create({
+  pinHint: { fontSize: RenovaTheme.fontSize.caption, color: RenovaTheme.colors.textMuted, marginTop: RenovaTheme.spacing.xxs },
   box: { marginVertical: 10, backgroundColor: RenovaTheme.colors.surface, padding: 12, borderRadius: 10 },
   embedded: { gap: 8 },
   head: { fontWeight: '800', marginBottom: 8 },

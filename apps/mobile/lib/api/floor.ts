@@ -16,6 +16,44 @@ export const floorApi = {
       throw new Error('offline_queued');
     }
   },
+  /** Убрать план этажа: пины уходят с ним, мебель открепляется (см. API). */
+  deleteFloorPlan: async (userId: string, projectId: string, planId: string) => {
+    const path = `/api/v1/projects/${projectId}/floor-plans/${planId}`;
+    try {
+      return await req<{ ok: boolean; id: string; pins_removed: number; furniture_detached: number }>(
+        path,
+        { method: 'DELETE' },
+        userId,
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path, method: 'DELETE', body: '{}', userId });
+      throw new Error('offline_queued');
+    }
+  },
+  deleteFloorPin: async (userId: string, projectId: string, planId: string, pinId: string) => {
+    const path = `/api/v1/projects/${projectId}/floor-plans/${planId}/pins/${pinId}`;
+    try {
+      return await req<{ ok: boolean; id: string }>(path, { method: 'DELETE' }, userId);
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path, method: 'DELETE', body: '{}', userId });
+      throw new Error('offline_queued');
+    }
+  },
+  deleteFurniture: async (userId: string, projectId: string, itemId: string) => {
+    const path = `/api/v1/projects/${projectId}/furniture/${itemId}`;
+    try {
+      return await req<{ ok: boolean; id: string }>(path, { method: 'DELETE' }, userId);
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path, method: 'DELETE', body: '{}', userId });
+      throw new Error('offline_queued');
+    }
+  },
   listFurniture: (userId: string, projectId: string, roomId?: string) => req<FurnitureItem[]>(`/api/v1/projects/${projectId}/furniture${roomId ? `?room_id=${roomId}` : ''}`, {}, userId),
   createFurniture: (userId: string, projectId: string, body: object) => req(`/api/v1/projects/${projectId}/furniture`, { method: 'POST', body: JSON.stringify(body) }, userId),
   moveFurniture: async (userId: string, projectId: string, itemId: string, x_pct: number, y_pct: number) => {
