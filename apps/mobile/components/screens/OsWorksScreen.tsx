@@ -24,6 +24,7 @@ import {
 import { ReworkSlaWidget } from '@/components/renova/ReworkSlaWidget';
 import { TodayWidget } from '@/components/renova/TodayWidget';
 import { CreateStageSheet } from '@/components/renova/CreateStageSheet';
+import { WorkCatalogSheet } from '@/components/renova/WorkCatalogSheet';
 import { CreateWorkSheet } from '@/components/renova/CreateWorkSheet';
 import { StageDependenciesPanel } from '@/components/renova/StageDependenciesPanel';
 import { WorkOrdersListPanel } from '@/components/renova/WorkOrdersListPanel';
@@ -75,6 +76,7 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [showCreate, setShowCreate] = useState(false);
   const [showCreateWork, setShowCreateWork] = useState(false);
+  const [showCatalog, setShowCatalog] = useState(false);
 
   const reloadBlocked = useCallback(async () => {
     if (!user || !activeProject) return;
@@ -244,6 +246,7 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
         {!readOnly && (canScheduleStages || isContractor) && (
           <View style={s.createRow}>
             {canScheduleStages ? <PrimaryButton title="+ Этап" onPress={() => setShowCreate(true)} /> : null}
+            {canScheduleStages ? <PrimaryButton title="Подобрать работы" variant="outline" onPress={() => setShowCatalog(true)} /> : null}
             {isContractor ? <PrimaryButton title="+ Работа" variant="outline" onPress={() => setShowCreateWork(true)} /> : null}
           </View>
         )}
@@ -321,6 +324,19 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
               }
               throw e;
             }
+          }}
+        />
+      )}
+      {user && canScheduleStages && !readOnly && (
+        <WorkCatalogSheet
+          visible={showCatalog}
+          userId={user.id}
+          projectId={activeProject.id}
+          onClose={() => setShowCatalog(false)}
+          onCreated={async () => {
+            await syncProjectSideEffects({ user, project: activeProject });
+            await loadProject(activeProject.id);
+            await reloadStageCapabilities();
           }}
         />
       )}
