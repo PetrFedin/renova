@@ -112,6 +112,19 @@ export const ROOM_CHANGE_STATUS_LABEL: Record<string, string> = {
   rejected: 'Отклонено',
 };
 
+/** Статусы заявки на вывоз — ровно те, что знает WasteOrderStatus на сервере. */
+export const WASTE_ORDER_STATUS_LABEL: Record<string, string> = {
+  draft: 'Черновик',
+  requested: 'Ждёт согласования',
+  scheduled: 'Согласовано, вывоз запланирован',
+  done: 'Вывезено',
+  cancelled: 'Отклонено',
+};
+
+export function wasteOrderStatusLabel(status: string): string {
+  return WASTE_ORDER_STATUS_LABEL[status] ?? status;
+}
+
 export function changeOrderStatusLabel(status: string): string {
   return CHANGE_ORDER_STATUS_LABEL[status] ?? status;
 }

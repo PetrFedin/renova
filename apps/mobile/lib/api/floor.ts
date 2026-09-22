@@ -64,6 +64,18 @@ export const floorApi = {
       throw new Error('offline_queued');
     }
   },
+  /** Отказ заказчика: на сервере это переход в cancelled. */
+  rejectWasteOrder: async (userId: string, projectId: string, id: string) => {
+    const path = `/api/v1/projects/${projectId}/waste-orders/${id}/reject`;
+    try {
+      return await req(path, { method: 'POST' }, userId);
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path, method: 'POST', body: '{}', userId });
+      throw new Error('offline_queued');
+    }
+  },
   approveWasteOrder: async (userId: string, projectId: string, id: string) => {
     try {
       return await req(`/api/v1/projects/${projectId}/waste-orders/${id}/approve`, { method: 'POST' }, userId);
