@@ -273,6 +273,52 @@ class ConfirmPaymentIn(BaseModel):
     transfer_ack: bool = False
 
 
+class CancelPaymentIn(BaseModel):
+    reason: str | None = None
+
+
+@router.post("/{project_id}/payments/{payment_id}/cancel", response_model=PaymentOut)
+async def cancel_payment(
+    project_id: str,
+    payment_id: str,
+    body: CancelPaymentIn | None = None,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Отменить ошибочно созданный счёт. Только ожидающий."""
+    await require_project(db, project_id, user, write=True)
+    try:
+        payment = await pay_svc.cancel_payment(
+            db,
+            payment_id,
+            project_id=project_id,
+            actor_id=user.id,
+            reason=(body.reason if body else None),
+        )
+    except ValueError as error:
+        code = str(error)
+        if code.startswith("payment_not_pending"):
+            raise HTTPException(
+                409,
+                detail={
+                    "code": "payment_not_pending",
+                    "message": "Отменить можно только ожидающий счёт. Подтверждённый — через спор.",
+                },
+            ) from error
+        if code == "payment_has_receipt":
+            raise HTTPException(
+                409,
+                detail={
+                    "code": "payment_has_receipt",
+                    "message": "К счёту приложен чек — отмена вслепую запрещена",
+                },
+            ) from error
+        raise HTTPException(422, detail={"code": code}) from error
+    if not payment:
+        raise HTTPException(404, "Платёж не найден")
+    return payment
+
+
 @router.post("/{project_id}/payments/{payment_id}/confirm", response_model=PaymentOut)
 async def confirm_payment(
     project_id: str,

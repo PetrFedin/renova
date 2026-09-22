@@ -174,6 +174,69 @@ def _transition_replay(payment: Payment, target_status: PaymentStatus) -> bool:
     return target_status == PaymentStatus.paid_unverified and payment.status == PaymentStatus.paid_unverified
 
 
+async def cancel_payment(
+    db: AsyncSession,
+    payment_id: str,
+    *,
+    project_id: str,
+    actor_id: str,
+    reason: str | None = None,
+) -> Payment | None:
+    """Отменить ошибочно созданный платёж.
+
+    `PaymentStatus.cancelled` и `refunded` объявлены в модели и **читаются**
+    охранами (`payment_evidence_service`, `bank_statement_integrity`), но ни
+    один маршрут их не ставил. Ошибочный платёж висел `pending` навсегда: из
+    списка не убрать, в сверке он мешает.
+
+    Отменяем только **ожидающий** платёж. Подтверждённый — это уже
+    состоявшийся расчёт; переписывать его отменой нельзя, для спора есть
+    `dispute`. Возврат денег (`refunded`) тоже не здесь: это движение денег,
+    а не отмена ошибки.
+    """
+    from app.services import outbox_service as outbox
+
+    payment = await get_payment(db, payment_id)
+    if not payment or payment.project_id != project_id:
+        return None
+    if payment.status == PaymentStatus.cancelled:
+        # Повтор — не ошибка.
+        return payment
+    if payment.status != PaymentStatus.pending:
+        raise ValueError(f"payment_not_pending:{payment.status.value}")
+
+    # Чек означает, что расчёт уже чем-то подтверждён: отменять вслепую нельзя.
+    receipt_id = await receipt_id_for_payment(db, payment_id)
+    if receipt_id:
+        raise ValueError("payment_has_receipt")
+
+    payment.status = PaymentStatus.cancelled
+    if reason:
+        payment.title = f"{payment.title} · отменён: {reason}"[:255]
+    await db.flush()
+
+    from app.services import budget_service as budget
+
+    await budget.refresh_budget_facts(db, project_id)
+    await outbox.enqueue(
+        db,
+        aggregate_type="payment",
+        aggregate_id=payment.id,
+        event_type=outbox.NOTIFICATION_EVENT,
+        payload={
+            "project_id": project_id,
+            "user_id": actor_id,
+            "notification_type": "payment_pending",
+            "title": "Счёт отменён",
+            "body": f"{payment.title} · {payment.amount} ₽",
+            "link_path": "/budget?tab=payments",
+        },
+    )
+    await db.commit()
+    await db.refresh(payment)
+    return payment
+
+
 async def confirm_payment(
     db: AsyncSession,
     payment_id: str,

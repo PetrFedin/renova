@@ -218,6 +218,23 @@ export const paymentsApi = {
       userId,
     ),
   /** Спор — только online: финансовый статус нельзя ставить в локальную очередь. */
+  /**
+   * Отменить ошибочно созданный счёт. Только ожидающий.
+   *
+   * Онлайн, без офлайн-очереди: отмена зависит от текущего статуса счёта,
+   * а очередь применила бы её вслепую через неизвестное время.
+   */
+  cancelPayment: (
+    userId: string,
+    projectId: string,
+    paymentId: string,
+    body?: { reason?: string },
+  ) =>
+    req<Payment>(
+      `/api/v1/projects/${projectId}/payments/${paymentId}/cancel`,
+      { method: 'POST', body: JSON.stringify(body ?? {}) },
+      userId,
+    ),
   disputePayment: (
     userId: string,
     projectId: string,
