@@ -106,7 +106,7 @@ export function StagePaymentPlanPanel({
             <TextInput
               style={[s.input, parsed[index] === null && s.inputBad]}
               value={drafts[stage.id] ?? ''}
-              onChangeText={(text) => setDrafts((prev) => ({ ...prev, [stage.id]: text }))}
+              onChangeText={(text: string) => setDrafts((prev) => ({ ...prev, [stage.id]: text }))}
               keyboardType="decimal-pad"
               accessibilityLabel={`Сумма по этапу: ${stage.name}`}
               editable={!saving}
