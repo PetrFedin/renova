@@ -126,6 +126,12 @@ export const paymentsApi = {
       throw e;
     }
   },
+  setPaymentDueDate: (userId: string, projectId: string, paymentId: string, dueAt: string | null) =>
+    req<Payment>(
+      `/api/v1/projects/${projectId}/payments/${paymentId}/due-date`,
+      { method: 'PATCH', body: JSON.stringify({ due_at: dueAt }) },
+      userId,
+    ),
   countPendingPayments: async (userId: string, projectId: string) => {
     const items = await req<Payment[]>(`/api/v1/projects/${projectId}/payments`, {}, userId);
     return items.filter((p) => p.status === 'pending').length;

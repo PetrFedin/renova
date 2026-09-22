@@ -1,4 +1,6 @@
 """Платежи: авансы, этапы, закупка материалов."""
+from datetime import datetime, timezone
+
 from app.core.timeutil import utc_now
 
 from sqlalchemy import select, update
@@ -19,6 +21,15 @@ from app.services.client_write_side_effects import (
 )
 
 
+def normalize_due_at(value: datetime | None) -> datetime | None:
+    """Срок оплаты хранится наивным UTC — как и все остальные времена в базе."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
 async def prepare_payment(
     db: AsyncSession,
     project_id: str,
@@ -28,6 +39,7 @@ async def prepare_payment(
     payment_type: str,
     stage_id: str | None = None,
     notes: str | None = None,
+    due_at: datetime | None = None,
 ) -> Payment:
     payment = Payment(
         project_id=project_id,
@@ -37,6 +49,7 @@ async def prepare_payment(
         amount=amount,
         created_by=user_id,
         notes=notes,
+        due_at=normalize_due_at(due_at),
     )
     db.add(payment)
     await db.flush()
@@ -52,6 +65,7 @@ async def create_payment(
     payment_type: str,
     stage_id: str | None = None,
     notes: str | None = None,
+    due_at: datetime | None = None,
 ) -> Payment:
     """Compatibility entrypoint with the same atomic outbox contract as the API."""
     from app.services.client_write_idempotency import commit_client_write
@@ -65,6 +79,7 @@ async def create_payment(
         payment_type,
         stage_id,
         notes,
+        due_at,
     )
     payload = {
         "title": title,
@@ -72,6 +87,7 @@ async def create_payment(
         "payment_type": payment_type,
         "stage_id": stage_id,
         "notes": notes,
+        "due_at": due_at.isoformat() if due_at else None,
     }
     try:
         created, entity_id = await commit_client_write(
@@ -386,6 +402,7 @@ def payment_dict(payment: Payment, *, receipt_id: str | None = None) -> dict:
         "status": payment.status.value,
         "stage_id": payment.stage_id,
         "notes": payment.notes,
+        "due_at": payment.due_at.isoformat() if payment.due_at else None,
         "confirmed_at": payment.confirmed_at.isoformat() if payment.confirmed_at else None,
         "created_at": payment.created_at.isoformat(),
         "receipt_id": receipt_id,

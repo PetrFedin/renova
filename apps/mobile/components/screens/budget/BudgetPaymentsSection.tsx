@@ -7,11 +7,13 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { CreatePaymentForm } from '@/components/renova/CreatePaymentForm';
 import { BankStatementImportSheet } from '@/components/renova/BankStatementImportSheet';
 import { PaymentEvidenceSheet } from '@/components/renova/PaymentEvidenceSheet';
+import { PaymentDueDateSheet } from '@/components/renova/PaymentDueDateSheet';
 import { PAYMENT_TYPE_LABEL, PAYMENT_STATUS_LABEL } from '@/constants/labels';
 import type { Payment, ProjectDetail } from '@/lib/api';
 import type { PaymentFilter } from '@/lib/hooks/useOsBudgetScreen';
 import type { OsRole } from '@/constants/osSections';
 import { budgetScreenStyles as s } from '@/components/screens/budget/budgetScreenStyles';
+import { dueDateLabel, dueDateState, sortPaymentsByDue } from '@/lib/domain/paymentDueDate';
 
 const PAYMENT_FILTERS: { id: PaymentFilter; label: string }[] = [
   { id: 'all', label: 'Все' },
@@ -61,7 +63,10 @@ export function BudgetPaymentsSection({
   const [bankOpen, setBankOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [evidencePayment, setEvidencePayment] = useState<Payment | null>(null);
+  const [duePayment, setDuePayment] = useState<Payment | null>(null);
   const canOperate = canWrite && !readOnly;
+  // Очерёдность выводится из срока оплаты, поэтому сортируем прямо перед выводом.
+  const orderedPayments = sortPaymentsByDue(filteredPayments);
   const canCreate = role === 'contractor' && canOperate;
 
   const handleSaved = () => {
@@ -140,7 +145,7 @@ export function BudgetPaymentsSection({
         </View>
       ) : null}
 
-      {filteredPayments.map((payment) => {
+      {orderedPayments.map((payment) => {
         const confirmedDate = formatConfirmedDate(payment.confirmed_at);
         const statusColor = payment.status === 'pending' || payment.status === 'paid_unverified'
           ? RenovaTheme.colors.warning
@@ -159,6 +164,14 @@ export function BudgetPaymentsSection({
         const evidenceTitle = payment.status === 'pending'
           ? 'Я перевёл — приложить подтверждение'
           : 'Подтверждение перевода';
+        const dueState = dueDateState(payment.due_at);
+        const dueLabel = dueDateLabel(payment.due_at);
+        const dueColor = dueState === 'overdue'
+          ? RenovaTheme.colors.danger
+          : dueState === 'today' || dueState === 'soon'
+            ? RenovaTheme.colors.warning
+            : RenovaTheme.colors.textMuted;
+        const canSetDue = canOperate && payment.status === 'pending';
 
         return (
           <View key={payment.id}>
@@ -174,11 +187,24 @@ export function BudgetPaymentsSection({
                   {PAYMENT_TYPE_LABEL[payment.payment_type] || payment.payment_type} · {formatRub(payment.amount)}
                   {confirmedDate ? ` · ${confirmedDate}` : ''}
                 </Text>
+                {dueLabel ? (
+                  <Text style={[s.rowMeta, { color: dueColor, fontWeight: dueState === 'overdue' ? '700' : '600' }]}>
+                    {dueLabel}
+                  </Text>
+                ) : null}
               </View>
               <Text style={[s.status, { color: statusColor }]}>
                 {PAYMENT_STATUS_LABEL[payment.status] || payment.status}
               </Text>
             </Pressable>
+            {canSetDue ? (
+              <PrimaryButton
+                title={payment.due_at ? `Срок: ${dueLabel}` : 'Указать срок оплаты'}
+                variant="ghost"
+                onPress={() => setDuePayment(payment)}
+                fullWidth
+              />
+            ) : null}
             {canAttachEvidence ? (
               <PrimaryButton
                 title={evidenceTitle}
@@ -190,6 +216,15 @@ export function BudgetPaymentsSection({
           </View>
         );
       })}
+
+      <PaymentDueDateSheet
+        visible={Boolean(duePayment)}
+        userId={userId}
+        projectId={project.id}
+        payment={duePayment}
+        onClose={() => setDuePayment(null)}
+        onChanged={onSaved}
+      />
 
       <PaymentEvidenceSheet
         visible={Boolean(evidencePayment)}

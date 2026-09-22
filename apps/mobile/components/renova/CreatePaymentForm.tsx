@@ -16,6 +16,7 @@ import type { OsRole } from '@/constants/osSections';
 import { OFFLINE_MESSAGES, OFFLINE_PAYMENT_CREATE_BLOCKED } from '@/lib/offlineErrors';
 import { reportCatch } from '@/lib/reportError';
 import { createClientRequestId } from '@/lib/clientRequestId';
+import { parseDueDateInput } from '@/lib/domain/paymentDueDate';
 
 /** Backend: contractor может создавать только stage/material (payments.py). */
 const PAY_TYPES = [
@@ -44,6 +45,7 @@ export function CreatePaymentForm({
   const [paymentType, setPaymentType] = useState<PaymentTypeId>('stage');
   const [stageId, setStageId] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
+  const [dueInput, setDueInput] = useState('');
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const requestIdRef = useRef(createClientRequestId('payment'));
@@ -53,6 +55,7 @@ export function CreatePaymentForm({
     setTitle('');
     setAmount('');
     setNotes('');
+    setDueInput('');
     setPercent(null);
     setStageId(null);
   };
@@ -73,6 +76,12 @@ export function CreatePaymentForm({
       return;
     }
 
+    const due = parseDueDateInput(dueInput);
+    if (!due.ok) {
+      showActionConfirm({ title: 'Срок оплаты', message: due.message });
+      return;
+    }
+
     const stage = project.stages?.find((item) => item.id === stageId);
     busyRef.current = true;
     setBusy(true);
@@ -85,6 +94,7 @@ export function CreatePaymentForm({
         payment_type: paymentType,
         stage_id: paymentType === 'stage' ? stageId : null,
         notes: notes.trim() || null,
+        due_at: due.iso,
         client_request_id: requestIdRef.current,
       });
       created = true;
@@ -214,6 +224,18 @@ export function CreatePaymentForm({
         multiline
         accessibilityLabel="Комментарий к счёту"
       />
+      <Text style={formSurfaceStyles.label}>Оплатить до</Text>
+      <TextInput
+        style={formSurfaceStyles.input}
+        value={dueInput}
+        onChangeText={setDueInput}
+        placeholder="ДД.ММ.ГГГГ — необязательно"
+        keyboardType="numbers-and-punctuation"
+        editable={!busy}
+        accessibilityLabel="Срок оплаты счёта"
+      />
+      <Text style={formSurfaceStyles.hint}>Счета со сроком поднимаются в списке выше остальных — ближайший первым.</Text>
+
       <View style={formSurfaceStyles.actionStack}>
         <PrimaryButton
           title="Выставить счёт"

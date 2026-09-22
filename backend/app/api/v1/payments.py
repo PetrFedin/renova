@@ -1,5 +1,6 @@
 """Платежи: авансы, этапы, материалы."""
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
-from app.models.entities import PaymentType, Stage, User, UserRole
+from app.models.entities import PaymentStatus, PaymentType, Stage, User, UserRole
 from app.schemas.project import PaymentCreate, PaymentOut, YookassaCheckoutIn, YookassaCheckoutOut
 from app.services import payment_service as pay_svc
 from app.services.client_write_idempotency import (
@@ -183,12 +184,15 @@ async def create_payment(
     if body.percent is not None and stage and (not title or title == "Оплата этапа"):
         title = f"{stage.name}: {body.percent:g}%"
 
+    due_at = pay_svc.normalize_due_at(body.due_at)
+
     payload = {
         "title": title,
         "amount": round(float(amount), 2),
         "payment_type": body.payment_type,
         "stage_id": body.stage_id,
         "notes": notes,
+        "due_at": due_at.isoformat() if due_at else None,
     }
     try:
         replay_id = await replay_entity_id(
@@ -217,6 +221,7 @@ async def create_payment(
             body.payment_type,
             body.stage_id,
             notes,
+            due_at,
         )
         try:
             created, entity_id = await commit_client_write(
@@ -472,3 +477,31 @@ async def yookassa_checkout(
         confirmation_url=pay.get("confirmation_url"),
         status=pay.get("status"),
     )
+
+
+class PaymentDueDateIn(BaseModel):
+    """None очищает срок — счёт возвращается в общую очередь без приоритета."""
+
+    due_at: datetime | None = None
+
+
+@router.patch("/{project_id}/payments/{payment_id}/due-date", response_model=PaymentOut)
+async def set_payment_due_date(
+    project_id: str,
+    payment_id: str,
+    body: PaymentDueDateIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Срок оплаты — единственный способ задать очерёдность счетов."""
+    await require_project(db, project_id, user, write=True)
+    payment = await pay_svc.get_payment(db, payment_id)
+    if not payment or payment.project_id != project_id:
+        raise HTTPException(404, "Счёт не найден")
+    if payment.status != PaymentStatus.pending:
+        raise HTTPException(409, detail={"code": "payment_not_pending"})
+    payment.due_at = pay_svc.normalize_due_at(body.due_at)
+    await db.commit()
+    await db.refresh(payment)
+    receipt_id = await pay_svc.receipt_id_for_payment(db, payment_id)
+    return PaymentOut(**pay_svc.payment_dict(payment, receipt_id=receipt_id))
