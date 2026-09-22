@@ -285,8 +285,25 @@ async def cancel_payment(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Отменить ошибочно созданный счёт. Только ожидающий."""
+    """Отменить ошибочно созданный счёт. Только ожидающий и только свой тип."""
     await require_project(db, project_id, user, write=True)
+
+    existing = await pay_svc.get_payment(db, payment_id)
+    if not existing or existing.project_id != project_id:
+        raise HTTPException(404, "Платёж не найден")
+    # Отменять можно то, что мог бы создать: правило то же, что при создании
+    # счёта. Иначе заказчик в одно нажатие снимал бы счёт исполнителя за этап.
+    if user.role == UserRole.customer and existing.payment_type not in (
+        PaymentType.advance,
+        PaymentType.final,
+    ):
+        raise HTTPException(403, "Заказчик отменяет только аванс и финальный счёт")
+    if user.role == UserRole.contractor and existing.payment_type not in (
+        PaymentType.stage,
+        PaymentType.material,
+    ):
+        raise HTTPException(403, "Исполнитель отменяет только счета за этап и материалы")
+
     try:
         payment = await pay_svc.cancel_payment(
             db,

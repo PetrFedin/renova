@@ -125,3 +125,22 @@ def test_confirm_path_is_unchanged():
     # Проверка не должна проходить оттого, что сломалось подтверждение.
     assert '@router.post("/{project_id}/payments/{payment_id}/confirm", response_model=PaymentOut)' in ROUTES
     assert "Подтверждает оплату заказчик" in ROUTES
+
+
+def test_cancel_mirrors_the_creation_rule():
+    """Отменять можно то, что мог бы создать.
+
+    Создание счёта уже разделено по ролям: заказчик — аванс и финал,
+    исполнитель — этап и материалы. Без того же правила у отмены заказчик в
+    одно нажатие снимал бы счёт исполнителя за этап.
+    """
+    block = ROUTES.split('/payments/{payment_id}/cancel"')[1].split("@router.")[0]
+    assert "Заказчик отменяет только аванс и финальный счёт" in block
+    assert "Исполнитель отменяет только счета за этап и материалы" in block
+    assert "PaymentType.advance" in block and "PaymentType.stage" in block
+
+
+def test_creation_rule_itself_is_unchanged():
+    # Проверка не должна проходить оттого, что создание сломалось.
+    assert "Заказчик создаёт аванс/финал" in ROUTES
+    assert "Исполнитель создаёт оплату этапа/материалов" in ROUTES
