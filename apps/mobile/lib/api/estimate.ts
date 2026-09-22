@@ -43,6 +43,18 @@ export const estimateApi = {
       throw new Error('offline_queued');
     }
   },
+  /** Удаление строки черновой сметы — та же офлайн-очередь, что у правки. */
+  deleteEstimateLine: async (userId: string, projectId: string, lineId: string) => {
+    const path = `/api/v1/projects/${projectId}/estimate/lines/${lineId}`;
+    try {
+      return await req<{ ok: boolean; id: string }>(path, { method: 'DELETE' }, userId);
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path, method: 'DELETE', body: '{}', userId });
+      throw new Error('offline_queued');
+    }
+  },
   materialStats: (userId: string, projectId: string) => req<MaterialStats>(`/api/v1/projects/${projectId}/estimate/materials-stats`, {}, userId),
   getEstimateLockDiff: (userId: string, projectId: string) =>
     req<{

@@ -10,9 +10,10 @@ type Props = {
   lines: EstimateLine[];
   canWrite: boolean;
   onPatch: (lineId: string, body: object) => Promise<void>;
+  onDelete?: (lineId: string) => Promise<void>;
 };
 
-export function EstimateEditorByRoom({ lines, canWrite, onPatch }: Props) {
+export function EstimateEditorByRoom({ lines, canWrite, onPatch, onDelete }: Props) {
   const groups = useMemo(() => groupEstimateLinesByRoom(lines), [lines]);
   const [open, setOpen] = useState<Record<string, boolean>>(() => {
     const init: Record<string, boolean> = {};
@@ -37,7 +38,7 @@ export function EstimateEditorByRoom({ lines, canWrite, onPatch }: Props) {
             </Pressable>
             {expanded && g.lines.map((line) => (
               <View key={line.id} style={s.lineWrap}>
-                <EstimateLineEditorCard line={line} canWrite={canWrite} onPatch={onPatch} />
+                <EstimateLineEditorCard line={line} canWrite={canWrite} onPatch={onPatch} onDelete={onDelete} />
               </View>
             ))}
           </View>
