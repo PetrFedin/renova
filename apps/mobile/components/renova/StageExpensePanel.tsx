@@ -11,6 +11,7 @@ import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { buildUnifiedBudgetExpenses } from '@/lib/domain/buildUnifiedBudgetExpenses';
 import { openExpenseRowTarget } from '@/lib/expenseRowNav';
 import type { ExpenseDetailRow } from '@/lib/domain/expenseAnalytics';
+import { materialPickStatusLabel } from '@/constants/labels';
 
 function filterStageRows(rows: ExpenseDetailRow[], stageId: string, roomIds?: string[]): ExpenseDetailRow[] {
   const rooms = new Set(roomIds || []);
@@ -110,7 +111,7 @@ export function StageExpensePanel({
                 }
               >
                 <Text style={s.amt}>{formatRub(p.total || p.qty * p.price)}</Text>
-                <Text style={s.meta}>{p.name} · {p.status}</Text>
+                <Text style={s.meta}>{p.name} · {materialPickStatusLabel(p.status)}</Text>
               </Pressable>
             ))}
           </View>

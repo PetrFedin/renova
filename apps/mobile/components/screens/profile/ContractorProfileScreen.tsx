@@ -22,6 +22,7 @@ import { profileScreenStyles as ps } from './profileScreenStyles';
 import { alertTeamInviteSent, alertTeamCreated, alertRequisitesSaved } from '@/lib/fieldCommsNav';
 import * as WebBrowser from 'expo-web-browser';
 import { reportCatch, reportError } from '@/lib/reportError';
+import { teamRoleLabel } from '@/constants/labels';
 
 /** Без дубля шапки «Ещё» (Архив там). Sprint IA. */
 const EXTRA_ITEMS = [
@@ -52,7 +53,7 @@ function TeamSection() {
           <Text style={ps.userMeta}>Участников: {team.members?.length || 0}</Text>
           {team.members?.map((m: any) => (
             <Text key={m.user_id} style={ps.userMeta}>
-              {m.phone} · {m.role}
+              {m.phone} · {teamRoleLabel(m.role)}
             </Text>
           ))}
           <TextInput

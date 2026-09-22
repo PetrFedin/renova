@@ -19,6 +19,7 @@ import {
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import type { OsRole } from '@/constants/osSections';
 import { reportError } from '@/lib/reportError';
+import { jobLeadStatusLabel } from '@/constants/labels';
 
 const RENOVATION_LABEL: Record<string, string> = {
   cosmetic: 'Косметический',
@@ -152,7 +153,7 @@ export function JobLeadsBoard({ userId, role }: { userId: string; role: string }
       {items.map((l) => (
         <View key={l.id} style={s.row}>
           <Text style={s.n}>
-            {l.title} · {l.status}
+            {l.title} · {jobLeadStatusLabel(l.status)}
           </Text>
           <Text style={s.sub}>
             {[

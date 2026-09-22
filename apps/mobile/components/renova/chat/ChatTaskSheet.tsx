@@ -7,6 +7,7 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { api } from '@/lib/api';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { reportError } from '@/lib/reportError';
+import { teamRoleLabel } from '@/constants/labels';
 
 const DUE_PRESETS = [
   { label: 'Завтра', days: 1 },
@@ -87,7 +88,7 @@ export function ChatTaskSheet({
                 </Pressable>
                 {members.map((m) => (
                   <Pressable key={m.user_id} style={[s.chip, assigneeId === m.user_id && s.chipOn]} onPress={() => setAssigneeId(m.user_id)}>
-                    <Text style={s.chipT}>{m.phone.slice(-4)} · {m.role}</Text>
+                    <Text style={s.chipT}>{m.phone.slice(-4)} · {teamRoleLabel(m.role)}</Text>
                   </Pressable>
                 ))}
               </ScrollView>

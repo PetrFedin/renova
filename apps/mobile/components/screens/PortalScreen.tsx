@@ -33,6 +33,7 @@ import { buildPaymentRequisites } from '@/lib/paymentRequisites';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { reportError } from '@/lib/reportError';
+import { selectionStatusLabel } from '@/constants/labels';
 
 const PORTAL_USER_KEY = 'renova:portal:user';
 
@@ -838,7 +839,7 @@ export default function PortalScreen() {
           {snapshot.selections.length === 0 ? (
             <Text style={styles.meta}>Нет позиций.</Text>
           ) : snapshot.selections.slice(0, 6).map((selection) => (
-            <Text key={selection.id} style={styles.line}>{selection.title} · {selection.status}</Text>
+            <Text key={selection.id} style={styles.line}>{selection.title} · {selectionStatusLabel(selection.status)}</Text>
           ))}
         </PortalSection>
 
