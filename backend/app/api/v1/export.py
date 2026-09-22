@@ -480,6 +480,77 @@ async def list_warranty_claims(
     }
 
 
+@router.post("/{project_id}/warranty-claims/{issue_id}/reopen")
+async def reopen_warranty_claim(
+    project_id: str,
+    issue_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Вернуть закрытую гарантийную претензию в работу.
+
+    Закрытие есть, обратного перехода не было: закрыл по ошибке — и всё.
+    Претензия при этом снимает блокер сдачи объекта, поэтому ошибочное
+    закрытие не просто теряет запись, а открывает закрытие объекта.
+
+    Право то же, что у закрытия: возвращает тот, кто закрывал, — заказчик.
+    """
+    from sqlalchemy import select
+
+    from app.models.entities import ProjectIssue, UserRole
+    from app.models.project_documents import DocumentStatus, DocumentType, ProjectDocument
+    from app.services import activity_service as act
+    from app.services import issue_service as iss
+
+    project = await require_project(db, project_id, user, write=True)
+    if user.role != UserRole.customer or user.id != project.customer_id:
+        raise HTTPException(403, "warranty_reopen_customer_only")
+    issue = await db.get(ProjectIssue, issue_id)
+    if not issue or issue.project_id != project_id:
+        raise HTTPException(404, "warranty_not_found")
+    if not (issue.title or "").startswith("[Гарантия]"):
+        raise HTTPException(400, "not_a_warranty_claim")
+    if issue.status != "closed":
+        # Повтор — не ошибка: претензия уже в работе.
+        return {"ok": True, "replayed": True, "issue": iss.issue_dict(issue)}
+
+    issue.status = "open"
+    issue.closed_at = None
+
+    # Документ претензии архивировался при закрытии — возвращаем его вместе с
+    # ней, иначе претензия снова в работе, а бумага по ней лежит в архиве.
+    docs = list(
+        (
+            await db.execute(
+                select(ProjectDocument).where(
+                    ProjectDocument.project_id == project_id,
+                    ProjectDocument.document_type == DocumentType.warranty.value,
+                    ProjectDocument.notes.contains(f"warranty_issue:{issue.id}"),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    restored = 0
+    for doc in docs:
+        if doc.status == DocumentStatus.archived.value:
+            doc.status = DocumentStatus.active.value
+            restored += 1
+
+    await act.log_event(
+        db,
+        project_id=project_id,
+        user_id=user.id,
+        kind="WarrantyReopened",
+        title=issue.title,
+        link_path="/documents" if user.role.value == "customer" else "/quality-control",
+    )
+    await db.commit()
+    await db.refresh(issue)
+    return {"ok": True, "replayed": False, "documents_restored": restored, "issue": iss.issue_dict(issue)}
+
+
 @router.post("/{project_id}/warranty-claims/{issue_id}/close")
 async def close_warranty_claim(
     project_id: str,
