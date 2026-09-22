@@ -18,6 +18,8 @@ export type Payment = {
   status: string;
   stage_id: string | null;
   notes: string | null;
+  /** Срок оплаты; он же задаёт очерёдность счетов (отдельного приоритета нет). */
+  due_at?: string | null;
   confirmed_at: string | null;
   created_at: string;
   /** Чек, прикреплённый к счёту (API) */

@@ -229,6 +229,9 @@ class Payment(Base):
     title: Mapped[str] = mapped_column(String(255))
     amount: Mapped[float] = mapped_column(Float)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: Когда счёт надо оплатить. По нему же выстраивается очерёдность: отдельного
+    #: поля приоритета нет намеренно — два поля противоречили бы друг другу.
+    due_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     yookassa_payment_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)

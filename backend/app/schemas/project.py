@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
@@ -133,6 +133,8 @@ class PaymentCreate(BaseModel):
     payment_type: str
     stage_id: str | None = None
     notes: str | None = None
+    #: Когда счёт надо оплатить. По нему выстраивается очерёдность оплат.
+    due_at: datetime | None = None
     client_request_id: str | None = Field(default=None, min_length=8, max_length=80)
 
 
@@ -155,6 +157,7 @@ class PaymentOut(BaseModel):
     status: str
     stage_id: str | None
     notes: str | None
+    due_at: str | None = None
     confirmed_at: str | None
     created_at: str
     receipt_id: str | None = None
