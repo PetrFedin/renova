@@ -5,7 +5,7 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import EstimateLine, User, UserRole
 from app.models.entities import Project
-from app.services.estimate_service import prepare_line, material_stats, update_line, lock_estimate, propose_estimate_lock, clear_estimate_proposal, get_estimate_lock_diff, import_estimate_csv
+from app.services.estimate_service import prepare_line, material_stats, update_line, delete_line, lock_estimate, propose_estimate_lock, clear_estimate_proposal, get_estimate_lock_diff, import_estimate_csv
 from app.services.client_write_idempotency import IdempotencyConflict, commit_client_write, replay_entity_id
 
 router = APIRouter(prefix="/projects/{project_id}/estimate", tags=["estimate"])
@@ -26,6 +26,12 @@ class LinePatch(BaseModel):
     quantity_planned: float | None = None
     unit_price: float | None = None
     quantity_actual: float | None = None
+    # Наименование и единицу править было нечем: ошибку в названии позиции
+    # исправить было невозможно, оставалось «обнулить количество».
+    name: str | None = Field(None, min_length=1, max_length=255)
+    unit: str | None = Field(None, min_length=1, max_length=16)
+    category: str | None = Field(None, max_length=32)
+    notes: str | None = None
 
 
 class LineCreate(BaseModel):
@@ -59,10 +65,28 @@ async def patch_line(
         raise HTTPException(403, "Только исполнитель редактирует смету")
     await require_project(db, project_id, user, write=True)
     await _require_estimate_editable(db, project_id)
-    line = await update_line(db, line_id, **body.model_dump(exclude_none=True))
+    line = await update_line(db, line_id, project_id=project_id, **body.model_dump(exclude_none=True))
     if not line:
         raise HTTPException(404, "Строка не найдена")
     return {"ok": True, "id": line.id}
+
+
+@router.delete("/lines/{line_id}")
+async def delete_line_route(
+    project_id: str,
+    line_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Удалить строку черновой сметы."""
+    if user.role != UserRole.contractor:
+        raise HTTPException(403, "Только исполнитель редактирует смету")
+    await require_project(db, project_id, user, write=True)
+    await _require_estimate_editable(db, project_id)
+    removed = await delete_line(db, line_id, project_id=project_id)
+    if not removed:
+        raise HTTPException(404, "Строка не найдена")
+    return {"ok": True, "id": line_id}
 
 
 @router.post("/lines")

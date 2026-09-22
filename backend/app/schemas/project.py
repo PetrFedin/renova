@@ -78,6 +78,9 @@ class EstimateLineOut(BaseModel):
     room_id: str | None = None
     category: str | None = None
     calc_detail: str | None = None
+    # Форма шлёт заметку, схема её принимает, колонка пишется — а в ответе
+    # поля не было: комментарий к позиции исчезал после сохранения.
+    notes: str | None = None
     total: float
 
 
