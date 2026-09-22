@@ -5,16 +5,36 @@ import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';
 import type { EstimateLine } from '@/lib/api';
 import { estimateLineSourceLabel } from '@/lib/domain/estimateFilters';
+import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { confirmDestructive } from '@/lib/confirmAlert';
 
 type Props = {
   line: EstimateLine;
   canWrite: boolean;
   onPatch: (lineId: string, body: object) => Promise<void>;
+  /** Не задан — значит смета уже зафиксирована и строку убрать нельзя. */
+  onDelete?: (lineId: string) => Promise<void>;
 };
 
-export function EstimateLineEditorCard({ line, canWrite, onPatch }: Props) {
+export function EstimateLineEditorCard({ line, canWrite, onPatch, onDelete }: Props) {
   const [open, setOpen] = useState(false);
   const [notes, setNotes] = useState(line.notes || '');
+  const [busy, setBusy] = useState(false);
+
+  const removeLine = async () => {
+    if (!onDelete || busy) return;
+    const ok = await confirmDestructive(
+      'Убрать строку из сметы?',
+      `«${line.name}» исчезнет из сметы. Пока смета черновая, строку можно добавить заново.`,
+    );
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await onDelete(line.id);
+    } finally {
+      setBusy(false);
+    }
+  };
   const total = line.quantity_planned * line.unit_price;
   const isWork = line.line_type === 'work';
 
@@ -37,6 +57,10 @@ export function EstimateLineEditorCard({ line, canWrite, onPatch }: Props) {
       {open && (
         <View style={s.body}>
           {line.calc_detail ? <Text style={s.calc}>{line.calc_detail}</Text> : null}
+          <FieldRow label="Наименование" value={line.name} editable={canWrite} numeric={false}
+            onCommit={(v) => { const name = v.trim(); if (name && name !== line.name) onPatch(line.id, { name }); }} />
+          <FieldRow label="Ед. изм." value={line.unit || ''} editable={canWrite} numeric={false}
+            onCommit={(v) => { const unit = v.trim(); if (unit && unit !== line.unit) onPatch(line.id, { unit }); }} />
           <FieldRow label="Кол-во план" value={String(line.quantity_planned)} editable={canWrite}
             onCommit={(v) => onPatch(line.id, { quantity_planned: parseFloat(v) || line.quantity_planned })} />
           <FieldRow label="Цена, ₽" value={String(line.unit_price)} editable={canWrite}
@@ -61,6 +85,15 @@ export function EstimateLineEditorCard({ line, canWrite, onPatch }: Props) {
               if ((line.notes || '') !== notes.trim()) onPatch(line.id, { notes: notes.trim() || null });
             }}
           />
+          {onDelete && canWrite ? (
+            <PrimaryButton
+              title={busy ? 'Удаление…' : 'Убрать строку из сметы'}
+              variant="ghost"
+              compact
+              disabled={busy}
+              onPress={() => { void removeLine(); }}
+            />
+          ) : null}
         </View>
       )}
     </View>
@@ -72,11 +105,13 @@ function FieldRow({
   value,
   editable,
   onCommit,
+  numeric = true,
 }: {
   label: string;
   value: string;
   editable: boolean;
   onCommit: (v: string) => void;
+  numeric?: boolean;
 }) {
   const [local, setLocal] = useState(value);
   return (
@@ -87,7 +122,8 @@ function FieldRow({
         value={local}
         onChangeText={setLocal}
         editable={editable}
-        keyboardType="decimal-pad"
+        keyboardType={numeric ? 'decimal-pad' : 'default'}
+        accessibilityLabel={label}
         onEndEditing={() => onCommit(local)}
       />
     </View>
@@ -120,7 +156,8 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: RenovaTheme.colors.border,
     borderRadius: 8,
-    padding: 8,
+    paddingHorizontal: 8,
+    minHeight: RenovaTheme.minTouch,
     fontSize: 14,
     backgroundColor: RenovaTheme.colors.surface,
   },

@@ -37,6 +37,9 @@ export function ContractorEstimateView() {
   const [lineType, setLineType] = useState<EstimateLineTypeFilter>('all');
   const [category, setCategory] = useState<string | null>(null);
 
+  // После фиксации смета — цена договора: сервер правки не примет, и показывать
+  // поля с кнопкой «убрать» значило бы обещать несуществующее действие.
+  const editable = canWrite && !activeProject?.estimate_locked_at;
   const allLines = activeProject?.estimate_lines || [];
   const filtered = useMemo(
     () => filterEstimateLines(allLines, { lineType, category }),
@@ -60,6 +63,20 @@ export function ContractorEstimateView() {
     } catch (e: unknown) {
       if (isOfflineQueued(e)) {
         notifyOfflineQueued('Изменение строки');
+        return;
+      }
+      throw e;
+    }
+  }
+
+  async function deleteLine(lineId: string) {
+    if (!user) return;
+    try {
+      await api.deleteEstimateLine(user.id, project.id, lineId);
+      await loadProject(project.id);
+    } catch (e: unknown) {
+      if (isOfflineQueued(e)) {
+        notifyOfflineQueued('Удаление строки');
         return;
       }
       throw e;
@@ -111,7 +128,12 @@ export function ContractorEstimateView() {
         <Text style={styles.sectionTitle}>
           Редактор · {filtered.length} поз. · {formatRub(filteredTotal)}
         </Text>
-        <EstimateEditorByRoom lines={filtered} canWrite={canWrite} onPatch={patchLine} />
+        <EstimateEditorByRoom
+          lines={filtered}
+          canWrite={editable}
+          onPatch={patchLine}
+          onDelete={editable ? deleteLine : undefined}
+        />
 
         {user && canWrite && !project.estimate_locked_at && allLines.length > 0 && (
           <>
