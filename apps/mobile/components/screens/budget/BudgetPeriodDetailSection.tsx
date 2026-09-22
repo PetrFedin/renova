@@ -5,6 +5,7 @@ import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { BudgetPeriodPicker } from '@/components/renova/BudgetPeriodPicker';
 import {
   BUDGET_FOCUS_LABEL,
+  BUDGET_PLAN_SPAN_LABEL,
   type BudgetFocus,
   type BudgetPeriod,
 } from '@/constants/budgetPeriod';
@@ -81,7 +82,7 @@ export function BudgetPeriodDetailSection(props: Props) {
           {focus === 'left' && overrun > 0
             ? `Перерасход ${formatRub(overrun)} от лимита`
             : focus === 'plan'
-              ? `Доля плана сметы за период`
+              ? `План сметы на ${BUDGET_PLAN_SPAN_LABEL[period]}`
               : focus === 'fact'
                 ? `Траты за период · всего ${formatRub(spentTotal)}`
                 : focus === 'forecast'
@@ -130,6 +131,9 @@ export function BudgetPeriodDetailSection(props: Props) {
       {focus === 'plan' ? (
         <>
           <Text style={s.section}>Распределение плана</Text>
+          <Text style={s.sectionNote}>
+            Сумма интервалов равна плану на {BUDGET_PLAN_SPAN_LABEL[period]} — {formatRub(periodPlanned)}
+          </Text>
           {buckets.map((b) => (
             <View key={b.key} style={s.bucket}>
               <Text style={s.bucketLabel}>{b.label}</Text>
@@ -158,6 +162,7 @@ const s = StyleSheet.create({
   heroSub: { ...screenTypography.listMeta, marginTop: 4, lineHeight: 17 },
   limit: { ...screenTypography.listTitle, fontSize: 12, marginTop: 6 },
   section: { ...screenTypography.section, marginBottom: 8, marginTop: 4 },
+  sectionNote: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 16, marginTop: -4, marginBottom: 8 },
   bucket: {
     paddingVertical: 10,
     borderTopWidth: StyleSheet.hairlineWidth,

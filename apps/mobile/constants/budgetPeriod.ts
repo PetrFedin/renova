@@ -9,6 +9,18 @@ export const BUDGET_PERIOD_LABEL: Record<BudgetPeriod, string> = {
   all: 'Всё',
 };
 
+/**
+ * За какой срок считается план периода. Факт берётся с начала периода по
+ * сегодня, а план — на весь календарный месяц или год, поэтому подпись должна
+ * называть именно этот срок и не выдавать план месяца за «долю за период».
+ */
+export const BUDGET_PLAN_SPAN_LABEL: Record<BudgetPeriod, string> = {
+  week: 'последние 7 дней',
+  month: 'текущий месяц',
+  year: 'текущий год',
+  all: 'весь проект',
+};
+
 export const BUDGET_FOCUS_LABEL: Record<BudgetFocus, string> = {
   plan: 'План',
   fact: 'Факт',
