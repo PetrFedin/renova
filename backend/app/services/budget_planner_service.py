@@ -20,6 +20,8 @@ def _qty(metrics: dict, wt: str) -> float:
         return float(metrics.get("pcs", 1))
     if key == "wall_sq_m":
         return float(metrics.get("wall_sq_m", metrics.get("floor_sq_m", 10)))
+    if key == "perimeter_m":
+        return float(metrics.get("perimeter_m", 14))
     return float(metrics.get("floor_sq_m", 10))
 
 
