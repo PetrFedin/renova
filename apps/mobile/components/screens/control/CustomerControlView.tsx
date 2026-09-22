@@ -35,10 +35,13 @@ export function CustomerControlView() {
   const [warrantyItems, setWarrantyItems] = useState<{ id: string; title: string; status: string; overdue?: boolean }[]>([]);
   const [warrantyOpen, setWarrantyOpen] = useState(0);
   const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'error'>('loading');
+  // Саму ошибку держим: по ней экран говорит, что именно случилось.
+  const [loadError, setLoadError] = useState<unknown>(null);
 
   const reload = useCallback(() => {
     if (user && activeProject) {
       setLoadState('loading');
+      setLoadError(null);
       Promise.all([
         api.listIssues(user.id, activeProject.id),
         api.listWorkAcceptances(user.id, activeProject.id),
@@ -53,6 +56,7 @@ export function CustomerControlView() {
         })
         .catch((e) => {
           reportError('control.reload', e);
+          setLoadError(e);
           setLoadState('error');
         });
     }
@@ -69,6 +73,7 @@ export function CustomerControlView() {
       <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
         <LoadErrorState
           title="Не удалось загрузить приёмку"
+          error={loadError}
           onRetry={reload}
           role="customer"
           showChatCta

@@ -4,11 +4,17 @@ import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { tabsRoute, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
+import { loadErrorHint, retryIsImmediate } from '@/lib/domain/loadErrorHint';
 
 type Props = {
   title?: string;
   hint?: string;
   onRetry: () => void;
+  /**
+   * Сама ошибка: по ней подбирается честная подсказка. Без неё остаётся
+   * прежний текст про сеть — для вызывающих, которые ошибку не сохраняют.
+   */
+  error?: unknown;
   /** Опционально — путь в чат при сбое */
   role?: OsRole;
   showChatCta?: boolean;
@@ -16,16 +22,19 @@ type Props = {
 
 export function LoadErrorState({
   title = 'Не удалось загрузить',
-  hint = 'Проверьте сеть и повторите. Это не пустой список.',
+  hint,
+  error,
   onRetry,
   role,
   showChatCta = false,
 }: Props) {
+  const resolvedHint = hint ?? loadErrorHint(error);
+  const immediate = retryIsImmediate(error);
   return (
     <View style={s.wrap} accessibilityRole="summary">
       <Text style={s.title}>{title}</Text>
-      <Text style={s.hint}>{hint}</Text>
-      <PrimaryButton title="Повторить" onPress={onRetry} />
+      <Text style={s.hint}>{resolvedHint}</Text>
+      <PrimaryButton title={immediate ? 'Повторить' : 'Повторить позже'} onPress={onRetry} />
       {showChatCta && role ? (
         <PrimaryButton
           title="Написать в чат"
