@@ -18,7 +18,14 @@ import { reportError } from '@/lib/reportError';
 
 export function PortfolioProjectsView() {
   const { user, projects, activeProject, loadProject } = useRenova();
-  const cleanProjects = filterOutJunkProjects(projects);
+  /**
+   * Список считался заново на каждом кадре, а он стоит в зависимостях эффекта
+   * ниже. Эффект в ветке «нечего считать» вызывал `setPendingById({})` — новый
+   * объект, то есть новое состояние и новый кадр, на котором список снова
+   * менял ссылку и эффект запускался опять. Экран уходил в бесконечную
+   * перерисовку: React обрывал её сообщением «Maximum update depth exceeded».
+   */
+  const cleanProjects = useMemo(() => filterOutJunkProjects(projects), [projects]);
   const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
   const allIds = useMemo(() => cleanProjects.map((p) => p.id), [cleanProjects]);
   const {
@@ -41,7 +48,9 @@ export function PortfolioProjectsView() {
     if (!user) return;
     const closing = cleanProjects.filter((p) => p.progress_percent >= 100);
     if (!closing.length) {
-      setPendingById({});
+      // Сброс только когда есть что сбрасывать: пустой объект каждый раз новый,
+      // и безусловный вызов сам по себе тянул за собой лишний кадр.
+      setPendingById((prev) => (Object.keys(prev).length ? {} : prev));
       setPendingUnknownCount(0);
       return;
     }
@@ -96,7 +105,7 @@ export function PortfolioProjectsView() {
 
   useEffect(() => {
     if (!user || !selectedProjects.length) {
-      setCategories([]);
+      setCategories((prev) => (prev.length ? [] : prev));
       setCategoryUnknownCount(0);
       return;
     }
@@ -123,7 +132,7 @@ export function PortfolioProjectsView() {
       .catch((error) => {
         reportError('portfolio.budgetBreakdown.aggregate', error);
         if (!cancelled) {
-          setCategories([]);
+          setCategories((prev) => (prev.length ? [] : prev));
           setCategoryUnknownCount(selectedProjects.length);
         }
       })
