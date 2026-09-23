@@ -16,7 +16,11 @@ import { ActiveProjectSync } from '@/components/renova/ActiveProjectSync';
 import { OsQuickFab } from '@/components/renova/os/OsQuickFab';
 import { OsPendingProjectPickEffect } from '@/components/renova/os/OsPendingProjectPickEffect';
 import { useRenova } from '@/lib/context/RenovaContext';
-import { roleGroupRedirectPath, roleGroupRootRedirectPath } from '@/lib/domain/roleGroupRedirect';
+import {
+  roleGroupRedirectPath,
+  roleGroupRootRedirectPath,
+  signedOutRedirectPath,
+} from '@/lib/domain/roleGroupRedirect';
 import type { OsRole } from '@/constants/osSections';
 
 type Props = { role: OsRole };
@@ -43,6 +47,11 @@ function OsRoleTabsNavigatorImpl({ role }: Props) {
   // роутер выбирает группу сам, и человек попадает на экран чужой роли —
   // вместе с чужими правами. Внутренние переходы идут с явным префиксом и
   // сюда не попадают.
+  // Без сессии этот макет вообще не должен рисоваться: `app/index.tsx` уводит
+  // на вход, но до него дело не доходит — адрес `/` достаётся групповому
+  // экрану. Человек без аккаунта видел главную заказчика с «Нет данных
+  // проекта» и не мог с неё ни войти, ни зарегистрироваться.
+  const signedOutTo = signedOutRedirectPath(user?.role, loading);
   const redirectTo = loading ? null : roleGroupRedirectPath(role, user?.role, pathname);
   // Корень `/` отдаётся обеим группам, и роутер выбирает чужую. Переносим уже
   // после монтирования: в первом кадре путь ещё не установился, и редирект
@@ -52,6 +61,8 @@ function OsRoleTabsNavigatorImpl({ role }: Props) {
     if (!rootRedirectTo) return;
     router.replace(rootRedirectTo as never);
   }, [rootRedirectTo]);
+
+  if (signedOutTo) return <Redirect href={signedOutTo as never} />;
 
   if (redirectTo) {
     const carried = Object.fromEntries(
