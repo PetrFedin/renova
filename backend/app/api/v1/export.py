@@ -90,6 +90,11 @@ async def export_contract(project_id: str, user: User = Depends(get_current_user
 
     Рисуется по требованию, как и акт приёмки: документ всегда отражает
     текущее состояние сметы, а не слепок, снятый неизвестно когда.
+
+    Из-за этого подписанный договор мог измениться задним числом: после
+    подписи одобряли доп. работы, и та же подпись оказывалась под другой
+    ценой. Молчать об этом нельзя, поэтому при расхождении с условиями,
+    под которыми подписывали, документ говорит об этом прямо.
     """
     from app.services import contract_document_service as contract_svc
 
@@ -98,8 +103,18 @@ async def export_contract(project_id: str, user: User = Depends(get_current_user
     if terms is None:
         raise HTTPException(404, "Проект не найден")
 
+    signed_hash = await contract_svc.signed_terms_fingerprint(db, project_id)
+    changed_after_signing = bool(signed_hash) and signed_hash != contract_svc.terms_fingerprint(terms)
+
     pdf = new_pdf()
     pdf_line(pdf, "ДОГОВОР ПОДРЯДА", size=14)
+    if changed_after_signing:
+        pdf_line(pdf, "")
+        pdf_line(pdf, "ВНИМАНИЕ: условия изменились после подписания", size=12)
+        pdf_line(pdf, "Ниже приведены текущие условия объекта. Они отличаются от тех,")
+        pdf_line(pdf, "под которыми стоит подпись. Этот документ не подтверждает согласие")
+        pdf_line(pdf, "сторон с текущей ценой — требуется новая версия и новая подпись.")
+        pdf_line(pdf, "")
     if terms.locked_at:
         pdf_line(pdf, f"Смета зафиксирована: {terms.locked_at}")
     pdf_line(pdf, "")
