@@ -158,8 +158,15 @@ export default function WizardConfirm() {
         detailed="Смета по шаблону — черновик. Уточните комнаты позже для точности. Рыночный диапазон ниже — ориентир, не договор."
       />
       <RenovationPlanBadge renovationType={wizard.renovation_type} propertyType={wizard.property_type} />
+        {/*
+          Разбивка обязана сходиться с числом над ней. Здесь стояли только
+          работы и материалы, а в итог входит ещё резерв — на двухкомнатной
+          квартире это 74 919 + 65 957 при итоге 147 920, то есть 7 044 ₽
+          ниоткуда. Человек подтверждает сумму, которую не может сверить.
+        */}
         <Text style={styles.sub}>
           {wizard.property_type === 'house' ? 'Дом' : 'Квартира'} · {estimateRooms.length} комн. · работы {formatRub(summary.worksTotal)} · материалы {formatRub(summary.materialsTotal)}
+          {summary.reserveAmount > 0 ? ` · резерв ${summary.reservePercent}% ${formatRub(summary.reserveAmount)}` : ''}
         </Text>
         {estimateRooms.map((r, i) => (
           <Text key={i} style={styles.roomLine}>· {r.name} ({roomTypeLabel(r.room_type)}{r.floor_level && r.floor_level > 1 ? `, ${r.floor_level} эт.` : ''}) — {r.length_m}×{r.width_m} м</Text>
