@@ -34,6 +34,24 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     RENOVA_GIT_SHA="${VCS_REF}"
 
 WORKDIR /app
+
+# Обновления безопасности Debian поверх закреплённого базового образа.
+#
+# База закреплена по digest, и это правильно: обновление базы — отдельное
+# осознанное изменение. Но между такими обновлениями Debian выпускает
+# исправления, и образ начинает показывать уязвимости, которых в нём быть
+# не должно. Так и вышло: `libpcre2-8-0 10.42-1` получил три HIGH
+# (CVE-2026-86145, CVE-2026-89157, CVE-2026-89161), исправление
+# `10.42-1+deb12u1` лежит в bookworm-security, а в образ ещё не приехало —
+# проверка `validate-image` встала на всём бэклоге.
+#
+# Ставим только обновления уже установленных пакетов: новых в образ не
+# добавляется, списки apt удаляются следом, размер итогового слоя не растёт.
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN rm -rf \
       /usr/local/lib/python3.12/ensurepip \
       /usr/local/lib/python3.12/site-packages/pip \
