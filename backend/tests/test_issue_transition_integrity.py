@@ -74,7 +74,13 @@ async def test_close_and_reopen_manage_closed_timestamp():
     closed = await service.transition_issue(FakeDb(), issue, "closed", UserRole.customer)
     assert closed.status == "closed"
     assert isinstance(closed.closed_at, datetime)
-    assert closed.closed_at.tzinfo == timezone.utc
+    # Отметка обязана быть без смещения: колонка `ProjectIssue.closed_at`
+    # объявлена как naive `DateTime`, и Postgres отвергает значение с
+    # таймзоной прямо на вставке. Раньше здесь требовалось `timezone.utc` —
+    # проверка закрепляла ровно то, из-за чего закрыть замечание на живом
+    # стенде было нельзя. Смысл проверки прежний: закрытие ставит отметку
+    # времени, переоткрытие её снимает.
+    assert closed.closed_at.tzinfo is None
 
     reopened = await service.transition_issue(FakeDb(), closed, "open", UserRole.customer)
     assert reopened.status == "open"
