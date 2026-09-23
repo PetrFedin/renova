@@ -7,13 +7,19 @@ type Props = {
   value: string;
   onChange: (v: string) => void;
   estimateTotal?: number;
+  /**
+   * Чем подписано число сметы. По умолчанию «Смета проекта» — так и есть
+   * в профиле объекта. В мастере это ещё не смета, а предварительный расчёт:
+   * сервер посчитает свою, и состав с суммой отличаются.
+   */
+  estimateLabel?: string;
   hint?: string;
   error?: string | null;
   /** Внутри секции ObjectProfileSection — без своего заголовка */
   embedded?: boolean;
 };
 
-export function CustomerBudgetField({ value, onChange, estimateTotal, hint, error, embedded }: Props) {
+export function CustomerBudgetField({ value, onChange, estimateTotal, estimateLabel, hint, error, embedded }: Props) {
   const num = parseInt(value.replace(/\s/g, ''), 10);
   const overEstimate = !error && estimateTotal && num > 0 && num < estimateTotal;
 
@@ -38,7 +44,7 @@ export function CustomerBudgetField({ value, onChange, estimateTotal, hint, erro
       />
       {error ? <Text style={s.error}>{error}</Text> : null}
       {estimateTotal != null && estimateTotal > 0 ? (
-        <Text style={s.meta}>Смета проекта: {formatRub(estimateTotal)}</Text>
+        <Text style={s.meta}>{estimateLabel || 'Смета проекта'}: {formatRub(estimateTotal)}</Text>
       ) : null}
       {overEstimate ? (
         <Text style={s.warn}>Лимит ниже сметы — возможен перерасход или нужно урезать объём работ.</Text>
