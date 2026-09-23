@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
-import { Alert, ScrollView, View, Text } from 'react-native';
-import { useLocalSearchParams, usePathname } from 'expo-router';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { ScrollView, View, Text } from 'react-native';
+import { router, useLocalSearchParams, usePathname } from 'expo-router';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { DockBarSettings } from '@/components/renova/os/DockBarSettings';
 import { BudgetWidgetSettings } from '@/components/renova/os/BudgetWidgetSettings';
@@ -41,10 +42,53 @@ function customerProfileLayoutY(event: unknown): number | null {
   return typeof layout.y === 'number' && Number.isFinite(layout.y) ? layout.y : null;
 }
 
+/**
+ * Выход со всех устройств — включая это.
+ *
+ * Сервер в `revoke-all` не только гасит refresh-сессии, но и ставит
+ * `tokens_invalid_before = сейчас`, то есть действующий токен этого устройства
+ * тоже становится мёртвым. Экран же оставался открытым, как будто ничего не
+ * произошло: результат показывался через `Alert.alert`, а он в вебе молчит.
+ * Получалось так: первое нажатие возвращало 200 и закрывало сессии, экран не
+ * менялся, человек нажимал ещё раз — приходил 401, и снова ни слова. Приложение
+ * продолжало выглядеть залогиненным с нерабочим токеном.
+ *
+ * Теперь результат виден, а после успеха мы уводим на вход — ровно то, что
+ * сделал сервер.
+ */
+async function signOutEverywhere(
+  userId: string,
+  logout: () => Promise<void>,
+): Promise<void> {
+  // `logout` только чистит состояние, увод с экрана — забота вызывающего:
+  // тот же порядок, что в `app/onboarding/_screens/detail-quiz.tsx`. Без него
+  // человек остаётся на профиле без данных, где вместо его объекта написано
+  // «Нет данных проекта» — выглядит поломкой, хотя выход прошёл штатно.
+  const leave = async () => {
+    await logout();
+    router.replace('/onboarding/role');
+  };
+  try {
+    const r = await api.revokeAllSessions(userId);
+    showActionConfirm({
+      title: 'Вы вышли на всех устройствах',
+      message: `Закрыто сессий: ${r.revoked}. Это устройство тоже вышло — войдите заново.`,
+      primaryLabel: 'Войти',
+      onPrimary: () => { void leave(); },
+      onDismiss: () => { void leave(); },
+    });
+  } catch (e) {
+    showActionConfirm({
+      title: 'Не удалось выйти',
+      message: e instanceof Error ? e.message : 'Попробуйте ещё раз.',
+    });
+  }
+}
+
 export function CustomerProfileScreen() {
   const pathname = usePathname();
   const { focus } = useLocalSearchParams<{ focus?: string }>();
-  const { user, activeProject, readOnly, loadProject } = useRenova();
+  const { user, activeProject, readOnly, loadProject, logout } = useRenova();
   const showAccess = Boolean(user && activeProject && !readOnly);
   const hasContractor = Boolean(activeProject?.contractor_id);
   const extraItems = hasContractor ? [...EXTRA_BASIC, ...EXTRA_WITH_CONTRACTOR] : EXTRA_BASIC;
@@ -135,12 +179,7 @@ export function CustomerProfileScreen() {
             variant="outline"
             onPress={async () => {
               if (!user?.id) return;
-              try {
-                const r = await api.revokeAllSessions(user.id);
-                Alert.alert('Готово', `Сессий закрыто: ${r.revoked}. Войдите снова на других устройствах.`);
-              } catch (e) {
-                Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось');
-              }
+              await signOutEverywhere(user.id, logout);
             }}
           />
         </View>
