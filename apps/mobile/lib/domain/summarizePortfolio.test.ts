@@ -21,8 +21,8 @@ const { inProgress, completed } = partitionPortfolioProjects(rows as any);
 if (inProgress.length !== 1 || completed.length !== 1) throw new Error('partition');
 
 const cats = aggregatePortfolioBudgetBreakdowns([
-  { works: 100, materials_plan: 200, materials_fact: 250, waste: 10, reserve: 20, total_planned: 330, budget_planned: 300, budget_spent: 280 },
-  { works: 50, materials_plan: 100, materials_fact: 90, waste: 0, reserve: 0, total_planned: 150, budget_planned: 150, budget_spent: 140 },
+  { works: 100, materials_plan: 200, materials_fact: 250, materials_fact_records: 3, waste: 10, reserve: 20, total_planned: 330, budget_planned: 300, budget_spent: 280 },
+  { works: 50, materials_plan: 100, materials_fact: 90, materials_fact_records: 2, waste: 0, reserve: 0, total_planned: 150, budget_planned: 150, budget_spent: 140 },
 ]);
 const materials = cats.find((c) => c.key === 'materials');
 if (!materials || materials.planned !== 300 || materials.spent !== 340) throw new Error('materials aggregate');
