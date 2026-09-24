@@ -145,8 +145,15 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
   const generateFromEstimate = async () => {
     if (readOnly) return;
     await runMutation('generate', async () => {
-      await api.generateMaterialNeeds(user.id, activeProject.id);
-      await reload();
+      try {
+        await api.generateMaterialNeeds(user.id, activeProject.id);
+        await reload();
+      } catch {
+        showActionConfirm({
+          title: 'Не удалось рассчитать материалы',
+          message: 'Потребности не сформированы. Проверьте сеть и повторите.',
+        });
+      }
     });
   };
 
@@ -155,11 +162,18 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
     const ids = readyPickIds(picks, purchases, role);
     if (!ids.length) return;
     await runMutation('create_purchase', async () => {
-      await api.createPurchase(user.id, activeProject.id, ids);
-      await syncProjectSideEffects({ user, project: activeProject });
-      await reload();
-      setMaterialSubtab('purchases');
-      alertPurchaseCreated(role, ids.length);
+      try {
+        await api.createPurchase(user.id, activeProject.id, ids);
+        await syncProjectSideEffects({ user, project: activeProject });
+        await reload();
+        setMaterialSubtab('purchases');
+        alertPurchaseCreated(role, ids.length);
+      } catch {
+        showActionConfirm({
+          title: 'Не удалось создать закупку',
+          message: 'Закупка не создана. Проверьте сеть и повторите.',
+        });
+      }
     });
   };
 
