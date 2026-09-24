@@ -89,8 +89,15 @@ services:
       retries: 30
 
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
-    command: server /data --console-address ":9001"
+    # MinIO Inc. gated the free `minio/minio` distribution on both Docker Hub
+    # and quay.io in 2025 (every tag now 401s without a paid subscription —
+    # verified directly against both registries). `bitnamilegacy/minio` is
+    # the last free, publicly pullable MinIO image; it is frozen (no more
+    # updates), so it is pinned by digest for reproducibility. It serves the
+    # S3 API on the same port and honors the same MINIO_ROOT_USER/PASSWORD
+    # contract as the previous image — only the data path and command differ
+    # (its own entrypoint owns startup; do not override `command`).
+    image: bitnamilegacy/minio@sha256:451fe6858cb770cc9d0e77ba811ce287420f781c7c1b806a386f6896471a349c
     environment:
       MINIO_ROOT_USER: renova
       MINIO_ROOT_PASSWORD: renova123
@@ -98,7 +105,7 @@ services:
       - "9000:9000"
       - "9001:9001"
     volumes:
-      - renova_minio:/data
+      - renova_minio:/bitnami/minio/data
 
   migrate:
     build: *backend-build
