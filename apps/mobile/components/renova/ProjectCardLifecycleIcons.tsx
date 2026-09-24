@@ -20,11 +20,21 @@ type Props = {
 
 function IconBtn({
   name,
+  label,
   color,
   onPress,
   danger,
 }: {
   name: keyof typeof Ionicons.glyphMap;
+  /**
+   * What the button does, in words.
+   *
+   * This used to be the Ionicons glyph, so VoiceOver read "archive-outline",
+   * "trash-outline", "close-circle-outline". Two of the four are destructive
+   * and one deletes permanently, so the one user who cannot see the icon was
+   * told the least about what the button would do.
+   */
+  label: string;
   color: string;
   onPress?: () => void;
   danger?: boolean;
@@ -41,7 +51,7 @@ function IconBtn({
       }}
       hitSlop={8}
       accessibilityRole="button"
-      accessibilityLabel={name}
+      accessibilityLabel={label}
     >
       <Ionicons name={name} size={18} color={color} />
     </Pressable>
@@ -60,20 +70,20 @@ export function ProjectCardLifecycleIcons({
     <View style={s.wrap} pointerEvents="box-none">
       {bucket === 'active' ? (
         <>
-          <IconBtn name="archive-outline" color={RenovaTheme.colors.textMuted} onPress={onArchive} />
-          <IconBtn name="trash-outline" color={RenovaTheme.colors.danger} onPress={onTrash} danger />
+          <IconBtn name="archive-outline" label="Архивировать объект" color={RenovaTheme.colors.textMuted} onPress={onArchive} />
+          <IconBtn name="trash-outline" label="Переместить объект в корзину" color={RenovaTheme.colors.danger} onPress={onTrash} danger />
         </>
       ) : null}
       {bucket === 'archived' ? (
         <>
-          <IconBtn name="arrow-undo-outline" color={RenovaTheme.colors.accent} onPress={onUnarchive} />
-          <IconBtn name="trash-outline" color={RenovaTheme.colors.danger} onPress={onTrash} danger />
+          <IconBtn name="arrow-undo-outline" label="Вернуть объект из архива" color={RenovaTheme.colors.accent} onPress={onUnarchive} />
+          <IconBtn name="trash-outline" label="Переместить объект в корзину" color={RenovaTheme.colors.danger} onPress={onTrash} danger />
         </>
       ) : null}
       {bucket === 'trashed' ? (
         <>
-          <IconBtn name="arrow-undo-outline" color={RenovaTheme.colors.accent} onPress={onRestore} />
-          <IconBtn name="close-circle-outline" color={RenovaTheme.colors.danger} onPress={onPurge} danger />
+          <IconBtn name="arrow-undo-outline" label="Восстановить объект из корзины" color={RenovaTheme.colors.accent} onPress={onRestore} />
+          <IconBtn name="close-circle-outline" label="Удалить объект навсегда" color={RenovaTheme.colors.danger} onPress={onPurge} danger />
         </>
       ) : null}
     </View>
