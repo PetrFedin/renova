@@ -1,13 +1,9 @@
 name: Mobile typecheck fail-closed integrity
 
+# `typecheck-integrity` is a globally required main-protection context.
+# It must be scheduled for every pull request; path filters here can deadlock merges.
 on:
   pull_request:
-    paths:
-      - "apps/mobile/**"
-      - "scripts/typecheck-mobile.sh"
-      - "scripts/typecheck-mobile-report.mjs"
-      - "scripts/typecheck-mobile-report.test.mjs"
-      - ".github/workflows/mobile-typecheck-fail-closed-integrity.yml"
   workflow_dispatch:
 
 permissions:
