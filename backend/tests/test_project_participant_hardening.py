@@ -248,6 +248,33 @@ async def test_conversion_replay_reauthorizes_and_rejects_changed_intent(db, mon
 
 
 @pytest.mark.asyncio
+async def test_conversion_carries_accepted_price_into_customer_budget(db, monkeypatch):
+    owner, _, _, _, lead = await _lead(db)
+    owner_id, lead_id = owner.id, lead.id
+    lead.pre_estimate = 348000  # принятая котировка исполнителя
+    await db.commit()
+    monkeypatch.setattr(outbox_inline_dispatch, "dispatch_best_effort", AsyncMock())
+    result = await conversion.convert_lead(
+        db, lead_id=lead_id, actor_id=owner_id, rooms_data=_rooms(), property_type="apartment",
+    )
+    stored = await db.scalar(select(Project.customer_budget).where(Project.id == result.project.id))
+    assert stored == 348000
+
+
+@pytest.mark.asyncio
+async def test_conversion_falls_back_to_budget_hint_without_quote_price(db, monkeypatch):
+    owner, _, _, _, lead = await _lead(db)
+    owner_id, lead_id = owner.id, lead.id
+    assert lead.pre_estimate is None and lead.budget_hint == 100000
+    monkeypatch.setattr(outbox_inline_dispatch, "dispatch_best_effort", AsyncMock())
+    result = await conversion.convert_lead(
+        db, lead_id=lead_id, actor_id=owner_id, rooms_data=_rooms(), property_type="apartment",
+    )
+    stored = await db.scalar(select(Project.customer_budget).where(Project.id == result.project.id))
+    assert stored == 100000
+
+
+@pytest.mark.asyncio
 async def test_taken_lead_without_ledger_fails_closed(db):
     owner, _, _, _, lead = await _lead(db)
     owner_id, lead_id = owner.id, lead.id
