@@ -34,7 +34,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     RENOVA_GIT_SHA="${VCS_REF}"
 
 WORKDIR /app
-RUN rm -rf \
+# The pinned Python image predates Debian's fixed PCRE2 package. Keep the
+# immutable Python base while installing the exact security-fixed runtime
+# package required by the fail-closed image vulnerability gate. Do not replace
+# this with an unpinned upgrade or a scanner exception.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libpcre2-8-0=10.42-1+deb12u1 \
+    && test "$(dpkg-query -W -f='${Version}' libpcre2-8-0)" = "10.42-1+deb12u1" \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf \
       /usr/local/lib/python3.12/ensurepip \
       /usr/local/lib/python3.12/site-packages/pip \
       /usr/local/lib/python3.12/site-packages/pip-*.dist-info \
