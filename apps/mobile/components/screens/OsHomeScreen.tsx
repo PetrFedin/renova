@@ -77,6 +77,15 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const loadedProjectIdRef = useRef<string | null>(null);
+  // The ref alone cannot drive rendering: writing it does not re-render, so a
+  // render could see `loading === false` with no data and call that a failure.
+  // This mirror makes "a load has finished for THIS project" an observable fact.
+  const [loadedProjectId, setLoadedProjectId] = useState<string | null>(null);
+
+  const markLoaded = (projectId: string | null) => {
+    loadedProjectIdRef.current = projectId;
+    setLoadedProjectId(projectId);
+  };
   const loadGenerationRef = useRef(0);
 
   const snapRole = readOnly ? 'customer' : role === 'contractor' ? 'contractor' : 'customer';
@@ -116,7 +125,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
 
     if (!user || !activeProject) {
       if (isCurrentLoad()) {
-        loadedProjectIdRef.current = null;
+        markLoaded(null);
         setLoading(false);
       }
       return;
@@ -125,7 +134,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
     const projectId = activeProject.id;
     const sameProject = loadedProjectIdRef.current === projectId;
     if (!sameProject && isCurrentLoad()) {
-      loadedProjectIdRef.current = null;
+      markLoaded(null);
       resetProjectSnapshot();
     }
     setLoading(true);
@@ -227,7 +236,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
         // snapshot was reset before requests started, so no cross-project leak occurs.
       });
 
-      loadedProjectIdRef.current = projectId;
+      markLoaded(projectId);
       if (issues.length > 0) {
         setLoadWarning('Часть данных главной не обновилась. Показаны доступные или последние подтверждённые значения; нули и пустые блоки могут быть неполными.');
       }
@@ -238,7 +247,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
       setLoadWarning('Не все данные удалось подтвердить. Повторите загрузку перед важным действием.');
     } finally {
       if (isCurrentLoad()) {
-        loadedProjectIdRef.current = projectId;
+        markLoaded(projectId);
         setLoading(false);
       }
     }
@@ -262,7 +271,9 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
   }), [user?.id, activeProject?.id]);
 
   const snap = useMemo(() => {
-    if (!activeProject || !dash || loadedProjectIdRef.current !== activeProject.id) return null;
+    // Gate on state, not on the ref: a ref write does not invalidate this memo,
+    // so the guard could keep returning null after the load had finished.
+    if (!activeProject || !dash || loadedProjectId !== activeProject.id) return null;
     return buildProjectOsSnapshot(
       activeProject,
       dash,
@@ -280,7 +291,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
         closeoutReady, closeoutArchived, closeoutNext, closeoutAllStagesDone },
     );
   }, [
-    activeProject, dash, receipts, picks, purchases, apiRisks, osSchedule, snapRole, osBudget,
+    activeProject, dash, loadedProjectId, receipts, picks, purchases, apiRisks, osSchedule, snapRole, osBudget,
     pendingAcceptance, pendingPayments, pendingPaymentTotal, workScheduleStatus,
     warrantyOpen, warrantyOverdue, pendingChangeOrders, pendingSignDocs,
     offlinePending, offlineBlocked,
@@ -333,7 +344,14 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
     );
   }
 
-  if (loading && !dash) {
+  // "Not ready yet" is not "failed". load() returns early (and clears `loading`)
+  // when activeProject has not propagated from context yet, and the effect that
+  // re-runs it only fires after this render. Without this guard that window
+  // renders the failure state with no reason under it — because nothing failed.
+  // Switching projects hits the same window: resetProjectSnapshot() clears dash
+  // while the previous project is still the loaded one.
+  const settledForThisProject = loadedProjectId === activeProject.id;
+  if (loading || !settledForThisProject) {
     return <View style={s.center}><ActivityIndicator color={RenovaTheme.colors.primary} /></View>;
   }
 
