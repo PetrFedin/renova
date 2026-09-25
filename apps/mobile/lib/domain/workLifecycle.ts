@@ -75,6 +75,65 @@ export function isTransitionAllowedForRole(
   return false;
 }
 
+/** Порядок состояний по движению к завершению. Нужен, чтобы отличить
+ *  движение вперёд от возврата на доработку: `review → in_progress` разрешён
+ *  обеим сторонам, но это шаг назад, а не следующий шаг. */
+const WORK_RANK: Record<WorkOrderStatus, number> = {
+  draft: 0,
+  published: 1,
+  negotiating: 2,
+  approved: 3,
+  in_progress: 4,
+  review: 5,
+  done: 6,
+  paid: 7,
+  cancelled: -1,
+};
+
+function advancingTargets(status: WorkOrderStatus): WorkOrderStatus[] {
+  return (WORK_TRANSITIONS[status] || []).filter(
+    (next) => next !== 'cancelled' && WORK_RANK[next] > WORK_RANK[status],
+  );
+}
+
+/**
+ * Чей ход, когда у текущей роли вперёд ходов нет.
+ *
+ * Экран печатал заголовок «Следующий шаг» и под ним — всё, что доступно роли.
+ * На согласованной работе у заказчика остаётся единственное действие
+ * «Отменить работу»: начать работу может только исполнитель. Получалось, что
+ * следующим шагом экран называет отмену, хотя на самом деле нужно просто
+ * дождаться исполнителя. Здесь считается, кто ходит на самом деле.
+ *
+ * `null` — ждать некого: либо у роли есть свой ход вперёд, либо работа
+ * в конечном состоянии.
+ */
+export function waitingForRole(
+  status: WorkOrderStatus,
+  role: 'customer' | 'contractor',
+): 'customer' | 'contractor' | null {
+  const forward = advancingTargets(status);
+  if (!forward.length) return null;
+  if (forward.some((next) => isTransitionAllowedForRole(status, next, role))) return null;
+  const other: 'customer' | 'contractor' = role === 'customer' ? 'contractor' : 'customer';
+  return forward.some((next) => isTransitionAllowedForRole(status, next, other)) ? other : null;
+}
+
+/** Что написать на экране вместо обещания следующего шага. */
+export function waitingForText(status: WorkOrderStatus, role: 'customer' | 'contractor'): string | null {
+  const who = waitingForRole(status, role);
+  if (!who) return null;
+  const actor = who === 'contractor' ? 'исполнителя' : 'заказчика';
+  const what = nextStepHint(status, who);
+  return what ? `Ход за ${actor}: ${what}` : `Ход за ${actor}`;
+}
+
+function nextStepHint(status: WorkOrderStatus, who: 'customer' | 'contractor'): string {
+  const next = advancingTargets(status).find((n) => isTransitionAllowedForRole(status, n, who));
+  if (!next) return '';
+  return actionLabel(status, next, who).toLowerCase();
+}
+
 export function hasCanonicalPaymentAction(
   status: WorkOrderStatus,
   role: 'customer' | 'contractor',
