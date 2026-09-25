@@ -48,49 +48,6 @@ on:
       - "scripts/devRuntimeContract.test.mjs"
       - ".github/workflows/local-runtime-integrity.yml"
   pull_request:
-    paths:
-      - "AGENTS.md"
-      - "CLAUDE.md"
-      - ".cursor/rules/renova-agent-runtime.mdc"
-      - ".cursor/rules/renova-git-sync.mdc"
-      - "README.md"
-      - "backend/README.md"
-      - "docs/DEVELOPMENT-CANON.md"
-      - "env.local.example"
-      - ".env.example"
-      - "backend/.env.example"
-      - ".nvmrc"
-      - "package.json"
-      - "package-lock.json"
-      - "apps/mobile/package.json"
-      - ".dockerignore"
-      - "docker-compose.yml"
-      - "backend/Dockerfile"
-      - "backend/docker/**"
-      - "backend/.python-version"
-      - "backend/pyproject.toml"
-      - "backend/poetry.lock"
-      - "backend/alembic.ini"
-      - "backend/alembic/**"
-      - "backend/app/main.py"
-      - "backend/app/dev_seed.py"
-      - "backend/app/services/seed_demo.py"
-      - "backend/app/core/config.py"
-      - "backend/app/core/runtime_policy.py"
-      - "backend/app/core/runtime_preflight.py"
-      - "backend/app/db/migration_guard.py"
-      - "backend/app/runtime_healthcheck.py"
-      - "backend/app/services/otp_runtime.py"
-      - "backend/app/services/runtime_topology.py"
-      - "backend/app/services/storage_runtime.py"
-      - "backend/app/services/storage_service.py"
-      - "backend/scripts/verify_current_migration_schema.py"
-      - "backend/scripts/verify_orm_schema_parity.py"
-      - "scripts/dev-runtime.sh"
-      - "scripts/start-dev.sh"
-      - "scripts/ensure-mobile-deps.js"
-      - "scripts/devRuntimeContract.test.mjs"
-      - ".github/workflows/local-runtime-integrity.yml"
 
 concurrency:
   group: local-runtime-${{ github.event.pull_request.number || github.ref }}
@@ -105,6 +62,10 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+
+      - name: Guard globally required PR trigger scheduling
+        run: python scripts/governance/check-required-pr-triggers.py
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
