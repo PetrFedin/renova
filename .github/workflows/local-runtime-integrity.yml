@@ -46,6 +46,7 @@ on:
       - "scripts/start-dev.sh"
       - "scripts/ensure-mobile-deps.js"
       - "scripts/devRuntimeContract.test.mjs"
+      - "scripts/composeImageRegistry.test.mjs"
       - ".github/workflows/local-runtime-integrity.yml"
   pull_request:
     paths:
@@ -90,6 +91,7 @@ on:
       - "scripts/start-dev.sh"
       - "scripts/ensure-mobile-deps.js"
       - "scripts/devRuntimeContract.test.mjs"
+      - "scripts/composeImageRegistry.test.mjs"
       - ".github/workflows/local-runtime-integrity.yml"
 
 concurrency:
@@ -155,6 +157,9 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/devRuntimeContract.test.mjs
+          # Раньше недоступного реестра: docker pull объясняет это невнятно,
+          # и падает вся проверка на каждом PR подряд.
+          node --test scripts/composeImageRegistry.test.mjs
           docker compose --project-name renova-local --env-file .env.local -f docker-compose.yml config >/tmp/renova-compose.yml
 
       - name: Start full backend topology without Expo
