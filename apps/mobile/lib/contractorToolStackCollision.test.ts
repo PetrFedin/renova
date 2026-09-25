@@ -18,8 +18,17 @@ import path from 'node:path';
 // (contractor)/[tool].tsx's dynamic `/:tool` pattern — routes with their
 // own static file (app/documents.tsx, app/inbox.tsx, …) are unambiguous
 // because expo-router always prefers a static match over a dynamic one.
+//
+// `job-leads` used to be in this list and relied solely on the catch-alls
+// resolving to identical content. That mitigation was not enough: the
+// ambiguous match still made two navigators (root Stack + the nested
+// (contractor) Stack) fight over reconciling the same route on every
+// render, producing "Maximum update depth exceeded" even though the
+// *content* both catch-alls rendered was identical. The real fix is the
+// same one reports/guide/portfolio/documents/activity already had — a
+// static app/job-leads.tsx file — which is asserted below.
 const CATCH_ALL_STACK_KEYS = [
-  'budget-planner', 'checklist-templates', 'conflicts', 'guide', 'job-leads',
+  'budget-planner', 'checklist-templates', 'conflicts', 'guide',
   'manager-dashboard', 'portfolio', 'reports', 'scratchpad',
 ];
 
@@ -27,6 +36,17 @@ const root = path.resolve(__dirname, '..');
 const toolSrc = fs.readFileSync(path.join(root, 'app/(contractor)/[tool].tsx'), 'utf8');
 const slugSrc = fs.readFileSync(path.join(root, 'app/[slug].tsx'), 'utf8');
 const sharedSrc = fs.readFileSync(path.join(root, 'app/_stack/AppCatchAllScreen.tsx'), 'utf8');
+const rootLayoutSrc = fs.readFileSync(path.join(root, 'app/_layout.tsx'), 'utf8');
+
+console.assert(
+  fs.existsSync(path.join(root, 'app/job-leads.tsx')),
+  'app/job-leads.tsx must exist as a static route — a catch-all-only /job-leads collides with ' +
+    '(contractor)/[tool].tsx\'s dynamic pattern and produces Maximum update depth (see W39 crash)',
+);
+console.assert(
+  /<Stack\.Screen name="job-leads"/.test(rootLayoutSrc),
+  'app/_layout.tsx must explicitly register the "job-leads" Stack.Screen, like reports/guide/portfolio/documents/activity',
+);
 
 console.assert(
   toolSrc.includes('AppCatchAllScreen'),
