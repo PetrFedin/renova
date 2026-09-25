@@ -97,13 +97,21 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
       Alert.alert('Подбор', 'Укажите название');
       return;
     }
+    const priceNum = Number(price) || 0;
+    const allowanceNum = allowance ? Number(allowance) : null;
+    // Цена/лимит — деньги, не могут быть отрицательными или абсурдно большими.
+    // Зеркалит server-side ge=0, le=10_000_000 в SelectionIn (selections.py).
+    if (priceNum < 0 || priceNum > 10_000_000 || (allowanceNum != null && (allowanceNum < 0 || allowanceNum > 10_000_000))) {
+      Alert.alert('Подбор', 'Цена и лимит должны быть от 0 до 10 000 000 ₽');
+      return;
+    }
     setBusy(true);
     try {
       await api.createSelection(user.id, activeProject.id, {
         title: title.trim(),
         category: filter === 'all' ? 'other' : filter,
-        price: Number(price) || 0,
-        allowance: allowance ? Number(allowance) : null,
+        price: priceNum,
+        allowance: allowanceNum,
       });
       setTitle('');
       setPrice('');
