@@ -19,6 +19,8 @@
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
@@ -176,6 +178,64 @@ async def collect_terms(db: AsyncSession, project_id: str) -> ContractTerms | No
         # нечего, и обещать обратное было бы неправдой.
         stages=[(s.name or "Этап", float(s.payment_amount or 0)) for s in stages if (s.payment_amount or 0) > 0],
     )
+
+
+def terms_fingerprint(terms: ContractTerms) -> str:
+    """Отпечаток существенных условий — то, подо что ставится подпись.
+
+    Договор рисуется в PDF по требованию, из текущего состояния объекта.
+    Подпись при этом сохранялась без какой-либо привязки к содержанию: у
+    системной версии договора `checksum_sha256` пуст, а требование хеша стоит
+    только для внешних провайдеров. Поэтому после подписи можно было одобрить
+    доп. работы — и та же подпись оказывалась под другой ценой.
+
+    Считаем по тем полям, изменение которых меняет смысл договора: стороны,
+    объект, цена и её слагаемые, НДС, разбивка по этапам. Порядок задан явно,
+    числа округлены до копейки — иначе отпечаток плавал бы от представления
+    float.
+    """
+    payload = {
+        "project_name": terms.project_name,
+        "address": terms.address or "",
+        "customer": terms.customer,
+        "contractor": terms.contractor or "",
+        "works_total": round(terms.works_total, 2),
+        "materials_total": round(terms.materials_total, 2),
+        "change_orders_total": round(terms.change_orders_total, 2),
+        "vat_rate": round(terms.vat_rate, 4),
+        "total": round(terms.total, 2),
+        "stages": [[name, round(amount, 2)] for name, amount in terms.stages],
+    }
+    canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+async def signed_terms_fingerprint(db: AsyncSession, project_id: str) -> str | None:
+    """Отпечаток условий, под которыми реально стоит подпись.
+
+    `None` — договор не подписан или подпись поставлена до того, как отпечаток
+    начали сохранять. Во втором случае сравнивать не с чем, и выдумывать
+    расхождение нельзя.
+    """
+    from app.models.project_documents import (
+        DocumentSignature,
+        DocumentVersion,
+        ProjectDocument,
+    )
+
+    rows = await db.execute(
+        select(DocumentVersion.checksum_sha256)
+        .join(ProjectDocument, ProjectDocument.id == DocumentVersion.document_id)
+        .join(DocumentSignature, DocumentSignature.version_id == DocumentVersion.id)
+        .where(
+            ProjectDocument.project_id == project_id,
+            ProjectDocument.document_type == "contract",
+            DocumentSignature.status == "signed",
+            DocumentVersion.checksum_sha256.is_not(None),
+        )
+        .order_by(DocumentVersion.version_number.desc())
+    )
+    return rows.scalars().first()
 
 
 def contract_notes(terms: ContractTerms) -> str:

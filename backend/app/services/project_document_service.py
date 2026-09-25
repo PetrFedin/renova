@@ -14,6 +14,7 @@ from app.models.project_documents import (
     DocumentVersion,
     ProjectDocument,
 )
+from app.services import contract_document_service as contract_terms
 
 
 def document_dict(
@@ -252,6 +253,25 @@ async def sign_document(
         raise ValueError(f"provider_unavailable:{esign.name}")
 
     resolved_hash = content_hash or version.checksum_sha256
+    if (
+        esign.name == "in_app"
+        and doc.document_type == DocumentType.contract.value
+        and not resolved_hash
+    ):
+        # Договор рисуется по требованию, из текущего состояния объекта, и у
+        # системной версии контрольной суммы нет. Без неё подпись оказывалась
+        # ни к чему не привязана: после подписи можно было одобрить доп.
+        # работы — и та же подпись стояла уже под другой ценой. Запоминаем
+        # отпечаток условий, под которыми подписывают.
+        #
+        # Только для подписи внутри приложения. Внешний провайдер подписывает
+        # настоящие байты и обязан принести их хеш сам: подставить ему наш
+        # отпечаток значило бы выдать подпись за покрывающую то, чего
+        # провайдер не видел. Для него требование хеша остаётся в силе.
+        terms = await contract_terms.collect_terms(db, doc.project_id)
+        if terms is not None:
+            resolved_hash = contract_terms.terms_fingerprint(terms)
+            version.checksum_sha256 = resolved_hash
     if esign.name != "in_app" and not resolved_hash:
         raise ValueError("external_signature_content_hash_required")
 
