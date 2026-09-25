@@ -8,6 +8,7 @@ COMPOSE_FILE="${ROOT}/docker-compose.yml"
 LOCAL_COMPOSE_PROJECT="renova-local"
 API_URL="http://127.0.0.1:8100"
 MINIO_HEALTH_URL="http://127.0.0.1:9000/minio/health/live"
+MINIO_PULL_HELPER="${ROOT}/scripts/localMinioPull.mjs"
 NODE_MAJOR="20"
 PYTHON_VERSION="3.12.13"
 POETRY_VERSION="2.4.1"
@@ -199,8 +200,18 @@ wait_for_runtime() {
   fail "API/worker runtime did not become healthy"
 }
 
+pull_local_minio() {
+  assert_local_docker_context
+  [ -f "$MINIO_PULL_HELPER" ] || fail "missing immutable MinIO pull helper: ${MINIO_PULL_HELPER}"
+  node "$MINIO_PULL_HELPER" \
+    --project-name "$LOCAL_COMPOSE_PROJECT" \
+    --env-file "$ENV_FILE" \
+    --compose-file "$COMPOSE_FILE"
+}
+
 infra() {
   load_local_env
+  pull_local_minio
   compose up -d postgres redis minio
   wait_for_infra
 }
@@ -309,6 +320,7 @@ focused_tests() {
   validate_dependencies
   check
   node "$ROOT/scripts/devRuntimeContract.test.mjs"
+  node "$ROOT/scripts/localMinioPullRetry.test.mjs"
   (cd "$ROOT" && npm run test:offline && npm run test:routes)
   (
     cd "$ROOT/backend"
