@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Modal, Platform, TextInput, Alert } from 'react-native';
 import { usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { FAB_BOTTOM, FAB_RIGHT, FAB_SIZE } from '@/constants/fab';
 import { RenovaTheme } from '@/constants/Theme';
 import { reportError } from '@/lib/reportError';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -223,11 +224,11 @@ export function OsQuickFab({ role }: { role: OsRole }) {
 const s = StyleSheet.create({
   fab: {
     position: 'absolute',
-    right: 16,
-    bottom: Platform.OS === 'web' ? 88 : 76,
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    right: FAB_RIGHT,
+    bottom: FAB_BOTTOM,
+    width: FAB_SIZE,
+    height: FAB_SIZE,
+    borderRadius: FAB_SIZE / 2,
     backgroundColor: RenovaTheme.colors.primary,
     alignItems: 'center',
     justifyContent: 'center',

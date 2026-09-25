@@ -21,3 +21,6 @@ backend/ci-playwright*.db
 backend/e2e-local-test.db
 backend/ci.db
 
+backend/renova-dev.db
+.mcp.json
+.claude/launch.json
