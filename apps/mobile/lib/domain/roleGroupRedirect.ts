@@ -67,3 +67,26 @@ export function roleGroupRootRedirectPath(
   if (pathname !== '/') return null;
   return `${roleGroupPrefix(actual)}/`;
 }
+
+/**
+ * Куда отправить человека без сессии.
+ *
+ * Адрес `/` обслуживают и `app/index.tsx`, и групповые `(customer)/(tabs)/index`
+ * с `(contractor)/(tabs)/index`. Роутер выбирает групповой, поэтому редирект
+ * из `app/index.tsx` — единственное место, где проверялось «пользователя нет», —
+ * не выполняется вовсе. Человек без аккаунта видел главную заказчика с надписью
+ * «Нет данных проекта» и кнопкой «Загрузить демо»: ни войти, ни
+ * зарегистрироваться с этого экрана нельзя.
+ *
+ * Пока сессия восстанавливается, не трогаем: `loading` снимается уже после
+ * попытки поднять сохранённую сессию, в том числе из снимка без связи с
+ * сервером. Уводим только когда точно известно, что сессии нет.
+ */
+export function signedOutRedirectPath(
+  userRole: string | null | undefined,
+  loading: boolean,
+): string | null {
+  if (loading) return null;
+  if (userRole) return null;
+  return '/onboarding/role';
+}
