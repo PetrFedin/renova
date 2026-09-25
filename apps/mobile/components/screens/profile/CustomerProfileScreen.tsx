@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Alert, ScrollView, View, Text } from 'react-native';
+import { ScrollView, View, Text } from 'react-native';
 import { useLocalSearchParams, usePathname } from 'expo-router';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { DockBarSettings } from '@/components/renova/os/DockBarSettings';
@@ -19,6 +19,7 @@ import { ProfileNotifications } from './ProfileNotifications';
 import { profileScreenStyles as ps } from './profileScreenStyles';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { reportCatch } from '@/lib/reportError';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 const EXTRA_BASIC = [
   { label: 'Помощь', href: '/guide' },
@@ -137,9 +138,9 @@ export function CustomerProfileScreen() {
               if (!user?.id) return;
               try {
                 const r = await api.revokeAllSessions(user.id);
-                Alert.alert('Готово', `Сессий закрыто: ${r.revoked}. Войдите снова на других устройствах.`);
+                showActionConfirm({ title: 'Готово', message: `Сессий закрыто: ${r.revoked}. Войдите снова на других устройствах.` });
               } catch (e) {
-                Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось');
+                showActionConfirm({ title: 'Ошибка', message: e instanceof Error ? e.message : 'Не удалось' });
               }
             }}
           />
