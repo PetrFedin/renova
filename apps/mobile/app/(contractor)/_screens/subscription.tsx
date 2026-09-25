@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Alert, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { BackHeader } from '@/components/renova/BackHeader';
@@ -9,13 +9,14 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api } from '@/lib/api';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 type Sub = Awaited<ReturnType<typeof api.getSubscription>>;
 
 const BENEFITS = [
   'Несколько объектов одновременно',
   'Бригада по QR и роли field',
-  'Акты, оплатыта, 1С-экспорт без лимита',
+  'Акты, оплаты, 1С-экспорт без лимита',
   'Приоритет поддержки пилота',
 ];
 
@@ -42,9 +43,12 @@ export default function SubscriptionScreen() {
       await api.startProTrial(user.id);
       await syncProjectSideEffects({ user, project: activeProject });
       await reload();
-      Alert.alert('Пробный Pro', '14 дней открыты. Оформите оплату до конца trial — иначе вернётесь на бесплатный лимит.');
+      showActionConfirm({
+        title: 'Пробный Pro',
+        message: '14 дней открыты. Оформите оплату до конца trial — иначе вернётесь на бесплатный лимит.',
+      });
     } catch (e: unknown) {
-      Alert.alert('Trial', e instanceof Error ? e.message : 'Пробный период недоступен');
+      showActionConfirm({ title: 'Trial', message: e instanceof Error ? e.message : 'Пробный период недоступен' });
     } finally {
       setBusy(false);
     }
@@ -60,14 +64,14 @@ export default function SubscriptionScreen() {
       if (pay.confirmation_url && !pay.demo) {
         await WebBrowser.openBrowserAsync(pay.confirmation_url);
       } else {
-        Alert.alert(
-          pay.demo ? 'Pro (demo)' : 'Подписка Про',
-          pay.message || 'Готово',
-        );
+        showActionConfirm({
+          title: pay.demo ? 'Pro (demo)' : 'Подписка Про',
+          message: pay.message || 'Готово',
+        });
       }
       await reload();
     } catch (e: unknown) {
-      Alert.alert('Оплата', e instanceof Error ? e.message : 'Не удалось начать оплату');
+      showActionConfirm({ title: 'Оплата', message: e instanceof Error ? e.message : 'Не удалось начать оплату' });
     } finally {
       setBusy(false);
     }
