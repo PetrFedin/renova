@@ -38,6 +38,123 @@ const allowedHigh = new Map([
       reason: 'Metro build-time JXL/HEIF parser DoS; upstream has no patched release.',
     },
   ],
+  [
+    "GHSA-27p8-2357-5qqv",
+    {
+      package: "@xmldom/xmldom",
+      severity: 'high',
+      reviewBy: '2026-12-31',
+      reason: "DocType name injection bypasses requireWellFormed. Expo build tooling only: @expo/plist and plist parse the project's own Info.plist during a build, never untrusted input on a device. @expo/plist pins ^0.8.8, so the patched 0.9.12 is a major bump outside its declared range and `npm audit fix` produces no change.",
+    },
+  ],
+  [
+    "GHSA-3px3-54cx-rmw9",
+    {
+      package: "@xmldom/xmldom",
+      severity: 'high',
+      reviewBy: '2026-12-31',
+      reason: "XML Name/QName validation bypassable via embedded line terminator. Expo build tooling only: @expo/plist and plist parse the project's own Info.plist during a build, never untrusted input on a device. @expo/plist pins ^0.8.8, so the patched 0.9.12 is a major bump outside its declared range and `npm audit fix` produces no change.",
+    },
+  ],
+  [
+    "GHSA-4w3w-2rp5-g8jm",
+    {
+      package: "@xmldom/xmldom",
+      severity: 'high',
+      reviewBy: '2026-12-31',
+      reason: "Attribute name injection via setAttribute() bypasses requireWellFormed. Expo build tooling only: @expo/plist and plist parse the project's own Info.plist during a build, never untrusted input on a device. @expo/plist pins ^0.8.8, so the patched 0.9.12 is a major bump outside its declared range and `npm audit fix` produces no change.",
+    },
+  ],
+  [
+    "GHSA-6mj3-qw4j-hgrw",
+    {
+      package: "@xmldom/xmldom",
+      severity: 'high',
+      reviewBy: '2026-12-31',
+      reason: "HTML raw-text closing-tag case mismatch causes output amplification. Expo build tooling only: @expo/plist and plist parse the project's own Info.plist during a build, never untrusted input on a device. @expo/plist pins ^0.8.8, so the patched 0.9.12 is a major bump outside its declared range and `npm audit fix` produces no change.",
+    },
+  ],
+  [
+    "GHSA-8344-3jmq-59r6",
+    {
+      package: "@xmldom/xmldom",
+      severity: 'high',
+      reviewBy: '2026-12-31',
+      reason: "Quadratic-time attribute deduplication. Expo build tooling only: @expo/plist and plist parse the project's own Info.plist during a build, never untrusted input on a device. @expo/plist pins ^0.8.8, so the patched 0.9.12 is a major bump outside its declared range and `npm audit fix` produces no change.",
+    },
+  ],
+  [
+    "GHSA-93r5-fhx6-vmg9",
+    {
+      package: "@xmldom/xmldom",
+      severity: 'high',
+      reviewBy: '2026-12-31',
+      reason: "Quadratic-time parsing via the malformed-input recovery path. Expo build tooling only: @expo/plist and plist parse the project's own Info.plist during a build, never untrusted input on a device. @expo/plist pins ^0.8.8, so the patched 0.9.12 is a major bump outside its declared range and `npm audit fix` produces no change.",
+    },
+  ],
+  [
+    "GHSA-965w-775f-mr7g",
+    {
+      package: "@xmldom/xmldom",
+      severity: 'high',
+      reviewBy: '2026-12-31',
+      reason: "Quadratic-memory consumption. Expo build tooling only: @expo/plist and plist parse the project's own Info.plist during a build, never untrusted input on a device. @expo/plist pins ^0.8.8, so the patched 0.9.12 is a major bump outside its declared range and `npm audit fix` produces no change.",
+    },
+  ],
+  [
+    "GHSA-c7q8-3ch8-vqpv",
+    {
+      package: "@xmldom/xmldom",
+      severity: 'high',
+      reviewBy: '2026-12-31',
+      reason: "Processing Instruction target injection bypasses requireWellFormed. Expo build tooling only: @expo/plist and plist parse the project's own Info.plist during a build, never untrusted input on a device. @expo/plist pins ^0.8.8, so the patched 0.9.12 is a major bump outside its declared range and `npm audit fix` produces no change.",
+    },
+  ],
+  [
+    "GHSA-g53g-w8rj-fmg7",
+    {
+      package: "@xmldom/xmldom",
+      severity: 'high',
+      reviewBy: '2026-12-31',
+      reason: "PI grammar regex ReDoS on unterminated processing instructions. Expo build tooling only: @expo/plist and plist parse the project's own Info.plist during a build, never untrusted input on a device. @expo/plist pins ^0.8.8, so the patched 0.9.12 is a major bump outside its declared range and `npm audit fix` produces no change.",
+    },
+  ],
+  [
+    "GHSA-vr34-hp96-76pp",
+    {
+      package: "@xmldom/xmldom",
+      severity: 'high',
+      reviewBy: '2026-12-31',
+      reason: "DocType publicId/systemId validation bypassable via embedded line terminator. Expo build tooling only: @expo/plist and plist parse the project's own Info.plist during a build, never untrusted input on a device. @expo/plist pins ^0.8.8, so the patched 0.9.12 is a major bump outside its declared range and `npm audit fix` produces no change.",
+    },
+  ],
+  [
+    "GHSA-w2rr-34g9-rvrj",
+    {
+      package: "@xmldom/xmldom",
+      severity: 'high',
+      reviewBy: '2026-12-31',
+      reason: "Element name injection via createElement() bypasses requireWellFormed. Expo build tooling only: @expo/plist and plist parse the project's own Info.plist during a build, never untrusted input on a device. @expo/plist pins ^0.8.8, so the patched 0.9.12 is a major bump outside its declared range and `npm audit fix` produces no change.",
+    },
+  ],
+  [
+    "GHSA-x4fp-j954-r2f4",
+    {
+      package: "@xmldom/xmldom",
+      severity: 'high',
+      reviewBy: '2026-12-31',
+      reason: "End-tag whitespace-trim regex ReDoS in the 0.8.x parser. Expo build tooling only: @expo/plist and plist parse the project's own Info.plist during a build, never untrusted input on a device. @expo/plist pins ^0.8.8, so the patched 0.9.12 is a major bump outside its declared range and `npm audit fix` produces no change.",
+    },
+  ],
+  [
+    "GHSA-2883-xcg3-v3hh",
+    {
+      package: "js-yaml",
+      severity: 'high',
+      reviewBy: '2026-12-31',
+      reason: "maxTotalMergeKeys does not limit CPU use for empty merge sources. Expo build tooling only: @expo/xcpretty parses xcodebuild output during a build, never untrusted input on a device. The graph pins 4.x through @expo/xcpretty and `npm audit fix` produces no change.",
+    },
+  ],
 ]);
 
 const advisories = [];
