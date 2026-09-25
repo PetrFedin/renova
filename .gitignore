@@ -5,7 +5,7 @@
 .expo/
 .sync-last
 .sync.log
-backend/.venv/
+backend/.venv
 backend/__pycache__/
 backend/logs/
 backend/renova.db
@@ -13,7 +13,7 @@ backend/uploads/
 backend/.dev-focused-tests.db
 backend/.dev-full-tests.db
 dist/
-node_modules/
+node_modules
 test-results/
 .artifacts/
 # CI / local E2E sqlite
