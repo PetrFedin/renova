@@ -528,12 +528,12 @@ export function DocumentsHub({
         (e instanceof ApiError && e.status === 501) ||
         msg.includes('501') ||
         msg.includes('provider_unavailable');
-      Alert.alert(
-        'Ошибка',
-        providerDown
+      showActionConfirm({
+        title: 'Ошибка',
+        message: providerDown
           ? 'Провайдер подписи пока недоступен. Используйте «Подписать в приложении» или повторите позже.'
           : (msg.slice(0, 180) || 'Не удалось выполнить действие. Проверьте связь с API.'),
-      );
+      });
     } finally {
       setBusy(null);
     }
