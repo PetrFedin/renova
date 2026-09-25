@@ -1,6 +1,6 @@
 /** P2.2: Подбор чистовых материалов — room × category × approve */
 import { useCallback, useMemo, useState } from 'react';
-import { ScrollView, View, Text, StyleSheet, Pressable, Alert, TextInput } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, Pressable, TextInput } from 'react-native';
 import { useFocusEffect, usePathname } from 'expo-router';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
@@ -94,7 +94,7 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
 
   const createItem = async () => {
     if (!title.trim()) {
-      Alert.alert('Подбор', 'Укажите название');
+      showActionConfirm({ title: 'Подбор', message: 'Укажите название' });
       return;
     }
     const priceNum = Number(price) || 0;
@@ -102,7 +102,7 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
     // Цена/лимит — деньги, не могут быть отрицательными или абсурдно большими.
     // Зеркалит server-side ge=0, le=10_000_000 в SelectionIn (selections.py).
     if (priceNum < 0 || priceNum > 10_000_000 || (allowanceNum != null && (allowanceNum < 0 || allowanceNum > 10_000_000))) {
-      Alert.alert('Подбор', 'Цена и лимит должны быть от 0 до 10 000 000 ₽');
+      showActionConfirm({ title: 'Подбор', message: 'Цена и лимит должны быть от 0 до 10 000 000 ₽' });
       return;
     }
     setBusy(true);
@@ -123,7 +123,7 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
         notifyOfflineQueued('Позиция подбора');
         setShowAdd(false);
       } else {
-        Alert.alert('Ошибка', 'Не удалось добавить позицию');
+        showActionConfirm({ title: 'Ошибка', message: 'Не удалось добавить позицию' });
       }
     } finally {
       setBusy(false);
