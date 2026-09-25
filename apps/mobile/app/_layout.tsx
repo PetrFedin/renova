@@ -95,6 +95,7 @@ export default function RootLayout() {
             <Stack.Screen name="portfolio" options={{ headerShown: false }} />
             <Stack.Screen name="reports" options={{ headerShown: false }} />
             <Stack.Screen name="guide" options={{ headerShown: false }} />
+            <Stack.Screen name="job-leads" options={{ headerShown: false }} />
             <Stack.Screen name="inbox" options={{ headerShown: false }} />
             <Stack.Screen name="scan-receipt" options={{ presentation: 'modal', headerShown: false }} />
             <Stack.Screen name="payment-return" options={{ headerShown: false }} />
