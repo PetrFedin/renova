@@ -304,7 +304,52 @@ export type ReqOptions = RequestInit & {
   cacheFallback?: boolean;
 };
 
+/**
+ * In-flight GET de-duplication.
+ *
+ * One Home render issues ~200 requests, and the same URL repeats up to a dozen
+ * times inside a single burst: several widgets independently ask for
+ * /chats/inbox, /payments, /work-acceptances/pending-count, /material-picks and
+ * /floor-plans for the same project at the same moment. Only 5 of 245 API
+ * methods go through `cachedGet`; everything else calls `req` directly.
+ *
+ * Converting those endpoints to `cachedGet` would fix the count but introduce a
+ * 30s staleness window after every write, which is worse. Merging requests that
+ * are *already in flight* costs nothing in freshness: the callers would have
+ * received the same response anyway, at the same moment.
+ *
+ * Only GET is merged. A POST/PATCH/DELETE is an intent and must never be
+ * collapsed into another one.
+ */
+const _inFlightGets = new Map<string, Promise<unknown>>();
+
+function inFlightKey(path: string, userId?: string): string {
+  // The auth header changes the response, so it belongs in the key.
+  return `${userId || ''}|${path}`;
+}
+
+export function inFlightGetCount(): number {
+  return _inFlightGets.size;
+}
+
 export async function req<T>(path: string, opts: ReqOptions = {}, userId?: string): Promise<T> {
+  // An aborted caller must not cancel the request others are sharing, so a
+  // request carrying its own signal is never merged.
+  const mergeable = (!opts.method || opts.method === 'GET') && !opts.signal;
+  if (!mergeable) return reqUncached<T>(path, opts, userId);
+
+  const key = inFlightKey(path, userId);
+  const existing = _inFlightGets.get(key) as Promise<T> | undefined;
+  if (existing) return existing;
+
+  const pending = reqUncached<T>(path, opts, userId).finally(() => {
+    _inFlightGets.delete(key);
+  });
+  _inFlightGets.set(key, pending as Promise<unknown>);
+  return pending;
+}
+
+async function reqUncached<T>(path: string, opts: ReqOptions = {}, userId?: string): Promise<T> {
   const { cacheFallback = true, ...fetchOpts } = opts;
   const isFormData = typeof FormData !== 'undefined' && fetchOpts.body instanceof FormData;
   const headers: Record<string, string> = {
