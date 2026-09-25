@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react';
-import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { ScrollView, View, Text } from 'react-native';
 import { router, useLocalSearchParams, usePathname } from 'expo-router';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -20,6 +19,7 @@ import { ProfileNotifications } from './ProfileNotifications';
 import { profileScreenStyles as ps } from './profileScreenStyles';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { reportCatch } from '@/lib/reportError';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 const EXTRA_BASIC = [
   { label: 'Помощь', href: '/guide' },
@@ -179,8 +179,7 @@ export function CustomerProfileScreen() {
             variant="outline"
             onPress={async () => {
               if (!user?.id) return;
-              await signOutEverywhere(user.id, logout);
-            }}
+              await signOutEverywhere(user.id, logout);            }}
           />
         </View>
       </ProfileSection>
