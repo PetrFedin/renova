@@ -74,7 +74,7 @@ export function EstimateSummaryLayer({
         ) : project.estimate_lock_proposed_at ? (
           <Text style={s.unlocked}>На согласовании у заказчика · {project.estimate_lock_proposed_at.slice(0, 10)}</Text>
         ) : (
-          <Text style={s.unlocked}>Черновик — согласуйте сумму, чтобы открыть договор и этапы</Text>
+          <Text style={s.unlocked}>Черновик — сумма ещё не согласована</Text>
         )}
         <Text style={s.breakdown}>
           Работы {formatRub(totals.works)} ({totals.worksCount}) · Материалы {formatRub(totals.materials)} (

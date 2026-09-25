@@ -1,0 +1,19 @@
+name: No vendored symlinks
+
+# Без фильтра по путям: симлинк на node_modules может приехать в любой ветке,
+# поэтому проверка идёт на каждом PR.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  no-vendored-symlinks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: node --test scripts/noVendoredSymlinks.test.mjs
