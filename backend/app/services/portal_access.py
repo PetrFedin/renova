@@ -26,7 +26,7 @@ resolves through ``authorize_portal``.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -57,8 +57,12 @@ def _issued_before_revocation(issued_at: int | None, cutoff: datetime | None) ->
     """Whether a revoke-all happened after this token was minted."""
     if cutoff is None or issued_at is None:
         return False
-    # tokens_invalid_before is stored naive UTC (see app.core.timeutil).
-    return float(issued_at) < cutoff.replace(tzinfo=None).timestamp()
+    # `tokens_invalid_before` is stored as naive UTC (see app.core.timeutil), so
+    # it must be read back as UTC. `.replace(tzinfo=None).timestamp()` reads a
+    # naive value as *local* time, which left a bypass window exactly the size
+    # of the host's UTC offset: on a Moscow host, a link minted up to three
+    # hours before "sign out everywhere" kept working.
+    return float(issued_at) < cutoff.replace(tzinfo=timezone.utc).timestamp()
 
 
 async def authorize_portal(

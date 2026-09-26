@@ -1,5 +1,5 @@
 from app.core.timeutil import utc_now
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
@@ -191,12 +191,28 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)) ->
 
 
 @router.get("/me", response_model=UserOut)
-async def me(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> UserOut:
+async def me(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> UserOut:
+    from app.api.portal_scope import is_portal_request
     from app.services import chat_service as chat_svc
     if not user.profile_code:
         chat_svc.ensure_profile_code(user)
         await db.commit()
         await db.refresh(user)
+
+    if is_portal_request(request):
+        # A portal link may ask who it belongs to. It may not trade that answer
+        # for a token without its own limits: the minted token carries no
+        # `portal` claim, so it would be an unrestricted session for this user
+        # on every project — which is the hole portal_scope exists to close.
+        out = UserOut.model_validate(user, from_attributes=True)
+        out.access_token = None
+        out.refresh_token = None
+        out.token_type = None
+        return out
     # Fresh access only — не плодим user_sessions на каждый poll /me
     return await user_out_with_token(user, db, issue_refresh=False)
 
