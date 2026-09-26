@@ -186,6 +186,15 @@ async def add_version(
     return version
 
 
+def _version_has_content(version: DocumentVersion) -> bool:
+    """У версии есть на что смотреть: ссылка, файл или контрольная сумма.
+
+    Контрольная сумма означает, что за версией стоят настоящие байты, даже
+    если само хранилище адресуется иначе.
+    """
+    return bool(version.href or version.storage_key or version.checksum_sha256)
+
+
 async def sign_document(
     db: AsyncSession,
     doc: ProjectDocument,
@@ -246,6 +255,18 @@ async def sign_document(
     resolved_hash = content_hash or version.checksum_sha256
     if esign.name != "in_app" and not resolved_hash:
         raise ValueError("external_signature_content_hash_required")
+
+    # Подписывать можно только то, что можно посмотреть. Раньше договор
+    # создавался вовсе без содержания — ни ссылки, ни файла, ни контрольной
+    # суммы, — и подпись под этой пустотой снимала гейт начала работ.
+    #
+    # Проверяем сам документ, а не смету: содержание — свойство документа, и
+    # правило одинаково верно для договора, пришедшего любым путём.
+    #
+    # Стоит после проверок провайдера намеренно: у них причина точнее, и
+    # перехватывать её более общей ошибкой значило бы ухудшить диагностику.
+    if doc.document_type == DocumentType.contract.value and not _version_has_content(version):
+        raise ValueError("contract_has_no_content")
 
     existing_query = select(DocumentSignature).where(
         DocumentSignature.document_id == doc.id,
@@ -481,13 +502,20 @@ async def ensure_contract_draft(
             "document_id": contracts[0].id,
             "pending_titles": [contracts[0].title],
         }
+    # Договор без содержания подписывать нечего, а подпись под ним снимала
+    # гейт начала работ. Собираем существенные условия из зафиксированной
+    # сметы и даём ссылку на ручку, которая рисует документ.
+    from app.services import contract_document_service as contract_svc
+
+    terms = await contract_svc.collect_terms(db, project_id)
     doc = await create_document(
         db,
         project_id=project_id,
         created_by=created_by,
         title="Договор подряда",
         document_type=DocumentType.contract.value,
-        notes="Создан автоматически при фиксации сметы",
+        notes=contract_svc.contract_notes(terms) if terms else "Создан при фиксации сметы",
+        href=contract_svc.contract_href(project_id),
     )
     doc.status = DocumentStatus.draft.value
     await db.flush()

@@ -16,6 +16,7 @@ from app.core.runtime_policy import configured_runtime_warnings, validate_config
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.audit import AuditMiddleware
 from app.middleware.correlation import CorrelationIdMiddleware
+from app.middleware.server_fault import ServerFaultMiddleware
 from app.db.session import init_db, SessionLocal
 from app.services.storage_service import (
     InvalidStorageKey,
@@ -174,6 +175,9 @@ async def storage_unavailable_handler(_: Request, __: Exception):
 app.add_exception_handler(StorageConfigurationError, storage_unavailable_handler)
 app.add_exception_handler(StorageUnavailable, storage_unavailable_handler)
 
+# Самый внутренний из наших: ловит сбой маршрута, а ответ уходит наружу
+# через CorrelationId и CORS — с X-Request-Id и заголовками CORS.
+app.add_middleware(ServerFaultMiddleware)
 app.add_middleware(CorrelationIdMiddleware)
 app.add_middleware(AuditMiddleware)
 app.add_middleware(RateLimitMiddleware)
