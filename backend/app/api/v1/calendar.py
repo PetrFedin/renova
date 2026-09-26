@@ -74,22 +74,56 @@ class IcalImportIn(BaseModel):
 async def import_ical(project_id: str, body: IcalImportIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=True)
     import re
-    from datetime import datetime as dt
+    from datetime import datetime as dt, timedelta
+    # Разбор идёт по границам VEVENT, а не по строке DTSTART.
+    #
+    # Раньше событие закрывалось на DTSTART, и DTEND не читался вовсе: любой
+    # импорт ставил этапу `update_stage_dates(stage.id, d, d)`, то есть
+    # схлопывал его в один день. Ввоз собственного же файла, только что
+    # выгруженного из Renova, стирал сроки всех этапов сразу.
     events = []
     summary = None
     current_uid = None
+    dtstart = None
+    dtend = None
+
+    def _date_value(line: str) -> str | None:
+        raw = line.split(":", 1)[-1].strip()[:8]
+        return raw if len(raw) == 8 and raw.isdigit() else None
+
+    def _flush() -> None:
+        nonlocal summary, current_uid, dtstart, dtend
+        if dtstart:
+            events.append({
+                "title": summary or "Event",
+                "date": f"{dtstart[:4]}-{dtstart[4:6]}-{dtstart[6:8]}",
+                "end": f"{dtend[:4]}-{dtend[4:6]}-{dtend[6:8]}" if dtend else None,
+                "uid": current_uid,
+            })
+        summary = None
+        current_uid = None
+        dtstart = None
+        dtend = None
+
     for line in body.content.replace("\r", "").split("\n"):
         line = line.strip()
-        if line.startswith("UID:"):
+        if line.startswith("BEGIN:VEVENT"):
+            summary = None
+            current_uid = None
+            dtstart = None
+            dtend = None
+        elif line.startswith("UID:"):
             current_uid = line[4:].strip()
         elif line.startswith("SUMMARY:"):
             summary = line[8:]
         elif line.startswith("DTSTART"):
-            raw = line.split(":", 1)[-1][:8]
-            if len(raw) == 8:
-                events.append({"title": summary or "Event", "date": f"{raw[:4]}-{raw[4:6]}-{raw[6:8]}", "uid": current_uid})
-            current_uid = None
-            summary = None
+            dtstart = _date_value(line) or dtstart
+        elif line.startswith("DTEND"):
+            dtend = _date_value(line) or dtend
+        elif line.startswith("END:VEVENT"):
+            _flush()
+    # Файл без END:VEVENT — не выбрасываем последнее событие.
+    _flush()
     updated = 0
     p = await require_project(db, project_id, user, write=False)
     stages = sorted(p.stages, key=lambda s: s.sort_order)
@@ -107,7 +141,16 @@ async def import_ical(project_id: str, body: IcalImportIn, user: User = Depends(
             unused = [st for st in stages if not st.planned_start]
             stage = unused[0] if unused else None
         if stage:
-            await stage_svc.update_stage_dates(db, stage.id, d, d)
+            # DTEND у all-day события исключающий — выгрузка сама пишет +1 день
+            # (см. `export_ical` выше). Возвращаем обратно, иначе каждый ввоз
+            # удлинял бы этап на сутки. Конец раньше начала игнорируем: такой
+            # файл не должен молча укорачивать этап.
+            end = d
+            if ev.get("end"):
+                parsed_end = dt.strptime(ev["end"], "%Y-%m-%d").date() - timedelta(days=1)
+                if parsed_end >= d:
+                    end = parsed_end
+            await stage_svc.update_stage_dates(db, stage.id, d, end)
             if uid:
                 stage.ical_uid = uid
             updated += 1
