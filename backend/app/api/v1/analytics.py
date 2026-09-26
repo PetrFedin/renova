@@ -6,6 +6,7 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import LineType, Project, User, UserRole
 from app.services import project_service as proj_svc
+from app.services import stage_status_service as st_status
 
 router = APIRouter(tags=["analytics"])
 
@@ -18,7 +19,7 @@ async def contractor_summary(user: User = Depends(get_current_user), db: AsyncSe
     for p in r.scalars().all():
         await db.refresh(p, ["estimate_lines", "stages"])
         mp = sum(l.quantity_planned * l.unit_price for l in p.estimate_lines if l.line_type == LineType.material)
-        prog = sum(s.percent_complete for s in p.stages) / (len(p.stages) or 1)
+        prog = st_status.project_progress(p)
         out.append({"id": p.id, "name": p.name, "margin_estimated": round(p.budget_planned - mp, 2), "progress_percent": round(prog, 1)})
     return out
 
@@ -28,7 +29,9 @@ async def analytics(project_id: str, user: User = Depends(get_current_user), db:
     materials = [l for l in p.estimate_lines if l.line_type == LineType.material]
     mp = sum(l.quantity_planned * l.unit_price for l in materials)
     mf = sum((l.quantity_actual or l.quantity_planned) * l.unit_price for l in materials)
-    prog = sum(s.percent_complete for s in p.stages) / (len(p.stages) or 1)
+    # Раньше здесь было невзвешенное среднее, а в сводке проекта — взвешенное
+    # по весам этапов. Один объект отвечал разным процентом на разных экранах.
+    prog = st_status.project_progress(p)
     dl = (p.planned_end_date - date.today()).days if p.planned_end_date else None
     return {"budget_planned": p.budget_planned, "budget_spent": p.budget_spent, "margin_estimated": round(p.budget_planned - mp, 2), "materials_plan": round(mp, 2), "materials_fact": round(mf, 2), "progress_percent": round(prog, 1), "days_left": dl, "forecast_delay_days": max(0, -dl) if dl is not None and prog < 100 else 0}
 
@@ -125,11 +128,21 @@ async def budget_category_alerts(project_id: str, threshold_pct: float = 10, use
 @router.get("/projects/{project_id}/analytics/budget-forecast")
 async def budget_forecast(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     p = await require_project(db, project_id, user, write=False)
-    prog = max(p.progress_percent, 1) / 100
-    burn = p.budget_spent / prog if prog else p.budget_spent
-    forecast = burn
+    from app.services import stage_status_service as st_status
+
+    progress = st_status.project_progress(p)
+    forecast = st_status.burn_forecast(
+        spent=p.budget_spent, planned=p.budget_planned, progress_percent=progress
+    )
     over = max(0, forecast - p.budget_planned)
-    return {"budget_planned": p.budget_planned, "budget_spent": p.budget_spent, "progress_percent": p.progress_percent, "forecast_total": round(forecast, 2), "forecast_over": round(over, 2), "risk": "high" if over > p.budget_planned * 0.05 else "ok"}
+    return {
+        "budget_planned": p.budget_planned,
+        "budget_spent": p.budget_spent,
+        "progress_percent": progress,
+        "forecast_total": forecast,
+        "forecast_over": round(over, 2),
+        "risk": "high" if over > p.budget_planned * 0.05 else "ok",
+    }
 
 @router.get("/projects/{project_id}/analytics/budget-scenario")
 async def budget_scenario(project_id: str, materials_pct: float = 10, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):

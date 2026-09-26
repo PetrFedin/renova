@@ -15,6 +15,7 @@ from app.services import project_document_service as docs_svc
 from app.services import dashboard_integrity_service as dashboard_svc
 from app.services import project_viewer_service as viewer_svc
 from app.services import technical_supervision_service as supervision
+from app.services import stage_status_service as st_status
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -49,7 +50,11 @@ def _project_out(
         budget_planned=p.budget_planned,
         budget_spent=p.budget_spent,
         customer_budget=float(customer_budget) if customer_budget is not None else None,
-        progress_percent=p.progress_percent,
+        # Колонка `projects.progress_percent` в продукте не вычисляется: все,
+        # кто её читал, получали ноль, и карточка объекта показывала
+        # «работы 0 %» на объекте, где работы идут. Считаем по этапам — той же
+        # функцией, что и сводка, и прогноз.
+        progress_percent=st_status.project_progress(p),
         vat_rate=float(getattr(p, "vat_rate", 0) or 0),
         rooms_count=len(p.rooms) if p.rooms else 0,
         stages_count=len(p.stages) if p.stages else 0,
