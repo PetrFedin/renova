@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
 import { Pressable } from '@/components/ui/Pressable';
 import { useFocusEffect } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -55,7 +56,9 @@ function ThreadCard({
       <View style={s.cardHead}>
         <View style={{ flex: 1, minWidth: 0 }}>
           <View style={s.titleRow}>
-            {thread.is_pinned ? <Text style={s.pinIcon}>📌</Text> : null}
+            {thread.is_pinned ? (
+              <Ionicons name="pin" size={12} color={RenovaTheme.colors.warningText} style={s.pinIcon} />
+            ) : null}
             <Text style={s.title} numberOfLines={1}>{thread.title}</Text>
             {/* Clarity D: точечный attention без цифры unread (цифра — только dock) */}
             {unread > 0 || awaiting ? <View style={[s.awaitDot, unread > 0 && s.unreadDot]} /> : null}
