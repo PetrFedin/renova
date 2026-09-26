@@ -23,6 +23,7 @@ import { buildUnifiedBudgetExpenses, unifiedExpenseTotal } from '@/lib/domain/bu
 import { budgetScreenStyles as s } from '@/components/screens/budget/budgetScreenStyles';
 import type { BudgetTab, ExpenseView } from '@/constants/budgetTabs';
 import { normalizeBudgetTab } from '@/constants/budgetTabs';
+import { FAB_SAFE_BOTTOM } from '@/constants/fab';
 
 export type { BudgetTab } from '@/constants/budgetTabs';
 
@@ -125,7 +126,7 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
 
   return (
     <>
-      <ScrollView style={s.wrap} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
+      <ScrollView style={s.wrap} contentContainerStyle={{ padding: 16, paddingBottom: FAB_SAFE_BOTTOM }}>
         <ReadOnlyBanner />
         {resolvedTab === 'summary' && (
           <BudgetSummarySection
