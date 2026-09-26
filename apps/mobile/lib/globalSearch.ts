@@ -1,8 +1,8 @@
 import { ProjectDetail } from '@/lib/api';
+// Словарь здесь дословно повторял `stageStatusLabel`: тот же этап читался
+// одинаково, но из двух мест — и разойтись они могли в любой момент.
+import { stageStatusLabel } from '@/constants/labels';
 
-const STAGE_STATUS: Record<string, string> = {
-  done: 'Сдан', review: 'На приёмке', active: 'В работе', planned: 'Запланирован',
-};
 
 export type SearchHit = { id: string; type: 'stage' | 'room' | 'chat'; title: string; sub: string; href: string };
 
@@ -12,7 +12,7 @@ export function searchProject(project: ProjectDetail, q: string, chatTitles: Rec
   const hits: SearchHit[] = [];
   for (const st of project.stages) {
     if (st.name.toLowerCase().includes(s))
-      hits.push({ id: st.id, type: 'stage', title: st.name, sub: STAGE_STATUS[st.status] || st.status, href: `/stage/${st.id}` });
+      hits.push({ id: st.id, type: 'stage', title: st.name, sub: stageStatusLabel(st.status), href: `/stage/${st.id}` });
   }
   for (const r of project.rooms || []) {
     if (r.name.toLowerCase().includes(s))
