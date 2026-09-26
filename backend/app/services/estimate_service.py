@@ -222,6 +222,13 @@ async def lock_estimate(db: AsyncSession, project_id: str, *, locked_by: str) ->
     proj.estimate_propose_snapshot_json = None
     proj.estimate_propose_snapshot_json = None
     await recalc_budget(db, project_id)
+    # Платёж по этапу создаётся только при payment_amount > 0. Поле
+    # заполнялось один раз при создании проекта, и этапы, заведённые позже,
+    # оставались с нулём: этап принимался, акт создавался, а денег не
+    # возникало. Фиксация сметы — момент, когда цена договора известна.
+    from app.services import stage_payment_plan_service as pay_plan
+
+    payment_plan = await pay_plan.apply_plan_from_estimate(db, project_id)
     draft = await docs_svc.ensure_contract_draft(db, project_id=project_id, created_by=locked_by)
     titles = ", ".join(draft.get("pending_titles") or [])
     if proj.contractor_id:
@@ -237,7 +244,7 @@ async def lock_estimate(db: AsyncSession, project_id: str, *, locked_by: str) ->
         )
     await db.commit()
     await db.refresh(proj)
-    return proj, {"code": "locked", "contract": draft}
+    return proj, {"code": "locked", "contract": draft, "payment_plan": payment_plan}
 
 
 async def clear_estimate_proposal(
