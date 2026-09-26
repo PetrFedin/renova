@@ -107,6 +107,13 @@ async function clearAccessToken() {
 
 
 import type { WizardRoomDraft } from '@/constants/roomTypes';
+import {
+  canPublish,
+  describeStaleWrite,
+  INITIAL_SESSION_STAMP,
+  nextSessionStamp,
+  type SessionStamp,
+} from '@/lib/domain/sessionFence';
 
 type WizardDraft = {
   name: string;
@@ -196,6 +203,27 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
   const [activeProject, setActiveProject] = useState<ProjectDetail | null>(null);
   const [projectResolving, setProjectResolving] = useState(false);
   const ensureAttemptKeyRef = useRef<string | null>(null);
+  /**
+   * Рубеж сессии (#315). Операции контекста публикуют состояние после
+   * нескольких await; за это время человек мог выйти и войти под другим
+   * аккаунтом. Метка берётся в начале операции и сверяется перед каждой
+   * публикацией, записью в хранилище и рассылкой по шине.
+   */
+  const sessionStampRef = useRef<SessionStamp>(INITIAL_SESSION_STAMP);
+  const beginSession = useCallback((userId: string | null) => {
+    sessionStampRef.current = nextSessionStamp(sessionStampRef.current, userId);
+    return sessionStampRef.current;
+  }, []);
+  const dropStaleWrite = useCallback((taken: SessionStamp, scope: string) => {
+    const current = sessionStampRef.current;
+    if (canPublish(taken, current)) return false;
+    reportError(
+      `lib.context.RenovaContext.${scope}.staleSession`,
+      new Error(describeStaleWrite(taken, current)),
+      { takenUserId: taken.userId, currentUserId: current.userId },
+    );
+    return true;
+  }, []);
   const [wizard, setWizardState] = useState<WizardDraft>(defaultWizard);
   const [paywallVisible, setPaywallVisible] = useState(false);
   /** Project/portal restriction only. Team restriction is composed separately below. */
@@ -209,6 +237,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const applyDegradedIdentity = useCallback((u: User) => {
+    beginSession(u.id);
     setUser(u);
     setReadOnly(false);
     setTeamAccess(u.role === 'contractor' ? UNRESOLVED_TEAM_ACCESS : NOT_APPLICABLE_TEAM_ACCESS);
@@ -234,10 +263,15 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
 
   const refreshProjects = useCallback(async () => {
     if (!user) return;
+    const stamp = sessionStampRef.current;
     const raw = await api.listProjects(user.id);
+    // Между запросами человек мог выйти и войти под другим аккаунтом: чужой
+    // список объектов нельзя ни догружать, ни публиковать.
+    if (dropStaleWrite(stamp, 'refreshProjects')) return;
     const list = await enrichProjectsPendingPayments(user.id, raw, user.role);
+    if (dropStaleWrite(stamp, 'refreshProjects')) return;
     setProjects(list);
-  }, [user]);
+  }, [user, dropStaleWrite]);
 
   const clearActiveProject = useCallback(async () => {
     setActiveProject(null);
@@ -258,15 +292,23 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
   const loadProject = useCallback(
     async (id: string) => {
       if (!user) return;
+      const stamp = sessionStampRef.current;
       setProjectResolving(true);
       ensureAttemptKeyRef.current = null;
       try {
         let p = await api.getProject(user.id, id);
+        if (dropStaleWrite(stamp, 'loadProject')) return;
         if (user.role === 'contractor' && !p) throw new Error('not found');
         if (user.role === 'contractor') {
+          // Назначение на объект — это изменение прав. Делать его от имени
+          // устаревшей сессии нельзя: рубеж проверен строкой выше.
           try { p = await api.assignProject(user.id, id); } catch (e: any) { if (String(e?.message || '').includes('402') || String(e).includes('subscription')) { const { pushOsNav } = await import('@/lib/pushOsNav'); pushOsNav('/(contractor)/subscription', undefined, 'contractor'); throw e; } }
+          if (dropStaleWrite(stamp, 'loadProject')) return;
         }
         p = await syncCustomerBudgetOnLoad(user, p);
+        // Последняя проверка перед публикацией: дальше идут глобальное
+        // состояние, постоянное хранилище и рассылка по шине.
+        if (dropStaleWrite(stamp, 'loadProject')) return;
         setActiveProject(p);
         setReadOnly(!!p?.read_only);
         await AsyncStorage.setItem(KEYS.projectId, id);
@@ -290,7 +332,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
         setProjectResolving(false);
       }
     },
-    [user],
+    [user, dropStaleWrite],
   );
 
   const ensureActiveProject = useCallback(async () => {
@@ -317,6 +359,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
   /** Применить пользователя + проекты + активный объект после bootstrap/recovery */
   const applySession = useCallback(async (u: User, list: ProjectSummary[]) => {
     await persistUserSession(u);
+    beginSession(u.id);
     setUser(u);
     setReadOnly(false);
     const enriched = await enrichProjectsPendingPayments(u.id, list, u.role);
@@ -348,7 +391,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       setActiveProject(null);
       setReadOnly(false);
     }
-  }, [refreshTeamAccess]);
+  }, [refreshTeamAccess, beginSession]);
 
   const recoverSession = useCallback(async () => {
     const reachable = await pingApi();
@@ -486,6 +529,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
   const demoLogin = useCallback(async (role: UserRole) => {
     const u = await withTimeout(api.demoLogin(role), LOGIN_TIMEOUT_MS, 'Превышено время ожидания сервера');
     await persistUserSession(u);
+    beginSession(u.id);
     setUser(u);
     setReadOnly(false);
     await refreshTeamAccess(u);
@@ -504,12 +548,13 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.removeItem(KEYS.projectId);
     await AsyncStorage.removeItem(SESSION_KEYS.projectExplicitlyPicked);
     await AsyncStorage.setItem(SESSION_KEYS.pendingProjectPick, '1');
-  }, [refreshTeamAccess]);
+  }, [refreshTeamAccess, beginSession]);
 
 
   const loginWithSms = useCallback(async (phone: string, code: string, role: UserRole, extra?: { full_name?: string; inn?: string }) => {
     const u = await api.verifySmsCode(phone, code, role, extra);
     await persistUserSession(u);
+    beginSession(u.id);
     setUser(u);
     setReadOnly(false);
     await refreshTeamAccess(u);
@@ -532,11 +577,12 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       await AsyncStorage.setItem(SESSION_KEYS.pendingProjectPick, '1');
     }
     deferPushRegistration(u.id);
-  }, [refreshTeamAccess]);
+  }, [refreshTeamAccess, beginSession]);
 
   const register = useCallback(async (phone: string, role: UserRole, extra?: { full_name?: string; inn?: string }) => {
     const u = await api.register({ phone, role, ...extra });
     await persistUserSession(u);
+    beginSession(u.id);
     setUser(u);
     setReadOnly(false);
     await refreshTeamAccess(u);
@@ -546,7 +592,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       const list = await enrichProjectsPendingPayments(u.id, raw, role);
       setProjects(list);
     }
-  }, [refreshTeamAccess]);
+  }, [refreshTeamAccess, beginSession]);
 
   const createProjectFromWizard = useCallback(async (extra?: Partial<WizardDraft>): Promise<CreateProjectResult> => {
     if (!user) throw new Error('no user');
@@ -696,6 +742,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     ]);
     await secureMultiRemove([KEYS.userSnapshot]);
     await clearAccessToken();
+    beginSession(null);
     setUser(null);
     setProjects([]);
     setActiveProject(null);
