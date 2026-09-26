@@ -3,16 +3,18 @@ import { useCallback, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
-import { getLastCachedGetMeta } from '@/lib/api/client';
+import { getStaleCachePaths } from '@/lib/api/client';
 
 export function StaleCacheBanner() {
   const [stale, setStale] = useState(false);
   const [path, setPath] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
-    const meta = getLastCachedGetMeta();
-    setStale(Boolean(meta?.stale));
-    setPath(meta?.stale ? meta.path : null);
+    // Спрашиваем про все пути, а не про «последний ответ»: свежий ответ по
+    // одному пути не отменяет устаревших данных по другому (#317).
+    const stalePaths = getStaleCachePaths();
+    setStale(stalePaths.length > 0);
+    setPath(stalePaths[0] ?? null);
   }, []);
 
   useFocusEffect(

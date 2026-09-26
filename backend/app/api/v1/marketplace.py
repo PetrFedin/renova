@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.db.session import get_db
+from app.services import contractor_reputation_service as reputation
 from app.models.entities import (
     ContractorPortfolioPhoto,
     ContractorProfile,
@@ -144,8 +145,10 @@ async def list_contractors(
             "name": contractor.full_name or contractor.phone,
             "company": profile.company_name,
             "specialties": profile.specialties,
-            "rating": profile.rating,
-            "jobs_done": profile.jobs_done,
+            # `rating`/`jobs_done` отдаются только когда их кто-то измерил;
+            # значение по умолчанию — не измерение (см. reputation-сервис).
+            "rating": reputation.public_rating(profile),
+            "jobs_done": reputation.public_jobs_done(profile),
             "city": profile.city,
             "bio": profile.bio,
         }
@@ -345,24 +348,24 @@ async def match_contractors(
         .where(ContractorProfile.visible.is_(True))
     )
     rows = (await db.execute(q)).all()
-    result = []
-    for profile, contractor in rows:
-        score = profile.rating
-        if specialty and profile.specialties and specialty in profile.specialties:
-            score += 2
-        if renovation_type and renovation_type in (profile.specialties or ""):
-            score += 1
-        result.append({
+    ranked = reputation.ranked(rows, renovation_type=renovation_type, specialty=specialty)
+    result = [
+        {
             "id": profile.id,
             "user_id": profile.user_id,
             "name": contractor.full_name or contractor.phone,
             "company": profile.company_name,
             "specialties": profile.specialties,
-            "rating": profile.rating,
-            "score": round(score, 1),
+            "rating": reputation.public_rating(profile),
+            "score": score,
+            # Балл заказчику ни о чём не говорит — причина говорит.
+            "match_basis": reputation.match_basis(
+                profile, renovation_type=renovation_type, specialty=specialty
+            ),
             "city": profile.city,
-        })
-    result.sort(key=lambda item: item["score"], reverse=True)
+        }
+        for profile, contractor, score in ranked
+    ]
     return result[:10]
 
 
@@ -523,17 +526,19 @@ async def auto_assign(
             .where(ContractorProfile.visible.is_(True))
         )
     ).all()
-    best_user = None
-    best_score = -1.0
-    for profile, contractor in rows:
-        score = profile.rating + (2 if lead.renovation_type in (profile.specialties or "") else 0)
-        if score > best_score:
-            best_score = score
-            best_user = contractor
-    if not best_user:
+    ranked = reputation.ranked(rows, renovation_type=lead.renovation_type)
+    if not ranked:
         raise HTTPException(404, "no_contractors")
+    best_profile, best_user, best_score = ranked[0]
 
     lead.assigned_contractor_id = best_user.id
     lead.status = JobLeadStatus.quoted
     await db.commit()
-    return {"contractor_id": best_user.id, "name": best_user.full_name or best_user.phone}
+    return {
+        "contractor_id": best_user.id,
+        "name": best_user.full_name or best_user.phone,
+        # Называем основание: без совпадения по специализации подбирать было
+        # не по чему, и заказчик должен это видеть, а не догадываться.
+        "match_basis": reputation.match_basis(best_profile, renovation_type=lead.renovation_type),
+        "score": best_score,
+    }
