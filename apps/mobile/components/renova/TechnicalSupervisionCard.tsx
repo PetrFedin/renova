@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -11,6 +10,7 @@ import {
 import { api, type TechnicalSupervisionProviderType, type TechnicalSupervisionStatus } from '@/lib/api';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { reportError } from '@/lib/reportError';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 export function TechnicalSupervisionCard({
   userId,
@@ -59,11 +59,11 @@ export function TechnicalSupervisionCard({
   async function persistAssignment() {
     const code = profileCode.trim().toUpperCase();
     if (!code) {
-      Alert.alert('Технический надзор', 'Укажите код профиля представителя Renova.');
+      showActionConfirm({ title: 'Технический надзор', message: 'Укажите код профиля представителя Renova.' });
       return;
     }
     if (providerType === 'company' && !providerName.trim()) {
-      Alert.alert('Технический надзор', 'Укажите название компании.');
+      showActionConfirm({ title: 'Технический надзор', message: 'Укажите название компании.' });
       return;
     }
     setBusy(true);
@@ -76,10 +76,10 @@ export function TechnicalSupervisionCard({
         expected_assignment_id: status?.active?.id || null,
       });
       await load();
-      Alert.alert(
-        'Технический надзор',
-        result.replayed ? 'Назначение уже актуально.' : 'Назначение сохранено.',
-      );
+      showActionConfirm({
+        title: 'Технический надзор',
+        message: result.replayed ? 'Назначение уже актуально.' : 'Назначение сохранено.',
+      });
     } catch (cause) {
       reportError('technicalSupervision.assign', cause, { projectId });
       setError('Не удалось изменить назначение. Обновите данные и повторите действие.');
@@ -90,14 +90,14 @@ export function TechnicalSupervisionCard({
 
   function saveAssignment() {
     if (status?.active) {
-      Alert.alert(
-        'Заменить технический надзор?',
-        'Предыдущее назначение останется в истории, а его доступ будет отозван сразу после замены.',
-        [
-          { text: 'Отмена', style: 'cancel' },
-          { text: 'Заменить', onPress: () => void persistAssignment() },
-        ],
-      );
+      showActionConfirm({
+        title: 'Заменить технический надзор?',
+        message: 'Предыдущее назначение останется в истории, а его доступ будет отозван сразу после замены.',
+        primaryLabel: 'Заменить',
+        onPrimary: () => void persistAssignment(),
+        secondaryLabel: 'Отмена',
+        onSecondary: () => undefined,
+      });
       return;
     }
     void persistAssignment();
@@ -106,30 +106,29 @@ export function TechnicalSupervisionCard({
   function revokeAssignment() {
     const active = status?.active;
     if (!active) return;
-    Alert.alert(
-      'Отозвать технический надзор?',
-      'Представитель потеряет доступ к объекту и техническим действиям. История назначения сохранится.',
-      [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: 'Отозвать',
-          style: 'destructive',
-          onPress: async () => {
-            setBusy(true);
-            setError(null);
-            try {
-              await api.revokeTechnicalSupervision(userId, projectId, active.id);
-              await load();
-            } catch (cause) {
-              reportError('technicalSupervision.revoke', cause, { projectId });
-              setError('Не удалось отозвать назначение. Обновите данные и повторите действие.');
-            } finally {
-              setBusy(false);
-            }
-          },
-        },
-      ],
-    );
+    showActionConfirm({
+      title: 'Отозвать технический надзор?',
+      message: 'Представитель потеряет доступ к объекту и техническим действиям. История назначения сохранится.',
+      primaryLabel: 'Отозвать',
+      primaryDestructive: true,
+      onPrimary: () => {
+        void (async () => {
+          setBusy(true);
+          setError(null);
+          try {
+            await api.revokeTechnicalSupervision(userId, projectId, active.id);
+            await load();
+          } catch (cause) {
+            reportError('technicalSupervision.revoke', cause, { projectId });
+            setError('Не удалось отозвать назначение. Обновите данные и повторите действие.');
+          } finally {
+            setBusy(false);
+          }
+        })();
+      },
+      secondaryLabel: 'Отмена',
+      onSecondary: () => undefined,
+    });
   }
 
   return (

@@ -408,12 +408,27 @@ export function ProjectEmptyState({
         </View>
       ) : null}
       {!projects.length && role === 'contractor' && bucket === 'active' ? (
-        <PrimaryButton
-          title="Найти заявки"
-          variant="outline"
-          disabled={refreshingProjects}
-          onPress={() => pushOsNav('/job-leads', pathname, 'contractor')}
-        />
+        <>
+          <PrimaryButton
+            title="Найти заявки"
+            variant="outline"
+            disabled={refreshingProjects}
+            onPress={() => pushOsNav('/job-leads', pathname, 'contractor')}
+          />
+          {/* Пока объектов нет, этот экран подменяет собой все остальные.
+              Без выхода в профиль только что зарегистрированная организация
+              не могла ни заполнить карточку компании — а по ней её и находят
+              заказчики, — ни собрать бригаду. */}
+          <PrimaryButton
+            title="Профиль и бригада"
+            variant="outline"
+            disabled={refreshingProjects}
+            onPress={() => replaceOsNav(tabsRoute('contractor', 'profile'), undefined, 'contractor')}
+          />
+          <Text style={formMetaText.caption}>
+            Заполните карточку компании — по ней заказчики находят исполнителя. Заявки приходят туда же.
+          </Text>
+        </>
       ) : null}
       {!projects.length && bucket === 'active' ? (
         <PrimaryButton
