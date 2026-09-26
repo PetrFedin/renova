@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
-from app.models.entities import Project, SelectionItem, SelectionStatus, User, UserRole
+from app.models.entities import Project, Room, SelectionItem, SelectionStatus, User, UserRole
 from app.services import activity_service as act
 
 router = APIRouter(prefix="/projects", tags=["selections"])
@@ -31,6 +31,26 @@ class SelectionIn(BaseModel):
 
 class SelectionRejectIn(BaseModel):
     reason: str | None = None
+
+
+async def _require_selection_room(
+    db: AsyncSession,
+    project_id: str,
+    room_id: str | None,
+) -> None:
+    """Bind an optional Selection room to the already-authorized project."""
+    if not room_id:
+        return
+    room = (
+        await db.execute(
+            select(Room.id).where(
+                Room.id == room_id,
+                Room.project_id == project_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if room is None:
+        raise HTTPException(404, "selection_or_project_not_found")
 
 
 def _out(row: SelectionItem) -> dict:
@@ -100,6 +120,7 @@ async def create_selection(
     await require_project(db, project_id, user, write=True)
     if body.category not in CATEGORIES:
         raise HTTPException(422, "invalid_category")
+    await _require_selection_room(db, project_id, body.room_id)
     row = SelectionItem(
         project_id=project_id,
         room_id=body.room_id,
@@ -175,6 +196,7 @@ async def approve_selection(
     row = await db.get(SelectionItem, selection_id)
     if not row or row.project_id != project_id:
         raise HTTPException(404)
+    await _require_selection_room(db, project_id, row.room_id)
     if row.status != SelectionStatus.proposed:
         raise HTTPException(409, "not_proposed")
     row.status = SelectionStatus.approved
