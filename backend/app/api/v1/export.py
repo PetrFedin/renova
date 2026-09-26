@@ -128,6 +128,73 @@ async def export_acceptance(project_id: str, stage_id: str, checks: str | None =
     return pdf_response(pdf, f"acceptance-{stage_id[:8]}.pdf")
 
 
+@router.get("/{project_id}/contract.pdf")
+async def export_contract(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Договор подряда из зафиксированной сметы.
+
+    Рисуется по требованию, как и акт приёмки: документ всегда отражает
+    текущее состояние сметы, а не слепок, снятый неизвестно когда.
+    """
+    from app.services import contract_document_service as contract_svc
+
+    await require_project(db, project_id, user, write=False)
+    terms = await contract_svc.collect_terms(db, project_id)
+    if terms is None:
+        raise HTTPException(404, "Проект не найден")
+
+    pdf = new_pdf()
+    pdf_line(pdf, "ДОГОВОР ПОДРЯДА", size=14)
+    if terms.locked_at:
+        pdf_line(pdf, f"Смета зафиксирована: {terms.locked_at}")
+    pdf_line(pdf, "")
+
+    pdf_line(pdf, "СТОРОНЫ", size=11)
+    pdf_line(pdf, f"Заказчик: {terms.customer}")
+    # Молчать про отсутствие исполнителя нельзя: это существенное условие.
+    pdf_line(pdf, f"Исполнитель: {terms.contractor or 'не назначен'}")
+    pdf_line(pdf, "")
+
+    pdf_line(pdf, "ОБЪЕКТ", size=11)
+    pdf_line(pdf, terms.project_name)
+    if terms.address:
+        pdf_line(pdf, terms.address)
+    pdf_line(pdf, "")
+
+    pdf_line(pdf, "ПРЕДМЕТ И ЦЕНА", size=11)
+    pdf_line(pdf, f"Работы: {terms.works_total:.0f} RUB ({terms.works_count} поз.)")
+    pdf_line(pdf, f"Материалы: {terms.materials_total:.0f} RUB ({terms.materials_count} поз.)")
+    pdf_line(pdf, f"Смета: {terms.estimate_total:.0f} RUB")
+    if terms.change_orders_count:
+        # Отдельной строкой, а не растворять в итоге: заказчик должен видеть,
+        # из чего сложилась цена.
+        pdf_line(
+            pdf,
+            f"Доп. работы (согласованы): {terms.change_orders_total:.0f} RUB"
+            f" ({terms.change_orders_count})",
+        )
+    pdf_line(pdf, f"Итого: {terms.total:.0f} RUB, {terms.vat_label}")
+    pdf_line(pdf, "")
+
+    pdf_line(pdf, "ПОРЯДОК ОПЛАТЫ", size=11)
+    if terms.stages:
+        for name, amount in terms.stages:
+            pdf_line(pdf, f"- {name}: {amount:.0f} RUB")
+        pdf_line(pdf, f"Распределено по этапам: {terms.scheduled_payments:.0f} RUB")
+        remainder = round(terms.total - terms.scheduled_payments, 2)
+        if abs(remainder) >= 1:
+            # Расхождение показываем, а не прячем: иначе договор врёт про деньги.
+            pdf_line(pdf, f"Не распределено: {remainder:.0f} RUB")
+    else:
+        pdf_line(pdf, "Суммы по этапам не распределены.")
+    pdf_line(pdf, "")
+
+    if not terms.is_signable():
+        pdf_line(pdf, "ДОГОВОР НЕ ГОТОВ К ПОДПИСАНИЮ", size=11)
+        pdf_line(pdf, "В смете нет позиций либо сумма равна нулю.")
+
+    return pdf_response(pdf, f"contract-{project_id[:8]}.pdf")
+
+
 @router.get("/{project_id}/rooms/{room_id}/export.pdf")
 async def export_room_pdf(project_id: str, room_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from app.models.entities import Room
