@@ -48,3 +48,31 @@ export function shouldFallbackToDurableCache(error: unknown): boolean {
   // Unknown runtime errors keep the previous best-effort cache behaviour.
   return true;
 }
+
+/**
+ * Можно ли поставить незавершённую запись в офлайн-очередь (#317).
+ *
+ * `req` нормализует обрыв связи и таймаут в `ApiError(status=0)`. Из-за этого
+ * охрана вида `if (e instanceof ApiError) throw e` отбрасывала как раз тот
+ * случай, ради которого очередь и существует: обычный офлайн до очереди
+ * не доходил вовсе.
+ *
+ * Граница проходит по тому, знает ли сервер о запросе:
+ * - 4xx — сервер ответил отказом. Повторять нечего, и человек должен увидеть
+ *   причину. Сюда же 429: это явный отказ со своим сроком, и прятать его
+ *   в очередь значило бы скрыть от человека «повторите позже»;
+ * - 5xx и `status=0` — исход неизвестен. Запрос мог не дойти, а мог и
+ *   выполниться с потерянным ответом; такое место очереди и есть;
+ * - не `ApiError` — прежнее поведение: считаем сбоем доставки.
+ *
+ * Важно: очередь повторяет запрос. Ставить туда операцию можно только если
+ * её повтор безопасен — по #316 это значит устойчивый `client_request_id`
+ * либо идемпотентность на сервере.
+ */
+export function isAmbiguousWriteFailure(error: unknown): boolean {
+  if (error == null || typeof error !== 'object') return true;
+  const status = getFailureStatus(error);
+  if (status === undefined) return true;
+  if (status >= 400 && status < 500) return false;
+  return true;
+}
