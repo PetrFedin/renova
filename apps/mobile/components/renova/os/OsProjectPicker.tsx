@@ -34,7 +34,13 @@ function portfolioDeltaLabel(summary: ReturnType<typeof summarizePortfolio>): st
     return `Перерасход ${formatRub(summary.overspend)} (${summary.variancePct > 0 ? '+' : ''}${summary.variancePct}%)`;
   }
   if (summary.savings > 0) {
-    return `Экономия ${formatRub(summary.savings)} (${summary.variancePct}%)`;
+    // savings now counts only finished projects, and the percent is relative to
+    // their plan — the portfolio-wide variancePct would read "-100%" for a
+    // project that simply has not started spending yet.
+    return `Экономия ${formatRub(summary.savings)} (${summary.savingsPct}%) по завершённым`;
+  }
+  if (summary.remaining > 0) {
+    return `Освоено ${summary.spendPct}% · осталось ${formatRub(summary.remaining)}`;
   }
   return `По плану · ${summary.spendPct}% бюджета`;
 }
