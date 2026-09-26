@@ -2,6 +2,7 @@
 import { req, ApiError } from './client';
 import type { BudgetBreakdown, ReceiptItem } from './types';
 import { createClientRequestId } from '@/lib/clientRequestId';
+import { isAmbiguousWriteFailure } from './failurePolicy';
 
 export const receiptsApi = {
   addManualReceipt: async (
@@ -28,7 +29,8 @@ export const receiptsApi = {
     try {
       return await req<ReceiptItem>(`/api/v1/projects/${projectId}/receipts/manual`, { method: 'POST', body: serialized }, userId);
     } catch (error) {
-      if (error instanceof ApiError) throw error;
+      // Сервер ответил отказом — повторять нечего (#317).
+      if (!isAmbiguousWriteFailure(error)) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/receipts/manual`, method: 'POST', body: serialized, userId });
       throw new Error('offline_queued');
@@ -56,7 +58,8 @@ export const receiptsApi = {
     try {
       return await req(`/api/v1/projects/${projectId}/receipts/scan`, { method: 'POST', body: serialized }, userId);
     } catch (error) {
-      if (error instanceof ApiError) throw error;
+      // Сервер ответил отказом — повторять нечего (#317).
+      if (!isAmbiguousWriteFailure(error)) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/receipts/scan`, method: 'POST', body: serialized, userId });
       throw new Error('offline_queued');

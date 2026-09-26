@@ -9,6 +9,16 @@ export function roleDisplayLabel(role?: UserRole | string | null): string {
   return role === 'contractor' ? 'Исполнитель' : 'Заказчик';
 }
 
+/**
+ * Имя кнопки смены роли.
+ *
+ * Нажатие вызывает `logout()` и уводит на выбор роли — то есть выходит из
+ * учётной записи. Видимая подпись «Заказчик · Исполнитель» об этом молчит и
+ * читается как переключатель; читалке мы обязаны сказать прямо.
+ */
+const ROLE_SWITCH_A11Y = (roleLabel: string) =>
+  `Сменить роль. Сейчас ${roleLabel}. Выход из учётной записи`;
+
 export function RoleSwitchButton({ compact }: { compact?: boolean }) {
   const { user, logout } = useRenova();
   const roleLabel = roleDisplayLabel(user?.role);
@@ -20,7 +30,14 @@ export function RoleSwitchButton({ compact }: { compact?: boolean }) {
 
   if (compact) {
     return (
-      <Pressable style={s.compact} onPress={onPress}>
+      <Pressable
+        style={s.compact}
+        onPress={onPress}
+        accessibilityRole="button"
+        // Кнопка выходит из учётной записи, а подпись читается как
+        // переключатель. Имя должно называть последствие, а не намёк.
+        accessibilityLabel={ROLE_SWITCH_A11Y(roleLabel)}
+      >
         <Text style={s.compactText}>← Выбор роли</Text>
         <Text style={s.compactSub}>{roleLabel} · сменить →</Text>
       </Pressable>
@@ -28,7 +45,12 @@ export function RoleSwitchButton({ compact }: { compact?: boolean }) {
   }
 
   return (
-    <Pressable style={s.btn} onPress={onPress} accessibilityRole="button">
+    <Pressable
+      style={s.btn}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={ROLE_SWITCH_A11Y(roleLabel)}
+    >
       <Text style={s.btnText}>← Выбор роли</Text>
       <Text style={s.btnSub}>Заказчик · Исполнитель</Text>
     </Pressable>
