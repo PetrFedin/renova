@@ -55,7 +55,17 @@ function WidgetCell({
 
   if (onPress) {
     return (
-      <Pressable style={s.cell} onPress={onPress} accessibilityRole="button">
+      <Pressable
+        style={s.cell}
+        onPress={onPress}
+        accessibilityRole="button"
+        // Роль была, имени не было: плитка читалась как безымянная кнопка.
+        // Произносим то же, что видит глаз: подпись, значение, пояснение.
+        accessibilityLabel={[it.label, it.value, it.hint]
+          // Прочерк — это «нет данных» для глаза; читалке его произносить незачем.
+          .filter((part) => part && part !== '—' && part !== '-')
+          .join(' · ')}
+      >
         {body}
       </Pressable>
     );
@@ -118,7 +128,18 @@ export function OsCompactCard({ title, children, onPress }: { title?: string; ch
       {children}
     </View>
   );
-  if (onPress) return <Pressable onPress={onPress} style={{ flex: 1 }}>{inner}</Pressable>;
+  if (onPress) {
+    return (
+      <Pressable
+        onPress={onPress}
+        style={{ flex: 1 }}
+        accessibilityRole="button"
+        accessibilityLabel={title}
+      >
+        {inner}
+      </Pressable>
+    );
+  }
   return inner;
 }
 
