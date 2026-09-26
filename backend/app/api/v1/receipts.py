@@ -159,7 +159,9 @@ def _manual_response(rec: Receipt, *, idempotent_replay: bool = False) -> dict:
     return {
         "id": rec.id,
         "amount": rec.amount,
-        "verified": True,
+        # Ручной ввод — не проверка.
+        "verified": False,
+        "verification_status": rec.verification_status or "manual_entry",
         "source": "manual",
         "description": rec.qr_raw,
         "room_id": rec.room_id,
@@ -317,7 +319,13 @@ async def manual_receipt(
         qr_raw=description,
         fn="MANUAL",
         fd=None,
-        fns_verified=True,
+        # Чек, набранный руками, ФНС не проверяла и проверить не может:
+        # `reverify` на него отвечает `manual_receipt_not_reverifiable`.
+        # Отметка стояла здесь жёстко, и приложение рисовало такому чеку
+        # бейдж «✓ ФНС» — рукописная сумма выглядела подтверждённой
+        # налоговой. Расход при этом учитывается полностью, как и раньше.
+        fns_verified=False,
+        verification_status="manual_entry",
         expense_category=category,
         room_id=room_id,
         stage_id=stage_id,
