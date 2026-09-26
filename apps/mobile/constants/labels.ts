@@ -19,6 +19,7 @@ export const PAYMENT_TYPE_LABEL: Record<string, string> = {
   stage: 'Этап',
   material: 'Материалы',
   final: 'Финал',
+  change_order: 'Доп. работы',
 };
 
 export const PAYMENT_STATUS_LABEL: Record<string, string> = {

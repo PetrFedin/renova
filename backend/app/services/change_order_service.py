@@ -2,7 +2,14 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import ChangeOrder, ChangeOrderStatus, Project
+from app.models.entities import (
+    ChangeOrder,
+    ChangeOrderStatus,
+    Payment,
+    PaymentStatus,
+    PaymentType,
+    Project,
+)
 from app.models.project_documents import DocumentStatus, DocumentType, ProjectDocument
 from app.services.budget_service import apply_change_order_to_budget, sync_project_budget_planned
 from app.services.client_write_side_effects import PreparedSideEffect, activate_client_write_side_effects
@@ -48,6 +55,50 @@ async def list_orders(db: AsyncSession, project_id: str) -> list[ChangeOrder]:
     return list(result.scalars().all())
 
 
+
+async def ensure_change_order_payment(
+    db: AsyncSession, order: ChangeOrder, created_by: str
+) -> Payment | None:
+    """Одобренные доп. работы должны попасть в счёт, а не только в план.
+
+    Этапные платежи считаются из ``stage.payment_amount``; у доп. работ этапа нет,
+    поэтому без отдельного счёта сумма ДО навсегда оставалась невыставленной.
+    """
+    if order.status != ChangeOrderStatus.approved:
+        return None
+    if not order.amount or order.amount <= 0:
+        return None
+
+    project = await db.get(Project, order.project_id)
+    # Как и этапные платежи: заказчик не выставляет счёт сам себе.
+    if not project or project.contractor_id is None:
+        return None
+
+    existing = (
+        await db.execute(
+            select(Payment).where(Payment.change_order_id == order.id).limit(1)
+        )
+    ).scalar_one_or_none()
+    if existing:
+        if existing.status == PaymentStatus.pending and existing.amount != order.amount:
+            existing.amount = order.amount
+            await db.flush()
+        return existing
+
+    payment = Payment(
+        project_id=order.project_id,
+        change_order_id=order.id,
+        payment_type=PaymentType.change_order,
+        title=f"Доп. работы: {order.title}",
+        amount=order.amount,
+        created_by=created_by,
+        notes="Создано при одобрении доп. работ",
+    )
+    db.add(payment)
+    await db.flush()
+    return payment
+
+
 async def approve(db: AsyncSession, order_id: str) -> ChangeOrder | None:
     """Legacy budget-only path, now row-locked and replay-safe."""
     query = select(ChangeOrder).where(ChangeOrder.id == order_id)
@@ -64,6 +115,7 @@ async def approve(db: AsyncSession, order_id: str) -> ChangeOrder | None:
     order.status = ChangeOrderStatus.approved
     await apply_change_order_to_budget(db, order)
     await sync_project_budget_planned(db, order.project_id)
+    await ensure_change_order_payment(db, order, order.created_by)
     await db.commit()
     await db.refresh(order)
     return order
@@ -243,6 +295,8 @@ async def approve_with_sign_draft(
 
     existing_document = await _linked_document(db, order.id)
     if order.status == ChangeOrderStatus.approved and existing_document:
+        # Повтор чинит и историю: ДО, одобренные до появления счёта, получают его здесь.
+        await ensure_change_order_payment(db, order, created_by)
         await db.commit()
         return order, {
             "id": existing_document.id,
@@ -258,6 +312,7 @@ async def approve_with_sign_draft(
 
     await apply_change_order_to_budget(db, order)
     await sync_project_budget_planned(db, order.project_id)
+    await ensure_change_order_payment(db, order, created_by)
 
     from app.services import project_document_service as documents
 

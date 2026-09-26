@@ -17,6 +17,8 @@ export type Payment = {
   payment_type: string;
   status: string;
   stage_id: string | null;
+  /** Счёт по одобренным доп. работам (ChangeOrder). */
+  change_order_id?: string | null;
   notes: string | null;
   confirmed_at: string | null;
   created_at: string;
