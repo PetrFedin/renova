@@ -250,12 +250,22 @@ async def calc_room_materials(
     db: AsyncSession = Depends(get_db),
 ):
     from app.models.entities import Room
+    from app.services.calc.estimate import calc_room_metrics
     from app.services.material_calculator import calc_room_materials as calc_fn
     await require_project(db, project_id, user, write=False)
     room = await db.get(Room, room_id)
     if not room or room.project_id != project_id:
         raise HTTPException(404)
-    items = calc_fn(room.floor_sq_m, room.wall_sq_m, room.perimeter_m)
+    # У Room нет полей floor_sq_m / wall_sq_m / perimeter_m — это производные
+    # величины, и обработчик читал их прямо с модели. Кнопка «Рассчитать
+    # материалы» на экране комнаты отвечала 500 всегда, при любых данных:
+    #     AttributeError: 'Room' object has no attribute 'floor_sq_m'
+    # Считаем той же функцией, что и список комнат со сметой, — вторая формула
+    # здесь означала бы вторую правду о площади.
+    metrics = calc_room_metrics(
+        room.length_m, room.width_m, room.height_m, room.openings_sq_m
+    )
+    items = calc_fn(metrics.floor_sq_m, metrics.wall_sq_m, metrics.perimeter_m)
     await act.log_event(db, project_id=project_id, user_id=user.id, kind="MaterialCalculated", title=f"Расчёт: {room.name}", body=str(len(items)), room_id=room_id, link_path=f"/room/{room_id}")
     return {"room_id": room_id, "items": items}
 

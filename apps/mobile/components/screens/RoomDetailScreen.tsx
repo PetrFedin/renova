@@ -266,8 +266,26 @@ export function RoomDetailScreen() {
               disabled={busy && mutation !== 'materials'}
               onPress={() => {
                 void runMutation('materials', async () => {
-                  const result = await api.calcRoomMaterials(user.id, project.id, room.id);
-                  setCalcItems(result.items);
+                  // Отказ здесь уходил в никуда: runMutation не ловит ошибок,
+                  // а вызов идёт через void. Кнопка «не работала» молча — при
+                  // том что обработчик отвечал 500 при любых данных.
+                  try {
+                    const result = await api.calcRoomMaterials(user.id, project.id, room.id);
+                    setCalcItems(result.items);
+                  } catch (error: unknown) {
+                    if (isOfflineQueued(error)) {
+                      notifyOfflineQueued('Расчёт материалов');
+                      return;
+                    }
+                    reportError('components.screens.RoomDetailScreen.CalcMaterials', error, {
+                      projectId: project.id,
+                      roomId: room.id,
+                    });
+                    showActionConfirm({
+                      title: 'Не удалось рассчитать материалы',
+                      message: error instanceof Error ? error.message : 'Повторите попытку.',
+                    });
+                  }
                 });
               }}
             />
