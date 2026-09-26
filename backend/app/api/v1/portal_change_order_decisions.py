@@ -49,7 +49,9 @@ async def portal_approve_change_order(
     db: AsyncSession = Depends(get_db),
 ):
     """Approve a change order only with the explicit ``accept_stage`` scope."""
-    claims = _portal_claims(body.token, project_id)
+    claims = await _portal_claims(
+        db, body.token, project_id, required_scope="accept_stage"
+    )
     _require_portal_scope(claims, "accept_stage")
     user, _project = await _require_customer(db, claims=claims, project_id=project_id)
 
@@ -72,7 +74,9 @@ async def portal_reject_change_order(
     db: AsyncSession = Depends(get_db),
 ):
     """Reject a project-scoped change order with durable side effects."""
-    claims = _portal_claims(body.token, project_id)
+    claims = await _portal_claims(
+        db, body.token, project_id, required_scope="accept_stage"
+    )
     _require_portal_scope(claims, "accept_stage")
     user, _project = await _require_customer(db, claims=claims, project_id=project_id)
 

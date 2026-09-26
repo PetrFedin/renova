@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.work_acceptances import _decision_error, acceptance_dict
 from app.db.session import get_db
 from app.models.entities import Project, User, UserRole
+from app.services import portal_access
 from app.services import portal_token_service as portal_tokens
 from app.services import work_acceptance_decision_service as decisions
 
@@ -25,21 +26,21 @@ async def _portal_customer_context(
     token: str,
     project_id: str,
 ) -> tuple[Project, User]:
-    try:
-        claims = portal_tokens.verify_portal_token(token)
-    except ValueError as exc:
-        raise HTTPException(401, "invalid_portal_token") from exc
-    if claims.get("project_id") != project_id:
-        raise HTTPException(401, "token_mismatch")
-    if "accept_stage" not in (claims.get("scopes") or []):
-        raise HTTPException(403, "portal_read_only")
+    """Authorise the magic link against current state, not only its signature.
 
-    user = await db.get(User, claims.get("user_id"))
-    if user is None:
-        raise HTTPException(401, "user_not_found")
-    project = await db.get(Project, project_id)
-    if project is None:
-        raise HTTPException(404, "project_not_found")
+    A signed, unexpired token used to be enough here. It is not: the account
+    may have been deleted, its sessions revoked, the participant removed from
+    the project, or the project trashed, all while the link stays valid for the
+    rest of its 7-day TTL.
+    """
+    access = await portal_access.authorize_portal(
+        db,
+        token=token,
+        project_id=project_id,
+        required_scope="accept_stage",
+    )
+    user = access.user
+    project = access.project
     if user.role != UserRole.customer or user.id != project.customer_id:
         raise HTTPException(403, "acceptance_decision_customer_only")
     return project, user
