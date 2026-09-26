@@ -54,17 +54,29 @@ function ChipRow({
   items,
   value,
   onSelect,
+  groupLabel,
 }: {
   items: readonly { id: string; label: string }[];
   value: string;
   onSelect: (id: string) => void;
+  /** Подпись поля — «Косметический» само по себе ни о чём не говорит. */
+  groupLabel: string;
 }) {
   return (
-    <View style={s.chipRow}>
+    <View style={s.chipRow} accessibilityRole="radiogroup" accessibilityLabel={groupLabel}>
       {items.map((item) => {
         const on = value === item.id;
         return (
-          <Pressable key={item.id} style={[s.chip, on && s.chipOn]} onPress={() => onSelect(item.id)}>
+          <Pressable
+            key={item.id}
+            style={[s.chip, on && s.chipOn]}
+            // Фишки выходили как `generic`: ни роли, ни имени. Читалкой выбрать
+            // тип жилья, тип ремонта или ставку НДС было нечем.
+            accessibilityRole="radio"
+            accessibilityState={{ selected: on, checked: on }}
+            accessibilityLabel={`${groupLabel}: ${item.label}`}
+            onPress={() => onSelect(item.id)}
+          >
             <Text style={[s.chipT, on && s.chipTOn]}>{item.label}</Text>
           </Pressable>
         );
@@ -94,10 +106,20 @@ export function ProjectProfileFields({
   const vatBlock = (
     <View style={{ gap: 8, marginBottom: 12 }}>
       <Text style={s.fieldLabel}>НДС в смете</Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+      <View
+        style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}
+        accessibilityRole="radiogroup"
+        accessibilityLabel="НДС в смете"
+      >
         {([0, 5, 10, 20] as const).map((rate) => (
           <Pressable
             key={rate}
+            accessibilityRole="radio"
+            accessibilityState={{
+              selected: (values.vat_rate ?? 0) === rate,
+              checked: (values.vat_rate ?? 0) === rate,
+            }}
+            accessibilityLabel={`НДС в смете: ${rate === 0 ? 'без НДС' : `${rate} процентов`}`}
             onPress={() => editable && onChange({ vat_rate: rate })}
             style={{
               paddingHorizontal: 12,
@@ -138,6 +160,7 @@ export function ProjectProfileFields({
       />
       <FieldLabel>Тип жилья</FieldLabel>
       <ChipRow
+        groupLabel="Тип жилья"
         items={PROPERTY_TYPES}
         value={values.property_type}
         onSelect={(id) => editable && onChange({ property_type: id as 'apartment' | 'house' })}
@@ -149,6 +172,7 @@ export function ProjectProfileFields({
     <>
       <FieldLabel>Базовый тип ремонта</FieldLabel>
       <ChipRow
+        groupLabel="Базовый тип ремонта"
         items={RENOVATION_TYPES}
         value={values.renovation_type}
         onSelect={(renovation_type) => editable && onChange({ renovation_type })}
