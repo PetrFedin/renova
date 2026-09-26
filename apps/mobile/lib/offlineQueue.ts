@@ -438,10 +438,13 @@ async function flushOnce(apiBase: string): Promise<OfflineFlushResult> {
     try {
       const response = await fetchWithTimeout(`${apiBase}${job.path}`, {
         method: job.method,
+        // Заголовка с идентификатором задания здесь нет намеренно: сервер его
+        // не читает, а заголовок с таким именем выглядел бы защитой от повтора
+        // и вводил в заблуждение (#316). Повтор узнаётся по client_request_id
+        // в самом теле — см. реестр очередей в lib/offline/queuedWriteRegistry.
         headers: {
           'Content-Type': 'application/json',
           ...authHeaders(job.userId),
-          'X-Offline-Id': job.id,
         },
         body: job.body,
       });
