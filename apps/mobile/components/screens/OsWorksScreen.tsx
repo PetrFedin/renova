@@ -24,6 +24,7 @@ import {
 import { ReworkSlaWidget } from '@/components/renova/ReworkSlaWidget';
 import { TodayWidget } from '@/components/renova/TodayWidget';
 import { CreateStageSheet } from '@/components/renova/CreateStageSheet';
+import { buildWorksEmptyState } from '@/lib/domain/worksEmptyState';
 import { CreateWorkSheet } from '@/components/renova/CreateWorkSheet';
 import { StageDependenciesPanel } from '@/components/renova/StageDependenciesPanel';
 import { WorkOrdersListPanel } from '@/components/renova/WorkOrdersListPanel';
@@ -179,6 +180,22 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
     setFilter(isCustomer ? 'now' : 'all');
     setQuery('');
   };
+  // «Показать все» обязано показывать именно все: прежде оно звало
+  // resetFilters, а тот у заказчика возвращает фильтр «Сейчас».
+  const showAllStages = () => {
+    setFilter('all');
+    setQuery('');
+  };
+  const allStagesCount = isCustomer
+    ? customerFilterCounts?.all ?? 0
+    : (activeProject?.stages || []).filter((stage) => stage.status !== 'done').length;
+  const emptyState = buildWorksEmptyState({
+    filterLabel: activeFilterLabel,
+    query,
+    totalStages: activeProject?.stages?.length ?? 0,
+    allCount: allStagesCount,
+    isDefaultFilter: !hasActiveFilter,
+  });
 
   const toggleSel = (stageId: string) => {
     setSel((prev) => {
@@ -271,16 +288,19 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
         })}
         {isContractor && <Text style={s.hint}>Долгое нажатие — выбрать для массовой сдачи</Text>}
         <RejectStageModal visible={!!rejectId} stageName={rejectName} onClose={() => setRejectId(null)} onConfirm={async (reason) => { if (rejectId) await rejectStage(rejectId, reason); setRejectId(null); await loadProject(activeProject.id); }} />
-        {!stages.length && hasActiveFilter && (
+        {!stages.length && emptyState && (
           <View style={s.emptyBox}>
-            <Text style={s.emptyTitle}>Нет работ по фильтру «{activeFilterLabel}»</Text>
-            <Text style={s.emptySub}>
-              {query.trim()
-                ? `Поиск «${query.trim()}» не дал результатов.`
-                : 'Попробуйте другой фильтр или покажите все активные этапы.'}
-            </Text>
-            <PrimaryButton title="Сбросить фильтр" variant="outline" onPress={resetFilters} />
-            <PrimaryButton title="Показать все" variant="ghost" onPress={resetFilters} />
+            <Text style={s.emptyTitle}>{emptyState.title}</Text>
+            <Text style={s.emptySub}>{emptyState.hint}</Text>
+            {emptyState.showReset ? (
+              <PrimaryButton title="Сбросить фильтр" variant="outline" onPress={resetFilters} />
+            ) : null}
+            {emptyState.showAll ? (
+              <PrimaryButton
+                title={allStagesCount ? `Показать все (${allStagesCount})` : 'Показать все'}
+                onPress={showAllStages}
+              />
+            ) : null}
           </View>
         )}
         {!stages.length && !hasActiveFilter && (activeProject.stages?.length ?? 0) === 0 && (
