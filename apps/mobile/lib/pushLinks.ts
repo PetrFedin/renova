@@ -165,13 +165,19 @@ export function resolveNotificationLink(notificationType: string, role: OsRole =
     case 'deadline': return tabsRoute(role, 'calendar');
     case 'waste_reminder': return repairTabRoute(role, 'materials');
     case 'room_updated':
+    case 'room_change':
     case 'room_created': return objectTabRoute(role, 'rooms');
+    // Технадзор: сервер в link_path ведёт на /object без вкладки — повторяем
+    // его выбор, а не придумываем свой.
+    case 'technical_supervision': return tabsRoute(role, 'object');
     case 'reaction': return tabsRoute(role, 'chat');
     case 'stage_start': return repairTabRoute(role, 'works');
     case 'budget': return budgetTabRoute(role, 'summary');
     case 'material': return repairTabRoute(role, 'materials');
     case 'estimate_lock':
     case 'estimate': return objectTabRoute(role, 'estimate');
+    // «other» — намеренно общий тип: для него верный ответ и есть входящие.
+    case 'other':
     default: return { pathname: '/inbox', params: {} };
   }
 }
