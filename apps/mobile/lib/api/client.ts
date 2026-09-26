@@ -148,24 +148,53 @@ export type CachedGetMeta = {
   cachedAt?: number;
   errorStatus?: number;
 };
-let _lastCachedGetMeta: CachedGetMeta | null = null;
-export function getLastCachedGetMeta(): CachedGetMeta | null {
-  return _lastCachedGetMeta;
+/**
+ * Провенанс на каждый путь, а не одна «последняя» переменная (#317).
+ *
+ * Приложение поднимает десятки запросов одновременно; общая переменная
+ * означала бы, что свежий ответ по одному пути стирает отметку устаревания
+ * по другому — и экран с устаревшими данными выглядел бы свежим.
+ */
+const _cacheMeta = new Map<string, CachedGetMeta>();
+
+function rememberCacheMeta(meta: CachedGetMeta): void {
+  _cacheMeta.set(meta.path, meta);
+}
+
+/** Пути, отданные из кэша после сбоя. Пусто — ничего устаревшего не показано. */
+export function getStaleCachePaths(): string[] {
+  const stale: string[] = [];
+  for (const meta of _cacheMeta.values()) if (meta.stale) stale.push(meta.path);
+  return stale;
+}
+
+/** Сколько путей сейчас показывают устаревшее — для баннера. */
+export function getCacheMetaFor(path: string): CachedGetMeta | null {
+  return _cacheMeta.get(path) ?? null;
 }
 
 export async function cachedGet<T>(path: string, userId?: string): Promise<T> {
   const k = cacheKey(path, userId);
   const hit = _cache.get(k);
   if (hit && Date.now() - hit.t < CACHE_TTL) {
-    _lastCachedGetMeta = { path, fromCache: true, stale: false, cachedAt: hit.t };
+    rememberCacheMeta({ path, fromCache: true, stale: false, cachedAt: hit.t });
     return hit.v as T;
   }
   try {
-    const v = await req<T>(path, {}, userId);
+    // Провенанс едет вместе с запросом: `req` мог отдать значение из
+    // долговременного кэша, и выдавать его за свежий ответ нельзя.
+    const provenance: CacheProvenance = { servedFromDurableCache: false };
+    const v = await req<T>(path, { provenance }, userId);
+    if (provenance.servedFromDurableCache) {
+      // Ни возраст, ни запись в кэш не обновляем: значение старое, и следующий
+      // вызов обязан снова пойти в сеть, а не жить с подновлённой меткой.
+      rememberCacheMeta({ path, fromCache: true, stale: true, cachedAt: hit?.t });
+      return v;
+    }
     const now = Date.now();
     _cache.set(k, { t: now, v });
     await saveDurableCache(path, userId, v);
-    _lastCachedGetMeta = { path, fromCache: false, stale: false, cachedAt: now };
+    rememberCacheMeta({ path, fromCache: false, stale: false, cachedAt: now });
     return v;
   } catch (error) {
     if (canFallbackToCache(error)) {
@@ -179,17 +208,17 @@ export async function cachedGet<T>(path: string, userId?: string): Promise<T> {
           /* silent-catch-ok: telemetry must never prevent a valid stale-cache fallback */
         }
         _cache.set(k, { t: Date.now(), v: fallback });
-        _lastCachedGetMeta = {
+        rememberCacheMeta({
           path,
           fromCache: true,
           stale: true,
           cachedAt: Date.now(),
           errorStatus: status,
-        };
+        });
         return fallback;
       }
     }
-    _lastCachedGetMeta = { path, fromCache: false, stale: false };
+    rememberCacheMeta({ path, fromCache: false, stale: false });
     throw error;
   }
 }
@@ -299,13 +328,18 @@ export function authHeaders(userId?: string | null): Record<string, string> {
 
 const REQUEST_TIMEOUT_MS = 20_000;
 
+/** Откуда пришло значение: сеть или долговременный кэш после сбоя (#317). */
+export type CacheProvenance = { servedFromDurableCache: boolean };
+
 export type ReqOptions = RequestInit & {
+  /** Заполняется `req`, если ответ подменён значением из кэша. */
+  provenance?: CacheProvenance;
   /** Disable durable cache when absence itself controls a write action. */
   cacheFallback?: boolean;
 };
 
 export async function req<T>(path: string, opts: ReqOptions = {}, userId?: string): Promise<T> {
-  const { cacheFallback = true, ...fetchOpts } = opts;
+  const { cacheFallback = true, provenance, ...fetchOpts } = opts;
   const isFormData = typeof FormData !== 'undefined' && fetchOpts.body instanceof FormData;
   const headers: Record<string, string> = {
     ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
@@ -386,7 +420,12 @@ export async function req<T>(path: string, opts: ReqOptions = {}, userId?: strin
   } catch (error) {
     if (isGet && cacheFallback && canFallbackToCache(error)) {
       const fallback = await readDurableCache<T>(path, userId);
-      if (fallback !== null) return fallback;
+      if (fallback !== null) {
+        // Значение подменено кэшем: сообщаем вызывающему, иначе он выдаст
+        // старые данные за свежий ответ (#317).
+        if (provenance) provenance.servedFromDurableCache = true;
+        return fallback;
+      }
     }
     throw error;
   }
