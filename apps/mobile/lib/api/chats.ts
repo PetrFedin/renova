@@ -1,6 +1,7 @@
 /** API: chats */
 import {req, cachedGet, API_BASE, ApiError, authHeaders} from './client';
 import type { ChatDetail, ChatMessage, ChatThread, User } from './types';
+import { isAmbiguousWriteFailure } from './failurePolicy';
 
 export type ChatInviteDeliveryStatus =
   | 'not_queued'
@@ -279,7 +280,8 @@ export const chatsApi = {
         userId,
       );
     } catch (e) {
-      if (e instanceof ApiError) throw e;
+      // Сервер ответил отказом — повторять нечего (#317).
+      if (!isAmbiguousWriteFailure(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/chats/${threadId}/messages`,
