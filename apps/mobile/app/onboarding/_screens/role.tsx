@@ -21,7 +21,9 @@ export default function RoleScreen() {
   const { demoLogin, loginWithSms, refreshMe } = useRenova();
   const [mode, setMode] = useState<Mode>(DEMO_LOGIN_ENABLED ? 'demo' : 'sms');
   const [role, setRole] = useState<UserRole>('customer');
-  const [phone, setPhone] = useState('+79001234567');
+  // Пустое поле, а не чужой номер: предзаполненный «+79001234567» дописывался
+  // к тому, что вводил человек, и уходил на сервер склейкой из двух номеров.
+  const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const [codeSent, setCodeSent] = useState(false);
