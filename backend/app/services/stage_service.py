@@ -49,17 +49,32 @@ async def add_comment(db: AsyncSession, stage_id: str, user_id: str, role: str, 
     return c
 
 
+def _photo_key_from_link(link: str) -> str:
+    """Ключ хранилища по ссылке на файл."""
+    key = link.split("/media/")[-1] if "/media/" in link else link.rsplit("/", 1)[-1]
+    return key if "/" in key else f"photos/{key}"
+
+
 async def add_photo(db: AsyncSession, stage_id: str, user_id: str, image_data: str | None, caption: str | None, *, storage_key: str | None = None, image_url: str | None = None) -> StagePhoto:
-    if storage_key and image_url:
-        key, url = storage_key, image_url
+    """Принять фото любым способом, который обещает StagePhotoIn.
+
+    Схема разрешает ``image_data``, ``storage_key`` и ``image_url`` по
+    отдельности. Раньше готовый файл принимался только когда переданы **оба**
+    поля сразу, а одиночный ключ или ссылка проваливались в декодирование
+    base64 и давали 500. Фото — обязательный пункт гейта сдачи этапа, так что
+    клиент, заливающий файл в хранилище отдельно, сдать этап не мог.
+    """
+    if storage_key or image_url:
+        key = storage_key or _photo_key_from_link(image_url or "")
+        url = image_url or storage_svc.public_url(key)
     elif image_data and (image_data.startswith('http') or '/media/' in image_data):
-        key = image_data.split('/media/')[-1] if '/media/' in image_data else image_data.rsplit('/', 1)[-1]
-        url = image_data if image_data.startswith('http') else f"{storage_svc.settings.public_base_url if False else ''}"
-        from app.core.config import settings
-        url = image_data if image_data.startswith('http') else f"{settings.public_base_url}/api/v1/media/{key}"
-        key = key if '/' in key else f"photos/{key}"
+        key = _photo_key_from_link(image_data)
+        url = image_data if image_data.startswith('http') else storage_svc.public_url(key)
+    elif image_data:
+        key, url = await storage_svc.save_image(image_data, folder="stages")
     else:
-        key, url = await storage_svc.save_image(image_data or '', folder="stages")
+        # Пустой запрос — ошибка ввода, а не падение сервера.
+        raise ValueError("stage_photo_source_required")
     p = StagePhoto(stage_id=stage_id, user_id=user_id, caption=caption, storage_key=key, image_url=url)
     db.add(p)
     await db.commit()

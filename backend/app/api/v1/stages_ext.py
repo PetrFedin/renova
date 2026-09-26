@@ -194,15 +194,26 @@ async def add_photo(
     stage = await stage_svc.get_stage_full(db, stage_id)
     if not stage or stage.project_id != project_id:
         raise HTTPException(404, "Этап не найден")
-    photo = await stage_svc.add_photo(
-        db,
-        stage_id,
-        user.id,
-        body.image_data,
-        body.caption,
-        storage_key=body.storage_key,
-        image_url=body.image_url,
-    )
+    try:
+        photo = await stage_svc.add_photo(
+            db,
+            stage_id,
+            user.id,
+            body.image_data,
+            body.caption,
+            storage_key=body.storage_key,
+            image_url=body.image_url,
+        )
+    except ValueError as error:
+        # Пустой запрос — ошибка ввода. Раньше он доходил до декодирования
+        # base64 и отдавался пользователю как 500.
+        raise HTTPException(
+            422,
+            detail={
+                "code": str(error),
+                "message": "Приложите файл, ссылку или ключ хранилища",
+            },
+        ) from error
     return {
         "id": photo.id,
         "caption": photo.caption,
