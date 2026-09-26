@@ -15,7 +15,16 @@ export function RoleDetailPicker({ role }: { role: 'customer' | 'contractor' }) 
       <Text style={s.head}>Детализация · {role === 'customer' ? 'заказчик' : 'исполнитель'}</Text>
       <View style={s.row}>
         {OPT.map(o => (
-          <Pressable key={o} style={[s.chip, level === o && s.on]} onPress={async () => { await setDetailLevel(o); setLevel(o); }}>
+          <Pressable
+            key={o}
+            style={[s.chip, level === o && s.on]}
+            // Был `generic`: нажимается, но не объявлено ни роли, ни имени —
+            // читалка вообще не считала это управлением.
+            accessibilityRole="radio"
+            accessibilityState={{ selected: level === o, checked: level === o }}
+            accessibilityLabel={`Вид главной: ${LBL[o]}`}
+            onPress={async () => { await setDetailLevel(o); setLevel(o); }}
+          >
             <Text style={[s.t, level === o && s.tOn]}>{LBL[o]}</Text>
           </Pressable>
         ))}
