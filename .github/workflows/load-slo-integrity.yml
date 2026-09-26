@@ -295,7 +295,7 @@ jobs:
           PY
       - name: Upload staging load evidence
         if: always() && steps.k6.outcome != 'skipped'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: load-slo-${{ inputs.scenario }}-${{ inputs.release_sha }}
           retention-days: 90

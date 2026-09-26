@@ -136,7 +136,7 @@ jobs:
           PY
       - name: Upload receipt diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: push-receipt-reconciliation-diagnostics
           path: backend/push-receipt-reconciliation.log

@@ -155,7 +155,7 @@ jobs:
 
       - name: Upload container diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-image-diagnostics
           if-no-files-found: ignore
@@ -256,7 +256,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload immutable backend image identity
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-image-identity
           retention-days: 90

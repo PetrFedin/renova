@@ -118,7 +118,7 @@ jobs:
           timeout 240s poetry run pytest -vv -s --tb=short tests/test_project_create_atomicity.py 2>&1 | tee project-create-contracts.log
       - name: Upload project creation diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: project-creation-contract-diagnostics
           path: backend/project-create-contracts.log
@@ -155,7 +155,7 @@ jobs:
           timeout 240s poetry run pytest -vv -s --tb=short tests/test_work_acceptance_decision_integrity*.py 2>&1 | tee acceptance-decision-contracts.log
       - name: Upload acceptance decision diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: acceptance-decision-contract-diagnostics
           path: backend/acceptance-decision-contracts.log
@@ -192,7 +192,7 @@ jobs:
           timeout 240s poetry run pytest -vv -s --tb=short tests/test_stage_mutation_integrity*.py 2>&1 | tee stage-mutation-contracts.log
       - name: Upload stage mutation diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: stage-mutation-contract-diagnostics
           path: backend/stage-mutation-contracts.log
@@ -229,7 +229,7 @@ jobs:
           timeout 240s poetry run pytest -vv -s --tb=short tests/test_team_invite_atomicity.py tests/test_team_lifecycle_integrity.py 2>&1 | tee team-lifecycle-contracts.log
       - name: Upload team lifecycle diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: team-lifecycle-contract-diagnostics
           path: backend/team-lifecycle-contracts.log
@@ -289,7 +289,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload backend test diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-test-diagnostics
           path: |
