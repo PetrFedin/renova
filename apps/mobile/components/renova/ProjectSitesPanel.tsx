@@ -4,6 +4,7 @@ import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';
 import { buildProjectSites } from '@/lib/domain/projectSites';
 import type { ProjectDetail, ReceiptItem, MaterialPick } from '@/lib/api';
+import { stageDisplayLabel } from '@/constants/labels';
 import { objectTabRoute, type OsRole } from '@/constants/osSections';
 import { OsWidgetGrid, type OsWidget } from '@/components/renova/os/OsWidgetStrip';
 
@@ -50,7 +51,7 @@ export function ProjectSitesPanel({
           {site.stages.slice(0, 4).map((st) => (
             <View key={st.id} style={s.stageRow}>
               <Text style={s.stageName} numberOfLines={1}>{st.name}</Text>
-              <Text style={s.stageSt}>{st.display_status || st.status}</Text>
+              <Text style={s.stageSt}>{stageDisplayLabel(st)}</Text>
             </View>
           ))}
         </View>

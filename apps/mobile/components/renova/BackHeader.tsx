@@ -18,10 +18,24 @@ function NavActions({ returnTo }: { returnTo?: string | string[] }) {
   const { user } = useRenova();
   return (
     <View style={s.actions}>
-      <Pressable onPress={() => goBack(returnTo, user?.role)} style={s.btn} hitSlop={8} accessibilityLabel="Назад">
+      {/* Имя было, роли не было: в дереве доступности обе кнопки шапки
+          читались как обычный текст — и это шапка каждого экрана со стеком. */}
+      <Pressable
+        onPress={() => goBack(returnTo, user?.role)}
+        style={s.btn}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel="Назад"
+      >
         <Ionicons name="chevron-back" size={24} color={RenovaTheme.colors.primary} />
       </Pressable>
-      <Pressable onPress={() => goHome(user?.role)} style={s.btn} hitSlop={8} accessibilityLabel="На главную">
+      <Pressable
+        onPress={() => goHome(user?.role)}
+        style={s.btn}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel="На главную"
+      >
         <Ionicons name="home-outline" size={20} color={RenovaTheme.colors.textMuted} />
       </Pressable>
     </View>
