@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "policy": "distilled-not-vendored",
+  "verified_on": "2026-09-09",
+  "sources": [
+    {
+      "id": "context-engineering",
+      "repository": "muratcankoylan/Agent-Skills-for-Context-Engineering",
+      "commit": "6dbe1a1d868eab51a3bc9011b0f55e2891513e40",
+      "license": "MIT",
+      "source_paths": ["SKILL.md"],
+      "adopted_as": ["context-engineering"],
+      "scope": "selective context, progressive loading, handoff, multi-agent context isolation"
+    },
+    {
+      "id": "ui-ux-review",
+      "repository": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "commit": "4aad0584d92131626b16d4ff4d77f0455385013c",
+      "license": "MIT",
+      "source_paths": [".claude/skills/ui-ux-pro-max/SKILL.md"],
+      "adopted_as": ["ui-ux-review"],
+      "scope": "UI/UX review heuristics used only beneath Renova design and navigation canon"
+    },
+    {
+      "id": "writing-quality",
+      "repository": "hardikpandya/stop-slop",
+      "commit": "8da1f030185bdfe8471220585162991eaeb970e9",
+      "license": "MIT",
+      "source_paths": ["SKILL.md"],
+      "adopted_as": ["writing-quality"],
+      "scope": "concise human prose, specificity, reduced filler and formulaic AI phrasing"
+    }
+  ]
+}
