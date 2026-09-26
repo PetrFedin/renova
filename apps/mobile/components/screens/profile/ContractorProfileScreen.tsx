@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, View, Text, TextInput, Alert, Platform } from 'react-native';
+import { ScrollView, View, Text, TextInput, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { PortalSharePanel } from '@/components/renova/PortalSharePanel';
@@ -22,6 +22,7 @@ import { profileScreenStyles as ps } from './profileScreenStyles';
 import { alertTeamInviteSent, alertTeamCreated, alertRequisitesSaved } from '@/lib/fieldCommsNav';
 import * as WebBrowser from 'expo-web-browser';
 import { reportCatch, reportError } from '@/lib/reportError';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 /** Без дубля шапки «Ещё» (Архив там). Sprint IA. */
 const EXTRA_ITEMS = [
@@ -140,7 +141,7 @@ function TeamSection() {
                 setPhone('');
                 alertTeamInviteSent('contractor');
               } catch (e: unknown) {
-                Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось пригласить');
+                showActionConfirm({ title: 'Ошибка', message: e instanceof Error ? e.message : 'Не удалось пригласить' });
               }
             }}
           />
@@ -168,7 +169,7 @@ function TeamSection() {
               alertTeamCreated('contractor');
             } catch (e: unknown) {
               setTeam(null);
-              Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось создать бригаду');
+              showActionConfirm({ title: 'Ошибка', message: e instanceof Error ? e.message : 'Не удалось создать бригаду' });
             }
           }}
         />
@@ -237,7 +238,7 @@ export function ContractorProfileScreen() {
               });
               alertRequisitesSaved('contractor');
             } catch {
-              Alert.alert('Ошибка', 'Не удалось сохранить реквизиты');
+              showActionConfirm({ title: 'Ошибка', message: 'Не удалось сохранить реквизиты' });
             }
           }}
         />
@@ -297,7 +298,7 @@ export function ContractorProfileScreen() {
             variant="outline"
             onPress={async () => {
               if (!user || inn.length < 12) {
-                Alert.alert('ИНН', 'Введите 12 цифр ИНН');
+                showActionConfirm({ title: 'ИНН', message: 'Введите 12 цифр ИНН' });
                 return;
               }
               try {
@@ -305,7 +306,7 @@ export function ContractorProfileScreen() {
                 setMsg(r.message || (r.is_npd ? 'НПД подтверждён — badge в профиле' : 'Не найден в реестре НПД'));
                 await refreshMe();
               } catch {
-                Alert.alert('ФНС', 'Сервис недоступен');
+                showActionConfirm({ title: 'ФНС', message: 'Сервис недоступен' });
               }
             }}
           />
@@ -319,10 +320,10 @@ export function ContractorProfileScreen() {
                 setMsg(start.message);
                 if (start.auth_url) {
                   await WebBrowser.openBrowserAsync(start.auth_url);
-                  Alert.alert(
-                    'Мой налог',
-                    'После входа в ЛК НПД вернитесь в приложение. Если code не пришёл автоматически — статус останется authorization_started.',
-                  );
+                  showActionConfirm({
+                    title: 'Мой налог',
+                    message: 'После входа в ЛК НПД вернитесь в приложение. Если code не пришёл автоматически — статус останется authorization_started.',
+                  });
                 } else if (start.state) {
                   // Dev: demo complete без CLIENT_ID
                   const done = await api.moyNalogOAuthCallback(user.id, {
@@ -333,7 +334,7 @@ export function ContractorProfileScreen() {
                 }
                 await refreshMe();
               } catch (e: any) {
-                Alert.alert('Мой налог', e?.message || 'OAuth недоступен');
+                showActionConfirm({ title: 'Мой налог', message: e?.message || 'OAuth недоступен' });
               }
             }}
           />
@@ -347,7 +348,7 @@ export function ContractorProfileScreen() {
                 setMsg(r.message || `Статус: ${r.status || 'updated'}`);
                 await refreshMe();
               } catch (e: any) {
-                Alert.alert('Мой налог', e?.message || 'Интеграция недоступна (нужен OAuth или MOY_NALOG_ENABLED)');
+                showActionConfirm({ title: 'Мой налог', message: e?.message || 'Интеграция недоступна (нужен OAuth или MOY_NALOG_ENABLED)' });
               }
             }}
           />
@@ -367,7 +368,7 @@ export function ContractorProfileScreen() {
                   setMsg(r.message || 'Связь снята');
                   await refreshMe();
                 } catch (e: any) {
-                  Alert.alert('Мой налог', e?.message || 'Не удалось отключить');
+                  showActionConfirm({ title: 'Мой налог', message: e?.message || 'Не удалось отключить' });
                 }
               }}
             />
@@ -381,7 +382,7 @@ export function ContractorProfileScreen() {
                 const data = await api.exportMyData(user.id);
                 await exportGdprJsonFile(data, 'renova-export.json');
               } catch {
-                Alert.alert('Ошибка', 'Не удалось выгрузить данные');
+                showActionConfirm({ title: 'Ошибка', message: 'Не удалось выгрузить данные' });
               }
             }}
           />
@@ -398,9 +399,9 @@ export function ContractorProfileScreen() {
               if (!user?.id) return;
               try {
                 const r = await api.revokeAllSessions(user.id);
-                Alert.alert('Готово', `Сессий закрыто: ${r.revoked}. Войдите снова на других устройствах.`);
+                showActionConfirm({ title: 'Готово', message: `Сессий закрыто: ${r.revoked}. Войдите снова на других устройствах.` });
               } catch (e) {
-                Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось');
+                showActionConfirm({ title: 'Ошибка', message: e instanceof Error ? e.message : 'Не удалось' });
               }
             }}
           />
