@@ -1,5 +1,5 @@
 """Media download / upload-url. Nested document keys + membership ACL (Wave 3)."""
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
 from fastapi.responses import RedirectResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 import mimetypes
@@ -33,12 +33,67 @@ async def _user_from_auth(
     return user
 
 
+#: A phone photo at full quality. Above this the client must downscale.
+MAX_MEDIA_BYTES = 20 * 1024 * 1024
+
+
 @router.post("/upload-url")
 async def upload_url(user: User = Depends(get_current_user)):
+    """Where to put a photo.
+
+    With S3 configured the client PUTs to a presigned URL. Without it there is
+    no presigned URL to give — and the key returned here is not a promise that
+    anything was stored. The client used to treat it as one: it skipped the PUT
+    when `upload_url` was null and returned the key as a success, so the
+    reference was saved against a file that did not exist and every later read
+    answered 404.
+
+    `direct_upload_url` is the fallback that makes local storage work instead
+    of failing silently. It is always present, so a client can always complete
+    an upload.
+    """
     key = f"photos/{uuid.uuid4().hex}.jpg"
     url = storage_svc.presigned_put(key)
-    pub = f"{settings.public_base_url}/api/v1/media/{key}"
-    return {"key": key, "upload_url": url, "public_url": pub}
+    base = (settings.public_base_url or "").rstrip("/")
+    return {
+        "key": key,
+        "upload_url": url,
+        "direct_upload_url": f"{base}/api/v1/media/upload",
+        "public_url": f"{base}/api/v1/media/{key}",
+    }
+
+
+@router.post("/upload")
+async def upload_media(
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+):
+    """Accept the bytes directly, for deployments without object storage.
+
+    Returns the key the caller must store. Unlike the presigned path, this one
+    cannot report success without having written the file.
+    """
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "empty_file")
+    if len(data) > MAX_MEDIA_BYTES:
+        raise HTTPException(413, "file_too_large")
+
+    content_type = (
+        file.content_type
+        or mimetypes.guess_type(file.filename or "")[0]
+        or "application/octet-stream"
+    )
+    if not content_type.startswith("image/"):
+        raise HTTPException(415, "unsupported_media_type")
+
+    key, href = await storage_svc.save_bytes(
+        data,
+        folder="photos",
+        filename=file.filename or "photo.jpg",
+        content_type=content_type,
+    )
+    return {"key": key, "public_url": href}
 
 
 @router.get("/presign/{file_path:path}")
