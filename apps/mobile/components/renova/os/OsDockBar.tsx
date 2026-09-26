@@ -2,7 +2,7 @@
 import { useCallback, useMemo, useState, useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import type { PressableStateCallbackType } from 'react-native';
-import { router, usePathname, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { router, usePathname, useFocusEffect, useGlobalSearchParams } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { TabIcon } from '@/components/renova/TabIcon';
 import { ChatBadge } from '@/components/renova/chat/ChatBadge';
@@ -27,7 +27,11 @@ import { activeDockItemId, getBudgetHubLabel } from '@/lib/navigation/navigation
 
 export function OsDockBar({ role }: { role: OsRole }) {
   const pathname = usePathname();
-  const params = useLocalSearchParams<Record<string, string | string[]>>();
+  // Именно global: док рисует **макет** `(tabs)`, а `tab=estimate` принадлежит
+  // открытому экрану. Локальный хук отдаёт параметры своего маршрута, то есть
+  // макета, и до дока `tab` не доходил вовсе — кнопка «Смета» никогда не
+  // подсвечивалась, вместо неё горел «Объект».
+  const params = useGlobalSearchParams<Record<string, string | string[]>>();
   const bottomPad = useBottomInset();
   const { user, activeProject } = useRenova();
   const detailLevel = useDetailLevel();
