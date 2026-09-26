@@ -40,6 +40,13 @@ def _conversion_error(error: ValueError) -> HTTPException:
         "lead_conversion_project_unavailable", "lead_conversion_project_scope_mismatch",
     }:
         status = 409
+    elif code == "subscription_required":
+        # Тот же ответ, что и на штатном пути назначения исполнителя:
+        # 402 с понятным текстом, а не 422 с голым кодом.
+        return HTTPException(
+            402,
+            detail={"code": code, "message": "Нужен Pro для нового объекта"},
+        )
     else:
         status = 422
     return HTTPException(status, detail={"code": code})

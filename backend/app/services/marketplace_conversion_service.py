@@ -22,6 +22,31 @@ async def _conversion_project(
     return await creation._loaded_project(db, project_id)
 
 
+
+async def contractor_may_take_one_more(db: AsyncSession, *, contractor_id: str) -> bool:
+    """Может ли исполнитель взять ещё один объект на своём тарифе.
+
+    Назначение исполнителя на объект этот лимит проверяет, а конвертация
+    заявки биржи — не проверяла: результат тот же, объектов становится
+    больше, а Pro оплачивать незачем. Условие здесь то же самое, что и в
+    ``project_assignment_service``, чтобы пути не расходились.
+    """
+    from sqlalchemy import func
+
+    from app.core.config import settings
+    from app.services.subscription_service import is_pro
+
+    taken = int(
+        await db.scalar(
+            select(func.count()).select_from(Project).where(Project.contractor_id == contractor_id)
+        )
+        or 0
+    )
+    if taken < settings.contractor_free_project_limit:
+        return True
+    return await is_pro(db, contractor_id)
+
+
 async def convert_lead(
     db: AsyncSession,
     *,
@@ -96,6 +121,11 @@ async def convert_lead(
             return creation.ProjectCreateResult(project, True)
         if lead.status == JobLeadStatus.taken:
             raise ValueError("lead_conversion_record_missing")
+        # Лимит проверяется только для НОВОЙ конвертации: повтор уже созданного
+        # объекта возвращается веткой выше, и упираться в лимит, который занял
+        # он сам, было бы отказом в том, что уже сделано.
+        if not await contractor_may_take_one_more(db, contractor_id=contractor_id):
+            raise ValueError("subscription_required")
         if not math.isfinite(float(lead.area_sqm)) or lead.area_sqm <= 0:
             raise ValueError("project_area_invalid")
 
