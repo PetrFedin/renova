@@ -6,6 +6,7 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import LineType, Project, User, UserRole
 from app.services import project_service as proj_svc
+from app.services import room_spend_service
 
 router = APIRouter(tags=["analytics"])
 
@@ -38,16 +39,41 @@ async def budget_alerts(project_id: str, threshold_pct: float = 5, user: User = 
     from app.models.entities import EstimateLine, Room, Receipt
     p = await require_project(db, project_id, user, write=False)
     rooms = (await db.execute(select(Room).where(Room.project_id == project_id))).scalars().all()
+    all_lines = (await db.execute(select(EstimateLine).where(EstimateLine.project_id == project_id))).scalars().all()
+    all_receipts = (await db.execute(select(Receipt).where(Receipt.project_id == project_id))).scalars().all()
+    # Расходы — основной источник трат по комнате, и предупреждение о
+    # перерасходе их не видело вовсе: считалось `max(смета-факт, чеки)`.
+    all_expenses = (
+        await db.execute(
+            select(Expense).where(
+                Expense.project_id == project_id,
+                Expense.status.in_(("confirmed", "pending_receipt")),
+            )
+        )
+    ).scalars().all()
     out = []
     for room in rooms:
-        lines = (await db.execute(select(EstimateLine).where(EstimateLine.room_id == room.id))).scalars().all()
-        plan = sum(l.quantity_planned * l.unit_price for l in lines)
-        fact = sum(l.quantity_actual * l.unit_price for l in lines)
-        recs = (await db.execute(select(Receipt).where(Receipt.project_id == project_id, Receipt.room_id == room.id))).scalars().all()
-        receipts_spent = sum(r.amount for r in recs)
-        total_fact = max(fact, receipts_spent)
-        pct = (total_fact / plan * 100) if plan else 0
-        out.append({"room_id": room.id, "room_name": room.name, "plan": plan, "fact": fact, "receipts_spent": round(receipts_spent, 2), "total_spent": round(total_fact, 2), "over_pct": round(pct - 100, 1) if plan else 0})
+        spend = room_spend_service.room_spend(
+            room.id,
+            estimate_lines=all_lines,
+            receipts=all_receipts,
+            expenses=all_expenses,
+        )
+        plan = spend.plan
+        fact = spend.estimate_fact
+        receipts_spent = spend.receipts_spent
+        total_fact = spend.total_spent
+        out.append({
+            "room_id": room.id,
+            "room_name": room.name,
+            "plan": plan,
+            "fact": fact,
+            "receipts_spent": receipts_spent,
+            # Расходы теперь видны и в ответе, а не только внутри итога.
+            "expense_spent": spend.expense_spent,
+            "total_spent": total_fact,
+            "over_pct": spend.over_pct,
+        })
         skip_notify = False
         thr = (getattr(room, 'budget_alert_pct', None) or threshold_pct) / 100
         if plan and fact > plan * (1 + thr) and p.customer_id and user.id == p.customer_id:
@@ -157,18 +183,20 @@ async def expenses_summary(project_id: str, user: User = Depends(get_current_use
     expenses = (await db.execute(select(Expense).where(Expense.project_id == project_id, Expense.status.in_(("confirmed", "pending_receipt"))))).scalars().all()
     by_room = []
     for room in rooms:
-        rl = [l for l in lines if l.room_id == room.id]
-        plan = sum(l.quantity_planned * l.unit_price for l in rl)
-        estimate_fact = sum(l.quantity_actual * l.unit_price for l in rl)
-        receipt_spent = sum(r.amount for r in receipts if r.room_id == room.id)
-        expense_spent = round(sum(e.amount for e in expenses if e.room_id == room.id and e.status == "confirmed"), 2)
+        spend = room_spend_service.room_spend(
+            room.id, estimate_lines=lines, receipts=receipts, expenses=expenses,
+        )
+        plan = spend.plan
+        estimate_fact = spend.estimate_fact
+        receipt_spent = spend.receipts_spent
+        expense_spent = spend.expense_spent
         by_room.append({
             "room_id": room.id, "room_name": room.name, "room_type": room.room_type,
             "floor_level": getattr(room, "floor_level", 1) or 1,
             "plan": round(plan, 2), "estimate_fact": round(estimate_fact, 2),
             "receipts_spent": round(receipt_spent, 2),
             "expense_spent": expense_spent,
-            "total_spent": round(max(estimate_fact, expense_spent, receipt_spent), 2),
+            "total_spent": spend.total_spent,
         })
     by_stage = []
     for st in stages:
