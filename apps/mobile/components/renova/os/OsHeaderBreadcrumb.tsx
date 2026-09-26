@@ -132,6 +132,9 @@ export function OsPathBar({ role }: { role: OsRole }) {
                     onPress={() => goCrumb(role, c.routeName, ctx)}
                     hitSlop={6}
                     accessibilityRole="button"
+                    // Крошка без имени читалась как безымянная кнопка, хотя
+                    // это единственный способ вернуться на шаг назад по пути.
+                    accessibilityLabel={isLast ? c.label : `Перейти: ${c.label}`}
                     accessibilityState={{ disabled: isLast }}
                     disabled={isLast}
                   >
