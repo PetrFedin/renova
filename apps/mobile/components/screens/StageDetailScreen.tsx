@@ -1,8 +1,9 @@
 /** Экран этапа: приёмка above fold, вторичное — в accordion */
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { ScrollView, View, Text, Alert, TextInput, StyleSheet, Pressable, Image } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { BackHeader } from '@/components/renova/BackHeader';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import * as ImagePicker from 'expo-image-picker';
 import { RenovaTheme, formatRub, card } from '@/constants/Theme';
 import { inputField } from '@/constants/uiTokens';
@@ -103,6 +104,9 @@ export function StageDetailScreen() {
   const [contractGate, setContractGate] = useState<{ ok: boolean; message?: string; pending_titles?: string[] } | null>(null);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectQualityScore, setRejectQualityScore] = useState<number | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const stageRef = useRef<StageDetail | null>(null);
+  stageRef.current = stage;
   const canWrite = useWriteAllowed();
 
   const reload = useCallback(async () => {
@@ -110,9 +114,13 @@ export function StageDetailScreen() {
     try {
       const st = await api.getStage(user.id, activeProject.id, id);
       setStage(st);
+      setLoadError(false);
     } catch (e) {
-      // 429 / сеть: оставляем предыдущий stage, не роняем экран (Uncaught)
+      // 429 / сеть: оставляем предыдущий stage, не роняем экран (Uncaught).
+      // Но если stage ещё ни разу не загрузился, «Загрузка…» иначе висит
+      // вечно без кнопки повтора — человек застревает на пустом экране.
       reportError(isRateLimitError(e) ? 'stage.reload.rate_limit' : 'stage.reload.getStage', e, { stageId: id });
+      if (stageRef.current === null) setLoadError(true);
       return;
     }
     // Вторичные GET — с catch; при rate_limit не затираем UI fail-closed без нужды
@@ -207,6 +215,14 @@ export function StageDetailScreen() {
   };
 
   if (!activeProject || !stage || !user) {
+    if (loadError && activeProject && user) {
+      return (
+        <>
+          <BackHeader title="Этап" returnTo={returnTo} />
+          <LoadErrorState title="Не удалось загрузить этап" onRetry={() => { void reload(); }} />
+        </>
+      );
+    }
     return (
       <>
         <BackHeader title="Этап" returnTo={returnTo} />
