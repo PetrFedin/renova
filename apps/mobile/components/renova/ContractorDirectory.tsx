@@ -8,29 +8,26 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { reportCatch } from '@/lib/reportError';
+import { contractorMeta } from '@/lib/domain/contractorMeta';
 
 type C = {
   id: string;
   name: string;
   company?: string;
   specialties?: string;
-  rating: number;
-  jobs_done?: number;
+  /** `null` — оценок никто не ставил; система отзывов ещё не заведена. */
+  rating: number | null;
+  jobs_done?: number | null;
   city?: string;
   score?: number;
+  /** Почему исполнитель в выдаче — словами, от сервера. */
+  match_basis?: string;
 };
 
 function contractorTitle(c: C): string {
   return c.company || c.name;
 }
 
-function contractorMeta(c: C): string {
-  const parts: string[] = [];
-  if (c.rating) parts.push(`★${c.rating}`);
-  if (c.specialties) parts.push(c.specialties.split(',')[0]?.trim() || c.specialties);
-  if (c.jobs_done) parts.push(`${c.jobs_done} объектов`);
-  return parts.join(' · ');
-}
 
 export function ContractorDirectory({
   userId,
@@ -107,6 +104,7 @@ export function ContractorDirectory({
           <View key={c.id} style={[s.card, isLinked && s.cardLinked]}>
             <Text style={s.name}>{contractorTitle(c)}</Text>
             <Text style={s.meta}>{contractorMeta(c)}</Text>
+            {c.match_basis ? <Text style={s.basis}>{c.match_basis}</Text> : null}
             {projectId && !linkedContractorId ? (
               <PrimaryButton
                 title={busyId === c.id ? '…' : 'Подключить'}
@@ -133,6 +131,10 @@ const s = StyleSheet.create({
     borderColor: RenovaTheme.colors.border,
     backgroundColor: RenovaTheme.colors.surface,
     gap: 6,
+  },
+  basis: {
+    fontSize: RenovaTheme.fontSize.caption,
+    color: RenovaTheme.colors.textMuted,
   },
   cardLinked: {
     borderColor: RenovaTheme.colors.successBorder,
