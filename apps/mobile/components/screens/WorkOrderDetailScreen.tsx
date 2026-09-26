@@ -14,9 +14,10 @@ import { api, ApiError, type WorkOrder } from '@/lib/api';
 import {
   WORK_STATUS_LABEL,
   hasCanonicalPaymentAction,
-  workActions,
   type WorkOrderStatus,
   type WorkTransitionAction,
+  waitingForText,
+  workActions,
 } from '@/lib/domain/workLifecycle';
 import { isWorkArchived } from '@/lib/domain/workArchive';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
@@ -118,6 +119,12 @@ export function WorkOrderDetailScreen() {
   const status = (workOrder.status in WORK_STATUS_LABEL ? workOrder.status : 'draft') as WorkOrderStatus;
   const room = activeProject.rooms?.find((item) => item.id === workOrder.room_id);
   const actions = canWrite ? workActions(status, role) : [];
+  /**
+   * Когда у роли нет хода вперёд, заголовок «Следующий шаг» оставался
+   * над единственной кнопкой «Отменить работу» — экран называл отмену
+   * следующим шагом. Пишем, чей ход на самом деле.
+   */
+  const waitingText = canWrite ? waitingForText(status, role) : null;
   const archived = isWorkArchived(status);
   const paymentAction = canWrite && hasCanonicalPaymentAction(status, role);
 
@@ -187,6 +194,7 @@ export function WorkOrderDetailScreen() {
         ) : null}
 
         {(actions.length > 0 || paymentAction) ? <Text style={s.section}>Следующий шаг</Text> : null}
+        {waitingText ? <Text style={s.waiting}>{waitingText}</Text> : null}
         {actions.map((action) => (
           <PrimaryButton
             key={action.next}
@@ -215,6 +223,7 @@ const s = StyleSheet.create({
   errorTitle: { ...screenTypography.listTitle, fontSize: 17 },
   errorText: { ...screenTypography.empty },
   section: { ...screenTypography.section, marginVertical: 12 },
+  waiting: { fontSize: 13, color: RenovaTheme.colors.textMuted, lineHeight: 18, marginTop: -6, marginBottom: 10 },
   archiveBanner: { backgroundColor: RenovaTheme.colors.surfaceMuted, padding: 10, borderRadius: 8, marginBottom: 10 },
   archiveText: { fontSize: 13, color: RenovaTheme.colors.textMuted, fontWeight: '600' },
   budgetRow: { marginTop: 4, marginBottom: 8 },
