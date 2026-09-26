@@ -89,6 +89,7 @@ async def release_health(
     from app.services import moy_nalog_oauth
     from app.services.automation_reminders_worker import automation_worker_metrics
     from app.services.capacity_runtime_service import capacity_runtime_snapshot
+    from app.services.document_ocr_runtime import validate_document_ocr_runtime
     from app.services.esign import list_providers
     from app.services.fns.receipt_verify import fns_receipt_health
     from app.services.otp_redis_recovery import recovery_snapshot as otp_store_health
@@ -118,6 +119,9 @@ async def release_health(
         api_pool=api_pool,
     )
     otp_store = otp_store_health()
+    document_ocr_mode = validate_document_ocr_runtime()
+    smtp_configured = bool((settings.smtp_host or "").strip())
+    ops_alert_recipient_configured = bool((settings.ops_alert_email or "").strip())
     kontur_mode = (settings.kontur_mode or "off").strip().lower()
     esign = {
         "kontur_mode": kontur_mode,
@@ -166,7 +170,25 @@ async def release_health(
             },
             "moy_nalog": moy_nalog,
             "esign": esign,
-            "smtp": {"configured": bool(settings.smtp_host)},
+            "smtp": {
+                "configured": smtp_configured,
+                "ops_alert_recipient_configured": ops_alert_recipient_configured,
+                "tls_enabled": bool(settings.smtp_use_tls),
+                "status": "configured_unverified" if smtp_configured else "not_configured",
+                # SMTP configuration or local provider acceptance is not evidence
+                # that the external alert destination received/acknowledged mail.
+                "external_delivery_confirmed": False,
+            },
+            "document_ocr": {
+                "mode": document_ocr_mode,
+                "status": "metadata_only" if document_ocr_mode == "metadata" else "off",
+                "content_ocr_available": False,
+                "content_read": False,
+                # The dedicated worker validates this runtime mode but deliberately
+                # does not start the legacy metadata-classification loop.
+                "background_worker_active": False,
+                "runtime_owner": None,
+            },
             "ollama_digest": {
                 "enabled": bool(settings.ollama_digest_enabled),
                 "base_url_set": bool(settings.ollama_base_url),

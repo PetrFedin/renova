@@ -20,6 +20,13 @@ def _release_digest() -> str:
     return value or "unknown"
 
 
+_SAFE_EVENT_FIELDS = (
+    "event_kind",
+    "probe_id",
+    "synthetic",
+)
+
+
 class JsonFormatter(logging.Formatter):
     """Stable structured log envelope with non-secret release/request context."""
 
@@ -35,6 +42,10 @@ class JsonFormatter(logging.Formatter):
             "artifact_digest": _release_digest(),
             "correlation_id": current_correlation_id(),
         }
+        for field in _SAFE_EVENT_FIELDS:
+            value = getattr(record, field, None)
+            if value is not None:
+                payload[field] = value
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
