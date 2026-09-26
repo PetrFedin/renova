@@ -4,7 +4,7 @@
  * (returnTo + крошки в одном ряду — без второго бара).
  */
 import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
-import { usePathname, useLocalSearchParams } from 'expo-router';
+import { usePathname, useGlobalSearchParams, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
 import { buildBreadcrumb, crumbHref, hubCrumbRoute } from '@/lib/breadcrumb';
@@ -23,7 +23,10 @@ function routeSegment(pathname: string): string {
 
 function useOsCrumbs(role: OsRole) {
   const pathname = usePathname();
-  const { tab, sub, filter } = useLocalSearchParams<{ tab?: string; sub?: string; filter?: string }>();
+  // Та же причина, что у дока: крошки рисует макет, а `tab`/`sub`/`filter`
+  // принадлежат открытому экрану. Поэтому путь обрывался на «Объект» и не
+  // показывал, на какой вкладке человек находится.
+  const { tab, sub, filter } = useGlobalSearchParams<{ tab?: string; sub?: string; filter?: string }>();
   const seg = routeSegment(pathname);
   const crumbs = buildBreadcrumb(role, pathname, {
     hubTab: typeof tab === 'string' ? tab : undefined,
