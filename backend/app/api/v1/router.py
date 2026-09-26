@@ -31,7 +31,7 @@ from app.api.v1 import warranty
 from app.api.v1 import (
     auth, activity, scratchpad, chat_inbox, work_orders, work_acceptances,
     budget_planner, purchases, documents, esign, ocr_worker, automation_worker, os, reports, marketplace, design_packages,
-    approvals, waste_orders, floor_plans, work_types, materials, rework_sla, kpi_history,
+    approvals, waste_orders, floor_plans, floor_plan_annotations, work_types, materials, rework_sla, kpi_history,
     project_checklists, checklist_templates, stage_reactions, articles, analytics, admin,
     audit, subscription, teams, export, push, articles_admin, calendar, change_orders,
     chats, estimate, fns, media, notifications, payments, projects, receipts, room_requests,
@@ -59,6 +59,7 @@ api_router.include_router(selections.router)
 api_router.include_router(approvals.router)
 api_router.include_router(waste_orders.router)
 api_router.include_router(floor_plans.router)
+api_router.include_router(floor_plan_annotations.router)
 api_router.include_router(work_types.router)
 api_router.include_router(work_orders.router)
 api_router.include_router(work_acceptances.router)
