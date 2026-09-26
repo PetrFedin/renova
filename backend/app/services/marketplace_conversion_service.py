@@ -108,6 +108,13 @@ async def convert_lead(
         project = await creation.prepare_project_in_transaction(
             db, customer_id=customer_id, payload=payload, participant_actor_id=actor_id,
         )
+        # Объект из заявки сразу с исполнителем — договор нужен с первого дня,
+        # иначе работы заблокированы гейтом, а подписывать нечего.
+        from app.services import project_document_service as documents
+
+        await documents.ensure_contract_draft(
+            db, project_id=project.id, created_by=customer_id,
+        )
         lead.status = JobLeadStatus.taken
         candidate_id = project.id
         created, entity_id = await commit_client_write(
