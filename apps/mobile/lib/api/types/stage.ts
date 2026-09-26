@@ -85,3 +85,21 @@ export type ProjectPlan = {
   capabilities?: { can_schedule: boolean };
   stages: StageDetail[];
 };
+
+/** Порядок оплаты по этапам — разнесение цены договора. */
+export type StagePaymentPlan = {
+  /** Цена договора: смета плюс одобренные доп. работы. */
+  total: number;
+  /** Сколько из неё привязано к этапам. */
+  distributed: number;
+  /** Разница. Число, а не флаг: «не сходится» не говорит, насколько. */
+  undistributed: number;
+  matches_total: boolean;
+  stages: {
+    id: string;
+    name: string;
+    sort_order: number;
+    weight_coefficient: number;
+    payment_amount: number;
+  }[];
+};
