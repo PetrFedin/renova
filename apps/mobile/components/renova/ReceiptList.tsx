@@ -125,8 +125,17 @@ export function ReceiptList({
             )}
           </View>
           {r.verified || r.source === 'manual' ? (
+            /*
+              Ручной чек — не проверенный и не «непроверенный»: его никто не
+              проверял и проверить нельзя. Раньше он получал бейдж «✓ ФНС»,
+              потому что сервер отдавал `verified: true` жёстко. Теперь у него
+              своя подпись, чтобы его не путали ни с подтверждённым ФНС, ни с
+              тем, чья проверка не прошла.
+            */
             <Text style={[s.badge, r.verified ? s.ok : s.pending]}>
-              {r.verified ? (fnsLive === false ? '✓ demo' : '✓ ФНС') : 'Не проверен'}
+              {r.verified
+                ? (fnsLive === false ? '✓ demo' : '✓ ФНС')
+                : r.source === 'manual' ? 'Внесён вручную' : 'Не проверен'}
             </Text>
           ) : (
             <Pressable onPress={() => reverify(r)} hitSlop={8}>
