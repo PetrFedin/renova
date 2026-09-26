@@ -619,6 +619,46 @@ def _in_app_delivery_status(row: DomainOutbox | None) -> str:
     return "in_app_queued"
 
 
+async def _notify_owner_about_invitation(
+    db: AsyncSession,
+    thread: ChatThread,
+    *,
+    inviter: User,
+    target: User | None,
+) -> None:
+    """Сообщить владельцу объекта о новом участнике его чата.
+
+    Молчит, если приглашает сам владелец или если приглашённый — он же.
+    """
+    from app.models.entities import Project
+
+    project = await db.get(Project, thread.project_id) if thread.project_id else None
+    owner_id = getattr(project, "customer_id", None)
+    if not owner_id or owner_id == inviter.id:
+        return
+    if target is not None and target.id == owner_id:
+        return
+
+    who = (target.full_name if target and target.full_name else None) or "новый участник"
+    await outbox.enqueue_once(
+        db,
+        parent_outbox_id=f"chat-invite-owner:{thread.id}:{(target.id if target else 'phone')}",
+        effect_key="delivery:in_app",
+        aggregate_type="chat_invitation",
+        aggregate_id=thread.id,
+        event_type=outbox.NOTIFICATION_EVENT,
+        payload={
+            "user_id": owner_id,
+            "project_id": thread.project_id,
+            "notification_type": "chat_message",
+            "title": "Новый участник в чате объекта",
+            "body": f"{inviter.full_name or 'Исполнитель'} пригласил(а): {who}",
+            "link_path": f"/chat/{thread.id}",
+            "return_to": "/(customer)/(tabs)/chat",
+        },
+    )
+
+
 async def invite_participant(
     db: AsyncSession,
     thread: ChatThread,
@@ -660,6 +700,12 @@ async def invite_participant(
         normalized_phone=normalized_phone,
         profile_code=normalized_code,
     )
+
+    # Владелец объекта должен узнать, что в чате его объекта появился новый
+    # человек. Раньше приглашение проходило молча: исполнитель добавлял
+    # постороннего, и тот читал переписку вместе со счетами, а заказчик об
+    # этом нигде не видел.
+    await _notify_owner_about_invitation(db, thread, inviter=inviter, target=target)
 
     invite_text = (
         f"Вас пригласили в чат «{thread.title}». "
@@ -798,3 +844,43 @@ async def create_payment_message(
     text = f"💳 Счёт: {title} · {amount:.0f} ₽"
     meta = {"payment_id": pay.id, "amount": amount}
     return await send_message(db, thread, user_id, role, text, "payment", meta=meta)
+
+async def remove_participant(
+    db: AsyncSession,
+    thread: ChatThread,
+    *,
+    actor: User,
+    project_customer_id: str | None,
+    target_user_id: str,
+) -> bool:
+    """Убрать участника из треда.
+
+    Маршрута на это не было вовсе: пригласить в чат объекта можно было, а
+    убрать — нет. Приглашённый читал всю переписку, включая счета, пока
+    существует тред.
+
+    Убрать может владелец объекта — чат принадлежит его объекту — и сам
+    участник. Приглашающий этого права не получает: иначе исполнитель мог бы
+    выставить из чата заказчика.
+    """
+    from app.models.entities import ChatThreadParticipant
+
+    is_owner = bool(project_customer_id and actor.id == project_customer_id)
+    is_self = actor.id == target_user_id
+    if not (is_owner or is_self):
+        raise ValueError("chat_participant_remove_forbidden")
+
+    participant = (
+        await db.execute(
+            select(ChatThreadParticipant).where(
+                ChatThreadParticipant.thread_id == thread.id,
+                ChatThreadParticipant.user_id == target_user_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if participant is None:
+        return False
+
+    await db.delete(participant)
+    await db.commit()
+    return True

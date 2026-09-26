@@ -245,6 +245,40 @@ async def get_participants(project_id: str, thread_id: str, user: User = Depends
     return await chat_svc.list_participants(db, thread_id)
 
 
+@router.delete("/{project_id}/chats/{thread_id}/participants/{participant_user_id}")
+async def remove_chat_participant(
+    project_id: str,
+    thread_id: str,
+    participant_user_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Убрать участника из чата объекта.
+
+    Маршрута не было: пригласить можно было, убрать — нет. Приглашённый читал
+    всю переписку, включая счета, пока существует тред.
+
+    Право у владельца объекта и у самого участника. Приглашающий его не
+    получает: иначе исполнитель мог бы выставить из чата заказчика.
+    """
+    project, thread = await require_chat_access(
+        db, project_id, thread_id, user, write=False, allow_participant=True,
+    )
+    try:
+        removed = await chat_svc.remove_participant(
+            db,
+            thread,
+            actor=user,
+            project_customer_id=project.customer_id,
+            target_user_id=participant_user_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(403, detail={"code": str(exc)}) from exc
+    if not removed:
+        raise HTTPException(404, detail={"code": "chat_participant_not_found"})
+    return {"ok": True, "thread_id": thread_id, "user_id": participant_user_id}
+
+
 @router.post("/{project_id}/chats/{thread_id}/invite")
 async def invite_to_chat(project_id: str, thread_id: str, body: InviteBody, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     _p, t = await require_chat_access(db, project_id, thread_id, user, write=True)
