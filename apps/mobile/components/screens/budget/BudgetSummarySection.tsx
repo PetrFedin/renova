@@ -2,6 +2,7 @@
 import { View, Text, Pressable } from 'react-native';
 import { router, usePathname } from 'expo-router';
 import { formatRub, RenovaTheme } from '@/constants/Theme';
+import { formatDeviationLabel, formatDeviationValue } from '@/lib/domain/budgetDeviationLabel';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { BudgetFactStatus } from '@/components/renova/budget/BudgetFactStatus';
 import { StageExpenseLinksPanel } from '@/components/renova/StageExpenseLinksPanel';
@@ -87,12 +88,13 @@ export function BudgetSummarySection(props: Props) {
       : view.state === 'empty'
         ? RenovaTheme.colors.textMuted
         : RenovaTheme.colors.success;
-  const deviationLabel = view.deviation > 0 ? 'Перерасход' : view.deviation < 0 ? 'Экономия' : 'Отклонение';
-  const deviationValue = view.deviation > 0
-    ? `+${formatRub(view.deviation)}`
-    : view.deviation < 0
-      ? `−${formatRub(Math.abs(view.deviation))}`
-      : formatRub(0);
+  // The label already carries the direction, so the value must not carry it a
+  // second time. It used to, and «Экономия −185 938 ₽» reads as a saving of
+  // minus the whole budget — shown in green under «В пределах плана» on a
+  // project where nothing had been spent yet, which is when the figure is at
+  // its largest. Only the neutral label keeps a signed value.
+  const deviationLabel = formatDeviationLabel(view.deviation);
+  const deviationValue = formatDeviationValue(view.deviation);
 
   const firstPending = pendingPayments[0] ?? null;
   const urgentBudget = view.state === 'over' || view.state === 'forecast-risk' || budgetAlerts.length > 0;
