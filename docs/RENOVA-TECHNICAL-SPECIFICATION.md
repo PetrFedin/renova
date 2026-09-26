@@ -25,7 +25,7 @@
 | `AGENTS.md` | `767d38e76d04209e609bbe7173a2c448cfc5fa00` | Engineering policy |
 | `backend/app/api/v1/router.py` | `8663e5b54289b133c5a2ff30af0533cfee93dfb6` | Реальная composition маршрутов |
 | `backend/app/models/entities.py` | `f2e63f316fa8c9b2012894ae4e496dc76a73a3a1` | Базовые entities/enums |
-| `backend/app/main.py` | `223e83b13f96398eefe997275ac6f41fa44bfbcf` | API lifespan |
+| `backend/app/main.py` | `c51ee19fc465a0562b7a190793b6bdf694f5c3ab` | API lifespan + middleware chain |
 | `backend/app/services/seed_demo.py` | `c62ba920130a7ba7f6e2bd0a54e63feadce5c6cd` | Явный development seed |
 | `backend/scripts/verify_orm_schema_parity.py` | `ba08d0681df301f446b3adbf811ad9367eeb24b9` | Schema/ORM parity |
 | `backend/scripts/verify_current_migration_schema.py` | `13e63544564b41a13c52f9437b9bfbdfa290913b` | Enum/migration invariants |
@@ -34,8 +34,8 @@
 | `apps/mobile/constants/typography.ts` | `8a96b7f290944ac2c566c0f1791c1f60ab90c68a` | Typography |
 | `apps/mobile/constants/screenTypography.ts` | `f91c9a659a1ab8603ae4d82eb46d76754627b5bb` | Screen typography |
 | `apps/mobile/constants/uiTokens.ts` | `ca2d8e9e03f56efb058041ad8a81c04d15c7a8a0` | Surfaces/chips/inputs |
-| `apps/mobile/constants/screenLayout.ts` | `0165f3c86d829311e91ac17b875c23ccaefab12b` | Screen layout |
-| `apps/mobile/components/renova/os/OsHubTabs.tsx` | `f480067b06c750623e4091fe0db128c877e3fb37` | Hub tabs |
+| `apps/mobile/constants/screenLayout.ts` | `8961bbbbaa614b9b6f962bafe8649bbec3d0a744` | Screen layout (+tabContentStyle: FAB-safe bottom padding) |
+| `apps/mobile/components/renova/os/OsHubTabs.tsx` | `5502586790937235004cac87765106972de23304` | Hub tabs (+auto-scroll to selected tab) |
 | `apps/mobile/components/screens/OsObjectHubScreen.tsx` | `3082b1bf59cbf420d403ed82b35bbc2e78697728` | Object hub |
 | `apps/mobile/components/screens/OsRepairHubScreen.tsx` | `5fe0e6229ad4cc82462ea4cfc1f7d213c7687305` | Repair hub |
 | `apps/mobile/components/screens/OsBudgetHubScreen.tsx` | `4e0e8267d68b600cf0d8bdf716a4c8eddaa3bcbd` | Budget hub |
@@ -69,6 +69,8 @@ Readiness: корневой PRODUCTION-READINESS.md и docs/production-readiness
 # 3. Runtime architecture
 
 Один immutable backend image, два процесса: `renova-api` для HTTP/WebSocket/локального runtime coordination и `renova-worker` для durable outbox/provider/automation/push reconciliation. PostgreSQL хранит правду; Redis — явно определённое общее coordination/rate-limit состояние; S3-compatible storage — приватные файлы. API replica должна быть заменяемой без потери работы.
+
+Middleware chain в `app.main`: `ServerFaultMiddleware` (внутренний, ловит необработанный сбой маршрута до того, как ответ уйдёт наружу) → `CorrelationIdMiddleware` → `AuditMiddleware` → `RateLimitMiddleware`, далее CORS. Порядок значим: заголовки correlation/CORS должны присутствовать даже в ответе о сбое.
 
 Local development: Compose `renova-local`, только локальный Docker context, `.env.local` из env.local.example, не staging/production credentials. Команды:
 
