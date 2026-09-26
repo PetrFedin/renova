@@ -5,9 +5,9 @@
  * пересоздаёт options → setOptions → Maximum update depth (особенно на web).
  * Нативный tab bar нам не нужен — OsDockBar уже SoT нижней навигации.
  */
-import { memo } from 'react';
+import { memo, useEffect } from 'react';
 import { Platform, View, StyleSheet } from 'react-native';
-import { Slot } from 'expo-router';
+import { Redirect, Slot, router, usePathname, useGlobalSearchParams } from 'expo-router';
 import { OsTabsHeaderBar } from '@/components/renova/os/OsTabsLayoutOptions';
 import { OsDockBar } from '@/components/renova/os/OsDockBar';
 import { ApiStatusBanner } from '@/components/renova/ApiStatusBanner';
@@ -15,6 +15,8 @@ import { StaleCacheBanner } from '@/components/renova/StaleCacheBanner';
 import { ActiveProjectSync } from '@/components/renova/ActiveProjectSync';
 import { OsQuickFab } from '@/components/renova/os/OsQuickFab';
 import { OsPendingProjectPickEffect } from '@/components/renova/os/OsPendingProjectPickEffect';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { roleGroupRedirectPath, roleGroupRootRedirectPath } from '@/lib/domain/roleGroupRedirect';
 import type { OsRole } from '@/constants/osSections';
 
 type Props = { role: OsRole };
@@ -31,6 +33,33 @@ function OsTabsChromeHeader({ role }: { role: OsRole }) {
 }
 
 function OsRoleTabsNavigatorImpl({ role }: Props) {
+  const { user, loading } = useRenova();
+  const pathname = usePathname();
+  // Именно global: параметры нужны от открытого экрана, а не от самого макета —
+  // иначе `?tab=profile` терялся бы при переносе в свою группу.
+  const params = useGlobalSearchParams<Record<string, string>>();
+
+  // Адреса у групп `(customer)` и `(contractor)` одинаковые: по прямой ссылке
+  // роутер выбирает группу сам, и человек попадает на экран чужой роли —
+  // вместе с чужими правами. Внутренние переходы идут с явным префиксом и
+  // сюда не попадают.
+  const redirectTo = loading ? null : roleGroupRedirectPath(role, user?.role, pathname);
+  // Корень `/` отдаётся обеим группам, и роутер выбирает чужую. Переносим уже
+  // после монтирования: в первом кадре путь ещё не установился, и редирект
+  // унёс бы с адреса, на который вела ссылка.
+  const rootRedirectTo = loading ? null : roleGroupRootRedirectPath(role, user?.role, pathname);
+  useEffect(() => {
+    if (!rootRedirectTo) return;
+    router.replace(rootRedirectTo as never);
+  }, [rootRedirectTo]);
+
+  if (redirectTo) {
+    const carried = Object.fromEntries(
+      Object.entries(params).filter(([, value]) => typeof value === 'string'),
+    ) as Record<string, string>;
+    return <Redirect href={{ pathname: redirectTo, params: carried }} />;
+  }
+
   return (
     <View style={shell.root}>
       <ActiveProjectSync />
