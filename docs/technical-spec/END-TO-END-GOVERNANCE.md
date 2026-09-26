@@ -1,64 +1,226 @@
-# Renova — mandatory end-to-end specification governance
+# RENOVA — mandatory end-to-end specification governance
 
 **Status:** ACTIVE / AUTHORITATIVE ANNEX
 **Parent dossier:** `docs/RENOVA-TECHNICAL-SPECIFICATION.md`
-**Effective from:** 2026-08-29. **Current reconciliation:** 2026-09-08.
+**Active work plan:** `PRODUCT-COMPLETION-MANDATE.md`
+**Effective from:** 2026-08-29. **Current reconciliation:** 2026-09-09.
 
-This is mandatory specification governance, not optional process guidance. The prior full version is retained in `history/END-TO-END-GOVERNANCE-before-2026-09-08.md`; its old ordered next-step list is historical.
+Это обязательное governance-правило, а не рекомендация. Оно действует для человека, агента, подрядчика и любого инструмента, меняющего RENOVA. Предыдущий полный срез сохранён в `history/END-TO-END-GOVERNANCE-before-2026-09-08.md` и является HISTORICAL.
 
 ## 1. Same-change specification rule
 
-Every change to behavior, architecture, data, API, migrations, runtime, background work, security/ACL, UX, calculations, providers, recovery, CI/release gates or evidence must update the living specification or its relevant governed annex in the same logical change. Green code with stale specification is incomplete.
+Любое изменение поведения, архитектуры, данных, API, миграций, runtime/background work, ACL/security, UX/navigation, calculations, providers, recovery, retention, CI/release gate или evidence обязано обновить living specification либо соответствующий governed annex в том же логическом изменении.
 
-## 2. Mandatory gap scan
+Green code + stale specification = **INCOMPLETE**.
 
-Trace the whole affected path before editing: dead ends; broken entity/event/screen links; duplicate routes/calculations/state machines; stale legacy writers; missing transaction/idempotency/concurrency; missing loading/empty/error/stale/retry/recovery; role/ACL mismatch; schema/ORM drift; false equivalence of local/CI/staging/production; fields without real producers/consumers; outbox ambiguity; user journeys without a terminal result; documentation describing obsolete behavior.
+Если меняются decision rights, financial semantics, state lifecycle или scope visibility, изменение обязательно отражается не только в техническом contract, но и в пользовательском сценарии/Golden Path.
 
-Confirmed P0/P1 findings must be fixed or recorded in the dossier/roadmap with a specific issue, responsible engineering role, acceptance test and evidence boundary. Do not leave them only in chat. A missing test is not automatically a missing implementation; a source-confirmed defect is not automatically a production incident.
+## 2. Обязательный source-truth scan до проектирования
 
-## 3. End-to-end continuity
+Перед изменением агент получает актуальные:
 
-Where applicable:
+1. `main` SHA и open PRs, затрагивающие область;
+2. `AGENTS.md`;
+3. `PRODUCT-COMPLETION-MANDATE.md`;
+4. `GOLDEN-PATHS.md`;
+5. domain contract/calculation/screen contract;
+6. реальные routes/router composition;
+7. mobile callers/navigation;
+8. models/migrations;
+9. tests/CI/readiness;
+10. связанные issues.
 
-`entry/navigation -> authorization -> input/schema -> service -> transaction -> authoritative DB -> outbox/provider -> reconciliation -> API read model -> UI/file outcome -> retry/recovery -> audit/evidence`.
+Нельзя проектировать по старому audit snapshot, если текущий code/CI свежее.
 
-The unit of acceptance is a user's complete business result, including failure paths. Neither an isolated API nor a visible button completes it. Planned capability must not be removed or called complete merely because a safe unavailable state exists.
+Mandatory gap scan:
+- dead ends;
+- broken entity/event/screen links;
+- duplicate routes/calculations/state machines;
+- stale mutating legacy paths;
+- fields без producer/consumer;
+- missing transaction/idempotency/concurrency;
+- offline/response-loss ambiguity;
+- missing loading/empty/error/stale/queued/conflict/revoked/recovery states;
+- role/ACL/scope mismatch;
+- schema/ORM drift;
+- provider bypass;
+- cache freshness laundering;
+- financial source ambiguity;
+- purge/retention omissions;
+- file/native false success;
+- user journey without terminal result;
+- documentation describing obsolete behavior.
 
-## 4. Canonical authority
+Confirmed P0/P1 gap фиксируется issue + owner + acceptance + evidence boundary. Он не остаётся только в chat/TODO.
 
-Navigation: registry+router. Data: ORM+linear migrations+PostgreSQL. Money: explicit source/recognition ledger. Background: DomainOutbox+worker. Readiness: root readiness Markdown+JSON. Engineering: AGENTS. Product contract: current master+governed annexes.
+## 3. Unit of design = complete user result
 
-Historical snapshots are preserved for traceability, not used as current readiness or current migration headers. Source hashes bind what was inspected; they do not prove functional correctness. Current master schema header, readiness header/JSON and actual graph must agree. A head mentioned elsewhere or a permanent PENDING REVERIFY is not a substitute.
+Любое изменение формулируется как:
 
-## 5. Merge gate
+`persona → context → intent → authority → input → canonical state transition → transaction → authoritative data → side effect/provider → reconciliation → read model → UI/file outcome → notification → retry/recovery → audit/evidence`.
 
-Before merging verify same-change spec, recorded gaps, one authority per concept, complete affected chain, negative/replay/concurrency tests, applicable exact-candidate CI, truthful external-not-verified boundaries and current blocker state. Preserve review gates and do not bypass main protection. Do not change unrelated feature ownership while refreshing a stale PR.
+Endpoint, model, button, background job или screenshot по отдельности не являются завершённой функцией.
 
-### 5.1 Draft-transition recovery
+Плановая capability не удаляется и не объявляется реализованной потому, что UI умеет показать «недоступно».
 
-A tooling failure does not permit direct push to main. If tooling cannot change a qualified Draft to Ready: record the blocker, keep the old Draft open until a bounded successor exists, branch from the qualified lineage, open a non-draft successor to the same base, obtain fresh exact-head qualification, merge only the qualified successor, then mark the old Draft superseded with evidence links. No stale-CI reuse or unrelated scope increase.
+## 4. Обязательный lifecycle улучшения приложения
 
-## 6. Post-merge reconciliation
+Любая просьба «улучшить», «добавить», «сделать как у аналога», «упростить», «переписать» проходит 12 шагов до merge:
 
-Close only issues whose full acceptance is satisfied on main. Update readiness only for actual evidence changes. Refresh dependent PRs from canonical main and requalify after changes. A foundation merge does not close a cross-domain product issue. An old workflow result remains evidence for its exact candidate, not a new universal certificate.
+1. **Source truth:** что реально уже есть.
+2. **User problem:** кто и какой terminal result получает.
+3. **Reuse map:** какой existing domain расширяется; почему не нужен parallel SoT.
+4. **Lifecycle:** states/transitions/history.
+5. **Decision rights:** кто создаёт, утверждает, отклоняет, отзывает, видит.
+6. **Data/finance truth:** authoritative source, provenance/as-of/null/rounding/status semantics.
+7. **Reliability:** transaction, stable intent, idempotency, race, offline, timeout, response loss, recovery.
+8. **UX/navigation:** canonical entry, state matrix, deep links, native/file behavior, accessibility.
+9. **Security/privacy/ecosystem:** scope/IDOR/consent/minimization/retention/provider boundary.
+10. **Acceptance first:** Golden Path/domain test updated before implementation where behavior changes.
+11. **Bounded implementation:** one authoritative writer, same-change spec, no unrelated refactor.
+12. **Proof + reconciliation:** focused/PG/full/E2E/negative/recovery/native as applicable; then post-merge issue/readiness update.
 
-## 7. Current ordered integration state
+Пропуск шага требует явного `N/A` с объяснением в PR evidence; молчаливый пропуск запрещён.
 
-- #288 local runtime foundation and #289 documentation reconciliation are merged.
-- #290 repository logical restore is merged; managed PITR/DR remains #234.
-- #292 ordinary incoming chat atomicity is merged; task/invoice/offline replay remain #316/#317 and external storage #238.
-- #295 warranty creation and #297 manual evidence are merged; do not treat #287 or #265 as unfinished merely from old documents.
-- #309/#310 material/start truth, #311 price provenance and #312 participant foundation are merged.
-- #313 participant management/atomic marketplace conversion merged as65ddb7e59e6bcb23473b1017686cd3adbd882187 after qualification ofae8a0750bb6cc788c9e93a1f85a7355f3b180380.
-- #314 mobile quoted-lead wizard recovery merged as95dd4a8e117289df11e1300891490768c22f585f after qualification of6e88a1d15883964b1c3f4f0a0f203fb6ef2f0817.
-- #300 remains OPEN for full independent-contractor scoped domains/mobile/E2E, not merely its foundation.
+## 5. Market-inspired improvement governance
 
-Current product priorities from the source audit: #316 and #315; then safe transport/cache #317, analytics #318, purge lifecycle #319, native exports #320 and truthful interactions #305; then bounded #300 adoption. Follow `CHANGELOG-ROADMAP.md` and `PRODUCT-COMPLETENESS-AUDIT-2026-09-08.md` for acceptance and ownership.
+`MARKET-PRODUCT-BENCHMARK-2026-09-09.md` — research input, не очередь задач.
 
-External main protection/staging #247/#233, observability #235/#283, managed DR #234, capacity #236, provider recovery #238, security #256/#257/#237 and pilot #241 retain independent evidence requirements and may progress in parallel.
+Функция аналога может войти в implementation только если доказаны:
 
-#282/#284/#286/#287 are historical implementation/process lineage, not PRs to merge again. #283 is a separate stale draft to refresh; an emission probe cannot prove external alert delivery.
+- RENOVA user problem;
+- связь с существующим product lifecycle;
+- отсутствие duplicate SoT;
+- Russian market relevance;
+- failure/recovery model;
+- concrete value;
+- affected Golden Paths;
+- owner priority decision.
 
-## 8. Product-wide acceptance evidence
+Запрещено копировать enterprise modules, AI behavior, financing, marketplace mechanics или retailer workflows только для feature parity.
 
-G01–G10 in the full audit cover standalone repair, single contractor, independent contractors, unstable network, account changes, financial reconciliation, documents, handover/lifecycle, incidents and device/accessibility. Register requirement→entry/role→service/entity→test→run/artifact. Clearly label source-only inspection, bounded CI, new execution and external verification. A static screen inventory must not be reported as execution of every action.
+## 6. Canonical authorities
+
+- Engineering: `AGENTS.md`.
+- Product work order: `PRODUCT-COMPLETION-MANDATE.md`.
+- User completion proof: `GOLDEN-PATHS.md`.
+- Navigation: `routeRegistry` + final router composition.
+- Durable data: PostgreSQL ORM + linear Alembic migrations.
+- Money: explicit finance sources/recognition contracts.
+- Background work: DomainOutbox + worker.
+- External capability: provider ports/registry/adapters.
+- Readiness: root `PRODUCTION-READINESS.md` + evidence JSON.
+- Market ideas: benchmark annex only until adopted.
+
+Historical snapshots are evidence of what was inspected, not current product authority.
+
+## 7. No-demo-business rule
+
+Controlled demo/test data may seed ordinary entities. Simulated providers may replace external services through the same port. Но запрещены:
+
+- demo auth bypass in product flow;
+- demo-only financial transition;
+- fake successful provider status;
+- seed-only route/action that user cannot execute;
+- special calculations for showcase;
+- synthetic project object published before server truth;
+- UX that hides unavailable/recovery states only to look polished.
+
+`demo:web`/presentation shell is allowed only as wrapper around ordinary product runtime.
+
+## 8. Mutation truth and recovery
+
+Critical mutation UI must distinguish:
+
+`committed | queued | unknown_needs_reconcile | authoritative_refusal`.
+
+After `committed`, refresh failure triggers read/reconcile recovery, never a new mutation identity. Automatic retry is prohibited until target server operation is replay-safe.
+
+A→B→A is different session generation. Old async completion cannot publish into a new generation even if actor id matches again.
+
+## 9. Financial governance
+
+Before any budget/spend/payment change document:
+
+- source entity;
+- recognition timing;
+- included/excluded statuses;
+- original/revised/commitment/actual/cash distinction;
+- refund/cancel/dispute treatment;
+- currency/rounding;
+- duplicate evidence/payment prevention;
+- project/category/stage attribution;
+- missing data semantics.
+
+Presentation layer cannot repair missing facts by inventing fact=plan.
+
+## 10. Provider/partner governance
+
+До реального подключения ЮKassa/ФНС/Контур/Госключ/SMS/push/retail/bank:
+
+- domain depends only on port;
+- simulator passes same contract tests;
+- provider operation has stable identity;
+- webhook/retry/out-of-order semantics defined;
+- unknown external result is reconciled, not guessed;
+- secrets live server-side;
+- health/readiness report mode truthfully;
+- no UI claim of external verification without retained evidence.
+
+Retail/bank/state-facing capabilities additionally require explicit data envelope, consent, minimization, audit and legal/privacy review before external activation.
+
+## 11. Merge gate
+
+Перед merge reviewer проверяет:
+
+- same-change specification;
+- complete affected chain;
+- one authority per concept;
+- decision rights;
+- negative/replay/concurrency/recovery tests;
+- relevant PostgreSQL integrity;
+- mobile state truth;
+- removal proof;
+- provider boundary;
+- exact candidate CI;
+- current external-not-verified blockers;
+- минимум одну независимую гипотезу «what else could break».
+
+Автор не заменяет independent review своим повторным чтением. Merge выполняет owner/reviewer согласно `AGENTS.md`.
+
+### 11.1. Draft/tooling recovery
+
+Tooling failure не разрешает direct push to main. Если qualified Draft нельзя перевести Ready: зафиксировать blocker, создать bounded successor from qualified lineage, получить fresh exact-head qualification, merge only successor, старый Draft отметить superseded. Stale CI не переиспользуется как доказательство нового SHA.
+
+## 12. Post-merge reconciliation
+
+После merge:
+
+1. issue закрывается только если полный acceptance satisfied on main;
+2. readiness повышается только при новом evidence;
+3. dependent PR rebase/requalify against canonical main;
+4. foundation merge не закрывает cross-domain product issue;
+5. old workflow result остаётся evidence только exact candidate;
+6. market candidate не переводится в ready автоматически.
+
+## 13. Current ordered product risk state
+
+До provider/experience expansion первыми остаются integrity owners:
+
+`#315 → remaining #316 → #317 → #305 truthful mutation UX → #318 → #319 → #320`, после чего полный `#300` и provider/product phases из Mandate.
+
+PR #322 — bounded #316 candidate для chat invoice/task; не означает closure всего #316 до merge/full inventory.
+
+External production work #233/#234/#235/#236/#237/#238/#241/#247/#256/#257 остаётся независимым и не должно блокировать внутреннюю архитектурную подготовку, но и не может быть объявлено выполненным internal CI.
+
+## 14. Product-wide evidence model
+
+Для каждого requirement сохраняется трассировка:
+
+`requirement → persona/entry → state/service/entity → test → exact run/artifact → evidence level`.
+
+Уровни различаются:
+
+`SOURCE AUDITED → LOCAL TESTED → CI VERIFIED → STAGING VERIFIED → EXTERNALLY VERIFIED → PRODUCTION VERIFIED`.
+
+Статический inventory экранов/маршрутов не является исполнением пользовательского сценария; web viewport не является native-device proof; simulated provider не является real-provider verification.

@@ -1,75 +1,164 @@
-# Renova — журнал изменений и план завершения продукта
+# RENOVA — журнал изменений и план завершения продукта
 
-**Срез:** 2026-09-08, `main` `95dd4a8e117289df11e1300891490768c22f585f`.
-**Статус:** `BLOCKED_FOR_BROAD_PRODUCTION`.
-**Полный аудит:** `PRODUCT-COMPLETENESS-AUDIT-2026-09-08.md`.
-**Историческая редакция:** `history/CHANGELOG-ROADMAP-before-2026-09-08.md`; её очередь работ не является текущей.
+**Срез:** 2026-09-09, canonical main `e5c6ee44c0f684b14037e77948dbcb630fd41896` на момент governance-сверки.
+**Статус:** `BLOCKED_FOR_BROAD_PRODUCTION`; internal product completion продолжается.
+**Канон порядка работ:** `PRODUCT-COMPLETION-MANDATE.md`.
+**Сквозная приёмка:** `GOLDEN-PATHS.md` + `USER-JOURNEY-CATALOG.md`.
+**Рынок/стратегические кандидаты:** `MARKET-PRODUCT-BENCHMARK-2026-09-09.md` + `MARKET-COMPETITOR-PROFILES-2026-09-09.md` + `RUSSIAN-MARKET-ECOSYSTEM-BENCHMARK-2026-09-09.md`.
+**Полный source audit:** `PRODUCT-COMPLETENESS-AUDIT-2026-09-08.md`.
 
-Канон: **наблюдение → решение → код/данные → тест → evidence → следующий шаг**.
-Каждая строка исправления требует одного bounded PR и обновления соответствующего ТЗ; оформление UI не отделяется от прав, ошибок и восстановления.
+Обязательный исторический governance-токен, проверяемый machine contract: **наблюдение → решение → код/данные → тест → evidence → следующий шаг**.
+Расширенный рабочий цикл: **наблюдение → issue/decision → bounded code → same-change specification → test/evidence → post-merge reconciliation → следующий зависимый шаг**.
+
+Никаких календарных ETA/процентов готовности без принятого release scope, команды и внешних условий. Приоритет определяется risk/dependency/terminal user result.
+
+---
+
+## 0.1. Historical machine-contract compatibility markers
+
+Следующие строки сохраняются дословно, потому что `scripts/technicalSpecContract.test.mjs` использует их как continuity markers старого roadmap. Они **не задают текущий порядок работ** и не должны интерпретироваться как повторное открытие уже пройденных волн; текущий порядок определяется разделом 2 и `PRODUCT-COMPLETION-MANDATE.md`.
+
+- `P0.1. Закрыть canonical local runtime end-to-end` — historical lineage локального runtime; foundation интегрирован через #288, внешняя среда остаётся отдельной readiness-границей.
+- `P0.2. Полная native PostgreSQL enum parity` — historical lineage enum/schema parity; migration chain w16–w22 сохраняется и проверяется текущими schema gates.
+- `P1.1. Полный screen contract inventory` — historical lineage screen inventory; текущая более строгая цель — классифицировать каждый user-visible route/action в `USER-JOURNEY-CATALOG.md` и доказать terminal result.
+
+---
 
 ## 1. Уже интегрировано, но не равно полной готовности
 
-| Изменение | Репозиторное доказательство | Что этим не закрыто |
+| Изменение | Evidence / merge lineage | Остаточный scope |
 |---|---|---|
-| #288 локальный runtime/агентский контекст | Merge7bd1dceb273a7e1f26ddf2333e9199d8d498ae54 | Внешний staging/production. |
-| #290 logical restore | Run33344103969, merge748ed5f22db0bfe18001f276ec521d0198d4dc57 | Managed backup/PITR, измеренный RPO/RTO. |
-| #292 обычные сообщения чата | Merge9d3f96bad6138aef7f7db32407162fe07897572d | Chat task/invoice/reaction, native export, external storage. |
-| #295 гарантийное создание | Merge9fed24c1b59d767daef4d6395fd01cb303c838e3 | Весь post-closeout/provider сценарий. |
-| #297 manual payment evidence | Merge389f35d819dbf0b81d2e821da851fa9a647705d2 | Любой источник платежей вообще; S3 ambiguity. |
-| #309/#310 supply readiness и явный start | w20materialsupply01 | Multi-contractor и granular partial delivery/payment acceptance. |
-| #311 price provenance | Merge85f8d279d393b42bae5d76fea333f9d13c8ae0b5, w21materialprice01 | Цена поставщика не становится вечной офертой. |
-| #312 participant foundation | Merge38657631348ea7bbe9a22cd5d631cb4ddba0250e, w22projectparticipants01 | Полный #300. |
-| #313 management + atomic lead conversion | Headae8a0750bb6cc788c9e93a1f85a7355f3b180380; CI34262996030; PostgreSQL34262996112; merge65ddb7e59e6bcb23473b1017686cd3adbd882187 | Scoped domain/mobile adoption, legacy writers/quota/source transitions. |
-| #314 quoted-lead wizard recovery | Head6e88a1d15883964b1c3f4f0a0f203fb6ef2f0817; CI34264654118; merge95dd4a8e117289df11e1300891490768c22f585f | Общий #315, cold-start discovery, dedicated device E2E. |
+| #288 canonical local runtime/agent context | merge `7bd1dceb273a7e1f26ddf2333e9199d8d498ae54` | external staging/production |
+| #290 logical restore | run `33344103969`, merge `748ed5f22db0bfe18001f276ec521d0198d4dc57` | managed backup/PITR/RPO/RTO |
+| #292 ordinary chat message atomicity | merge `9d3f96bad6138aef7f7db32407162fe07897572d` | other mutations/offline/session/native file |
+| #295 warranty creation | merge `9fed24c1b59d767daef4d6395fd01cb303c838e3` | full post-closeout/provider/device lifecycle |
+| #297 manual payment evidence | merge `389f35d819dbf0b81d2e821da851fa9a647705d2` | provider/storage ambiguity and full money UX |
+| #309/#310 material supply/start truth | migration `w20materialsupply01` | granular partial delivery/payment semantics |
+| #311 material price provenance | merge `85f8d279d393b42bae5d76fea333f9d13c8ae0b5`, `w21materialprice01` | retailer/live offer integration later |
+| #312 participant foundation | merge `38657631348ea7bbe9a22cd5d631cb4ddba0250e`, `w22projectparticipants01` | full #300 domain/mobile adoption |
+| #313 participant management + atomic marketplace conversion | candidate `ae8a0750...`, merge `65ddb7e59e6bcb23473b1017686cd3adbd882187` | scoped reads/writes/payees/docs/chat/capacity/source transitions |
+| #314 quoted-lead wizard recovery | candidate `6e88a1d...`, merge `95dd4a8e117289df11e1300891490768c22f585f` | shared context/session #315 |
+| #323 governance/provider-port foundation | main lineage through `e5c6ee44...` | provider migration/simulators remain A3–A7 |
 
-## 2. Текущие продуктовые приоритеты
+PR #322 (`582fd727...`) is a **qualified but still open** bounded #316 candidate for chat invoice/task atomicity and replay. Until reviewed/merged it is not main truth and does not close all #316.
 
-| Очередь | Задача / владелец функции | Закрываемый результат | Обязательное доказательство |
-|---|---|---|---|
-| P0 | #316 backend+mobile | Повтор первого POST не создаёт второй счёт/работу/набор связей | Response-loss и PostgreSQL same-key race, один atomic commit. |
-| P1 launch-blocking, параллельно P0 | #315 mobile/session security | Старый аккаунт не публикует state/token/cache и не исполняет очередь как новый | A→B→A, shared-project actors, delayed refresh/load/flush, token+storage fences. |
-| P1 после/вместе #316 | #317 mobile transport | Нормализованная сетевая ошибка достигает правильной очереди; кэш не выдаётся за свежий | Реальные req→producer→storage→flush; 4xx/timeout/cancel; per-resource freshness. |
-| P1 | #318 finance+mobile/backend | Части плана сходятся с целым; неизвестный факт не нулевое отклонение | Консервативное округление, 28–31 день, category ledger, timezone. |
-| P1 | #319 backend/data lifecycle | Удаление непустого проекта согласовано с participant/evidence/retention графом | PostgreSQL full graph, hold/refusal, rollback, restore и S3 recovery. |
-| P1 | #320 mobile files | Кнопка выдаёт native PDF/share результат | iOS/Android+web, auth/session, cancel/cleanup и содержимое файла. |
-| P1 | #305 mobile/product | Успешная операция не становится «не сохранено» из-за refresh; единый UI | Commit-success + sync-failure, role/error/empty/stale/accessibility матрица. |
-| P1 после session boundary | #300 backend+mobile/product | Заказчик и независимые подрядчики проходят один реальный ремонт с изоляцией | G03, scoped reads/writes/payees/documents/chat, no sibling IDOR. |
-| P1 отдельный поток | #238 integrations/operator | Неопределённый ответ провайдера восстанавливается без дублирования/выдуманного успеха | Authoritative provider read, retries/DLQ/replay, внешний evidence. |
+---
 
-## 3. Внешние работы выполняются параллельно, а не после всех экранов
+## 2. Current ordered internal product priorities
 
-#247: реальная защита main/required checks и отрицательная проверка обхода; владелец repository administration.
-#233: постоянный staging с TLS/DNS/managed dependencies и exact-artifact promotion; владелец DevOps/SRE.
-#235/#283: ingestion→alert→delivery→ACK→recovery; владелец observability/on-call. Старый draft #283 обновить на актуальной базе отдельным PR.
-#234: managed backups/PITR, сохранённый restore drill и измеренный RPO/RTO; владелец DB/SRE.
-#236: authenticated smoke/ramp/spike/soak и деградация; владелец performance/SRE.
-#256/#257/#237: доступы, независимый pentest и внешнее security acceptance; владелец security/repository owner.
-#241: controlled pilot, telemetry, support/incident runbook, legal/privacy approval; владелец product/operations с соответствующими специалистами.
+### P0 / integrity floor
 
-Роли владельцев указаны как требуемая ответственность, не как подтверждённое назначение конкретного человека. Ни один внешний блокер не закрывается только репозиторным CI.
+1. **#315 — session/account/queue fencing.** Session generation, A→B→A, token refresh ownership, project load fencing, queue actor ownership, logout server revoke attempt.
+2. **PR #322 review/merge + remaining #316 inventory.** No automatic retry expansion until target operation is replay-safe.
+3. **#317 — transport/offline/cache provenance.** Normalize network/timeout/retry classification; per-result freshness truth.
+4. **#305 mutation truth slice.** Commit acknowledged + refresh failed must remain committed; systematic outcome contract.
+5. **#318 finance presentation truth.** Period sum conservation, explicit as-of/timezone, actual/unavailable category facts.
+6. **#319 purge/retention graph.** Full project dependency graph and recoverable storage cleanup.
+7. **#320 native authenticated file delivery.** Chat PDF first confirmed gap, canonical abstraction + session fence.
 
-## 4. Приёмка полного продукта
+### Product model completion
 
-G01 самостоятельный ремонт; G02 один подрядчик; G03 независимые подрядчики; G04 нестабильная связь; G05 смена аккаунта; G06 финансовая сверка; G07 документы/подпись/native-файл; G08 сдача/гарантия/архив/purge; G09 эксплуатационный инцидент; G10 small-screen/accessibility/deeplink. Определения и ожидаемые результаты находятся в полном аудите.
+8. **#300 / B1–B5.** Full independent-contractor scopes across stages/work/materials/finance/docs/chat/files/notifications + participant UX + capacity/source transitions + safe legacy canonicalization.
+9. **A3–A7 provider abstraction.** Simulators/ports/modes/migrate domain away from direct provider calls; no live providers.
+10. **C1–C8 customer/contractor experience.** Controlled datasets, customer cockpit, finance projection, schedule/calendar, acceptance/warranty, documents, first-use/recovery UX, presentation shell over ordinary runtime.
+11. **D1–D3 proof.** GP1–GP8 + G04/G05, negative/concurrency/recovery/native/visual evidence.
+12. **E1–E4 consolidation.** CI/docs/readiness truth/repository metadata.
 
-Для каждой функции зафиксировать requirement ID → entry route → role → API/service → authoritative entity → transaction/idempotency → side effect → read/UI → test ID → exact run/artifact. Пустой test/evidence — непроверенная функция, не DONE. Source contract не заменяет поведенческий тест.
+### Strategic T1/T2 only after core acceptance
 
-## 5. Исторические контрольные заголовки
+- lightweight daily progress update;
+- contractor profitability/pipeline;
+- retailer-neutral catalog/offer/order/delivery/return ports;
+- verified contractor attributes/reputation;
+- richer selections/allowances within MaterialPick;
+- plan annotations/as-built;
+- FinancingProvider;
+- partner APIs;
+- AI assistants with human confirmation.
 
-Следующие заголовки сохранены для совместимости source-contract и исторической прослеживаемости. Они не возвращают уже исправленные проблемы в активную очередь.
+T1/T2 are not `ready` merely because analogues implement them. Use market adoption gate from Mandate §8.
 
-### P0.1. Закрыть canonical local runtime end-to-end
-DONE в пределах #288/CI; external runtime остаётся отдельным #233.
+---
 
-### P0.2. Полная native PostgreSQL enum parity
-w16legacystatus01 → w17chatmessageenum01 → w18nativeenumparity01 интегрированы. Любая новая migration требует новой PostgreSQL/schema qualification; это не вечно зелёный сертификат.
+## 3. Product acceptance map
 
-### P1.1. Полный screen contract inventory
-ACTIVE: текущий каталог и registry — исходный inventory, а не доказательство прохождения каждого действия. Добавить dynamic/deeplink/role-specific/hidden, native exports и error/recovery состояния. #305/#300/#315/#317/#320.
+| Layer | Required result |
+|---|---|
+| GP1 | Object/rooms/estimate/budget with plan truth |
+| GP2 | Marketplace/quotes/participant conversion/multi-contractor access |
+| GP3 | Stages/schedule/start/work orders/evidence |
+| GP4 | Submission/rework/acceptance/warranty |
+| GP5 | Invoice/payment/receipt/evidence/dispute/refund/reconciliation |
+| GP6 | Material need/selection/purchase/delivery/receipt/expense |
+| GP7 | Document/version/signature/archive/export |
+| GP8 | Chat/inbox/push/reminders with scope |
+| G04 | Unstable network/response loss/restart/queue replay |
+| G05 | Account/session switch A→B→A |
+| User Journey Catalog | Granular C/E actions + secondary surfaces + multi-contractor negatives + recovery catalog |
 
-## 6. Журнал этого аудита
+Product feature is DONE only when requirement → entry/role → service/entity → state/transaction → UI result → test → exact evidence is traceable.
 
-Выявлены и зарегистрированы #316–#320; расширены #315 и #305 конкретными исходными цепочками. Синхронизируются текущий паспорт, roadmap, реестр расчётов, readiness и строгая проверка заголовка схемы. Производственные дефекты этими документами не исправлены; их статус SOURCE CONFIRMED / OPEN. Старые source snapshots сохраняются в history без использования как текущего launch verdict.
+---
 
-Субъективный процент готовности и календарный ETA не рассчитываются без весов требований, принятого release scope, команды и внешних условий. Закрытие реальных приёмочных критериев важнее числа новых функций.
+## 4. External production work remains independent
+
+- #247 main protection/required checks external state;
+- #233 production-like staging/exact artifact promotion;
+- #235/#283 external observability delivery/alert/ACK;
+- #234 managed backup/PITR/DR;
+- #236 capacity/load/provider degradation;
+- #256/#257/#237 access review/pentest/security acceptance;
+- #238 provider authoritative reconciliation/S3 ambiguous writes;
+- #241 controlled pilot/telemetry/support/legal/privacy.
+
+Internal product work may prepare architecture for these, but repository CI alone does not close them.
+
+---
+
+## 5. Provider integration order when owner allows real activation
+
+До команды владельца real adapters remain inactive.
+
+When activated later, order is:
+
+1. provider contract/adaptor tests against sandbox;
+2. secret/config runtime preflight;
+3. webhook authenticity and idempotency;
+4. ambiguous timeout/reconciliation;
+5. staging exact-artifact flow;
+6. negative/duplicate/out-of-order tests;
+7. controlled transaction/evidence;
+8. external readiness update;
+9. only then user-facing `VERIFIED` claims.
+
+Potential providers: YooKassa → FNS/NPD → Kontur/Goskey → notification → retailer → financing, but actual order follows business priority/legal readiness, not this illustrative list.
+
+---
+
+## 6. Market-informed product position
+
+RENOVA target is not marketplace-only and not heavy enterprise ERP:
+
+`trusted renovation graph = contractor discovery + multi-principal scope + estimate/change + field execution + materials + acceptance + money + documents + warranty`.
+
+Market patterns already adopted into plan:
+- customer cockpit;
+- scoped contractor workspace;
+- Original/Revised/Committed/Actual/Cash projection;
+- selections linked to procurement;
+- defects linked to room/stage/evidence;
+- field-first offline correctness;
+- immutable document/audit lineage;
+- retailer/bank/state integrations through controlled future ports.
+
+Russian benchmark separately confirms the value of stage acceptance/payment control, technical supervision, retail fulfillment and later bank financing boundaries without moving those external services into current core.
+
+See benchmark annexes for evidence and `ADOPT NOW/LATER/REJECT` decisions.
+
+---
+
+## 7. Current governance change
+
+Issue #365 / PR #366 reconcile source-truth user journeys and rewrite the canonical completion model. Scope is documentation/governance only; it does not itself fix #315–#320/#300 or activate providers.
+
+After PR #366 exact-head CI + independent review + owner merge, subsequent implementation branches use this Mandate order. Until merge, main remains authoritative and PR #366 is candidate specification.
