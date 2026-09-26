@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
@@ -59,7 +60,17 @@ async def patch_line(
         raise HTTPException(403, "Только исполнитель редактирует смету")
     await require_project(db, project_id, user, write=True)
     await _require_estimate_editable(db, project_id)
-    line = await update_line(db, line_id, **body.model_dump(exclude_none=True))
+    target_id = (
+        await db.execute(
+            select(EstimateLine.id).where(
+                EstimateLine.id == line_id,
+                EstimateLine.project_id == project_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if target_id is None:
+        raise HTTPException(404, "Строка не найдена")
+    line = await update_line(db, target_id, **body.model_dump(exclude_none=True))
     if not line:
         raise HTTPException(404, "Строка не найдена")
     return {"ok": True, "id": line.id}
