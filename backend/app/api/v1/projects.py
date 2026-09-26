@@ -108,6 +108,7 @@ async def _detail(db, p, user: User | None = None) -> ProjectDetail:
             room_id=l.room_id,
             category=l.category,
             calc_detail=l.calc_detail,
+            notes=l.notes,
             total=round(l.quantity_planned * l.unit_price, 2),
         )
         for l in p.estimate_lines
