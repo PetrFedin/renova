@@ -15,6 +15,6 @@
 | `apps/mobile/components/screens/control/CustomerControlView.tsx` | `da4faeed719c936af4daf0b7b7b6b69b7c16c0e9` | customer acceptance/QC/warranty view |
 | `apps/mobile/components/screens/control/ContractorControlView.tsx` | `dc2d3793252be1668ffe720e98cf1572c7d9c085` | contractor acceptance/QC view |
 | `apps/mobile/components/screens/control/TechnicalSupervisionControlView.tsx` | `3f9ca8a779a96f74f25cef885004301b423a681e` | technical-supervision control view |
-| `apps/mobile/components/renova/os/OsHubTabs.tsx` | `f480067b06c750623e4091fe0db128c877e3fb37` | hub tab geometry/progressive disclosure |
+| `apps/mobile/components/renova/os/OsHubTabs.tsx` | `5502586790937235004cac87765106972de23304` | hub tab geometry/progressive disclosure |
 
 При изменении любого source выше `technicalSpecAnnexContract.test.mjs` должен потребовать обновить соответствующий screen contract и этот snapshot. SHA является traceability marker, а не самостоятельным доказательством корректности UX.
