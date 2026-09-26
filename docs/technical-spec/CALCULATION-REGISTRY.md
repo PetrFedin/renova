@@ -195,7 +195,17 @@ Works/waste/reserve variance структурно0. Это НЕ измеренн
 
 ## 16. Материалы — актуальная количественная семантика
 
-Source `apps/mobile/components/screens/OsMaterialsScreen.tsx`, blob `ee8ef690f9f52830feb0f07ebef77e70cfb42817`; helpers `lib/domain/materialSupply.ts` и `procurementNextAction.ts`.
+Backend source для сметного plan/fact: `backend/app/services/estimate_service.py` (`material_actual_total`, `material_stats`) и consumer `backend/app/api/v1/analytics.py`.
+
+```text
+materials_plan = Σ(quantity_planned × unit_price for material EstimateLine)
+actual_qty     = quantity_actual if quantity_actual is not null else 0
+materials_fact = Σ(actual_qty × unit_price for material EstimateLine)
+```
+
+`quantity_actual == 0` — явный нулевой факт и никогда не заменяется `quantity_planned`. Persisted ORM-контракт сейчас non-null/default 0; поэтому отдельное состояние «факт ещё не введён» этой колонкой не моделируется. Если такое различие потребуется продукту, оно должно появиться как явное поле/состояние, а не через truthiness fallback. План не является доказательством факта.
+
+Mobile supply source: `apps/mobile/components/screens/OsMaterialsScreen.tsx`, blob `ee8ef690f9f52830feb0f07ebef77e70cfb42817`; helpers `lib/domain/materialSupply.ts` и `procurementNextAction.ts`.
 
 ```text
 needBuy = count(quantityToBuy(pick) > 0)
