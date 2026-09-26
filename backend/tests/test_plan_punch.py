@@ -22,6 +22,7 @@ async def test_create_plan_pinned_issue(db):
     db.add_all([project, plan])
     await db.commit()
 
+    photo_key = f"project-media/{project.id}/issues/photo1.jpg"
     issue = await iss.create_issue(
         db,
         project.id,
@@ -31,16 +32,16 @@ async def test_create_plan_pinned_issue(db):
         floor_plan_id=plan.id,
         x_pct=42.5,
         y_pct=67.0,
-        photo_key="issues/photo1.jpg",
+        photo_key=photo_key,
     )
 
     assert issue.floor_plan_id == plan.id
     assert issue.x_pct == 42.5
     assert issue.y_pct == 67.0
-    assert issue.photo_key == "issues/photo1.jpg"
+    assert issue.photo_key == photo_key
 
     d = iss.issue_dict(issue)
-    assert d["photo_url"] == "/api/v1/media/issues/photo1.jpg"
+    assert d["photo_url"] == f"/api/v1/media/{photo_key}"
     assert d["floor_plan_id"] == plan.id
 
 

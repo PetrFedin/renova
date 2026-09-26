@@ -63,7 +63,7 @@ async def test_acceptance_marks_floor_pin_label():
         plan = await client.post(
             f"/api/v1/projects/{pid}/floor-plans",
             headers=h_k,
-            json={"name": "План", "image_key": "demo/plan.jpg"},
+            json={"name": "План", "image_key": f"project-media/{pid}/demo/plan.jpg"},
         )
         assert plan.status_code == 200, plan.text
         plan_id = plan.json()["id"]

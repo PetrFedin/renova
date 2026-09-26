@@ -12,8 +12,9 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { api, StageDetail, WorkSnapshot } from '@/lib/api';
-import { isRateLimitError } from '@/lib/api/client';
+import { authHeaders, isRateLimitError } from '@/lib/api/client';
 import { compressUri } from '@/lib/compressImage';
+import { ProjectMediaUploadUnavailable, uploadMediaBlob } from '@/lib/mediaUpload';
 import { checklistForStage } from '@/lib/checklistTemplates';
 import { StageExpensePanel } from '@/components/renova/StageExpensePanel';
 import { StageEstimatePanel } from '@/components/renova/StageEstimatePanel';
@@ -293,21 +294,15 @@ export function StageDetailScreen() {
           throw new Error(`Compressed image read failed with status ${compressedResponse.status}`);
         }
         const blob = await compressedResponse.blob();
-        const up = await api.getUploadUrl(user.id);
-        if (up.upload_url) {
-          const uploadResponse = await fetch(up.upload_url, {
-            method: 'PUT',
-            body: blob,
-            headers: { 'Content-Type': 'image/jpeg' },
-          });
-          if (!uploadResponse.ok) {
-            throw new Error(`Stage photo upload failed with status ${uploadResponse.status}`);
+        try {
+          const key = await uploadMediaBlob(user.id, activeProject.id, blob, 'image/jpeg');
+          await api.addStagePhoto(user.id, activeProject.id, stage.id, undefined, label, key);
+        } catch (uploadError) {
+          if (uploadError instanceof ProjectMediaUploadUnavailable && asset.base64) {
+            await api.addStagePhoto(user.id, activeProject.id, stage.id, `data:image/jpeg;base64,${asset.base64}`, label);
+          } else {
+            throw uploadError;
           }
-          await api.addStagePhoto(user.id, activeProject.id, stage.id, undefined, label, up.key, up.public_url);
-        } else if (asset.base64) {
-          await api.addStagePhoto(user.id, activeProject.id, stage.id, `data:image/jpeg;base64,${asset.base64}`, label);
-        } else {
-          throw new Error('Stage photo upload URL unavailable and no inline image fallback exists');
         }
       } catch (error: unknown) {
         if (isOfflineQueued(error)) {
@@ -428,7 +423,7 @@ export function StageDetailScreen() {
                   {list.map((p) => (
                     <View key={p.id} style={styles.photoRow}>
                       {p.image_url ? (
-                        <Image source={{ uri: p.image_url }} style={styles.img} />
+                        <Image source={{ uri: p.image_url, headers: authHeaders(user.id) }} style={styles.img} />
                       ) : null}
                       <Text>{p.caption || 'Фото'} · {p.created_at.slice(0, 10)}</Text>
                     </View>

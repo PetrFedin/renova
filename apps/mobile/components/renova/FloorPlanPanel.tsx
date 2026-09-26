@@ -3,6 +3,7 @@ import { View, Text, Image, Pressable, StyleSheet, PanResponder, Alert, Activity
 import { useLocalSearchParams, usePathname } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { api, FloorPlan } from '@/lib/api';
+import { authHeaders } from '@/lib/api/client';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
@@ -153,7 +154,7 @@ export function FloorPlanPanel({
     }
     if (!uri) return pickerFailed ? { photoIssue: 'picker_unavailable' } : {};
     const blob = await (await fetch(uri)).blob();
-    const key = await uploadMediaBlob(userId, blob, blob.type || 'image/jpeg');
+    const key = await uploadMediaBlob(userId, projectId, blob, blob.type || 'image/jpeg');
     return { key };
   };
 
@@ -247,7 +248,7 @@ export function FloorPlanPanel({
     try {
       try {
         const blob = await (await fetch(selectedAsset.uri)).blob();
-        const key = await uploadMediaBlob(userId, blob, blob.type || 'image/jpeg');
+        const key = await uploadMediaBlob(userId, projectId, blob, blob.type || 'image/jpeg');
         await api.createFloorPlan(userId, projectId, {
           name: `Этаж ${floor}`,
           image_key: key,
@@ -334,7 +335,11 @@ export function FloorPlanPanel({
             </>
           ) : null}
           <View style={s.mapWrap} onLayout={onMapLayout}>
-            <Image source={{ uri: `${BASE}${plan.image_url}` }} style={s.img} resizeMode="contain" />
+            <Image
+              source={{ uri: `${BASE}${plan.image_url}`, headers: authHeaders(userId) }}
+              style={s.img}
+              resizeMode="contain"
+            />
             {punchMode ? (
               <Pressable
                 style={s.punchOverlay}

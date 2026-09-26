@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, Linking, StyleSheet, Alert } from 'react-native';
+import { View, Text, StyleSheet, Alert } from 'react-native';
 import { api } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { uploadMediaBlob } from '@/lib/mediaUpload';
+import { downloadApiPath } from '@/lib/downloadFile';
 import { pickDocumentForUpload } from '@/lib/documentUploadPick';
 import { designPackageStatusLabel } from '@/constants/labels';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
-import { reportCatch } from '@/lib/reportError';
+import { reportCatch, reportError } from '@/lib/reportError';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { EmptyActionState } from '@/components/ui/EmptyActionState';
 import type { OsRole } from '@/constants/osSections';
@@ -49,7 +50,6 @@ export function DesignPackageList({
   }, [userId, projectId]);
   useEffect(() => { load(); }, [load]);
   useProjectDataReload(load);
-  const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
 
   const uploadPdf = async () => {
     setUploading(true);
@@ -58,14 +58,35 @@ export function DesignPackageList({
       if (!picked) return;
       const response = await fetch(picked.uri);
       const blob = await response.blob();
-      const key = await uploadMediaBlob(userId, blob, picked.type || 'application/pdf');
+      const key = await uploadMediaBlob(
+        userId,
+        projectId,
+        blob,
+        picked.type || 'application/pdf',
+        picked.name,
+      );
       await api.createDesignPackage(userId, projectId, { title: picked.name || 'Дизайн-проект', file_key: key });
       await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any) });
       load();
-    } catch {
+    } catch (error) {
+      reportError('components.renova.DesignPackageList.upload', error, { projectId });
       Alert.alert('Загрузка', 'Не удалось загрузить документ');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const openDesign = async (item: DP) => {
+    if (!item.file_url) return;
+    try {
+      await downloadApiPath(
+        userId,
+        item.file_url,
+        item.title.toLowerCase().endsWith('.pdf') ? item.title : `${item.title}.pdf`,
+      );
+    } catch (error) {
+      reportError('components.renova.DesignPackageList.open', error, { projectId, designPackageId: item.id });
+      Alert.alert('Файл', 'Не удалось открыть защищённый файл. Повторите действие.');
     }
   };
 
@@ -108,7 +129,7 @@ export function DesignPackageList({
           </View>
           <View style={s.actions}>
             {d.file_url && (
-              <PrimaryButton title="Открыть" variant="outline" compact onPress={() => Linking.openURL(`${BASE}${d.file_url}`)} />
+              <PrimaryButton title="Открыть" variant="outline" compact onPress={() => { void openDesign(d); }} />
             )}
             {role === 'customer' && d.status === 'pending' && (
               <PrimaryButton
