@@ -52,7 +52,10 @@ export function PortfolioCategoryBreakdown({
   return (
     <View style={s.wrap}>
       <Text style={s.head}>Статьи расходов</Text>
-      <Text style={s.sub}>Сумма по выбранным объектам — где был перерасход относительно плана</Text>
+      <Text style={s.sub}>
+        Сумма по выбранным объектам — где был перерасход относительно плана. Факт по статье берётся из её
+        собственных записей, а «Итого» — из бюджета объектов, поэтому статьи не обязаны складываться в итог.
+      </Text>
       {unavailableProjectCount > 0 ? (
         <Text style={s.warning}>
           Частичные данные: детализация недоступна для {unavailableProjectCount} из {projectCount} объект(ов). Сумма ниже не является итогом всего выбранного портфеля.
@@ -70,16 +73,17 @@ export function PortfolioCategoryBreakdown({
           <View style={s.lineBottom}>
             <Text style={s.values}>
               план {formatRub(row.planned)}
-              {row.spent !== row.planned || row.key === 'materials' || row.key === 'total'
-                ? ` · факт ${formatRub(row.spent)}`
-                : ''}
+              {row.spent !== null ? ` · факт ${formatRub(row.spent)}` : ''}
             </Text>
-            {row.variance !== 0 && (row.key === 'materials' || row.key === 'total') ? (
+            {row.variance !== null && row.variance !== 0 ? (
               <Text style={[s.delta, row.variance > 0 ? s.deltaBad : s.deltaGood]}>
                 {row.variance > 0 ? '+' : ''}{formatRub(row.variance)}
               </Text>
             ) : null}
           </View>
+          {row.spent === null && row.factNote ? (
+            <Text style={s.factNote}>факт не зафиксирован — {row.factNote}</Text>
+          ) : null}
         </View>
       ))}
     </View>
@@ -118,6 +122,7 @@ const s = StyleSheet.create({
     borderRadius: 6,
   },
   values: { fontSize: 12, color: RenovaTheme.colors.textMuted, flex: 1 },
+  factNote: { fontSize: 11, color: RenovaTheme.colors.textMuted, lineHeight: 15, marginTop: 2, fontStyle: 'italic' },
   delta: { fontSize: 12, fontWeight: '700' },
   deltaBad: { color: RenovaTheme.colors.dangerText },
   deltaGood: { color: RenovaTheme.colors.successText },

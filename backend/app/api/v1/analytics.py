@@ -91,11 +91,36 @@ async def budget_breakdown(project_id: str, user: User = Depends(get_current_use
     works = sum(l.quantity_planned * l.unit_price for l in lines if l.line_type == LineType.work)
     materials_plan = sum(l.quantity_planned * l.unit_price for l in lines if l.line_type == LineType.material)
     picks = (await db.execute(select(MaterialPick).where(MaterialPick.project_id == project_id))).scalars().all()
-    materials_fact = sum(x.qty * x.price for x in picks if x.status.value in ("approved", "purchased"))
+    bought = [x for x in picks if x.status.value in ("approved", "purchased")]
+    materials_fact = sum(x.qty * x.price for x in bought)
     waste = (await db.execute(select(WasteOrder).where(WasteOrder.project_id == project_id))).scalars().all()
     waste_sum = sum(w.volume_m3 * w.price for w in waste if w.status.value != "cancelled")
     reserve = max(0, p.budget_planned - works - materials_plan - waste_sum)
-    return {"works": round(works, 2), "materials_plan": round(materials_plan, 2), "materials_fact": round(materials_fact, 2), "waste": round(waste_sum, 2), "reserve": round(reserve, 2), "total_planned": round(works + materials_plan + waste_sum + reserve, 2), "budget_planned": p.budget_planned, "budget_spent": p.budget_spent}
+    # Факт по статьям — отдельно измеренные величины, а не повтор плана.
+    # Работы: фактические объёмы из сметы; вывоз: только выполненные заказы;
+    # резерв факта не имеет вовсе. Рядом идёт число записей, на которых факт
+    # держится: ноль записей — это «не зафиксировано», а не «потрачено ноль»,
+    # и клиент обязан показать разницу.
+    work_lines = [l for l in lines if l.line_type == LineType.work]
+    works_fact = sum(l.quantity_actual * l.unit_price for l in work_lines)
+    works_fact_records = sum(1 for l in work_lines if l.quantity_actual)
+    waste_done = [w for w in waste if w.status.value == "done"]
+    waste_fact = sum(w.volume_m3 * w.price for w in waste_done)
+    return {
+        "works": round(works, 2),
+        "works_fact": round(works_fact, 2),
+        "works_fact_records": works_fact_records,
+        "materials_plan": round(materials_plan, 2),
+        "materials_fact": round(materials_fact, 2),
+        "materials_fact_records": len(bought),
+        "waste": round(waste_sum, 2),
+        "waste_fact": round(waste_fact, 2),
+        "waste_fact_records": len(waste_done),
+        "reserve": round(reserve, 2),
+        "total_planned": round(works + materials_plan + waste_sum + reserve, 2),
+        "budget_planned": p.budget_planned,
+        "budget_spent": p.budget_spent,
+    }
 
 
 @router.get("/projects/{project_id}/analytics/budget-category-alerts")

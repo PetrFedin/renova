@@ -53,11 +53,27 @@ export type EstimateLine = {
   total: number;
 };
 
+/**
+ * Разбивка бюджета по статьям.
+ *
+ * `*_fact` — отдельно измеренные величины, а не повтор плана. Рядом идёт
+ * `*_fact_records`: сколько записей стоит за фактом. Ноль записей означает
+ * «факт не зафиксирован», а не «потрачено ноль», и эти два случая нельзя
+ * показывать одинаково. У резерва факта нет вовсе.
+ *
+ * Поля необязательные: сервер мог быть развёрнут раньше клиента, и тогда
+ * фактов по статьям просто нет — это тоже «не зафиксировано».
+ */
 export type BudgetBreakdown = {
   works: number;
+  works_fact?: number;
+  works_fact_records?: number;
   materials_plan: number;
   materials_fact: number;
+  materials_fact_records?: number;
   waste: number;
+  waste_fact?: number;
+  waste_fact_records?: number;
   reserve: number;
   total_planned: number;
   budget_planned: number;
