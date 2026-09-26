@@ -163,7 +163,48 @@ export function designPackageStatusLabel(status: string): string {
 }
 
 export function stageStatusLabel(status: string): string {
-  return STAGE_STATUS_LABEL[status]?.replace(/^[✓⏳🔨○]\s*/, '') ?? status;
+  // Флаг `u` обязателен: `🔨` — суррогатная пара, и без него класс символов
+  // срезал только её первую половину, оставляя в подписи битый символ.
+  return STAGE_STATUS_LABEL[status]?.replace(/^[✓⏳🔨○]\s*/u, '') ?? status;
+}
+
+/**
+ * Вычисляемый статус этапа (§4.5) — коды `display_status` с сервера.
+ *
+ * Это второй словарь статусов, не замена первому: `StageStatus`
+ * (planned/active/review/done) — что записано, `display_status` — что этап
+ * значит сейчас, с учётом блокировок и ожидания материалов. Значения
+ * повторяют `DISPLAY_LABELS` из `backend/app/services/stage_status_service.py`:
+ * сервер отдаёт готовую подпись не везде, и там, где не отдаёт, клиенту
+ * нужен свой словарь — иначе на экран попадает код.
+ */
+export const STAGE_DISPLAY_STATUS_LABEL: Record<string, string> = {
+  not_started: 'Не начат',
+  preparation: 'Подготовка',
+  in_progress: 'В работе',
+  paused: 'На паузе',
+  waiting_materials: 'Ожидает материалы',
+  waiting_acceptance: 'Ожидает приёмку',
+  completed: 'Завершён',
+  archive: 'Архив',
+};
+
+/**
+ * Подпись статуса этапа для показа — по любому из двух полей.
+ *
+ * Панель «Площадки · циклы» писала `{st.display_status || st.status}`, а это
+ * **оба** сырых перечисления: человеческой подписи в типе `Stage` нет вовсе.
+ * Заказчик видел «Подготовка done», «Демонтаж planned».
+ */
+export function stageDisplayLabel(stage: {
+  display_status?: string | null;
+  status?: string | null;
+}): string {
+  const display = stage.display_status;
+  if (display) return STAGE_DISPLAY_STATUS_LABEL[display] ?? display;
+  const status = stage.status;
+  if (!status) return '';
+  return stageStatusLabel(status);
 }
 
 /** Фильтры экрана «Работы» */
