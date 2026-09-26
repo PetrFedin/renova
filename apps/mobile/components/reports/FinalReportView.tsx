@@ -26,6 +26,12 @@ export function FinalReportView({
           <Text style={homeTypography.zoneLabel}>Сводка</Text>
           <Text style={s.line}>План {formatRub(data.budget_planned || 0)}</Text>
           <Text style={s.line}>Факт {formatRub(data.budget_spent || 0)}</Text>
+          {data.awaiting_verification ? (
+            <Text style={s.warn}>Переведено, ждёт подтверждения {formatRub(data.awaiting_verification)}</Text>
+          ) : null}
+          {data.outstanding ? (
+            <Text style={s.warn}>Счета к оплате {formatRub(data.outstanding)}</Text>
+          ) : null}
           {data.overrun ? <Text style={s.warn}>Перерасход {formatRub(data.overrun)}</Text> : null}
           {data.savings ? <Text style={s.ok}>Экономия {formatRub(data.savings)}</Text> : null}
           {data.forecast_total ? <Text style={s.meta}>Прогноз {formatRub(data.forecast_total)}</Text> : null}
