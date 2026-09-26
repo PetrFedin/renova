@@ -91,12 +91,12 @@ export function WeekScheduleStrip({ userId, projectId, role, embedded }: Props) 
         {!embedded ? (
           <View style={homeRowStyles.zoneHead}>
             <Text style={homeTypography.zoneLabel}>План на неделю</Text>
-            <Pressable onPress={() => openCalendar()} hitSlop={8} accessibilityRole="button">
+            <Pressable onPress={() => openCalendar()} hitSlop={8} accessibilityRole="button" accessibilityLabel="Открыть сроки">
               <Text style={homeTypography.link}>Календарь →</Text>
             </Pressable>
           </View>
         ) : null}
-        <Pressable style={homeRowStyles.linkRow} onPress={() => openCalendar()} accessibilityRole="button">
+        <Pressable style={homeRowStyles.linkRow} onPress={() => openCalendar()} accessibilityRole="button" accessibilityLabel="Открыть сроки">
           <Text style={[homeTypography.emptyState, homeRowStyles.linkRowLeading]} numberOfLines={1}>
             На этой неделе пусто
           </Text>
@@ -117,7 +117,7 @@ export function WeekScheduleStrip({ userId, projectId, role, embedded }: Props) 
       {!embedded ? (
         <View style={homeRowStyles.zoneHead}>
           <Text style={homeTypography.zoneLabel}>План на неделю</Text>
-          <Pressable onPress={() => openCalendar()} hitSlop={8} accessibilityRole="button">
+          <Pressable onPress={() => openCalendar()} hitSlop={8} accessibilityRole="button" accessibilityLabel="Открыть сроки">
             <Text style={homeTypography.link}>Календарь →</Text>
           </Pressable>
         </View>
@@ -148,7 +148,15 @@ export function WeekScheduleStrip({ userId, projectId, role, embedded }: Props) 
       </View>
 
       {expanded && groups.map((g) => (
-        <Pressable key={g.date} style={s.row} onPress={() => openCalendar(g.date)}>
+        <Pressable
+          key={g.date}
+          style={s.row}
+          onPress={() => openCalendar(g.date)}
+          accessibilityRole="button"
+          // Строка дня открывает календарь на этой дате — вслух это должно
+          // звучать так же, как читается глазом: дата, затем что в этот день.
+          accessibilityLabel={`${g.label}: ${g.count === 1 ? g.sample : eventLabel(g.count)}`}
+        >
           <Text style={s.date}>{g.label}</Text>
           <View style={{ flex: 1 }}>
             <Text style={s.title} numberOfLines={1}>
