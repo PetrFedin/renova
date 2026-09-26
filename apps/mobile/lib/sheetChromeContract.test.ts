@@ -10,6 +10,8 @@ const must = (condition: boolean, message: string) => {
 const surface = src('components/renova/SheetSurface.tsx');
 must(surface.includes('KeyboardAvoidingView'), 'sheet surface keyboard avoidance');
 must(surface.includes('useSafeAreaInsets'), 'sheet surface safe area');
+must(surface.includes('useReducedMotion'), 'sheet surface reduced-motion source');
+must(surface.includes("animationType={reducedMotion ? 'fade' : 'slide'}"), 'sheet surface reduced-motion presentation');
 must(surface.includes('<ScrollView'), 'sheet surface scroll body');
 must(surface.includes('{footer ? <View style={styles.footer}>{footer}</View> : null}'), 'sheet surface sticky footer');
 must(surface.includes('if (!busy) onClose()'), 'sheet surface safe close');
