@@ -69,6 +69,19 @@ export function StageDetailPaymentBlock({
     );
   }
 
+  // Раньше здесь был молчаливый провал: при нулевой сумме блок ничего не
+  // рисовал, и приёмка выглядела обычной. Человек принимал работу, а платежа
+  // не возникало — и узнать об этом было неоткуда.
+  if (stageStatus === 'review' && isCustomer && !paymentExpectedOnAccept) {
+    return (
+      <View style={s.hintBox}>
+        <Text style={s.hint}>
+          По этому этапу оплаты не возникнет: сумма не распределена. Порядок оплаты — «Деньги → Оплаты».
+        </Text>
+      </View>
+    );
+  }
+
   if (!pending) return null;
 
   if (showContractorPending) {
