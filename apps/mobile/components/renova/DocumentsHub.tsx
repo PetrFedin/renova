@@ -15,6 +15,7 @@ import { exportGdprJsonFile } from '@/lib/exportGdprJson';
 import { apiErrorMessage } from '@/lib/formatPhone';
 import {
   documentCenterSubtitle,
+  documentStatusLabel,
   isCanonicalDocument,
 } from '@/lib/documentCenterMeta';
 import { pickDocumentForUpload, pickImageForDocumentUpload } from '@/lib/documentUploadPick';
@@ -66,10 +67,9 @@ function sourceLabel(source: string) {
 
 function statusLabel(doc: ProjectDocument) {
   if (doc.source === 'receipt') return doc.verified ? 'Проверен' : 'Не проверен';
-  if (doc.status === 'ready') return 'Готов';
-  if (doc.status === 'verified') return 'Проверен';
-  if (doc.status === 'unverified') return 'Не проверен';
-  return doc.status || '—';
+  // Латинские значения DocumentStatus (`active`, `superseded`, …) раньше
+  // попадали в подпись как есть: «Документ · active · v1».
+  return documentStatusLabel(doc.status) || '—';
 }
 
 function formatDocMeta(doc: ProjectDocument) {
@@ -528,12 +528,12 @@ export function DocumentsHub({
         (e instanceof ApiError && e.status === 501) ||
         msg.includes('501') ||
         msg.includes('provider_unavailable');
-      Alert.alert(
-        'Ошибка',
-        providerDown
+      showActionConfirm({
+        title: 'Ошибка',
+        message: providerDown
           ? 'Провайдер подписи пока недоступен. Используйте «Подписать в приложении» или повторите позже.'
           : (msg.slice(0, 180) || 'Не удалось выполнить действие. Проверьте связь с API.'),
-      );
+      });
     } finally {
       setBusy(null);
     }
