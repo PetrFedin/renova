@@ -12,7 +12,9 @@ const june = filterRowsByPeriod(rows, 'month', now);
 if (june.length !== 2) throw new Error('month filter');
 if (sumRows(june) !== 3000) throw new Error('month sum');
 
-const share = plannedShareForPeriod(120000, 'month', '2026-06-01', '2026-08-31');
+// Дата задаётся явно: без неё проверка молча зависела от текущего месяца и
+// на любом дне вне июня-августа возвращала ноль.
+const share = plannedShareForPeriod(120000, 'month', '2026-06-01', '2026-08-31', now);
 if (!(share > 0 && share < 120000)) throw new Error('planned share');
 
 console.log('aggregateBudgetByPeriod.test OK');
