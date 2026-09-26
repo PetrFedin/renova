@@ -22,6 +22,17 @@ async def _conversion_project(
     return await creation._loaded_project(db, project_id)
 
 
+def agreed_price(lead: JobLead) -> float | None:
+    """Цена, которую заказчик принял по заявке; иначе его ориентир по бюджету."""
+    for value in (lead.pre_estimate, lead.budget_hint):
+        if value is None:
+            continue
+        price = float(value)
+        if math.isfinite(price) and price > 0:
+            return price
+    return None
+
+
 async def convert_lead(
     db: AsyncSession,
     *,
@@ -108,6 +119,9 @@ async def convert_lead(
         project = await creation.prepare_project_in_transaction(
             db, customer_id=customer_id, payload=payload, participant_actor_id=actor_id,
         )
+        # Согласованная цена (принятая котировка) — это бюджет заказчика по объекту.
+        # Без этого экран «Деньги» открывался без лимита, хотя цену уже приняли.
+        project.customer_budget = agreed_price(lead)
         lead.status = JobLeadStatus.taken
         candidate_id = project.id
         created, entity_id = await commit_client_write(
