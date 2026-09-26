@@ -728,6 +728,9 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
   }, [loading, user?.id, activeProject?.id, projects.length, ensureActiveProject]);
 
   const logout = useCallback(async () => {
+    // B0-2 (#315): revoke the server-side session BEFORE local tokens are cleared;
+    // best-effort, so an offline logout still completes locally.
+    await api.logout();
     await AsyncStorage.multiRemove([
       KEYS.userId,
       KEYS.userRole,
