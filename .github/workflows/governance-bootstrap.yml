@@ -33,4 +33,4 @@ jobs:
       - name: Mandate issues
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/governance/create-mandate-issues.py --repo "${{ github.repository }"
+        run: python3 scripts/governance/create-mandate-issues.py --repo "${{ github.repository }}"
