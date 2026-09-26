@@ -41,8 +41,10 @@ export function PortfolioSummaryHero({ summary, selectedCount, totalCount }: Pro
               {over
                 ? `Перерасход ${formatRub(summary.overspend)} (${summary.variancePct > 0 ? '+' : ''}${summary.variancePct}%)`
                 : under
-                  ? `Экономия ${formatRub(summary.savings)} (${summary.variancePct}%)`
-                  : `В рамках плана · ${summary.spendPct}% бюджета`}
+                  ? `Экономия ${formatRub(summary.savings)} (${summary.savingsPct}%) по завершённым`
+                  : summary.remaining > 0
+                    ? `Освоено ${summary.spendPct}% · осталось ${formatRub(summary.remaining)}`
+                    : `В рамках плана · ${summary.spendPct}% бюджета`}
             </Text>
             <Text style={s.deltaSub}>
               {summary.projectsOver > 0 ? `${summary.projectsOver} с перерасходом` : 'Без перерасхода по объектам'}
