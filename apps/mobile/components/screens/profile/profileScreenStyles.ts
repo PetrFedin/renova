@@ -59,6 +59,15 @@ export const profileScreenStyles = StyleSheet.create({
     gap: 10,
     marginTop: 4,
   },
+  memberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  memberLabel: {
+    flexShrink: 1,
+  },
   input: {
     borderWidth: 1,
     borderColor: RenovaTheme.colors.border,

@@ -43,18 +43,84 @@ function TeamSection() {
   useEffect(() => { reloadTeam(); }, [reloadTeam]);
   useProjectDataReload(reloadTeam);
 
+  const myRole = team?.members?.find((m: any) => m.user_id === user?.id)?.role;
+  const isOwner = myRole === 'owner';
+  // Участник чужой бригады: приглашать он не может, а выйти — должен.
+  const isMember = Boolean(team) && !isOwner;
+
+  const confirmRemove = useCallback((member: any) => {
+    if (!user) return;
+    Alert.alert(
+      'Исключить из бригады?',
+      `${member.phone} потеряет доступ к проектам бригады.`,
+      [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Исключить',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await api.removeTeamMember(user.id, member.user_id);
+              await syncProjectSideEffects({ user, project: activeProject });
+              setTeam(await api.getTeam(user.id));
+            } catch (e: unknown) {
+              Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось исключить');
+            }
+          },
+        },
+      ],
+    );
+  }, [user?.id, activeProject]);
+
+  const confirmLeave = useCallback(() => {
+    if (!user) return;
+    Alert.alert(
+      'Выйти из бригады?',
+      'Вы потеряете доступ к проектам этой бригады.',
+      [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Выйти',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const result = await api.leaveTeam(user.id);
+              if (!result?.ok) {
+                Alert.alert('Не удалось выйти', result?.message || 'Попробуйте позже');
+                return;
+              }
+              await syncProjectSideEffects({ user, project: activeProject });
+              setTeam(await api.getTeam(user.id));
+            } catch (e: unknown) {
+              Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось выйти');
+            }
+          },
+        },
+      ],
+    );
+  }, [user?.id, activeProject]);
+
   if (!user) return null;
 
   return (
     <View style={{ gap: 10 }}>
-      {team ? (
+      {isOwner ? (
         <>
           <Text style={ps.userName}>{team.name}</Text>
           <Text style={ps.userMeta}>Участников: {team.members?.length || 0}</Text>
           {team.members?.map((m: any) => (
-            <Text key={m.user_id} style={ps.userMeta}>
-              {m.phone} · {m.role}
-            </Text>
+            <View key={m.user_id} style={ps.memberRow}>
+              <Text style={[ps.userMeta, ps.memberLabel]}>
+                {m.phone} · {m.role}
+              </Text>
+              {isOwner && m.role !== 'owner' ? (
+                <PrimaryButton
+                  title="Исключить"
+                  variant="dangerOutline"
+                  onPress={() => confirmRemove(m)}
+                />
+              ) : null}
+            </View>
           ))}
           <TextInput
             style={ps.input}
@@ -79,6 +145,17 @@ function TeamSection() {
               }
             }}
           />
+        </>
+      ) : isMember ? (
+        <>
+          <Text style={ps.userName}>{team.name}</Text>
+          <Text style={ps.userMeta}>Участников: {team.members?.length || 0}</Text>
+          {team.members?.map((m: any) => (
+            <Text key={m.user_id} style={ps.userMeta}>
+              {m.phone} · {m.role}
+            </Text>
+          ))}
+          <PrimaryButton title="Выйти из бригады" variant="dangerOutline" onPress={confirmLeave} />
         </>
       ) : (
         <PrimaryButton

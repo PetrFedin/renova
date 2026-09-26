@@ -339,24 +339,29 @@ async def _invite_phone_for_team(
     if existing is not None:
         return {"ok": False, "message": "Уже в бригаде"}
 
-    # Prepare the durable effect before mutating membership. If effect preparation
-    # fails, there is no membership DML to leak through SQLite legacy autocommit.
+    # Приглашение — предложение, а не свершившийся факт. Членство в бригаде
+    # подрядчика лишает технадзор независимости (`_assert_independent`), и
+    # раньше подрядчик мог включить проверяющего к себе в бригаду по одному
+    # номеру телефона, а выйти тот не мог. Теперь по телефону выдаётся токен —
+    # ровно как в `invite-link` и `invite-sms`, — а членство создаёт сам
+    # приглашённый через `/teams/join`. Экран всё это время уже говорил
+    # «приглашение отправлено».
+    invite = TeamInvite(
+        team_id=team.id,
+        token=secrets.token_urlsafe(16),
+        role=role,
+        expires_at=utc_now() + timedelta(hours=72),
+        invited_user_id=target.id,
+    )
+    db.add(invite)
     await _enqueue_notification(
         db,
         team_id=team.id,
         user_id=target.id,
         title="Приглашение в бригаду",
-        body=f"Вас добавили в бригаду «{team.name}»",
+        body=f"Вас приглашают в бригаду «{team.name}». Откройте профиль, чтобы принять или отклонить.",
     )
-    _member, created = await ensure_team_membership(
-        db,
-        team_id=team.id,
-        user_id=target.id,
-        role=role,
-    )
-    if not created:
-        raise _MembershipAlreadyExists("team_membership_race_lost")
-    return {"ok": True, "user_id": target.id}
+    return {"ok": True, "user_id": target.id, "invited": True, "token": invite.token}
 
 
 async def invite_phone_as_owner(
@@ -729,3 +734,101 @@ async def set_member_role_as_owner(
     if team is None:
         return False
     return await set_member_role(db, team.id, owner_id, user_id, role)
+
+
+async def remove_member_as_owner(
+    db: AsyncSession,
+    *,
+    owner_id: str,
+    user_id: str,
+) -> bool:
+    """Исключение из бригады владельцем.
+
+    Маршрута на удаление не было вовсе: попав в бригаду — по приглашению или,
+    до этой правки, без него, — выйти было нельзя ни участнику, ни владельцу.
+    """
+    owner = await _locked_user(db, owner_id)
+    if owner is None or owner.role != UserRole.contractor:
+        await db.rollback()
+        return False
+    team = await owned_team(db, owner.id)
+    if team is None:
+        await db.rollback()
+        return False
+    team = await _locked_team(db, team.id)
+    if team is None or team.owner_id != owner.id:
+        await db.rollback()
+        return False
+    member = await _locked_member(db, team_id=team.id, user_id=user_id)
+    # Владелец — не рядовой участник: исключив себя, он оставил бы бригаду без
+    # хозяина, а `_ensure_owner_membership` всё равно вернул бы его обратно.
+    if member is None or member.role == "owner" or member.user_id == team.owner_id:
+        await db.rollback()
+        return False
+    try:
+        await db.delete(member)
+        await _enqueue_notification(
+            db,
+            team_id=team.id,
+            user_id=user_id,
+            title="Вы исключены из бригады",
+            body=f"Вы больше не состоите в бригаде «{team.name}»",
+        )
+        await db.commit()
+    except BaseException:
+        await db.rollback()
+        raise
+    await _dispatch(db, "team.member_removed")
+    return True
+
+
+async def leave_team(db: AsyncSession, *, user_id: str) -> dict:
+    """Выход из чужой бригады по собственной воле.
+
+    Это единственный способ восстановить независимость технадзора, если тот
+    оказался в бригаде проверяемого подрядчика: `_assert_independent` читает
+    именно членство. Без такого выхода правило было бы ловушкой — верным по
+    сути и невыполнимым на практике.
+    """
+    user = await _locked_user(db, user_id)
+    if user is None:
+        await db.rollback()
+        return {"ok": False, "message": "Пользователь не найден"}
+    owned = await owned_team(db, user_id)
+    membership = await db.scalar(
+        select(TeamMember)
+        .join(Team, Team.id == TeamMember.team_id)
+        .where(TeamMember.user_id == user_id, Team.owner_id != user_id)
+        .order_by(TeamMember.created_at.asc(), TeamMember.id.asc())
+    )
+    if membership is None:
+        await db.rollback()
+        if owned is not None:
+            return {
+                "ok": False,
+                "message": "Вы владелец бригады — её нельзя покинуть",
+            }
+        return {"ok": False, "message": "Вы не состоите в бригаде"}
+    team = await _locked_team(db, membership.team_id)
+    if team is None:
+        await db.rollback()
+        return {"ok": False, "message": "Бригада не найдена"}
+    member = await _locked_member(db, team_id=team.id, user_id=user_id)
+    if member is None:
+        await db.rollback()
+        return {"ok": False, "message": "Вы не состоите в бригаде"}
+    try:
+        await db.delete(member)
+        await _enqueue_notification(
+            db,
+            team_id=team.id,
+            user_id=team.owner_id,
+            title="Участник вышел из бригады",
+            body=f"{user.phone} покинул бригаду «{team.name}»",
+        )
+        await db.commit()
+    except BaseException:
+        await db.rollback()
+        raise
+    await _dispatch(db, "team.member_left")
+    return {"ok": True, "team_id": team.id}

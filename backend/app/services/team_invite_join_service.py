@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timeutil import utc_now
@@ -113,6 +113,13 @@ async def join_by_token(
             TeamInvite.token == normalized,
             TeamInvite.used.is_(False),
             TeamInvite.expires_at >= utc_now(),
+            # Личное приглашение по телефону предъявляет только адресат.
+            # Ссылка и QR обезличены (`invited_user_id IS NULL`) — это их
+            # назначение, и для них условие выполняется всегда.
+            or_(
+                TeamInvite.invited_user_id.is_(None),
+                TeamInvite.invited_user_id == user_id,
+            ),
         )
         .values(used=True)
         .returning(TeamInvite.team_id, TeamInvite.role)
