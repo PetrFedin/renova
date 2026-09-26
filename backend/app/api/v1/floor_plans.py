@@ -9,6 +9,7 @@ from app.services import activity_service as act
 
 router = APIRouter(prefix="/projects", tags=["floor-plans"])
 
+
 class PlanIn(BaseModel):
     name: str = "Планировка"
     floor_level: int = 1
@@ -16,15 +17,18 @@ class PlanIn(BaseModel):
     width_px: int | None = None
     height_px: int | None = None
 
+
 class PinPatch(BaseModel):
     x_pct: float
     y_pct: float
+
 
 class PinIn(BaseModel):
     room_id: str
     x_pct: float = 50
     y_pct: float = 50
     label: str | None = None
+
 
 class FurnitureIn(BaseModel):
     room_id: str | None = None
@@ -36,6 +40,25 @@ class FurnitureIn(BaseModel):
     x_pct: float | None = None
     y_pct: float | None = None
     notes: str | None = None
+
+
+def _privacy_404() -> HTTPException:
+    return HTTPException(404, "resource_or_project_not_found")
+
+
+async def _require_plan_in_project(db: AsyncSession, project_id: str, plan_id: str) -> FloorPlan:
+    plan = await db.get(FloorPlan, plan_id)
+    if not plan or plan.project_id != project_id:
+        raise _privacy_404()
+    return plan
+
+
+async def _require_room_in_project(db: AsyncSession, project_id: str, room_id: str) -> Room:
+    room = await db.get(Room, room_id)
+    if not room or room.project_id != project_id:
+        raise _privacy_404()
+    return room
+
 
 def _punch_item(i: ProjectIssue) -> dict:
     return {
@@ -64,6 +87,7 @@ def _plan(p: FloorPlan, pins: list, punch: list | None = None) -> dict:
         "created_at": p.created_at.isoformat(),
     }
 
+
 @router.get("/{project_id}/floor-plans")
 async def list_plans(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=False)
@@ -75,6 +99,7 @@ async def list_plans(project_id: str, user: User = Depends(get_current_user), db
         ir = await db.execute(
             select(ProjectIssue).where(
                 ProjectIssue.floor_plan_id == p.id,
+                ProjectIssue.project_id == project_id,
                 ProjectIssue.x_pct.isnot(None),
                 ProjectIssue.y_pct.isnot(None),
             ).order_by(ProjectIssue.created_at.desc())
@@ -83,21 +108,23 @@ async def list_plans(project_id: str, user: User = Depends(get_current_user), db
         out.append(_plan(p, pins, punch))
     return out
 
+
 @router.post("/{project_id}/floor-plans")
 async def create_plan(project_id: str, body: PlanIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=True)
     p = FloorPlan(project_id=project_id, **body.model_dump())
-    db.add(p); await db.commit(); await db.refresh(p)
+    db.add(p)
+    await db.commit()
+    await db.refresh(p)
     await act.log_event(db, project_id=project_id, user_id=user.id, kind="plan", title=f"Планировка: {p.name}", link_path="/approvals")
     return _plan(p, [], [])
+
 
 @router.post("/{project_id}/floor-plans/{plan_id}/pins")
 async def upsert_pin(project_id: str, plan_id: str, body: PinIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=True)
-    plan = await db.get(FloorPlan, plan_id)
-    if not plan or plan.project_id != project_id: raise HTTPException(404)
-    room = await db.get(Room, body.room_id)
-    if not room or room.project_id != project_id: raise HTTPException(400, "room not in project")
+    await _require_plan_in_project(db, project_id, plan_id)
+    await _require_room_in_project(db, project_id, body.room_id)
     r = await db.execute(select(FloorPlanPin).where(FloorPlanPin.floor_plan_id == plan_id, FloorPlanPin.room_id == body.room_id))
     pin = r.scalar_one_or_none()
     if pin:
@@ -105,44 +132,67 @@ async def upsert_pin(project_id: str, plan_id: str, body: PinIn, user: User = De
     else:
         pin = FloorPlanPin(floor_plan_id=plan_id, **body.model_dump())
         db.add(pin)
-    await db.commit(); await db.refresh(pin)
-    await act.log_event(db, project_id=project_id, user_id=user.id, kind="room_change", title=f"Метка комнаты на плане", room_id=body.room_id, link_path=f"/room/{body.room_id}")
+    await db.commit()
+    await db.refresh(pin)
+    await act.log_event(db, project_id=project_id, user_id=user.id, kind="room_change", title="Метка комнаты на плане", room_id=body.room_id, link_path=f"/room/{body.room_id}")
     return {"id": pin.id, "room_id": pin.room_id, "x_pct": pin.x_pct, "y_pct": pin.y_pct, "label": pin.label}
+
 
 @router.get("/{project_id}/furniture")
 async def list_furniture(project_id: str, room_id: str | None = None, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=False)
     q = select(FurnitureItem).where(FurnitureItem.project_id == project_id)
-    if room_id: q = q.where(FurnitureItem.room_id == room_id)
+    if room_id:
+        q = q.where(FurnitureItem.room_id == room_id)
     r = await db.execute(q.order_by(FurnitureItem.created_at.desc()))
     return [{"id": f.id, "room_id": f.room_id, "floor_plan_id": f.floor_plan_id, "name": f.name, "width_m": f.width_m, "depth_m": f.depth_m, "height_m": f.height_m, "x_pct": f.x_pct, "y_pct": f.y_pct, "notes": f.notes} for f in r.scalars().all()]
+
 
 @router.post("/{project_id}/furniture")
 async def create_furniture(project_id: str, body: FurnitureIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=True)
+    if body.room_id is not None:
+        await _require_room_in_project(db, project_id, body.room_id)
+    if body.floor_plan_id is not None:
+        await _require_plan_in_project(db, project_id, body.floor_plan_id)
+
     f = FurnitureItem(project_id=project_id, **body.model_dump())
-    db.add(f); await db.commit(); await db.refresh(f)
+    db.add(f)
+    await db.commit()
+    await db.refresh(f)
     await act.log_event(db, project_id=project_id, user_id=user.id, kind="plan", title=f"Мебель: {f.name}", room_id=f.room_id)
     return {"id": f.id, "name": f.name, "width_m": f.width_m, "depth_m": f.depth_m, "height_m": f.height_m, "x_pct": f.x_pct, "y_pct": f.y_pct}
+
 
 @router.patch("/{project_id}/floor-plans/{plan_id}/pins/{pin_id}")
 async def move_pin(project_id: str, plan_id: str, pin_id: str, body: PinPatch, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=True)
-    pin = await db.get(FloorPlanPin, pin_id)
-    if not pin: raise HTTPException(404)
+    await _require_plan_in_project(db, project_id, plan_id)
+    r = await db.execute(
+        select(FloorPlanPin).where(
+            FloorPlanPin.id == pin_id,
+            FloorPlanPin.floor_plan_id == plan_id,
+        )
+    )
+    pin = r.scalar_one_or_none()
+    if not pin:
+        raise _privacy_404()
     pin.x_pct, pin.y_pct = body.x_pct, body.y_pct
     await db.commit()
     return {"id": pin.id, "x_pct": pin.x_pct, "y_pct": pin.y_pct}
+
 
 class FurnitureMove(BaseModel):
     x_pct: float
     y_pct: float
 
+
 @router.patch("/{project_id}/furniture/{item_id}")
 async def move_furniture(project_id: str, item_id: str, body: FurnitureMove, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=True)
     f = await db.get(FurnitureItem, item_id)
-    if not f or f.project_id != project_id: raise HTTPException(404)
+    if not f or f.project_id != project_id:
+        raise _privacy_404()
     f.x_pct, f.y_pct = body.x_pct, body.y_pct
     await db.commit()
     return {"ok": True, "x_pct": f.x_pct, "y_pct": f.y_pct}
