@@ -31,6 +31,7 @@ import { alertChatInvoiceCreated, alertChatTaskCreated } from '@/lib/estimatePay
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { textWithoutReplyPrefix } from '@/lib/domain/chatReplyPrefix';
 import { router } from 'expo-router';
+import { chatParticipantStatusLabel } from '@/constants/labels';
 
 const REACTIONS = ['👍', '✅', '❤️', '🔥', '❓'];
 
@@ -683,7 +684,7 @@ export function ChatThreadView({
                 {chat.participants.map((p) => (
                   <Text key={p.id} style={s.participant}>
                     {p.full_name || p.phone || p.profile_code || 'Участник'}
-                    {p.status === 'active' ? '' : ` · ${p.status}`}
+                    {p.status === 'active' ? '' : ` · ${chatParticipantStatusLabel(p.status)}`}
                   </Text>
                 ))}
               </>

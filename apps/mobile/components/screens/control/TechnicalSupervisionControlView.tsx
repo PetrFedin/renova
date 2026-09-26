@@ -14,6 +14,7 @@ import { api, type ProjectIssue, type WorkAcceptance } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { reportError } from '@/lib/reportError';
+import { acceptanceStatusLabel, issueSeverityLabel, issueStatusLabel } from '@/constants/labels';
 
 export function TechnicalSupervisionControlView() {
   const { activeProject, user } = useRenova();
@@ -163,7 +164,7 @@ export function TechnicalSupervisionControlView() {
               >
                 <View style={s.itemText}>
                   <Text style={s.itemTitle}>{stageName(acceptance.stage_id)}</Text>
-                  <Text style={s.muted}>Статус: {acceptance.status}</Text>
+                  <Text style={s.muted}>Статус: {acceptanceStatusLabel(acceptance.status)}</Text>
                   {acceptance.comment ? <Text style={s.itemBody}>{acceptance.comment}</Text> : null}
                 </View>
                 <Text style={s.link}>Проверить</Text>
@@ -214,7 +215,7 @@ export function TechnicalSupervisionControlView() {
               <View key={issue.id} style={s.issue}>
                 <View style={s.itemText}>
                   <Text style={s.itemTitle}>{issue.title}</Text>
-                  <Text style={s.muted}>{issue.status} · {issue.severity}</Text>
+                  <Text style={s.muted}>{issueStatusLabel(issue.status)} · {issueSeverityLabel(issue.severity)}</Text>
                   {issue.description ? <Text style={s.itemBody}>{issue.description}</Text> : null}
                 </View>
               </View>

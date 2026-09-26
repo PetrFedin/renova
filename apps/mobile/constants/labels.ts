@@ -87,6 +87,85 @@ export const MATERIAL_PICK_STATUS_LABEL: Record<string, string> = {
   rejected: 'Отклонено',
 };
 
+/** WorkScheduleStatus — график работ. */
+export const WORK_SCHEDULE_STATUS_LABEL: Record<string, string> = {
+  draft: 'Черновик',
+  submitted: 'На согласовании',
+  confirmed: 'Согласован',
+  rejected: 'Отклонён',
+  archived: 'В архиве',
+};
+
+export function workScheduleStatusLabel(status: string): string {
+  return WORK_SCHEDULE_STATUS_LABEL[status] ?? status;
+}
+
+/** JobLeadStatus — заявка на рынке. */
+export const JOB_LEAD_STATUS_LABEL: Record<string, string> = {
+  open: 'Открыта',
+  quoted: 'Есть предложения',
+  taken: 'В работе',
+  closed: 'Закрыта',
+};
+
+export function jobLeadStatusLabel(status: string): string {
+  return JOB_LEAD_STATUS_LABEL[status] ?? status;
+}
+
+/** SelectionStatus — подбор чистовых материалов. */
+export const SELECTION_STATUS_LABEL: Record<string, string> = {
+  draft: 'Черновик',
+  proposed: 'Предложено',
+  approved: 'Согласовано',
+  rejected: 'Отклонено',
+};
+
+export function selectionStatusLabel(status: string): string {
+  return SELECTION_STATUS_LABEL[status] ?? status;
+}
+
+/** AcceptanceStatus — приёмка работ. */
+export const ACCEPTANCE_STATUS_LABEL: Record<string, string> = {
+  not_requested: 'Не запрошена',
+  requested: 'Запрошена',
+  in_review: 'На проверке',
+  accepted: 'Принято',
+  accepted_with_remarks: 'Принято с замечаниями',
+  returned: 'Возвращено на доработку',
+  rejected: 'Отклонено',
+};
+
+export function acceptanceStatusLabel(status: string): string {
+  return ACCEPTANCE_STATUS_LABEL[status] ?? status;
+}
+
+/** Роли в бригаде: owner приходит из выдачи состава, остальные — TEAM_MEMBER_ROLES. */
+export const TEAM_ROLE_LABEL: Record<string, string> = {
+  owner: 'Владелец',
+  foreman: 'Прораб',
+  member: 'Работник',
+  viewer: 'Наблюдатель',
+};
+
+export function teamRoleLabel(role: string): string {
+  return TEAM_ROLE_LABEL[role] ?? role;
+}
+
+/** Участник чата: приглашён и ещё не вошёл — это «Приглашён», а не «pending». */
+export const CHAT_PARTICIPANT_STATUS_LABEL: Record<string, string> = {
+  active: 'В чате',
+  pending: 'Приглашён',
+  removed: 'Удалён',
+};
+
+export function chatParticipantStatusLabel(status: string): string {
+  return CHAT_PARTICIPANT_STATUS_LABEL[status] ?? status;
+}
+
+export function purchaseStatusLabel(status: string): string {
+  return PURCHASE_STATUS_LABEL[status] ?? status;
+}
+
 export const APPROVAL_TYPE_LABEL: Record<string, string> = {
   material: 'Материал',
   change_order: 'Доп. работы',

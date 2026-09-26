@@ -98,7 +98,7 @@ export function CustomerControlView() {
           onPress={() => openQcIssue(w.id, pathname, 'customer')}
         >
           <Text style={s.title}>{w.title}{w.overdue ? ' · просрочено' : ''}</Text>
-          <Text style={s.meta}>{w.status}</Text>
+          <Text style={s.meta}>{issueStatusLabel(w.status)}</Text>
         </Pressable>
       ))}
       {openWarranty.length > 0 || focusWarranty ? (

@@ -5,6 +5,7 @@ import { api, type WorkSchedule } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { RenovaTheme } from '@/constants/Theme';
 import { reportError } from '@/lib/reportError';
+import { workScheduleStatusLabel } from '@/constants/labels';
 
 export function TechnicalSupervisionScheduleReview() {
   const { user, activeProject } = useRenova();
@@ -106,7 +107,7 @@ export function TechnicalSupervisionScheduleReview() {
       {!loading && !error && schedule ? (
         <>
           <Text style={s.planTitle}>{schedule.title}</Text>
-          <Text style={s.muted}>Статус: {schedule.status}</Text>
+          <Text style={s.muted}>Статус: {workScheduleStatusLabel(schedule.status)}</Text>
           {schedule.status === 'submitted' ? (
             <>
               <TextInput

@@ -4,6 +4,7 @@ import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { homeTypography } from '@/constants/homeTypography';
 import type { FinalReport } from '@/lib/reports/reportTypes';
 import type { ExpenseCategoryId, FinalReportSectionId } from '@/lib/reports/reportSections';
+import { stageStatusLabel } from '@/constants/labels';
 
 export function FinalReportView({
   data,
@@ -36,7 +37,7 @@ export function FinalReportView({
         <View style={s.block}>
           <Text style={homeTypography.zoneLabel}>Работы · {data.works!.length}</Text>
           {data.works!.slice(0, 8).map((w, i) => (
-            <Text key={i} style={s.meta} numberOfLines={1}>• {w.name} — {w.status}</Text>
+            <Text key={i} style={s.meta} numberOfLines={1}>• {w.name} — {stageStatusLabel(w.status)}</Text>
           ))}
         </View>
       )}
