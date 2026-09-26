@@ -10,6 +10,7 @@ from app.db.session import get_db
 from app.models.entities import Project, User, UserRole
 from app.services import portal_token_service as portal_tok
 from app.services import team_service as team_svc
+from app.services import stage_status_service as st_status
 
 router = APIRouter(tags=["portal"])
 
@@ -322,7 +323,16 @@ async def portal_snapshot(
         kontur_mode = "off"
 
     return {
-        "project": {"id": p.id, "name": p.name, "address": p.address, "progress_percent": p.progress_percent},
+        # Та же мёртвая колонка, что и на карточке объекта: гость видел ноль
+        # независимо от того, сколько сделано. Считаем по этапам.
+        "project": {
+            "id": p.id,
+            "name": p.name,
+            "address": p.address,
+            "progress_percent": round(
+                st_status.weighted_progress(list(getattr(p, "stages", None) or [])), 1
+            ),
+        },
         "read_only": read_only,
         "access_mode": mode,
         "schedule": schedule,
