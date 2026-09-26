@@ -22,8 +22,8 @@ class SelectionIn(BaseModel):
     room_id: str | None = None
     category: str = "other"
     sku: str | None = None
-    allowance: float | None = None
-    price: float = 0
+    allowance: float | None = Field(default=None, ge=0, le=10_000_000)
+    price: float = Field(default=0, ge=0, le=10_000_000)
     shop_url: str | None = None
     shop_name: str | None = None
     notes: str | None = None
