@@ -1,5 +1,5 @@
 /** Единая главная Renova OS — заказчик и исполнитель */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, ActivityIndicator, RefreshControl } from 'react-native';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { RenovaTheme } from '@/constants/Theme';
@@ -76,7 +76,19 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
   const [loadWarning, setLoadWarning] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  /**
+   * Какой объект уже загружен. Хранится дважды намеренно: ref нужен для
+   * синхронных сверок внутри `load()`, а состояние — чтобы `useMemo` со
+   * снимком пересчитался, когда маркер поставлен. Раньше маркер был только
+   * в ref: его присваивание не вызывает перерисовку, и снимок оставался
+   * пустым, а экран показывал «Не удалось загрузить главную» без причины.
+   */
   const loadedProjectIdRef = useRef<string | null>(null);
+  const [loadedProjectId, setLoadedProjectId] = useState<string | null>(null);
+  const markProjectLoaded = useCallback((projectId: string | null) => {
+    loadedProjectIdRef.current = projectId;
+    setLoadedProjectId(projectId);
+  }, []);
   const loadGenerationRef = useRef(0);
 
   const snapRole = readOnly ? 'customer' : role === 'contractor' ? 'contractor' : 'customer';
@@ -116,7 +128,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
 
     if (!user || !activeProject) {
       if (isCurrentLoad()) {
-        loadedProjectIdRef.current = null;
+        markProjectLoaded(null);
         setLoading(false);
       }
       return;
@@ -125,7 +137,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
     const projectId = activeProject.id;
     const sameProject = loadedProjectIdRef.current === projectId;
     if (!sameProject && isCurrentLoad()) {
-      loadedProjectIdRef.current = null;
+      markProjectLoaded(null);
       resetProjectSnapshot();
     }
     setLoading(true);
@@ -227,7 +239,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
         // snapshot was reset before requests started, so no cross-project leak occurs.
       });
 
-      loadedProjectIdRef.current = projectId;
+      markProjectLoaded(projectId);
       if (issues.length > 0) {
         setLoadWarning('Часть данных главной не обновилась. Показаны доступные или последние подтверждённые значения; нули и пустые блоки могут быть неполными.');
       }
@@ -238,7 +250,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
       setLoadWarning('Не все данные удалось подтвердить. Повторите загрузку перед важным действием.');
     } finally {
       if (isCurrentLoad()) {
-        loadedProjectIdRef.current = projectId;
+        markProjectLoaded(projectId);
         setLoading(false);
       }
     }
@@ -271,7 +283,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
   }), [user?.id, activeProject?.id]);
 
   const snap = useMemo(() => {
-    if (!activeProject || !dash || loadedProjectIdRef.current !== activeProject.id) return null;
+    if (!activeProject || !dash || loadedProjectId !== activeProject.id) return null;
     return buildProjectOsSnapshot(
       activeProject,
       dash,
@@ -289,7 +301,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
         closeoutReady, closeoutArchived, closeoutNext, closeoutAllStagesDone },
     );
   }, [
-    activeProject, dash, receipts, picks, purchases, apiRisks, osSchedule, snapRole, osBudget,
+    activeProject, dash, loadedProjectId, receipts, picks, purchases, apiRisks, osSchedule, snapRole, osBudget,
     pendingAcceptance, pendingPayments, pendingPaymentTotal, workScheduleStatus,
     warrantyOpen, warrantyOverdue, pendingChangeOrders, pendingSignDocs,
     offlinePending, offlineBlocked,
