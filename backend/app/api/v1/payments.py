@@ -273,6 +273,69 @@ class ConfirmPaymentIn(BaseModel):
     transfer_ack: bool = False
 
 
+class CancelPaymentIn(BaseModel):
+    reason: str | None = None
+
+
+@router.post("/{project_id}/payments/{payment_id}/cancel", response_model=PaymentOut)
+async def cancel_payment(
+    project_id: str,
+    payment_id: str,
+    body: CancelPaymentIn | None = None,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Отменить ошибочно созданный счёт. Только ожидающий и только свой тип."""
+    await require_project(db, project_id, user, write=True)
+
+    existing = await pay_svc.get_payment(db, payment_id)
+    if not existing or existing.project_id != project_id:
+        raise HTTPException(404, "Платёж не найден")
+    # Отменять можно то, что мог бы создать: правило то же, что при создании
+    # счёта. Иначе заказчик в одно нажатие снимал бы счёт исполнителя за этап.
+    if user.role == UserRole.customer and existing.payment_type not in (
+        PaymentType.advance,
+        PaymentType.final,
+    ):
+        raise HTTPException(403, "Заказчик отменяет только аванс и финальный счёт")
+    if user.role == UserRole.contractor and existing.payment_type not in (
+        PaymentType.stage,
+        PaymentType.material,
+    ):
+        raise HTTPException(403, "Исполнитель отменяет только счета за этап и материалы")
+
+    try:
+        payment = await pay_svc.cancel_payment(
+            db,
+            payment_id,
+            project_id=project_id,
+            actor_id=user.id,
+            reason=(body.reason if body else None),
+        )
+    except ValueError as error:
+        code = str(error)
+        if code.startswith("payment_not_pending"):
+            raise HTTPException(
+                409,
+                detail={
+                    "code": "payment_not_pending",
+                    "message": "Отменить можно только ожидающий счёт. Подтверждённый — через спор.",
+                },
+            ) from error
+        if code == "payment_has_receipt":
+            raise HTTPException(
+                409,
+                detail={
+                    "code": "payment_has_receipt",
+                    "message": "К счёту приложен чек — отмена вслепую запрещена",
+                },
+            ) from error
+        raise HTTPException(422, detail={"code": code}) from error
+    if not payment:
+        raise HTTPException(404, "Платёж не найден")
+    return payment
+
+
 @router.post("/{project_id}/payments/{payment_id}/confirm", response_model=PaymentOut)
 async def confirm_payment(
     project_id: str,
