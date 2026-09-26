@@ -75,6 +75,7 @@ def configured_runtime_warnings(
             environment=current.environment,
             database_url=current.database_url,
             secret_key=current.secret_key,
+            forwarded_allow_ips=current.forwarded_allow_ips,
             kontur_mode=current.kontur_mode,
             kontur_api_key=current.kontur_api_key,
             yookassa_shop_id=current.yookassa_shop_id,
