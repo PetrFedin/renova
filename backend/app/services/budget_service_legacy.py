@@ -6,6 +6,7 @@ from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.entities import (
     BudgetLine,
@@ -182,6 +183,29 @@ async def delete_receipt_expenses(db: AsyncSession, receipt_id: str, rec: Receip
     return round(removed, 2)
 
 
+def expense_status_for_receipt(rec) -> str:
+    """Подтверждён ли расход по чеку — это не то же, что «проверен ФНС».
+
+    Статус расхода определялся одним лишь `fns_verified`, и у ручного чека
+    он был `True` — просто потому, что иначе рукописная сумма не попадала
+    в потраченное. Как только отметку привели в соответствие с правдой
+    (ФНС такой чек не проверяла и проверить не может), расход перестал
+    считаться вовсе: `budget_spent` падал с 5 432,10 до нуля.
+
+    Это две разные величины. Проверка ФНС — внешний факт о чеке. Ручной
+    ввод — осознанное утверждение человека о трате, и деньги по нему
+    учитываются: он сам их внёс. Не учитывается только то, что пришло из
+    сканирования и проверку не прошло.
+    """
+    if getattr(rec, "fns_verified", False):
+        return "confirmed"
+    if (getattr(rec, "fn", None) or "").upper() == "MANUAL":
+        return "confirmed"
+    if (getattr(rec, "verification_status", None) or "") == "manual_entry":
+        return "confirmed"
+    return "pending_receipt"
+
+
 async def expense_from_receipt(db: AsyncSession, rec: Receipt, *, title: str | None = None) -> Expense:
     if not rec.id:
         await db.flush()
@@ -194,7 +218,7 @@ async def expense_from_receipt(db: AsyncSession, rec: Receipt, *, title: str | N
         existing.stage_id = rec.stage_id
         if getattr(rec, "payment_id", None):
             existing.payment_id = rec.payment_id
-        existing.status = "confirmed" if rec.fns_verified else "pending_receipt"
+        existing.status = expense_status_for_receipt(rec)
         await db.flush()
         return existing
     exp = Expense(
@@ -206,7 +230,7 @@ async def expense_from_receipt(db: AsyncSession, rec: Receipt, *, title: str | N
         title=title or f"Чек {rec.amount:.0f} ₽",
         category=rec.expense_category,
         amount=rec.amount,
-        status="confirmed" if rec.fns_verified else "pending_receipt",
+        status=expense_status_for_receipt(rec),
         payment_method="card",
         expense_date=rec.created_at or utc_now(),
     )
@@ -379,6 +403,10 @@ async def refresh_budget_facts(db: AsyncSession, project_id: str) -> None:
     purchases = (
         await db.execute(
             select(Purchase)
+            # `expense_from_purchase` читает `purchase.items` из синхронного
+            # `_single_purchase_field` — без предзагрузки это ленивый запрос вне
+            # greenlet, то есть MissingGreenlet и 500 на всей сводке бюджета.
+            .options(selectinload(Purchase.items))
             .where(
                 Purchase.project_id == project_id,
                 Purchase.status.in_((PurchaseStatus.paid, PurchaseStatus.delivered)),
