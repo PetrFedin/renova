@@ -148,7 +148,7 @@ async def expense_from_receipt(
         existing.stage_id = rec.stage_id
         if getattr(rec, "payment_id", None):
             existing.payment_id = rec.payment_id
-        existing.status = "confirmed" if rec.fns_verified else "pending_receipt"
+        existing.status = _legacy.expense_status_for_receipt(rec)
         await db.flush()
         return existing
     expense = Expense(
@@ -160,7 +160,7 @@ async def expense_from_receipt(
         title=title or f"Чек {rec.amount:.0f} ₽",
         category=rec.expense_category,
         amount=rec.amount,
-        status="confirmed" if rec.fns_verified else "pending_receipt",
+        status=_legacy.expense_status_for_receipt(rec),
         payment_method="card",
         expense_date=rec.created_at or _legacy.utc_now(),
     )
