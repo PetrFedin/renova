@@ -189,13 +189,22 @@ async def test_rejected_order_cannot_be_approved(change_order_db):
         order_id="co-rejected-0001",
         status=ChangeOrderStatus.rejected,
     )
-    approved, meta = await change_order_service.approve_with_sign_draft(
-        change_order_db,
-        project_id=project.id,
-        order_id=order.id,
-        created_by=customer.id,
-    )
-    assert approved is None
-    assert meta is None
+
+    with pytest.raises(ValueError, match="^change_order_final_state_conflict$"):
+        await change_order_service.approve_with_sign_draft(
+            change_order_db,
+            project_id=project.id,
+            order_id=order.id,
+            created_by=customer.id,
+        )
+
+    stored_order = await change_order_db.get(ChangeOrder, order.id)
+    assert stored_order is not None
+    assert stored_order.status == ChangeOrderStatus.rejected
     assert (await change_order_db.scalar(select(func.count()).select_from(ProjectDocument))) == 0
+    assert (await change_order_db.scalar(select(func.count()).select_from(DocumentVersion))) == 0
     assert (await change_order_db.scalar(select(func.count()).select_from(BudgetLine))) == 0
+    assert (await change_order_db.scalar(select(func.count()).select_from(DomainOutbox))) == 0
+    stored_project = await change_order_db.get(Project, project.id)
+    assert stored_project is not None
+    assert stored_project.budget_planned == 0
