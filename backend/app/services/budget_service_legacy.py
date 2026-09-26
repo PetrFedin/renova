@@ -564,9 +564,13 @@ async def budget_summary(db: AsyncSession, project_id: str) -> dict:
 
 
 async def list_expenses(db: AsyncSession, project_id: str, *, status: str | None = None, limit: int = 100) -> list[Expense]:
-    q = select(Expense).where(Expense.project_id == project_id, Expense.status != "deleted")
+    q = select(Expense).where(Expense.project_id == project_id)
     if status:
+        # Явный запрос «deleted» — единственный способ увидеть снятое с учёта
+        # и вернуть его; без него восстановление недостижимо с экрана.
         q = q.where(Expense.status == status)
+    else:
+        q = q.where(Expense.status != "deleted")
     return list((await db.execute(q.order_by(Expense.expense_date.desc()).limit(limit))).scalars().all())
 
 

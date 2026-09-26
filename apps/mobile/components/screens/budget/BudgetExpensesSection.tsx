@@ -26,6 +26,7 @@ import {
 } from '@/lib/domain/filterExpenseRows';
 import type { ExpenseDetailTarget } from '@/components/renova/ExpenseDetailSheet';
 import { BudgetFactStatus } from '@/components/renova/budget/BudgetFactStatus';
+import { RemovedExpensesPanel } from '@/components/renova/budget/RemovedExpensesPanel';
 import type { OsRole } from '@/constants/osSections';
 import { budgetTabHref } from '@/constants/osSections';
 import type { ExpenseView } from '@/constants/budgetTabs';
@@ -181,6 +182,14 @@ export function BudgetExpensesSection({
               receiptIds={filteredReceiptIds}
               filterLabel={EXPENSE_FILTER_LABELS[filter]}
               onDone={onReload}
+            />
+          ) : null}
+
+          {canOperate ? (
+            <RemovedExpensesPanel
+              userId={userId}
+              projectId={project.id}
+              onRestored={onReload}
             />
           ) : null}
 
