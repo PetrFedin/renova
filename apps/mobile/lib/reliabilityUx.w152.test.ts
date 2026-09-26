@@ -166,7 +166,10 @@ console.assert(
   home.includes('const generation = ++loadGenerationRef.current')
     && home.includes('const isCurrentLoad = () => loadGenerationRef.current === generation')
     && home.includes('if (!isCurrentLoad()) return;')
-    && home.includes('loadedProjectIdRef.current !== activeProject.id'),
+    // Отметка загруженного объекта переехала из ref в состояние: ref не входит
+    // в зависимости useMemo, и снимок не пересчитывался после её установки —
+    // экран уходил в ошибку при успешной загрузке. Смысл проверки прежний.
+    && home.includes('loadedProjectId !== activeProject.id'),
   'stale home requests must not overwrite a newer project or finish its loading state',
 );
 console.assert(
