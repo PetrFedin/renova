@@ -1,6 +1,6 @@
 /** API: stages */
 import { req, cachedGet, API_BASE, ApiError } from './client';
-import type { ProjectPlan, Stage, StageChecklistItem, StageDetail, WorkAcceptance, WorkCompletionCheck, WorkSnapshot } from './types';
+import type { ProjectPlan, Stage, StageChecklistItem, StageDetail, StagePaymentPlan, WorkAcceptance, WorkCompletionCheck, WorkSnapshot } from './types';
 import { acceptanceDecisionBody } from '@/lib/acceptanceDecide';
 
 async function activeAcceptance(userId: string, projectId: string, stageId: string): Promise<WorkAcceptance | null> {
@@ -257,6 +257,16 @@ export const stagesApi = {
       `acceptance-${stageId.slice(0, 8)}.pdf`,
     );
   },
+  /** Порядок оплаты по этапам: разнесение цены договора. */
+  getStagePaymentPlan: (userId: string, projectId: string) =>
+    req<StagePaymentPlan>(`/api/v1/projects/${projectId}/stages/payment-plan`, {}, userId),
+  /** Поправить суммы по этапам вручную. Ключ — идентификатор этапа. */
+  updateStagePaymentPlan: (userId: string, projectId: string, amounts: Record<string, number>) =>
+    req<StagePaymentPlan>(
+      `/api/v1/projects/${projectId}/stages/payment-plan`,
+      { method: 'PATCH', body: JSON.stringify({ amounts }) },
+      userId,
+    ),
   extendReworkSla: (userId: string, projectId: string, stageId: string, days = 1) => req(`/api/v1/projects/${projectId}/rework-sla/extend?stage_id=${stageId}&days=${days}`, { method: 'POST' }, userId),
   reworkSlaCheck: (userId: string, projectId: string) => req(`/api/v1/projects/${projectId}/rework-sla/check`, { method: 'POST' }, userId),
 };
