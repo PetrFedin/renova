@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import Expense, Payment, PaymentEvent, PaymentStatus, Project, _uuid
+from app.db.locking import lock_rows
 
 
 @dataclass(frozen=True)
@@ -51,10 +52,7 @@ async def _locked_payment(
         Payment.id == payment_id,
         Payment.project_id == project_id,
     )
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     return (await db.execute(query.limit(1))).scalar_one_or_none()
 
 
@@ -194,10 +192,7 @@ async def _locked_payment_expenses(
         Expense.payment_id == payment_id,
         Expense.status != "deleted",
     )
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     return list((await db.execute(query)).scalars().all())
 
 

@@ -12,6 +12,7 @@ from app.models.project_documents import (
 )
 from app.services import outbox_service as outbox
 from app.services import project_document_service as documents
+from app.db.locking import lock_rows
 
 
 def _member_ids(project: Project) -> list[str]:
@@ -42,10 +43,7 @@ async def _existing_signature(
         DocumentSignature.provider_name == provider_name,
         DocumentSignature.status.in_(("pending", "signed")),
     )
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     rows = list((await db.execute(query)).scalars().all())
     if not rows:
         return None

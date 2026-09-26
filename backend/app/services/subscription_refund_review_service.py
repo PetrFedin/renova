@@ -26,6 +26,7 @@ from app.services.subscription_refund_service import (
     SubscriptionRefundIntegrityError,
     _recompute_entitlement,
 )
+from app.db.locking import lock_rows
 
 
 CLAIM_TTL_MINUTES = 15
@@ -90,10 +91,7 @@ async def _locked_refund(
     refund_id: str,
 ) -> SubscriptionRefund | None:
     query = select(SubscriptionRefund).where(SubscriptionRefund.id == refund_id)
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     return (await db.execute(query.limit(1))).scalar_one_or_none()
 
 
@@ -102,10 +100,7 @@ async def _locked_checkout(
     checkout_id: str,
 ) -> SubscriptionCheckout | None:
     query = select(SubscriptionCheckout).where(SubscriptionCheckout.id == checkout_id)
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     return (await db.execute(query.limit(1))).scalar_one_or_none()
 
 

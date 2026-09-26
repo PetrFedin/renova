@@ -15,6 +15,7 @@ from app.models.project_documents import (
 )
 from app.services.esign import registry
 from app.services.esign.base import SignRequest
+from app.db.locking import lock_rows
 
 
 async def process_external_signature_submission(
@@ -34,10 +35,7 @@ async def process_external_signature_submission(
         raise RuntimeError("esign_submission_payload_invalid")
 
     query = select(DocumentSignature).where(DocumentSignature.id == signature_id)
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     signature = (await db.execute(query)).scalar_one_or_none()
     if signature is None:
         raise RuntimeError("esign_submission_signature_missing")

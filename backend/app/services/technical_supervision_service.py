@@ -12,6 +12,7 @@ from app.core.timeutil import utc_now
 from app.models.entities import Project, User
 from app.models.technical_supervision import ProjectTechnicalSupervisorAssignment
 from app.services import outbox_service as outbox
+from app.db.locking import lock_rows
 
 ProviderType = Literal["individual", "company"]
 SUPERVISOR_CAPABILITIES = frozenset(
@@ -53,10 +54,7 @@ def _provider_name(value: str | None, *, provider_type: ProviderType, representa
 
 async def _locked_project(db: AsyncSession, project_id: str) -> Project | None:
     query = select(Project).where(Project.id == project_id)
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     return (await db.execute(query)).scalar_one_or_none()
 
 
@@ -76,10 +74,7 @@ async def active_assignment(
         .limit(1)
     )
     if lock:
-        try:
-            query = query.with_for_update()
-        except Exception:
-            pass
+        query = lock_rows(query, db)
     return (await db.execute(query)).scalar_one_or_none()
 
 

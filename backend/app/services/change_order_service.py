@@ -6,6 +6,7 @@ from app.models.entities import ChangeOrder, ChangeOrderStatus, Project
 from app.models.project_documents import DocumentStatus, DocumentType, ProjectDocument
 from app.services.budget_service import apply_change_order_to_budget, sync_project_budget_planned
 from app.services.client_write_side_effects import PreparedSideEffect, activate_client_write_side_effects
+from app.db.locking import lock_rows
 
 
 def _member_ids(project: Project) -> list[str]:
@@ -51,10 +52,7 @@ async def list_orders(db: AsyncSession, project_id: str) -> list[ChangeOrder]:
 async def approve(db: AsyncSession, order_id: str) -> ChangeOrder | None:
     """Legacy budget-only path, now row-locked and replay-safe."""
     query = select(ChangeOrder).where(ChangeOrder.id == order_id)
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     order = (await db.execute(query)).scalar_one_or_none()
     if not order or order.status == ChangeOrderStatus.rejected:
         return None
@@ -233,10 +231,7 @@ async def approve_with_sign_draft(
         ChangeOrder.id == order_id,
         ChangeOrder.project_id == project_id,
     )
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     order = (await db.execute(query)).scalar_one_or_none()
     if not order or order.status == ChangeOrderStatus.rejected:
         return None, None
@@ -333,10 +328,7 @@ async def reject_with_effects(
         ChangeOrder.id == order_id,
         ChangeOrder.project_id == project_id,
     )
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     order = (await db.execute(query)).scalar_one_or_none()
     if not order or order.status == ChangeOrderStatus.approved:
         return None, False
