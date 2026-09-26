@@ -1,7 +1,26 @@
 """P2.2: selections tracker flow."""
 import pytest
+from pydantic import ValidationError
 
+from app.api.v1.selections import SelectionIn
 from app.models.entities import Project, SelectionItem, SelectionStatus, User, UserRole
+
+
+def test_selection_in_rejects_negative_price():
+    """Price/allowance are money — negative or absurd values must fail validation
+    before they ever reach the DB (unbounded qty/price risk)."""
+    with pytest.raises(ValidationError):
+        SelectionIn(title="Тест", price=-999_999_999)
+
+
+def test_selection_in_rejects_oversized_allowance():
+    with pytest.raises(ValidationError):
+        SelectionIn(title="Тест", price=100, allowance=999_999_999)
+
+
+def test_selection_in_accepts_zero_price():
+    row = SelectionIn(title="Тест", price=0)
+    assert row.price == 0
 
 
 @pytest.mark.asyncio

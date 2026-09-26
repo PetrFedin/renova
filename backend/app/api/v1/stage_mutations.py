@@ -173,6 +173,95 @@ async def mark_ready(
     return response
 
 
+class StagePaymentPlanIn(BaseModel):
+    """Ручное распределение цены договора по этапам."""
+
+    amounts: dict[str, float] = Field(
+        ..., description="Идентификатор этапа → сумма к оплате, ₽"
+    )
+
+
+@router.get("/{project_id}/stages/payment-plan")
+async def get_payment_plan(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Порядок оплаты по этапам и его сходимость с ценой договора."""
+    from sqlalchemy import select
+
+    from app.models.entities import Stage
+    from app.services import stage_payment_plan_service as pay_plan
+
+    project = await require_project(db, project_id, user, write=False)
+    stages = list(
+        (await db.execute(select(Stage).where(Stage.project_id == project_id))).scalars().all()
+    )
+    stages.sort(key=lambda item: getattr(item, "sort_order", 0) or 0)
+    amounts = [float(stage.payment_amount or 0) for stage in stages]
+    total = float(project.budget_planned or 0)
+    return {
+        "total": round(total, 2),
+        "distributed": round(sum(amounts), 2),
+        # Нераспределённое показываем числом, а не флагом: «не сходится» без
+        # суммы не говорит, насколько именно.
+        "undistributed": pay_plan.undistributed(total, amounts),
+        "matches_total": pay_plan.plan_matches_total(total, amounts),
+        "stages": [
+            {
+                "id": stage.id,
+                "name": stage.name,
+                "sort_order": getattr(stage, "sort_order", 0) or 0,
+                "weight_coefficient": float(stage.weight_coefficient or 0),
+                "payment_amount": float(stage.payment_amount or 0),
+            }
+            for stage in stages
+        ],
+    }
+
+
+@router.patch("/{project_id}/stages/payment-plan")
+async def update_payment_plan(
+    project_id: str,
+    body: StagePaymentPlanIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Поправить суммы по этапам вручную.
+
+    Разнесение по весам — умолчание, а не приговор: человек вправе
+    распределить иначе. Проверяем только то, что проверить обязаны:
+    отрицательных сумм не бывает, и этап должен принадлежать этому объекту.
+    """
+    from sqlalchemy import select
+
+    from app.models.entities import Stage
+
+    await require_project(db, project_id, user, write=True)
+    stages = {
+        stage.id: stage
+        for stage in (
+            await db.execute(select(Stage).where(Stage.project_id == project_id))
+        ).scalars().all()
+    }
+    unknown = sorted(set(body.amounts) - set(stages))
+    if unknown:
+        raise HTTPException(
+            404,
+            detail={"code": "stage_not_found", "message": "Этап не найден в этом объекте", "ids": unknown},
+        )
+    negative = sorted(sid for sid, amount in body.amounts.items() if amount < 0)
+    if negative:
+        raise HTTPException(
+            422,
+            detail={"code": "negative_amount", "message": "Сумма по этапу не может быть отрицательной", "ids": negative},
+        )
+    for stage_id, amount in body.amounts.items():
+        stages[stage_id].payment_amount = round(float(amount), 2)
+    await db.commit()
+    return await get_payment_plan(project_id, user=user, db=db)
+
+
 @router.patch("/{project_id}/stages/{stage_id}/dates")
 async def update_dates(
     project_id: str,

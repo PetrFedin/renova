@@ -4,6 +4,7 @@ import {
   AppState, ScrollView, View, Text, TextInput, StyleSheet, Image, Pressable, Alert, Modal,
 } from 'react-native';
 import { useFocusEffect, usePathname } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';
@@ -28,6 +29,7 @@ import { pushOsNav } from '@/lib/pushOsNav';
 import { alertChatInviteSent } from '@/lib/fieldCommsNav';
 import { alertChatInvoiceCreated, alertChatTaskCreated } from '@/lib/estimatePayNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { textWithoutReplyPrefix } from '@/lib/domain/chatReplyPrefix';
 import { router } from 'expo-router';
 
 const REACTIONS = ['👍', '✅', '❤️', '🔥', '❓'];
@@ -40,6 +42,35 @@ function latestRenderedMessageId(messages: ChatMessage[]): string | null {
       return byTime || a.id.localeCompare(b.id);
     })
     .slice(-1)[0]?.id ?? null;
+}
+
+/** Одно действие над сообщением: иконка с подписью для скринридера. */
+function MessageAction({
+  icon,
+  label,
+  onPress,
+  active,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+  active?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      hitSlop={8}
+      style={s.msgAction}
+    >
+      <Ionicons
+        name={icon}
+        size={16}
+        color={active ? RenovaTheme.colors.accent : RenovaTheme.colors.textMuted}
+      />
+    </Pressable>
+  );
 }
 
 function MessageBubble({
@@ -56,6 +87,8 @@ function MessageBubble({
   onTask,
   onConfirm,
   onPay,
+  repliedTo,
+  onOpenReplied,
 }: {
   m: ChatMessage;
   mine: boolean;
@@ -70,6 +103,8 @@ function MessageBubble({
   onTask?: () => void;
   onConfirm?: () => void;
   onPay?: () => void;
+  repliedTo?: ChatMessage | null;
+  onOpenReplied?: () => void;
 }) {
   const roleLabel = m.author_role === 'customer' ? 'Заказчик' : m.author_role === 'contractor' ? 'Исполнитель' : 'Система';
   const isSystem = m.author_role === 'system' || m.message_type === 'system';
@@ -101,7 +136,26 @@ function MessageBubble({
     >
       {m.is_pinned ? <Text style={s.pinTag}>📌 Закреплено</Text> : null}
       <Text style={s.role}>{roleLabel}</Text>
-      {m.text && <HighlightText text={m.text} query={query} />}
+      {/* Сервер хранит связь ответа в `reply_to_id`, но экран её не показывал:
+          от ответа оставалась только строчка «↩ …» внутри текста. */}
+      {repliedTo ? (
+        <Pressable
+          onPress={onOpenReplied}
+          accessibilityRole="button"
+          accessibilityLabel={`Перейти к сообщению, на которое отвечают: ${repliedTo.text || 'вложение'}`}
+          style={s.quote}
+        >
+          <Text style={s.quoteRole}>
+            {repliedTo.author_role === 'customer' ? 'Заказчик' : repliedTo.author_role === 'contractor' ? 'Исполнитель' : 'Система'}
+          </Text>
+          <Text style={s.quoteText} numberOfLines={2}>
+            {repliedTo.text || 'Вложение'}
+          </Text>
+        </Pressable>
+      ) : null}
+      {m.text ? (
+        <HighlightText text={textWithoutReplyPrefix(m.text, !!repliedTo)} query={query} />
+      ) : null}
       {m.message_type === 'payment' && m.confirmed !== true && onPay && (
         <PrimaryButton title="Перейти к оплате" compact onPress={onPay} />
       )}
@@ -133,9 +187,36 @@ function MessageBubble({
           ))}
         </View>
       )}
-      <Text style={s.time}>
-        {m.created_at.slice(11, 16)}{mine && m.read ? ' ✓✓' : ''}
-      </Text>
+      {/* Все эти действия существовали и раньше — но только через долгое
+          нажатие, о котором ничто на экране не сообщало. */}
+      <View style={s.msgActions}>
+        <MessageAction
+          icon="happy-outline"
+          label="Поставить реакцию"
+          onPress={() =>
+            showActionConfirm({
+              title: 'Реакция',
+              message: 'Выберите реакцию на сообщение',
+              actions: REACTIONS.map((emoji) => ({ label: emoji, onPress: () => onReact(emoji) })),
+            })
+          }
+        />
+        <MessageAction icon="arrow-undo-outline" label="Ответить на сообщение" onPress={onReply} />
+        {onPin ? (
+          <MessageAction
+            icon={m.is_pinned ? 'bookmark' : 'bookmark-outline'}
+            label={m.is_pinned ? 'Открепить сообщение' : 'Закрепить сообщение'}
+            active={m.is_pinned}
+            onPress={onPin}
+          />
+        ) : null}
+        {onTask ? (
+          <MessageAction icon="checkbox-outline" label="Создать задачу из сообщения" onPress={onTask} />
+        ) : null}
+        <Text style={[s.time, s.timeInRow]}>
+          {m.created_at.slice(11, 16)}{mine && m.read ? ' ✓✓' : ''}
+        </Text>
+      </View>
     </Pressable>
   );
 }
@@ -469,6 +550,8 @@ export function ChatThreadView({
               }
               await reconcileCommittedChatMutation('Confirm');
             } : undefined}
+            repliedTo={m.reply_to_id ? chat.messages.find((x) => x.id === m.reply_to_id) ?? null : null}
+            onOpenReplied={m.reply_to_id ? () => router.setParams({ highlightId: m.reply_to_id! }) : undefined}
             onPay={canViewProjectActions && m.message_type === 'payment' ? () => {
               const meta = (m as { meta?: { payment_id?: string }; payment_id?: string });
               openPaymentFlow(meta.meta?.payment_id || meta.payment_id);
@@ -693,6 +776,12 @@ const s = StyleSheet.create({
   link: { color: RenovaTheme.colors.accent, fontWeight: '600', marginTop: 4 },
   file: { fontSize: 12, marginTop: 4, color: RenovaTheme.colors.text },
   img: { width: 200, height: 140, borderRadius: 8, marginTop: 6 },
+  msgActions: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 6 },
+  timeInRow: { flex: 1, marginTop: 0 },
+  msgAction: { minWidth: 28, minHeight: 28, alignItems: 'center', justifyContent: 'center' },
+  quote: { borderLeftWidth: 3, borderLeftColor: RenovaTheme.colors.accent, paddingLeft: 8, marginBottom: 6, opacity: 0.85 },
+  quoteRole: { fontSize: 10, color: RenovaTheme.colors.accent, fontWeight: '700' },
+  quoteText: { fontSize: 12, color: RenovaTheme.colors.textMuted },
   reactions: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6 },
   reactChip: { backgroundColor: '#f1f5f9', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2 },
   reactText: { fontSize: 12 },
