@@ -621,7 +621,7 @@ Financial formulas and ledger ownership: `docs/technical-spec/CALCULATION-REGIST
 
 # 12. Hub tab component geometry
 
-**Source:** `OsHubTabs.tsx` blob `f480067b06c750623e4091fe0db128c877e3fb37`.
+**Source:** `OsHubTabs.tsx` blob `5502586790937235004cac87765106972de23304`.
 
 Tabs are underline navigation, not pill cards.
 
