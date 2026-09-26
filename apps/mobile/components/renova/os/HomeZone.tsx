@@ -18,7 +18,14 @@ export function HomeZone({ title, linkLabel, onLinkPress, children }: Props) {
         <View style={homeRowStyles.zoneHead}>
           <Text style={homeTypography.zoneLabel}>{title}</Text>
           {linkLabel && onLinkPress ? (
-            <Pressable onPress={onLinkPress} hitSlop={8} accessibilityRole="button">
+            <Pressable
+              onPress={onLinkPress}
+              hitSlop={8}
+              accessibilityRole="button"
+              // Без имени читалка объявляла «кнопка» — без указания, к чему
+              // относится: у каждой зоны главной такая ссылка своя.
+              accessibilityLabel={title ? `${title}: ${linkLabel}` : linkLabel}
+            >
               <Text style={homeTypography.link}>{linkLabel}</Text>
             </Pressable>
           ) : null}
