@@ -155,9 +155,9 @@ effectiveEnd = planned_end || planned_start
 
 Extensions — text-derived indicator, не normalized extension event. Updated_at может не быть самостоятельным immutable completion timestamp; пригодность управленческого показателя требует проверки producer semantics.
 
-## 14. Budget periods — текущая реализация с открытым дефектом #318
+## 14. Budget periods — исправлено #318 (largest-remainder allocation)
 
-Source `aggregateBudgetByPeriod.ts`, blob `f55d73d095477d24856170eab27aebdee48a1596`.
+Source `aggregateBudgetByPeriod.ts`, blob `81091613519c429d403e212b294aff9b5f8bf066`.
 
 ```text
 week: today and previous 6 days
@@ -171,27 +171,27 @@ overlap = max(0, min(periodEnd, projectEnd) - max(periodStart, projectStart))
 periodPlanned = round(plannedTotal × overlap / projectDuration)
 ```
 
-Отсутствующие даты проекта заменяются period boundaries. Текущий код равномерно назначает round(periodPlanned/7) дням недели, /4 недельным интервалам месяца, /12 месяцам года.
+Отсутствующие даты проекта заменяются period boundaries. `allocateEven(total, n)` распределяет `periodPlanned` по `n` интервалам в целых копейках (largest-remainder method: `base = trunc(totalCents/n)`, остаток `totalCents - base*n` копеек раздаётся по одной первым `remainder` интервалам) — гарантирует `Σ(bucket.planned) === periodPlanned` до копейки для любого `n`, включая month (реальное число недельных интервалов месяца — 4 или 5 в зависимости от количества дней, а не хардкод `/4`).
 
-**SOURCE-CONFIRMED DEFECT:** 29–31-дневный месяц создаёт5 интервалов по1/4. При periodPlanned100000 получается125000. Month-to-date total смешан с full-month buckets. Независимое округление week/year теряет остаток. Это не financial ledger loss, а неправильная аналитическая проекция.
+**ИСПРАВЛЕННЫЙ ДЕФЕКT (был до 7c832070):** 29–31-дневный месяц создавал 5 интервалов по 1/4 от хардкода; при periodPlanned 100000 получалось 125000 (125% плана). Воспроизведено counterexample-тестом, зафиксировано регрессией.
 
-**TARGET / NOT YET IMPLEMENTED:** единый as-of/range; sum(bucket.planned)=periodPlanned до копейки; реальный phased plan или явно маркированная оценка; timezone и leap-year tests. Не описывать эту формулу как готовую authoritative cash-flow систему.
+Regression-тесты: `aggregateBudgetByPeriod.test.ts` — exact-125%-counterexample, `allocateEven` для n=4..31 и произвольных сумм включая копейки, `buildPeriodBuckets('month')` на реальном текущем месяце.
 
-## 15. Portfolio budget — ограниченность входов #318
+## 15. Portfolio budget — исправлено #318 (явный factAvailable вместо мнимого нуля)
 
-Source `aggregatePortfolioBudget.ts`, blob `74595a831d76df0ae8ddae50cc40ed56beec3922`.
+Source `aggregatePortfolioBudget.ts`, blob `589cbb97bb410f5186a2cc751ac6aeaaa133819b`.
 
 Агрегируются works, materials_plan, materials_fact, waste, reserve, budget_planned, budget_spent.
 
 ```text
 variance    = spent - planned
 variancePct = planned > 0 ? round(variance / planned × 100) : 0
-hasOverrun  = planned > 0 and variance > 0
+hasOverrun  = factAvailable and planned > 0 and variance > 0
 ```
 
-Current row semantics: works→(works,works); materials→(materialsPlan,materialsFact); waste→(waste,waste); reserve→(reserve,reserve); total→(totalPlan,totalSpent). Возвращаются строки с planned>0 либо spent>0.
+Current row semantics: works→(works, `works_fact` от backend `quantity_actual`, `factAvailable=true` когда backend его вернул, иначе `false`); materials→(materialsPlan, materialsFact, `factAvailable=true`); waste→(waste, waste, `factAvailable=true` — genuine zero variance, waste amount известен на создании, это не заглушка); reserve→(reserve, reserve, `factAvailable=false` — производный остаток `budget_planned - works - materials - waste`, у него нет независимого ledger-факта); total→(totalPlan, totalSpent, `factAvailable=true`).
 
-Works/waste/reserve variance структурно0. Это НЕ измеренное отсутствие перерасхода. UI скрывает повторную подпись факта при равенстве, но полноценной фактической category детализации от этого не появляется. TARGET: ledger-backed actuals или null/unavailable; partial portfolio явно маркируется.
+**ИСПРАВЛЕННЫЙ ДЕФЕКТ (был до 7c832070):** works/reserve variance раньше была структурно 0 (факт=план подставлялся вместо отсутствия данных), что маскировало реальный перерасход по работам как "в пределах плана". Backend `budget_breakdown` (`backend/app/api/v1/analytics.py`) теперь считает и возвращает `works_fact` из `EstimateLine.quantity_actual`; когда backend его не вернул, mobile помечает строку `factAvailable=false` вместо изобретения нулевого отклонения. UI (`PortfolioCategoryBreakdown.tsx`) показывает «факт не отслеживается отдельно» по `factAvailable`, а не по эвристике равенства plan/fact.
 
 ## 16. Материалы — актуальная количественная семантика
 

@@ -4,7 +4,7 @@
 **Язык:** русский
 **Дата текущей сверки:** 2026-09-08
 **Проверенный продуктовый срез:** `95dd4a8e117289df11e1300891490768c22f585f`
-**Текущий schema head в этой редакции:** `w22projectparticipants01`
+**Текущий schema head в этой редакции:** `w23participantpurgecascade01`
 **Текущий verification status:** `SOURCE AUDITED / BOUNDED CI EVIDENCE / FULL PRODUCT ACCEPTANCE INCOMPLETE`
 **Широкий production-запуск:** `BLOCKED_FOR_BROAD_PRODUCTION`
 
@@ -41,7 +41,7 @@
 | `apps/mobile/components/screens/OsBudgetHubScreen.tsx` | `4e0e8267d68b600cf0d8bdf716a4c8eddaa3bcbd` | Budget hub |
 | `apps/mobile/constants/budgetTabs.ts` | `d02c05560176535e130d76960c2b67691bcbb3b7` | Budget tab canon |
 | `.cursor/rules/renova-design-system.mdc` | `2f48e46f5b348b8cbc3a370615a5a5e93d93421f` | UI rules |
-| `package.json` | `edc3bb4b65db52144b0d2e27a7ecaca298af978b` | Root commands/test entrypoints |
+| `package.json` | `3f4b7ea2ad0c5fb32eee6de5a8086d3a2af6b25d` | Root commands/test entrypoints (+5 sessionFence tests wired into mobile:test) |
 | `.github/workflows/local-runtime-integrity.yml` | `63831ec7622794843ca724319178e2de18cdb971` | Local runtime proof |
 | `backend/alembic/versions/w16legacystatus01_legacy_status_enum_parity.py` | `d2137f2b87c1ac6f679093331bd034aff17c8188` | Legacy status repair |
 | `backend/alembic/versions/w17chatmessageenum01_chat_message_enum_parity.py` | `0537268c85e26b7a607d36f967a3402b8bba53c4` | Chat enum repair |
@@ -60,7 +60,7 @@ Renova — iPhone-first управление реальным ремонтом, 
 
 Канон `PetrFedin/renova`: main→короткая ветка→PR→применимые проверки→merge. Старые develop/task-ветки не интеграционная база. `CLAUDE.md` и bootstrap Cursor правила указывают на AGENTS.
 
-Навигация: routeRegistry + реальные Expo routes. API: итоговый router + конкретные services. Данные: ORM + линейный Alembic graph, PostgreSQL authoritative. Текущий head `w22projectparticipants01`; w16legacystatus01→w17chatmessageenum01→w18nativeenumparity01→w19paymentevidence01→w20materialsupply01→w21materialprice01→w22projectparticipants01 — продолжение уже потреблённой истории, не инструкция переписывать старые миграции.
+Навигация: routeRegistry + реальные Expo routes. API: итоговый router + конкретные services. Данные: ORM + линейный Alembic graph, PostgreSQL authoritative. Текущий head `w23participantpurgecascade01`; w16legacystatus01→w17chatmessageenum01→w18nativeenumparity01→w19paymentevidence01→w20materialsupply01→w21materialprice01→w22projectparticipants01→w23participantpurgecascade01 — продолжение уже потреблённой истории, не инструкция переписывать старые миграции.
 
 Readiness: корневой PRODUCTION-READINESS.md и docs/production-readiness-evidence.json. При конфликте подтверждённого кода с документом исправляется конфликт, а не повышается статус по документу.
 
