@@ -2,6 +2,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { evaluateApiBaseGuard } from '@/lib/apiBaseGuard';
 import { isAuthoritativeRefreshRejection, shouldFallbackToDurableCache } from './failurePolicy';
+import { currentSessionUserId, getSessionStamp } from '@/lib/domain/sessionAuthority';
 
 export class ApiError extends Error {
   status: number;
@@ -266,6 +267,11 @@ export function getRefreshToken(): string | null {
 export async function refreshAccessToken(): Promise<boolean> {
   if (!_refreshToken) return false;
   if (_refreshInflight) return _refreshInflight;
+  // #315: метка берётся один раз, до await. Если за время сетевого запроса
+  // человек вышел и вошёл под другим аккаунтом (или тем же — новое
+  // поколение), ответ этой устаревшей сессии не должен ни опубликовать
+  // токены новой сессии, ни стереть их авторитетным отказом старой.
+  const stampAtStart = getSessionStamp();
   _refreshInflight = (async () => {
     try {
       const res = await fetch(`${API_BASE}/api/v1/auth/refresh`, {
@@ -277,8 +283,10 @@ export async function refreshAccessToken(): Promise<boolean> {
       if (!res.ok) {
         const parsed = parseApiErrorBody(txt, res.status);
         if (isAuthoritativeRefreshRejection(res.status)) {
-          setAccessToken(null);
-          setRefreshToken(null);
+          if (getSessionStamp().generation === stampAtStart.generation) {
+            setAccessToken(null);
+            setRefreshToken(null);
+          }
           return false;
         }
         throw new ApiError(res.status, parsed.message, parsed.code, parsed.detail);
@@ -294,6 +302,13 @@ export async function refreshAccessToken(): Promise<boolean> {
       const nextAccess = typeof data.access_token === 'string' ? data.access_token.trim() : '';
       if (!nextAccess) {
         throw new ApiError(502, 'Сервер не вернул новый токен доступа.', 'invalid_refresh_response', data);
+      }
+
+      if (getSessionStamp().generation !== stampAtStart.generation) {
+        // Сессия сменилась, пока ждали ответ: старая generation не публикует
+        // токены поверх новой. Для вызывающего это выглядит как отказ
+        // обновления в рамках сессии, с которой он начал операцию.
+        return false;
       }
       setAccessToken(nextAccess);
 
@@ -317,6 +332,14 @@ export async function refreshAccessToken(): Promise<boolean> {
 export function authHeaders(userId?: string | null): Record<string, string> {
   const h: Record<string, string> = {};
   if (_accessToken) {
+    // #315: `_accessToken` — один общий глобальный Bearer. Запрос с явным
+    // `userId`, который не совпадает с активной сессией (устаревшее задание
+    // офлайн-очереди, запоздалый вызов экрана после переключения аккаунта),
+    // не должен уходить с чужим токеном. Явный `userId` без активной сессии
+    // (уже вышли) — тоже отказ: публиковать нечему.
+    if (userId != null && userId !== currentSessionUserId()) {
+      return h;
+    }
     h.Authorization = `Bearer ${_accessToken}`;
     return h;
   }

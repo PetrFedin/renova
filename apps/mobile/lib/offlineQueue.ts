@@ -15,6 +15,7 @@ import {
   parseOfflineQueueStorage,
 } from '@/lib/offlineQueueStorage';
 import { authHeaders } from '@/lib/api/client';
+import { currentSessionUserId } from '@/lib/domain/sessionAuthority';
 import { reportError } from '@/lib/reportError';
 
 const KEY = 'renova_offline_queue';
@@ -428,6 +429,15 @@ async function flushOnce(apiBase: string): Promise<OfflineFlushResult> {
 
   for (const job of sorted) {
     if (job.blocked || job.conflict) continue;
+    // #315: очередь общая на устройстве и переживает logout/login. Задание,
+    // заведённое другим (или уже вышедшим) аккаунтом, нельзя ни отправить с
+    // текущим глобальным Bearer (`authHeaders` его всё равно откажет — см.
+    // client.ts), ни пометить как ошибочное: оно просто ждёт, пока владелец
+    // снова станет активной сессией.
+    if (job.userId && job.userId !== currentSessionUserId()) {
+      deferred += 1;
+      continue;
+    }
     const now = Date.now();
     if ((job.nextAttemptAt ?? 0) > now) {
       deferred += 1;

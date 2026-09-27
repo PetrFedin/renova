@@ -110,10 +110,9 @@ import type { WizardRoomDraft } from '@/constants/roomTypes';
 import {
   canPublish,
   describeStaleWrite,
-  INITIAL_SESSION_STAMP,
-  nextSessionStamp,
   type SessionStamp,
 } from '@/lib/domain/sessionFence';
+import { beginSessionAuthority, getSessionStamp } from '@/lib/domain/sessionAuthority';
 
 type WizardDraft = {
   name: string;
@@ -209,9 +208,11 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
    * аккаунтом. Метка берётся в начале операции и сверяется перед каждой
    * публикацией, записью в хранилище и рассылкой по шине.
    */
-  const sessionStampRef = useRef<SessionStamp>(INITIAL_SESSION_STAMP);
+  const sessionStampRef = useRef<SessionStamp>(getSessionStamp());
   const beginSession = useCallback((userId: string | null) => {
-    sessionStampRef.current = nextSessionStamp(sessionStampRef.current, userId);
+    // Общий рубеж (#315): api/client.ts и offlineQueue.ts живут вне React и
+    // сверяются с тем же поколением, что и этот ref, через sessionAuthority.
+    sessionStampRef.current = beginSessionAuthority(userId);
     return sessionStampRef.current;
   }, []);
   const dropStaleWrite = useCallback((taken: SessionStamp, scope: string) => {
