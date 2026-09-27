@@ -44,7 +44,9 @@ class ProjectParticipant(Base):
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
     participant_role: Mapped[str] = mapped_column(String(32), default="contractor")
     status: Mapped[str] = mapped_column(String(16), default="active", index=True)
@@ -75,7 +77,7 @@ class ProjectParticipantScope(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     participant_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("project_participants.id"), index=True
+        String(36), ForeignKey("project_participants.id", ondelete="CASCADE"), index=True
     )
     scope_type: Mapped[str] = mapped_column(String(16), index=True)
     scope_ref: Mapped[str] = mapped_column(String(64), index=True)
@@ -96,9 +98,11 @@ class ProjectParticipantEvent(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     participant_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("project_participants.id"), index=True
+        String(36), ForeignKey("project_participants.id", ondelete="CASCADE"), index=True
     )
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
     event_type: Mapped[str] = mapped_column(String(32), index=True)
     actor_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)

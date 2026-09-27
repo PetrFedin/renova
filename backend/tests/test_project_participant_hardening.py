@@ -20,11 +20,12 @@ from app.api.v1 import marketplace_conversion_integrity as conversion_api
 from app.db.session import get_db
 from app.models.client_write_request import ClientWriteRequest
 from app.models.entities import DomainOutbox, JobLead, JobLeadStatus, Project, Room, Stage, User, UserRole
-from app.models.project_participants import ProjectParticipant, ProjectParticipantEvent
+from app.models.project_participants import ProjectParticipant, ProjectParticipantEvent, ProjectParticipantScope
 from app.services import marketplace_conversion_service as conversion
 from app.services import outbox_inline_dispatch, project_assignment_service as assignment
 from app.services import project_create_service as creation
 from app.services import project_participant_service as participants
+from app.services import project_service
 from app.services.client_write_idempotency import IdempotencyConflict
 
 
@@ -344,5 +345,115 @@ async def test_postgres_warm_customer_contractor_conversion_returns_one_project(
                 ProjectParticipantEvent.project_id == results[0][0],
             )) == 1
             assert await db.scalar(select(JobLead.status).where(JobLead.id == lead_id)) == JobLeadStatus.taken
+    finally:
+        await engine.dispose()
+
+
+async def _project_with_full_participant_graph(db):
+    """A project with a participant, an explicit scope and a lifecycle event —
+    the exact graph shape w22projectparticipants01 introduced (issue #319)."""
+    owner, _, first, _, project, stage = await _project(db)
+    participant, _ = await participants.add_or_reactivate_contractor(
+        db, project_id=project.id, actor_id=owner.id, contractor_id=first.id,
+        scopes=[("stage", stage.id)],
+    )
+    return owner, project, participant
+
+
+async def _stageless_project_with_participant_graph(db):
+    """Same participant/scope/event graph as above but with NO ``stages`` row,
+    so the assertions below isolate the #319 participant-graph cascade fix
+    from the pre-existing, separate defect (confirmed while writing this
+    test, see #319 follow-up comment) where empty_trash()'s bulk
+    ``DELETE FROM projects`` already violates ``stages_project_id_fkey`` for
+    any trashed project that has stages — a much older, unrelated gap that
+    predates the participant migration and is out of scope here."""
+    owner, other, first, second = await _users(db)
+    project = Project(id=str(uuid.uuid4()), name="Stageless", customer_id=owner.id, renovation_type="cosmetic")
+    db.add(project)
+    await db.commit()
+    participant, _ = await participants.add_or_reactivate_contractor(
+        db, project_id=project.id, actor_id=owner.id, contractor_id=first.id,
+        scopes=[("work_type", "electrical")],
+    )
+    return owner, project, participant
+
+
+@pytest.mark.asyncio
+async def test_postgres_purge_project_clears_participant_graph_without_integrity_error():
+    """Regression proof for #319: purge_project() must not raise
+    ForeignKeyViolationError against real PostgreSQL when the project being
+    permanently deleted still has project_participants / _scopes / _events
+    rows, and must not leave orphaned rows behind either."""
+    engine, Session = _postgres_session()
+    try:
+        async with Session() as db:
+            owner, project, participant = await _project_with_full_participant_graph(db)
+            owner_id, project_id, participant_id = owner.id, project.id, participant.id
+            assert await db.scalar(select(func.count()).select_from(ProjectParticipantScope).where(
+                ProjectParticipantScope.participant_id == participant_id,
+            )) == 1
+            assert await db.scalar(select(func.count()).select_from(ProjectParticipantEvent).where(
+                ProjectParticipantEvent.project_id == project_id,
+            )) >= 1
+
+        async with Session() as db:
+            trashed = await project_service.trash_project(db, project_id, owner)
+            assert trashed.trashed_at is not None
+
+        async with Session() as db:
+            # Must complete without IntegrityError/ForeignKeyViolationError.
+            await project_service.purge_project(db, project_id, owner)
+
+        async with Session() as db:
+            assert await db.scalar(select(func.count()).select_from(Project).where(Project.id == project_id)) == 0
+            assert await db.scalar(select(func.count()).select_from(ProjectParticipant).where(
+                ProjectParticipant.project_id == project_id,
+            )) == 0
+            assert await db.scalar(select(func.count()).select_from(ProjectParticipantScope).where(
+                ProjectParticipantScope.participant_id == participant_id,
+            )) == 0
+            assert await db.scalar(select(func.count()).select_from(ProjectParticipantEvent).where(
+                ProjectParticipantEvent.project_id == project_id,
+            )) == 0
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_postgres_empty_trash_bulk_delete_clears_participant_graph():
+    """empty_trash() issues a bulk ``DELETE FROM projects`` that bypasses ORM
+    relationship cascades entirely, so this must be verified against the
+    real DB-level ON DELETE CASCADE, not just the ORM-level purge_project()
+    path above. Uses a stage-less project: bulk-delete already violates the
+    unrelated, pre-existing ``stages_project_id_fkey`` for any trashed
+    project with stages (see module-level docstring on the helper above) —
+    that gap predates #319 and is intentionally not touched here."""
+    engine, Session = _postgres_session()
+    try:
+        async with Session() as db:
+            owner, project, participant = await _stageless_project_with_participant_graph(db)
+            owner_id, project_id, participant_id = owner.id, project.id, participant.id
+
+        async with Session() as db:
+            fresh_owner = await db.get(User, owner_id)
+            await project_service.trash_project(db, project_id, fresh_owner)
+
+        async with Session() as db:
+            fresh_owner = await db.get(User, owner_id)
+            deleted = await project_service.empty_trash(db, fresh_owner)
+            assert deleted >= 1
+
+        async with Session() as db:
+            assert await db.scalar(select(func.count()).select_from(Project).where(Project.id == project_id)) == 0
+            assert await db.scalar(select(func.count()).select_from(ProjectParticipant).where(
+                ProjectParticipant.project_id == project_id,
+            )) == 0
+            assert await db.scalar(select(func.count()).select_from(ProjectParticipantScope).where(
+                ProjectParticipantScope.participant_id == participant_id,
+            )) == 0
+            assert await db.scalar(select(func.count()).select_from(ProjectParticipantEvent).where(
+                ProjectParticipantEvent.project_id == project_id,
+            )) == 0
     finally:
         await engine.dispose()
