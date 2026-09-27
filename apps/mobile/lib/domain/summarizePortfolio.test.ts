@@ -27,4 +27,25 @@ const cats = aggregatePortfolioBudgetBreakdowns([
 const materials = cats.find((c) => c.key === 'materials');
 if (!materials || materials.planned !== 300 || materials.spent !== 340) throw new Error('materials aggregate');
 
+// issue #318: без works_fact в ответе бэкенда факт по работам не должен молча
+// приравниваться к плану как "измеренный" — помечаем его как неизвестный.
+const worksNoFact = cats.find((c) => c.key === 'works');
+if (!worksNoFact || worksNoFact.factAvailable !== false) throw new Error('works fact must be marked unavailable when backend omits works_fact');
+
+// "Резерв" — расчётный остаток, не отслеживаемая статья расходов: факт не измеряется.
+const reserveRow = cats.find((c) => c.key === 'reserve');
+if (!reserveRow || reserveRow.factAvailable !== false) throw new Error('reserve has no independent fact');
+
+// Когда бэкенд отдаёт реальный works_fact, он должен использоваться как факт
+// (а не план), и variance по работам должен быть измеримым и ненулевым, когда
+// реальные расходы отличаются от плана.
+const catsWithWorksFact = aggregatePortfolioBudgetBreakdowns([
+  { works: 100, works_fact: 130, materials_plan: 200, materials_fact: 200, waste: 0, reserve: 0, total_planned: 300, budget_planned: 300, budget_spent: 330 },
+]);
+const worksWithFact = catsWithWorksFact.find((c) => c.key === 'works');
+if (!worksWithFact || worksWithFact.factAvailable !== true) throw new Error('works fact must be available when backend provides works_fact');
+if (worksWithFact.spent !== 130) throw new Error('works fact must reflect real quantity_actual spend, not plan');
+if (worksWithFact.spent === worksWithFact.planned) throw new Error('works fact must not be forced equal to plan (issue #318)');
+if (!worksWithFact.hasOverrun) throw new Error('real works overrun must be detected once fact data exists');
+
 console.log('summarizePortfolio.test OK');

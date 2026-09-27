@@ -45,10 +45,11 @@ export function plannedShareForPeriod(
   period: BudgetPeriod,
   projectStart?: string | null,
   projectEnd?: string | null,
+  now = new Date(),
 ): number {
   if (plannedTotal <= 0) return 0;
   if (period === 'all') return plannedTotal;
-  const { start, end } = periodRange(period);
+  const { start, end } = periodRange(period, now);
   const pStart = projectStart ? atDayStart(new Date(projectStart.slice(0, 10))) : start;
   const pEnd = projectEnd ? atDayEnd(new Date(projectEnd.slice(0, 10))) : end;
   const projMs = Math.max(1, pEnd.getTime() - pStart.getTime());
@@ -82,6 +83,30 @@ function fmtMonth(d: Date) {
   return d.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
 }
 
+/**
+ * Делит periodPlanned на n корзин так, чтобы сумма долей была РОВНО periodPlanned
+ * (с точностью до копейки), а не суммой независимо округлённых долей.
+ * Наивное Math.round(periodPlanned / n) на каждую корзину теряет или, для месяца
+ * с переменным числом недельных корзин, задваивает остаток (issue #318: 5 недельных
+ * корзин × round(plan/4) давали 125% плана).
+ */
+export function allocateEven(total: number, n: number): number[] {
+  if (n <= 0) return [];
+  const totalCents = Math.round(total * 100);
+  const base = Math.trunc(totalCents / n);
+  let remainder = totalCents - base * n;
+  const result: number[] = [];
+  for (let i = 0; i < n; i++) {
+    let cents = base;
+    if (remainder > 0) {
+      cents += 1;
+      remainder -= 1;
+    }
+    result.push(cents / 100);
+  }
+  return result;
+}
+
 /** Подробные интервалы внутри выбранного периода */
 export function buildPeriodBuckets(
   rows: ExpenseDetailRow[],
@@ -95,6 +120,7 @@ export function buildPeriodBuckets(
 
   if (period === 'week') {
     const { start } = periodRange(period);
+    const shares = allocateEven(periodPlanned, 7);
     const buckets: BudgetPeriodBucket[] = [];
     for (let i = 0; i < 7; i++) {
       const day = atDayStart(new Date(start));
@@ -105,7 +131,7 @@ export function buildPeriodBuckets(
         key: day.toISOString().slice(0, 10),
         label: fmtDay(day),
         spent: sumRows(dayRows),
-        planned: Math.round(periodPlanned / 7),
+        planned: shares[i],
         rows: dayRows,
       });
     }
@@ -116,28 +142,35 @@ export function buildPeriodBuckets(
     const now = new Date();
     const monthStart = atDayStart(new Date(now.getFullYear(), now.getMonth(), 1));
     const monthEnd = atDayEnd(new Date(now.getFullYear(), now.getMonth() + 1, 0));
-    const buckets: BudgetPeriodBucket[] = [];
+    // Сначала собираем границы недельных корзин (их 4 или 5 в зависимости от длины
+    // месяца и дня недели старта), потом делим periodPlanned на РЕАЛЬНОЕ число корзин —
+    // раньше здесь всегда делили на 4, из-за чего 5 корзин суммарно давали 125% плана.
+    const ranges: { start: Date; end: Date }[] = [];
     let cursor = new Date(monthStart);
     while (cursor <= monthEnd) {
       const wStart = atDayStart(cursor);
       const wEnd = atDayEnd(new Date(cursor));
       wEnd.setDate(wEnd.getDate() + 6);
       if (wEnd > monthEnd) wEnd.setTime(monthEnd.getTime());
+      ranges.push({ start: wStart, end: wEnd });
+      cursor.setDate(cursor.getDate() + 7);
+    }
+    const shares = allocateEven(periodPlanned, ranges.length);
+    return ranges.map(({ start: wStart, end: wEnd }, i) => {
       const wRows = filtered.filter((r) => rowInRange(r, wStart, wEnd));
-      buckets.push({
+      return {
         key: wStart.toISOString().slice(0, 10),
         label: `${fmtDay(wStart)} – ${fmtDay(wEnd)}`,
         spent: sumRows(wRows),
-        planned: Math.round(periodPlanned / 4),
+        planned: shares[i],
         rows: wRows,
-      });
-      cursor.setDate(cursor.getDate() + 7);
-    }
-    return buckets;
+      };
+    });
   }
 
   if (period === 'year') {
     const y = new Date().getFullYear();
+    const shares = allocateEven(periodPlanned, 12);
     return Array.from({ length: 12 }, (_, m) => {
       const mStart = atDayStart(new Date(y, m, 1));
       const mEnd = atDayEnd(new Date(y, m + 1, 0));
@@ -146,7 +179,7 @@ export function buildPeriodBuckets(
         key: `${y}-${String(m + 1).padStart(2, '0')}`,
         label: fmtMonth(mStart),
         spent: sumRows(mRows),
-        planned: Math.round(periodPlanned / 12),
+        planned: shares[m],
         rows: mRows,
       };
     });

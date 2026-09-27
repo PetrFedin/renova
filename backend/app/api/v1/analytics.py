@@ -89,13 +89,20 @@ async def budget_breakdown(project_id: str, user: User = Depends(get_current_use
     p = await require_project(db, project_id, user, write=False)
     lines = (await db.execute(select(EstimateLine).where(EstimateLine.project_id == project_id))).scalars().all()
     works = sum(l.quantity_planned * l.unit_price for l in lines if l.line_type == LineType.work)
+    # Факт по работам — из quantity_actual (те же строки сметы, что и в budget-room-lines),
+    # а не подстановка плана. Раньше works_fact вообще не считался, и фронт молча
+    # приравнивал факт к плану для этой категории (issue #318).
+    works_fact = sum(l.quantity_actual * l.unit_price for l in lines if l.line_type == LineType.work)
     materials_plan = sum(l.quantity_planned * l.unit_price for l in lines if l.line_type == LineType.material)
     picks = (await db.execute(select(MaterialPick).where(MaterialPick.project_id == project_id))).scalars().all()
     materials_fact = sum(x.qty * x.price for x in picks if x.status.value in ("approved", "purchased"))
     waste = (await db.execute(select(WasteOrder).where(WasteOrder.project_id == project_id))).scalars().all()
+    # У вывоза мусора нет отдельной сметы "план vs факт" — сумма появляется только при
+    # создании заказа, поэтому waste одновременно является и планом, и фактом (это не
+    # заглушка, а свойство модели данных).
     waste_sum = sum(w.volume_m3 * w.price for w in waste if w.status.value != "cancelled")
     reserve = max(0, p.budget_planned - works - materials_plan - waste_sum)
-    return {"works": round(works, 2), "materials_plan": round(materials_plan, 2), "materials_fact": round(materials_fact, 2), "waste": round(waste_sum, 2), "reserve": round(reserve, 2), "total_planned": round(works + materials_plan + waste_sum + reserve, 2), "budget_planned": p.budget_planned, "budget_spent": p.budget_spent}
+    return {"works": round(works, 2), "works_fact": round(works_fact, 2), "materials_plan": round(materials_plan, 2), "materials_fact": round(materials_fact, 2), "waste": round(waste_sum, 2), "reserve": round(reserve, 2), "total_planned": round(works + materials_plan + waste_sum + reserve, 2), "budget_planned": p.budget_planned, "budget_spent": p.budget_spent}
 
 
 @router.get("/projects/{project_id}/analytics/budget-category-alerts")

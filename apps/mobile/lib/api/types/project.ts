@@ -55,6 +55,8 @@ export type EstimateLine = {
 
 export type BudgetBreakdown = {
   works: number;
+  /** Факт по работам — из quantity_actual смет. Появилось вместе с фиксом issue #318. */
+  works_fact?: number;
   materials_plan: number;
   materials_fact: number;
   waste: number;
