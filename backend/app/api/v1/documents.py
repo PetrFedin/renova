@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
-from app.models.entities import AcceptanceStatus, DesignPackage, Receipt, Stage, User, WorkAcceptance
+from app.models.entities import AcceptanceStatus, DesignPackage, Payment, Receipt, Stage, User, WorkAcceptance
 from app.models.project_documents import DocumentStatus, DocumentType, ProjectDocument
 from app.schemas.project_documents import DocumentCreateIn, DocumentSignIn, DocumentVersionIn, LegalHoldIn, OcrRunIn
 from app.services import project_document_service as docs_svc
@@ -210,6 +210,28 @@ async def list_project_documents(
     }
 
 
+async def _validate_document_refs(
+    db: AsyncSession,
+    project_id: str,
+    *,
+    stage_id: str | None,
+    payment_id: str | None,
+) -> None:
+    """Issue #472: stage_id/payment_id must belong to the same path project.
+
+    Privacy-preserving 404 for absent/foreign references — do not reveal
+    whether the referenced row exists in another project.
+    """
+    if stage_id:
+        stage = await db.get(Stage, stage_id)
+        if not stage or stage.project_id != project_id:
+            raise HTTPException(404, "stage_not_found")
+    if payment_id:
+        payment = await db.get(Payment, payment_id)
+        if not payment or payment.project_id != project_id:
+            raise HTTPException(404, "payment_not_found")
+
+
 async def _get_project_document(db: AsyncSession, project_id: str, document_id: str) -> ProjectDocument:
     doc = await db.get(ProjectDocument, document_id)
     if not doc or doc.project_id != project_id or doc.status == DocumentStatus.deleted.value:
@@ -225,6 +247,7 @@ async def create_project_document(
     db: AsyncSession = Depends(get_db),
 ):
     await require_project_docs(db, project_id, user, write=True)
+    await _validate_document_refs(db, project_id, stage_id=body.stage_id, payment_id=body.payment_id)
     doc = await docs_svc.create_document(
         db,
         project_id=project_id,
@@ -405,6 +428,7 @@ async def upload_project_document(
 ):
     """D-06: multipart upload → storage + ProjectDocument + DocumentVersion."""
     await require_project_docs(db, project_id, user, write=True)
+    await _validate_document_refs(db, project_id, stage_id=stage_id, payment_id=payment_id)
 
     data = await file.read()
     if not data:
