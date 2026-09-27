@@ -6,7 +6,7 @@ from datetime import datetime, timezone, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import Project, ProjectIssue, UserRole
+from app.models.entities import FloorPlan, Project, ProjectIssue, Room, Stage, UserRole
 from app.services import outbox_service as outbox
 
 ISSUE_TRANSITIONS: dict[str, set[str]] = {
@@ -72,6 +72,51 @@ async def list_issues(
     return list(result.scalars().all())
 
 
+async def _validate_same_project_link(
+    db: AsyncSession,
+    *,
+    model,
+    entity_id: str | None,
+    project_id: str,
+    not_found_code: str,
+) -> None:
+    """Fail-closed: сущность должна существовать и принадлежать тому же project_id.
+
+    Отсутствующая или чужая (другой проект) сущность трактуется одинаково —
+    privacy-preserving 404, чтобы не палить наличие чужих объектов.
+    """
+    if entity_id is None:
+        return
+    entity = await db.get(model, entity_id)
+    if entity is None or entity.project_id != project_id:
+        raise ValueError(not_found_code)
+
+
+async def validate_issue_links(
+    db: AsyncSession,
+    project_id: str,
+    *,
+    room_id: str | None = None,
+    stage_id: str | None = None,
+    floor_plan_id: str | None = None,
+) -> None:
+    """P0: room_id/stage_id/floor_plan_id переданные в Issue обязаны принадлежать
+    тому же project_id, что и путь запроса — иначе можно связать замечание
+    с чужим проектом (см. issue #474)."""
+    await _validate_same_project_link(
+        db, model=Room, entity_id=room_id, project_id=project_id,
+        not_found_code="issue_room_not_found",
+    )
+    await _validate_same_project_link(
+        db, model=Stage, entity_id=stage_id, project_id=project_id,
+        not_found_code="issue_stage_not_found",
+    )
+    await _validate_same_project_link(
+        db, model=FloorPlan, entity_id=floor_plan_id, project_id=project_id,
+        not_found_code="issue_floor_plan_not_found",
+    )
+
+
 async def create_issue(
     db: AsyncSession,
     project_id: str,
@@ -87,6 +132,9 @@ async def create_issue(
     y_pct: float | None = None,
     photo_key: str | None = None,
 ) -> ProjectIssue:
+    await validate_issue_links(
+        db, project_id, room_id=room_id, stage_id=stage_id, floor_plan_id=floor_plan_id,
+    )
     issue = ProjectIssue(
         project_id=project_id,
         room_id=room_id,

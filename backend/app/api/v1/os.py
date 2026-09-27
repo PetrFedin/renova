@@ -97,11 +97,17 @@ async def create_issue(
     from app.services import team_service as team_svc
     project = await require_project(db, project_id, user, write=True)
     await team_svc.require_capability(db, user, project, "field_write")
-    issue = await iss.create_issue(
-        db, project_id, body.title,
-        description=body.description, room_id=body.room_id, stage_id=body.stage_id, severity=body.severity,
-        floor_plan_id=body.floor_plan_id, x_pct=body.x_pct, y_pct=body.y_pct, photo_key=body.photo_key,
-    )
+    try:
+        issue = await iss.create_issue(
+            db, project_id, body.title,
+            description=body.description, room_id=body.room_id, stage_id=body.stage_id, severity=body.severity,
+            floor_plan_id=body.floor_plan_id, x_pct=body.x_pct, y_pct=body.y_pct, photo_key=body.photo_key,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code in ("issue_room_not_found", "issue_stage_not_found", "issue_floor_plan_not_found"):
+            raise HTTPException(404, detail=code) from exc
+        raise
     await act.log_event(
         db,
         project_id=project_id,
