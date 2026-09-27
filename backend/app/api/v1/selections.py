@@ -9,12 +9,29 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
-from app.models.entities import Project, SelectionItem, SelectionStatus, User, UserRole
+from app.models.entities import Project, Room, SelectionItem, SelectionStatus, User, UserRole
 from app.services import activity_service as act
 
 router = APIRouter(prefix="/projects", tags=["selections"])
 
 CATEGORIES = ("tile", "plumbing", "lighting", "doors", "kitchen", "paint", "other")
+
+
+async def _validate_room_id(db: AsyncSession, *, project_id: str, room_id: str | None) -> None:
+    """Bind an optional room_id to the authorized path project before any side effects.
+
+    Missing/foreign room is a privacy-preserving 404 — must be raised before any
+    Selection row, activity/outbox event or ClientWriteRequest is committed.
+    """
+    if not room_id:
+        return
+    value = (
+        await db.execute(
+            select(Room.id).where(Room.id == room_id, Room.project_id == project_id).limit(1)
+        )
+    ).scalar_one_or_none()
+    if not value:
+        raise HTTPException(404)
 
 
 class SelectionIn(BaseModel):
@@ -100,6 +117,7 @@ async def create_selection(
     await require_project(db, project_id, user, write=True)
     if body.category not in CATEGORIES:
         raise HTTPException(422, "invalid_category")
+    await _validate_room_id(db, project_id=project_id, room_id=body.room_id)
     row = SelectionItem(
         project_id=project_id,
         room_id=body.room_id,
@@ -177,6 +195,11 @@ async def approve_selection(
         raise HTTPException(404)
     if row.status != SelectionStatus.proposed:
         raise HTTPException(409, "not_proposed")
+    # Defense in depth: re-bind room_id to the authorized path project before
+    # the approval side effect (MaterialPick creation) can run — a foreign
+    # room_id must never have been on the row, but this guarantees a
+    # cross-project Selection can never propagate into procurement truth.
+    await _validate_room_id(db, project_id=project_id, room_id=row.room_id)
     row.status = SelectionStatus.approved
     row.approved_at = utc_now()
     from app.services.selection_service import material_pick_from_selection
