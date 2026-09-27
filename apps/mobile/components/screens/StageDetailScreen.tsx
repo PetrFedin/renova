@@ -293,7 +293,7 @@ export function StageDetailScreen() {
           throw new Error(`Compressed image read failed with status ${compressedResponse.status}`);
         }
         const blob = await compressedResponse.blob();
-        const up = await api.getUploadUrl(user.id);
+        const up = await api.getUploadUrl(user.id, activeProject.id, 'image/jpeg');
         if (up.upload_url) {
           const uploadResponse = await fetch(up.upload_url, {
             method: 'PUT',

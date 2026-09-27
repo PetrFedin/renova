@@ -58,7 +58,7 @@ export function DesignPackageList({
       if (!picked) return;
       const response = await fetch(picked.uri);
       const blob = await response.blob();
-      const key = await uploadMediaBlob(userId, blob, picked.type || 'application/pdf');
+      const key = await uploadMediaBlob(userId, projectId, blob, picked.type || 'application/pdf');
       await api.createDesignPackage(userId, projectId, { title: picked.name || 'Дизайн-проект', file_key: key });
       await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any) });
       load();

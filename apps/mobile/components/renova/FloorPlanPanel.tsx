@@ -153,7 +153,7 @@ export function FloorPlanPanel({
     }
     if (!uri) return pickerFailed ? { photoIssue: 'picker_unavailable' } : {};
     const blob = await (await fetch(uri)).blob();
-    const key = await uploadMediaBlob(userId, blob, blob.type || 'image/jpeg');
+    const key = await uploadMediaBlob(userId, projectId, blob, blob.type || 'image/jpeg');
     return { key };
   };
 
@@ -247,7 +247,7 @@ export function FloorPlanPanel({
     try {
       try {
         const blob = await (await fetch(selectedAsset.uri)).blob();
-        const key = await uploadMediaBlob(userId, blob, blob.type || 'image/jpeg');
+        const key = await uploadMediaBlob(userId, projectId, blob, blob.type || 'image/jpeg');
         await api.createFloorPlan(userId, projectId, {
           name: `Этаж ${floor}`,
           image_key: key,

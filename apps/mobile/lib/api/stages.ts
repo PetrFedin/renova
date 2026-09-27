@@ -28,7 +28,8 @@ export const stagesApi = {
     }
   },
   uploadStagePhoto: async (userId: string, projectId: string, stageId: string, blob: Blob, caption?: string) => {
-    const up = await req<{ key: string; upload_url: string | null; public_url: string }>('/api/v1/media/upload-url', { method: 'POST' }, userId);
+    // #449: upload-url is project-scoped now — pass projectId explicitly.
+    const up = await req<{ key: string; upload_url: string | null; public_url: string }>(`/api/v1/media/upload-url?project_id=${encodeURIComponent(projectId)}&content_type=image%2Fjpeg`, { method: 'POST' }, userId);
     if (up.upload_url) {
       await fetch(up.upload_url, { method: 'PUT', body: blob, headers: { 'Content-Type': 'image/jpeg' } });
       return req(`/api/v1/projects/${projectId}/stages/${stageId}/photos`, { method: 'POST', body: JSON.stringify({ image_data: up.public_url, caption }) }, userId);

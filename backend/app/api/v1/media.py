@@ -1,9 +1,8 @@
-"""Media download / upload-url. Nested document keys + membership ACL (Wave 3)."""
-from fastapi import APIRouter, Depends, Header, HTTPException
+"""Media download / upload-url. Project-scoped ACL for all project media (#449)."""
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import RedirectResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 import mimetypes
-import uuid
 
 from app.api.deps import get_current_user, resolve_user_id
 from app.core.config import settings
@@ -11,13 +10,29 @@ from app.db.session import get_db
 from app.models.entities import User
 from app.services import storage_service as storage_svc
 from app.services.document_media_acl import (
-    assert_document_media_access,
+    assert_project_media_access,
+    assert_project_media_write_access,
+    mint_project_media_key,
     parse_document_media_key,
 )
 from app.services.chat_media_acl import assert_chat_media_access, is_chat_media_key
 from sqlalchemy import select
 
 router = APIRouter(prefix="/media", tags=["media"])
+
+# content-type → extension for upload-url minting. Falls back to jpg (previous
+# universal behaviour) for anything unrecognized; PDFs keep their real
+# extension instead of being forced to .jpg (#449 acceptance #7).
+_UPLOAD_EXTENSIONS = {
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/heic": "heic",
+    "image/heif": "heif",
+    "image/gif": "gif",
+    "application/pdf": "pdf",
+}
 
 
 async def _user_from_auth(
@@ -35,9 +50,23 @@ async def _user_from_auth(
 
 
 @router.post("/upload-url")
-async def upload_url(user: User = Depends(get_current_user)):
-    key = f"photos/{uuid.uuid4().hex}.jpg"
-    url = storage_svc.presigned_put(key)
+async def upload_url(
+    project_id: str = Query(...),
+    content_type: str | None = Query(default=None),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Mint a project-scoped upload key (#449).
+
+    Requires current write authority on `project_id` — an unrelated account
+    gets 404 before any key is minted, so uploaded bytes can never end up
+    bound to a project the caller doesn't control.
+    """
+    await assert_project_media_write_access(db, user, project_id)
+    normalized_content_type = (content_type or "").strip().lower()
+    extension = _UPLOAD_EXTENSIONS.get(normalized_content_type, "jpg")
+    key = mint_project_media_key(project_id, extension)
+    url = storage_svc.presigned_put(key, content_type=normalized_content_type or "image/jpeg")
     pub = f"{settings.public_base_url}/api/v1/media/{key}"
     return {"key": key, "upload_url": url, "public_url": pub}
 
@@ -49,14 +78,18 @@ async def presign_media(
     x_user_id: str | None = Header(default=None, alias="X-User-Id"),
     db: AsyncSession = Depends(get_db),
 ):
-    """Presign redirect. documents/* и chat-media/*|chat/* — membership/thread ACL; photos — без ACL (как раньше)."""
+    """Presign redirect. documents/* и chat-media/*|chat/* — membership/thread ACL;
+    everything else (project-media/*, legacy photos/*|issues/*|plans/*|…) —
+    project ACL via assert_project_media_access (#449): unrelated account → 404.
+    """
     key = file_path.lstrip("/")
+    user = await _user_from_auth(db, authorization, x_user_id)
     if parse_document_media_key(key) is not None:
-        user = await _user_from_auth(db, authorization, x_user_id)
-        await assert_document_media_access(db, user, key, write=False)
+        await assert_project_media_access(db, user, key, write=False)
     elif is_chat_media_key(key):
-        user = await _user_from_auth(db, authorization, x_user_id)
         await assert_chat_media_access(db, user, key, write=False)
+    else:
+        await assert_project_media_access(db, user, key, write=False)
     url = storage_svc.presigned_url(key)
     if not url:
         raise HTTPException(404)
@@ -72,21 +105,25 @@ async def get_media(
 ):
     """Serve local/S3 media.
 
-    Wave 3 ACL for documents/{project_id}/…:
+    Every key now requires authentication and a project (or chat-thread, or
+    explicitly-open) authority check (#449):
     - no auth → 401 (Bearer JWT; X-User-Id only if allow_header_user_id)
-    - no membership → 404 (privacy)
-    chat-media/{thread_id}/… and legacy chat/* (#453): same auth/404 shape,
-    bound to canonical chat thread authority (project or thread-only
-    participant) instead of project membership.
-    photos/* remain without project ACL (upload-url already requires auth).
+    - no membership / unreferenced legacy key → 404 (privacy, fail closed)
+    documents/{project_id}/… → Wave 3 project ACL.
+    chat-media/{thread_id}/… and legacy chat/* (#453) → chat thread authority.
+    project-media/{project_id}/… (#449 canonical) and any other legacy key
+    (photos/*, issues/*, plans/*, …) → resolved project ACL, or the narrow
+    explicitly-open allowlist (e.g. contractor marketplace portfolio photos)
+    for media that was never project-scoped to begin with.
     """
     key = file_path.lstrip("/")
+    user = await _user_from_auth(db, authorization, x_user_id)
     if parse_document_media_key(key) is not None:
-        user = await _user_from_auth(db, authorization, x_user_id)
-        await assert_document_media_access(db, user, key, write=False)
+        await assert_project_media_access(db, user, key, write=False)
     elif is_chat_media_key(key):
-        user = await _user_from_auth(db, authorization, x_user_id)
         await assert_chat_media_access(db, user, key, write=False)
+    else:
+        await assert_project_media_access(db, user, key, write=False)
 
     url = storage_svc.presigned_url(key)
     if url:

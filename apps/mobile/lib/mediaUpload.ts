@@ -4,9 +4,10 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import { api } from '@/lib/api';
 
-/** PUT blob на presigned URL, возвращает storage key для API */
-export async function uploadMediaBlob(userId: string, blob: Blob, contentType: string): Promise<string> {
-  const up = await api.getMediaUploadUrl(userId);
+/** PUT blob на presigned URL, возвращает storage key для API.
+ * #449: upload-url минтит project-scoped ключ — projectId обязателен. */
+export async function uploadMediaBlob(userId: string, projectId: string, blob: Blob, contentType: string): Promise<string> {
+  const up = await api.getMediaUploadUrl(userId, projectId, contentType);
   if (up.upload_url) {
     const res = await fetch(up.upload_url, { method: 'PUT', body: blob, headers: { 'Content-Type': contentType } });
     if (!res.ok) throw new Error(`upload failed: ${res.status}`);

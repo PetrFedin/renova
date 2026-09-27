@@ -304,7 +304,7 @@ def presigned_url(key: str, expires: int = 3600) -> str | None:
         raise StorageUnavailable("s3_presign_failed") from exc
 
 
-def presigned_put(key: str, expires: int = 900) -> str | None:
+def presigned_put(key: str, expires: int = 900, content_type: str = "image/jpeg") -> str | None:
     normalized = normalize_storage_key(key)
     client = _s3_client()
     if client is None:
@@ -315,7 +315,7 @@ def presigned_put(key: str, expires: int = 900) -> str | None:
             Params={
                 "Bucket": settings.s3_bucket,
                 "Key": normalized,
-                "ContentType": "image/jpeg",
+                "ContentType": content_type or "image/jpeg",
             },
             ExpiresIn=expires,
         )
