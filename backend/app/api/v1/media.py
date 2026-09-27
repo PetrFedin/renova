@@ -14,6 +14,7 @@ from app.services.document_media_acl import (
     assert_document_media_access,
     parse_document_media_key,
 )
+from app.services.chat_media_acl import assert_chat_media_access, is_chat_media_key
 from sqlalchemy import select
 
 router = APIRouter(prefix="/media", tags=["media"])
@@ -48,11 +49,14 @@ async def presign_media(
     x_user_id: str | None = Header(default=None, alias="X-User-Id"),
     db: AsyncSession = Depends(get_db),
 ):
-    """Presign redirect. documents/* — membership ACL; photos — без ACL (как раньше)."""
+    """Presign redirect. documents/* и chat-media/*|chat/* — membership/thread ACL; photos — без ACL (как раньше)."""
     key = file_path.lstrip("/")
     if parse_document_media_key(key) is not None:
         user = await _user_from_auth(db, authorization, x_user_id)
         await assert_document_media_access(db, user, key, write=False)
+    elif is_chat_media_key(key):
+        user = await _user_from_auth(db, authorization, x_user_id)
+        await assert_chat_media_access(db, user, key, write=False)
     url = storage_svc.presigned_url(key)
     if not url:
         raise HTTPException(404)
@@ -71,12 +75,18 @@ async def get_media(
     Wave 3 ACL for documents/{project_id}/…:
     - no auth → 401 (Bearer JWT; X-User-Id only if allow_header_user_id)
     - no membership → 404 (privacy)
+    chat-media/{thread_id}/… and legacy chat/* (#453): same auth/404 shape,
+    bound to canonical chat thread authority (project or thread-only
+    participant) instead of project membership.
     photos/* remain without project ACL (upload-url already requires auth).
     """
     key = file_path.lstrip("/")
     if parse_document_media_key(key) is not None:
         user = await _user_from_auth(db, authorization, x_user_id)
         await assert_document_media_access(db, user, key, write=False)
+    elif is_chat_media_key(key):
+        user = await _user_from_auth(db, authorization, x_user_id)
+        await assert_chat_media_access(db, user, key, write=False)
 
     url = storage_svc.presigned_url(key)
     if url:
@@ -92,7 +102,7 @@ async def get_media(
     mime = mimetypes.guess_type(name)[0] or "application/octet-stream"
     cache = (
         "private, max-age=3600"
-        if key.startswith("documents/")
+        if key.startswith("documents/") or is_chat_media_key(key)
         else "public, max-age=86400, s-maxage=604800"
     )
     return Response(content=data, media_type=mime, headers={"Cache-Control": cache})

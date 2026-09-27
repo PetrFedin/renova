@@ -256,7 +256,7 @@ async def send_message(
     storage_key, image_url = None, None
     mt = ChatMessageType(message_type)
     if mt in (ChatMessageType.photo, ChatMessageType.file) and image_data:
-        storage_key, image_url = await storage_svc.save_image(image_data, folder="chat")
+        storage_key, image_url = await storage_svc.save_image(image_data, folder=f"chat-media/{thread.id}")
     msg = ChatMessage(
         thread_id=thread.id,
         user_id=user_id,
