@@ -108,6 +108,14 @@ export function AppCatchAllScreen() {
   );
 }
 
+/**
+ * expo-router walks every .tsx under `app/`, including underscore-prefixed
+ * folders, and warns when one has no default export. This file is a shared
+ * component imported by name from two real route files, not a route itself —
+ * the default export below exists only to satisfy that scan.
+ */
+export default AppCatchAllScreen;
+
 const styles = StyleSheet.create({
   container: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   title: { fontSize: 20, fontWeight: 'bold', marginBottom: 8 },
