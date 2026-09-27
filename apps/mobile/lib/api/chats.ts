@@ -144,10 +144,13 @@ export const chatsApi = {
     messageId: string,
     body: { title: string; assignee_id?: string; due_at?: string; work_type?: string },
   ) => {
+    // Same client_request_id is sent on the first attempt and on every offline
+    // replay so a lost response cannot create a second WorkOrder/message (#316).
+    const requestBody = JSON.stringify({ ...body, client_request_id: newChatClientRequestId() });
     try {
       return await req<ChatMessage>(
         `/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/task`,
-        { method: 'POST', body: JSON.stringify(body) },
+        { method: 'POST', body: requestBody },
         userId,
       );
     } catch (e) {
@@ -156,7 +159,7 @@ export const chatsApi = {
       await enqueue({
         path: `/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/task`,
         method: 'POST',
-        body: JSON.stringify(body),
+        body: requestBody,
         userId,
       });
       throw new Error('offline_queued');
@@ -169,10 +172,13 @@ export const chatsApi = {
     threadId: string,
     body: { title: string; amount: number; payment_type?: string },
   ) => {
+    // Same client_request_id is sent on the first attempt and on every offline
+    // replay so a lost response cannot create a second Payment/message (#316).
+    const requestBody = JSON.stringify({ ...body, client_request_id: newChatClientRequestId() });
     try {
       return await req<ChatMessage>(
         `/api/v1/projects/${projectId}/chats/${threadId}/invoice`,
-        { method: 'POST', body: JSON.stringify(body) },
+        { method: 'POST', body: requestBody },
         userId,
       );
     } catch (e) {
@@ -181,7 +187,7 @@ export const chatsApi = {
       await enqueue({
         path: `/api/v1/projects/${projectId}/chats/${threadId}/invoice`,
         method: 'POST',
-        body: JSON.stringify(body),
+        body: requestBody,
         userId,
       });
       throw new Error('offline_queued');

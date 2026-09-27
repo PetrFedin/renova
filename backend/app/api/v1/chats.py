@@ -124,12 +124,18 @@ class TaskFromMessage(BaseModel):
     assignee_id: str | None = None
     due_at: str | None = None
     work_type: str = "general"
+    # Offline queue replay identity (apps/mobile/lib/offlineQueue.ts X-Offline-Id).
+    # Same id + same fields above -> the original WorkOrder/message are returned.
+    client_request_id: str | None = Field(default=None, max_length=128)
 
 
 class PaymentFromChat(BaseModel):
     title: str
     amount: float = Field(gt=0)
     payment_type: str = "stage"
+    # Offline queue replay identity (apps/mobile/lib/offlineQueue.ts X-Offline-Id).
+    # Same id + same fields above -> the original Payment/message are returned.
+    client_request_id: str | None = Field(default=None, max_length=128)
 
 
 @router.get("/{project_id}/chats")
@@ -354,14 +360,28 @@ async def pin_msg(project_id: str, thread_id: str, message_id: str, pin: bool = 
     return chat_svc.msg_dict(msg)
 
 
+def _chat_idempotency_http_error() -> HTTPException:
+    return HTTPException(
+        409,
+        detail={
+            "code": "idempotency_conflict",
+            "message": "Этот запрос уже использован с другими данными",
+        },
+    )
+
+
 @router.post("/{project_id}/chats/{thread_id}/messages/{message_id}/task")
 async def task_from_message(project_id: str, thread_id: str, message_id: str, body: TaskFromMessage, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     _p, t = await require_chat_access(db, project_id, thread_id, user, write=True)
     await require_chat_message(db, t, message_id)
-    msg = await chat_svc.create_task_from_message(
-        db, t, user.id, user.role.value, message_id,
-        title=body.title, assignee_id=body.assignee_id, due_at=body.due_at, work_type=body.work_type,
-    )
+    try:
+        msg = await chat_svc.create_task_from_message(
+            db, t, user.id, user.role.value, message_id,
+            title=body.title, assignee_id=body.assignee_id, due_at=body.due_at, work_type=body.work_type,
+            request_id=body.client_request_id,
+        )
+    except IdempotencyConflict as error:
+        raise _chat_idempotency_http_error() from error
     return chat_svc.msg_dict(msg)
 
 
@@ -370,7 +390,11 @@ async def invoice_from_chat(project_id: str, thread_id: str, body: PaymentFromCh
     _p, t = await require_chat_access(db, project_id, thread_id, user, write=True)
     if user.role.value != "contractor":
         raise HTTPException(403, "only_contractor_can_invoice_from_chat")
-    msg = await chat_svc.create_payment_message(
-        db, t, user.id, user.role.value, title=body.title, amount=body.amount, payment_type=body.payment_type,
-    )
+    try:
+        msg = await chat_svc.create_payment_message(
+            db, t, user.id, user.role.value, title=body.title, amount=body.amount, payment_type=body.payment_type,
+            request_id=body.client_request_id,
+        )
+    except IdempotencyConflict as error:
+        raise _chat_idempotency_http_error() from error
     return chat_svc.msg_dict(msg)

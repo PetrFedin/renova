@@ -207,6 +207,9 @@ async def _validate_resource_refs(
             raise ValueError("work_order_stage_invalid")
 
 
+WORK_ORDER_CREATE_SCOPE = "work_order.create"
+
+
 async def create_work_order(
     db: AsyncSession,
     *,
@@ -221,7 +224,10 @@ async def create_work_order(
     budget_planned: float = 0,
     notes: str | None = None,
     publish: bool = False,
+    request_id: str | None = None,
 ) -> WorkOrder:
+    from app.services.client_write_idempotency import commit_client_write, replay_entity_id
+
     try:
         if not title.strip() or not work_type.strip():
             raise ValueError("work_order_fields_invalid")
@@ -237,6 +243,36 @@ async def create_work_order(
         await db.rollback()
         raise
 
+    resolved_planned_end = planned_end or planned_start
+    payload = {
+        "title": title.strip(),
+        "work_type": work_type.strip(),
+        "room_id": room_id,
+        "stage_id": stage_id,
+        "planned_start": planned_start.isoformat() if planned_start else None,
+        "planned_end": resolved_planned_end.isoformat() if resolved_planned_end else None,
+        "budget_planned": normalized_budget,
+        "notes": notes,
+        "publish": publish,
+    }
+
+    # Offline-queued creates replay X-Offline-Id as request_id: same key + same
+    # payload must return the original WorkOrder, never create a duplicate.
+    # IdempotencyConflict (same request_id, different payload) propagates to the caller.
+    replay_id = await replay_entity_id(
+        db,
+        scope=WORK_ORDER_CREATE_SCOPE,
+        project_id=project_id,
+        user_id=user_id,
+        request_id=request_id,
+        payload=payload,
+    )
+    if replay_id:
+        existing = await db.get(WorkOrder, replay_id)
+        if not existing or existing.project_id != project_id:
+            raise ValueError("idempotency_entity_missing")
+        return existing
+
     work_order = WorkOrder(
         project_id=project_id,
         room_id=room_id,
@@ -245,7 +281,7 @@ async def create_work_order(
         title=title.strip(),
         status=WorkOrderStatus.published if publish else WorkOrderStatus.draft,
         planned_start=planned_start,
-        planned_end=planned_end or planned_start,
+        planned_end=resolved_planned_end,
         budget_planned=normalized_budget,
         notes=notes,
         created_by=user_id,
@@ -276,10 +312,26 @@ async def create_work_order(
                 "link_path": f"/work-order/{work_order.id}",
             },
         )
-        await db.commit()
+        # Commits the WorkOrder, its outbox rows and the request ledger atomically
+        # so a lost response can never replay this into a second WorkOrder.
+        created, entity_id = await commit_client_write(
+            db,
+            scope=WORK_ORDER_CREATE_SCOPE,
+            project_id=project_id,
+            user_id=user_id,
+            request_id=request_id,
+            payload=payload,
+            entity_id=work_order.id,
+        )
     except BaseException:
         await db.rollback()
         raise
+
+    if not created:
+        existing = await db.get(WorkOrder, entity_id)
+        if not existing:
+            raise ValueError("idempotency_entity_missing")
+        return existing
 
     await db.refresh(work_order)
     await _dispatch_committed_effects(db, source="work_order.create")

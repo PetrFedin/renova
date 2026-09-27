@@ -52,9 +52,43 @@ async def create_payment(
     payment_type: str,
     stage_id: str | None = None,
     notes: str | None = None,
+    *,
+    request_id: str | None = None,
+    scope: str = "payment.create",
 ) -> Payment:
-    """Compatibility entrypoint with the same atomic outbox contract as the API."""
-    from app.services.client_write_idempotency import commit_client_write
+    """Compatibility entrypoint with the same atomic outbox contract as the API.
+
+    `request_id` makes this idempotent for offline-queued/retried callers (e.g. the
+    "invoice from chat" flow — see chat_service.create_payment_message): the same
+    request_id + payload replays the original Payment instead of creating a duplicate.
+    """
+    from app.services.client_write_idempotency import (
+        IdempotencyConflict,
+        commit_client_write,
+        replay_entity_id,
+    )
+
+    payload = {
+        "title": title,
+        "amount": round(float(amount), 2),
+        "payment_type": payment_type,
+        "stage_id": stage_id,
+        "notes": notes,
+    }
+
+    replay_id = await replay_entity_id(
+        db,
+        scope=scope,
+        project_id=project_id,
+        user_id=user_id,
+        request_id=request_id,
+        payload=payload,
+    )
+    if replay_id:
+        existing = await db.get(Payment, replay_id)
+        if not existing:
+            raise IdempotencyConflict("idempotency_entity_missing")
+        return existing
 
     payment = await prepare_payment(
         db,
@@ -66,27 +100,25 @@ async def create_payment(
         stage_id,
         notes,
     )
-    payload = {
-        "title": title,
-        "amount": round(float(amount), 2),
-        "payment_type": payment_type,
-        "stage_id": stage_id,
-        "notes": notes,
-    }
     try:
         created, entity_id = await commit_client_write(
             db,
-            scope="payment.create",
+            scope=scope,
             project_id=project_id,
             user_id=user_id,
-            request_id=None,
+            request_id=request_id,
             payload=payload,
             entity_id=payment.id,
         )
     except BaseException:
         await db.rollback()
         raise
-    if not created or entity_id != payment.id:
+    if not created:
+        existing = await db.get(Payment, entity_id)
+        if not existing:
+            raise RuntimeError("payment_create_atomic_contract_failed")
+        return existing
+    if entity_id != payment.id:
         await db.rollback()
         raise RuntimeError("payment_create_atomic_contract_failed")
     await db.refresh(payment)

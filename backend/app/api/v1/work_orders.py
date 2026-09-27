@@ -9,6 +9,7 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import User
 from app.services import work_order_service as wo_svc
+from app.services.client_write_idempotency import IdempotencyConflict
 
 router = APIRouter(prefix="/projects", tags=["work-orders"])
 
@@ -23,6 +24,19 @@ class WorkOrderCreate(BaseModel):
     budget_planned: float = 0
     notes: str | None = None
     publish: bool = False
+    # Offline queue replay identity (see apps/mobile/lib/offlineQueue.ts X-Offline-Id).
+    # Same id + same fields above -> the original WorkOrder is returned, not a duplicate.
+    client_request_id: str | None = Field(default=None, max_length=128)
+
+
+def _idempotency_http_error() -> HTTPException:
+    return HTTPException(
+        409,
+        detail={
+            "code": "idempotency_conflict",
+            "message": "Этот запрос уже использован с другими данными",
+        },
+    )
 
 
 class WorkOrderPatch(BaseModel):
@@ -71,9 +85,15 @@ async def create_work_order(project_id: str, body: WorkOrderCreate, user: User =
             budget_planned=body.budget_planned,
             notes=body.notes,
             publish=body.publish,
+            request_id=body.client_request_id,
         )
+    except IdempotencyConflict as error:
+        raise _idempotency_http_error() from error
     except ValueError as error:
-        raise HTTPException(400, str(error)) from error
+        code = str(error)
+        if code == "idempotency_entity_missing":
+            raise HTTPException(409, detail={"code": code}) from error
+        raise HTTPException(400, code) from error
     return wo_svc.wo_dict(work_order)
 
 

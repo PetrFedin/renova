@@ -7,6 +7,13 @@ export type WorkOrderPatchBody = {
   [key: string]: unknown;
 };
 
+function newWorkOrderClientRequestId(): string {
+  const now = Date.now().toString(36);
+  const randomA = Math.random().toString(36).slice(2, 12);
+  const randomB = Math.random().toString(36).slice(2, 12);
+  return `wo-${now}-${randomA}-${randomB}`;
+}
+
 export const workOrdersApi = {
   listWorkOrders: (userId: string, projectId: string) =>
     req<WorkOrder[]>(`/api/v1/projects/${projectId}/work-orders`, {}, userId),
@@ -22,10 +29,13 @@ export const workOrdersApi = {
   getWorkOrder: (userId: string, projectId: string, workOrderId: string) =>
     req<WorkOrder>(`/api/v1/projects/${projectId}/work-orders/${workOrderId}`, {}, userId),
   createWorkOrder: async (userId: string, projectId: string, body: object) => {
+    // Same client_request_id is sent on the first attempt and on every offline
+    // replay so a lost response cannot create a second WorkOrder (#316).
+    const requestBody = JSON.stringify({ ...body, client_request_id: newWorkOrderClientRequestId() });
     try {
       return await req<WorkOrder>(
         `/api/v1/projects/${projectId}/work-orders`,
-        { method: 'POST', body: JSON.stringify(body) },
+        { method: 'POST', body: requestBody },
         userId,
       );
     } catch (e) {
@@ -34,7 +44,7 @@ export const workOrdersApi = {
       await enqueue({
         path: `/api/v1/projects/${projectId}/work-orders`,
         method: 'POST',
-        body: JSON.stringify(body),
+        body: requestBody,
         userId,
       });
       throw new Error('offline_queued');

@@ -740,6 +740,10 @@ async def invite_participant(
     }
 
 
+TASK_FROM_MESSAGE_SCOPE = "chat.task_from_message"
+INVOICE_FROM_CHAT_SCOPE = "chat.invoice"
+
+
 async def create_task_from_message(
     db: AsyncSession,
     thread: ChatThread,
@@ -751,11 +755,38 @@ async def create_task_from_message(
     assignee_id: str | None,
     due_at: str | None,
     work_type: str = "general",
+    request_id: str | None = None,
 ) -> ChatMessage:
     from datetime import date
     from app.services import work_order_service as wo_svc
+    from app.services.client_write_idempotency import commit_client_write, replay_entity_id
+
+    payload = {
+        "message_id": message_id,
+        "title": title,
+        "assignee_id": assignee_id,
+        "due_at": due_at,
+        "work_type": work_type,
+    }
+    # The whole "task from chat message" operation (WorkOrder + announcement message +
+    # backlink on the original message) replays as one unit keyed by request_id: a lost
+    # response can retry this call safely without creating a second WorkOrder/message.
+    replay_id = await replay_entity_id(
+        db,
+        scope=TASK_FROM_MESSAGE_SCOPE,
+        project_id=thread.project_id,
+        user_id=user_id,
+        request_id=request_id,
+        payload=payload,
+    )
+    if replay_id:
+        existing = await db.get(ChatMessage, replay_id)
+        if existing:
+            return existing
 
     due = date.fromisoformat(due_at[:10]) if due_at else None
+    # create_work_order is itself idempotent on request_id, so a crash between the
+    # WorkOrder commit below and the ledger write further down still cannot duplicate it.
     wo = await wo_svc.create_work_order(
         db,
         project_id=thread.project_id,
@@ -765,8 +796,9 @@ async def create_task_from_message(
         planned_start=due,
         planned_end=due,
         publish=True,
+        request_id=request_id,
     )
-    if assignee_id:
+    if assignee_id and wo.assignee_id != assignee_id:
         wo.assignee_id = assignee_id
         await db.commit()
 
@@ -779,6 +811,16 @@ async def create_task_from_message(
         om["linked_task_id"] = wo.id
         orig.meta_json = _dump_meta(om)
         await db.commit()
+
+    await commit_client_write(
+        db,
+        scope=TASK_FROM_MESSAGE_SCOPE,
+        project_id=thread.project_id,
+        user_id=user_id,
+        request_id=request_id,
+        payload=payload,
+        entity_id=msg.id,
+    )
     return msg
 
 
@@ -791,10 +833,50 @@ async def create_payment_message(
     title: str,
     amount: float,
     payment_type: str,
+    request_id: str | None = None,
 ) -> ChatMessage:
     from app.services import payment_service as pay_svc
+    from app.services.client_write_idempotency import commit_client_write, replay_entity_id
 
-    pay = await pay_svc.create_payment(db, thread.project_id, user_id, title, amount, payment_type)
+    payload = {"title": title, "amount": round(float(amount), 2), "payment_type": payment_type}
+    # Same request_id + same fields -> the original Payment/message are returned, never
+    # duplicated. See create_task_from_message above for the equivalent WorkOrder flow.
+    replay_id = await replay_entity_id(
+        db,
+        scope=INVOICE_FROM_CHAT_SCOPE,
+        project_id=thread.project_id,
+        user_id=user_id,
+        request_id=request_id,
+        payload=payload,
+    )
+    if replay_id:
+        existing = await db.get(ChatMessage, replay_id)
+        if existing:
+            return existing
+
+    # create_payment is itself idempotent on request_id, guarding against a crash
+    # between the Payment commit and the ledger write further down.
+    pay = await pay_svc.create_payment(
+        db,
+        thread.project_id,
+        user_id,
+        title,
+        amount,
+        payment_type,
+        request_id=request_id,
+        scope="chat.invoice.payment",
+    )
     text = f"💳 Счёт: {title} · {amount:.0f} ₽"
     meta = {"payment_id": pay.id, "amount": amount}
-    return await send_message(db, thread, user_id, role, text, "payment", meta=meta)
+    msg = await send_message(db, thread, user_id, role, text, "payment", meta=meta)
+
+    await commit_client_write(
+        db,
+        scope=INVOICE_FROM_CHAT_SCOPE,
+        project_id=thread.project_id,
+        user_id=user_id,
+        request_id=request_id,
+        payload=payload,
+        entity_id=msg.id,
+    )
+    return msg
