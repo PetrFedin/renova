@@ -60,16 +60,54 @@ async def recalc_budget(db: AsyncSession, project_id: str) -> float:
     return total
 
 
+async def delete_line(db: AsyncSession, line_id: str, *, project_id: str) -> bool:
+    """Удалить строку черновой сметы.
+
+    `DELETE` для строк сметы не существовало вовсе: ошибочную позицию нельзя
+    было убрать, оставалось обнулить количество — и она продолжала висеть в
+    смете, которую заказчик читает перед фиксацией.
+
+    Замок зафиксированной сметы проверяется на уровне маршрута
+    (`_require_estimate_editable`): после фиксации смета — это цена договора,
+    и правки идут через изменение сметы.
+    """
+    line = await db.get(EstimateLine, line_id)
+    if not line or line.project_id != project_id:
+        return False
+    await db.delete(line)
+    await db.commit()
+    await recalc_budget(db, project_id)
+    return True
+
+
 async def update_line(
     db: AsyncSession,
     line_id: str,
     *,
+    project_id: str | None = None,
     quantity_planned: float | None = None,
     unit_price: float | None = None,
     quantity_actual: float | None = None,
+    name: str | None = None,
+    unit: str | None = None,
+    category: str | None = None,
+    notes: str | None = None,
 ) -> EstimateLine | None:
+    """Правка строки сметы.
+
+    `project_id` — строка обязана принадлежать объекту из пути. Без этой
+    сверки правку можно было адресовать строке чужого объекта, зная её
+    идентификатор. То же условие чинит #444 для прежних полей; здесь оно
+    нужно и для новых.
+
+    Наименование и единицу измерения править было нечем: `LinePatch` знал
+    только количество и цену. Ошибку в названии позиции исправить было
+    невозможно — оставалось «обнулить количество».
+    """
     line = await db.get(EstimateLine, line_id)
     if not line:
+        return None
+    if project_id is not None and line.project_id != project_id:
         return None
     if quantity_planned is not None:
         line.quantity_planned = quantity_planned
@@ -77,6 +115,14 @@ async def update_line(
         line.unit_price = unit_price
     if quantity_actual is not None:
         line.quantity_actual = quantity_actual
+    if name is not None:
+        line.name = name
+    if unit is not None:
+        line.unit = unit
+    if category is not None:
+        line.category = category
+    if notes is not None:
+        line.notes = notes
     await db.commit()
     await recalc_budget(db, line.project_id)
     await db.refresh(line)
