@@ -11,6 +11,10 @@ export type FinalReport = {
   budget_planned?: number;
   budget_spent?: number;
   savings?: number;
+  /** Переведено заказчиком, но ещё не подтверждено документом. */
+  awaiting_verification?: number;
+  /** Выставлено и пока не оплачено. */
+  outstanding?: number;
   overrun?: number;
   forecast_total?: number;
   works?: { name: string; status: string; amount?: number }[];
