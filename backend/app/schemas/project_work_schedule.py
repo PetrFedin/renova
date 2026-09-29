@@ -23,6 +23,9 @@ class WorkScheduleCreateIn(BaseModel):
     planned_start_date: date | None = None
     planned_finish_date: date | None = None
     items: list[WorkScheduleItemIn] = []
+    # #462/#420: same key + exact serialized body on first send and every
+    # offline-queue replay so a lost response can never mint a second schedule.
+    client_request_id: str | None = Field(default=None, max_length=80)
 
 
 class WorkScheduleUpdateIn(BaseModel):
