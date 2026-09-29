@@ -28,3 +28,26 @@ async def test_demo_login_returns_refresh_and_rotates(monkeypatch):
         # old refresh revoked
         r3 = await client.post("/api/v1/auth/refresh", json={"refresh_token": refresh})
         assert r3.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_logout_revokes_refresh_session(monkeypatch):
+    """B0-2 (#315): the mobile logout path now calls POST /auth/logout; after it the
+    refresh token must be unusable server-side (not only cleared on the device)."""
+    monkeypatch.setattr(settings, "environment", "development")
+    monkeypatch.setattr(settings, "allow_demo_seed", True)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.post("/api/v1/auth/demo", json={"role": "customer"})
+        if r.status_code == 404:
+            pytest.skip("demo disabled / no seed")
+        refresh = r.json().get("refresh_token")
+        if not refresh:
+            pytest.skip("refresh not issued")
+        out = await client.post("/api/v1/auth/logout", json={"refresh_token": refresh})
+        assert out.status_code == 200 and out.json() == {"ok": True}
+        again = await client.post("/api/v1/auth/refresh", json={"refresh_token": refresh})
+        assert again.status_code == 401
+        # idempotent: second logout with the same (already revoked) token is still ok
+        out2 = await client.post("/api/v1/auth/logout", json={"refresh_token": refresh})
+        assert out2.status_code == 200
