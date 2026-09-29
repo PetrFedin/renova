@@ -37,6 +37,21 @@ def _stored_link(link_path: str | None, return_to: str | None) -> str | None:
     return f"{link_path}{separator}returnTo={return_to}"
 
 
+async def _recipient_role(db: AsyncSession, user_id: str) -> str:
+    """Роль получателя для маршрутизации push на стороне клиента.
+
+    Возвращает "customer" и для неизвестного пользователя: это прежнее
+    поведение клиента, то есть правка ничего не ломает там, где роль
+    определить не удалось.
+    """
+    from app.models.entities import User, UserRole
+
+    user = await db.get(User, user_id)
+    if user is None:
+        return "customer"
+    return "contractor" if user.role == UserRole.contractor else "customer"
+
+
 async def notify(
     db: AsyncSession,
     *,
@@ -90,7 +105,16 @@ async def notify(
         user_id,
         title,
         body,
-        {"link_path": link_path, "returnTo": return_to or "/"},
+        {
+            "link_path": link_path,
+            "returnTo": return_to or "/",
+            # Без роли клиент по умолчанию считал получателя заказчиком, и
+            # исполнитель по push проваливался в маршруты заказчика:
+            # /(customer)/(tabs)/repair?tab=control вместо своей группы.
+            # Безролевых link_path в бэкенде хватает — один «/control»
+            # рассылается сразу обеим сторонам.
+            "role": await _recipient_role(db, user_id),
+        },
         delivery_id=delivery_id,
     )
     return notification
@@ -149,6 +173,9 @@ async def notify_from_outbox(
                 "link_path": link_path,
                 "returnTo": return_to or "/",
                 "outbox_id": outbox_id,
+                # Тот же payload, что и у прямой отправки: роль нужна обеим
+                # веткам, иначе половина push по-прежнему уходит без неё.
+                "role": await _recipient_role(db, user_id),
             },
             delivery_id=delivery_id,
         )
