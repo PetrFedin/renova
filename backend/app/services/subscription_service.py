@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timeutil import utc_now
 from app.models.entities import Subscription, SubscriptionStatus
+from app.db.locking import lock_rows
 
 PRO_PRICE = 990.0
 PRO_DAYS = 30
@@ -21,10 +22,7 @@ async def get_sub(
 ) -> Subscription:
     query = select(Subscription).where(Subscription.user_id == user_id)
     if for_update:
-        try:
-            query = query.with_for_update()
-        except Exception:
-            pass
+        query = lock_rows(query, db)
     r = await db.execute(query)
     s = r.scalar_one_or_none()
     if not s:

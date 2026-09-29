@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.entities import Project, Room, User, WasteOrder, WasteOrderStatus
 from app.services import outbox_service as outbox
 from app.services import team_service
+from app.db.locking import lock_rows
 
 WASTE_ORDER_CREATE_SCOPE = "waste_order.create"
 
@@ -311,10 +312,7 @@ async def transition_order(
         WasteOrder.id == order_id,
         WasteOrder.project_id == project.id,
     )
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     order = (await db.execute(query)).scalar_one_or_none()
     if not order:
         return None, False

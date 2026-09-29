@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import create_access_token
 from app.models.entities import AuditLog, User, UserRole
 from app.services import chat_participant_service, chat_service, session_service
+from app.db.locking import lock_rows
 
 
 @dataclass(frozen=True)
@@ -35,10 +36,7 @@ async def complete_otp_login(
     created = False
     try:
         query = select(User).where(User.phone == phone)
-        try:
-            query = query.with_for_update()
-        except Exception:
-            pass
+        query = lock_rows(query, db)
         user = (await db.execute(query)).scalar_one_or_none()
         if user is not None and user.deleted_at is not None:
             raise ValueError("account_deleted")

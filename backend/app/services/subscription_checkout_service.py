@@ -17,6 +17,7 @@ from app.models.entities import User, UserRole
 from app.models.subscription_checkout import SubscriptionCheckout
 from app.services import yookassa_service as yk
 from app.services.subscription_service import PRO_DAYS, PRO_PRICE, activate_pro, get_sub
+from app.db.locking import lock_rows
 
 OPEN_STATUSES = {"pending", "processing"}
 REPLAY_WINDOW = timedelta(minutes=15)
@@ -301,10 +302,7 @@ async def _locked_checkout(
     checkout_id: str,
 ) -> SubscriptionCheckout | None:
     query = select(SubscriptionCheckout).where(SubscriptionCheckout.id == checkout_id)
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     return (await db.execute(query.limit(1))).scalar_one_or_none()
 
 

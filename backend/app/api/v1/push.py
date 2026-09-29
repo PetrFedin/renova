@@ -7,6 +7,7 @@ from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.entities import PushToken, User
 from app.services.push_service import normalize_expo_push_token
+from app.db.locking import lock_rows
 
 router = APIRouter(prefix="/push", tags=["push"])
 
@@ -31,10 +32,7 @@ async def register_token(
         .where(PushToken.token == body.token)
         .order_by(PushToken.created_at, PushToken.id)
     )
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     rows = list((await db.execute(query)).scalars().all())
 
     if rows:

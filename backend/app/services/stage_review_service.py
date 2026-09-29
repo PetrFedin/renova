@@ -24,6 +24,7 @@ from app.models.entities import (
 from app.services import outbox_service as outbox
 from app.services import workflow_service as workflow
 from app.services.stage_service import parse_room_ids
+from app.db.locking import lock_rows
 
 REWORK_SLA_DAYS = 3
 
@@ -63,10 +64,7 @@ async def _locked_stage(
         .where(Stage.id == stage_id, Stage.project_id == project_id)
         .options(selectinload(Stage.comments), selectinload(Stage.photos))
     )
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     return (await db.execute(query)).scalar_one_or_none()
 
 
@@ -85,10 +83,7 @@ async def _latest_acceptance(
         .order_by(WorkAcceptance.created_at.desc(), WorkAcceptance.id.desc())
         .limit(1)
     )
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     return (await db.execute(query)).scalar_one_or_none()
 
 

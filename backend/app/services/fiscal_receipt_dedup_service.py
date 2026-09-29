@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import Project, Receipt
+from app.db.locking import lock_rows
 
 
 def normalize_qr_raw(qr_raw: str) -> str:
@@ -14,10 +15,7 @@ def normalize_qr_raw(qr_raw: str) -> str:
 
 async def lock_project_scan(db: AsyncSession, *, project_id: str) -> None:
     query = select(Project.id).where(Project.id == project_id)
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     project = (await db.execute(query.limit(1))).scalar_one_or_none()
     if not project:
         raise ValueError("receipt_project_not_found")

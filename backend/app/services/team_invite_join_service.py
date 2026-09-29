@@ -7,6 +7,7 @@ from app.core.timeutil import utc_now
 from app.models.entities import Team, TeamInvite, TeamMember, User, UserRole
 from app.services import outbox_service as outbox
 from app.services import team_service
+from app.db.locking import lock_rows
 
 
 def _invalid_link() -> dict[str, object]:
@@ -15,19 +16,13 @@ def _invalid_link() -> dict[str, object]:
 
 async def _locked_user(db: AsyncSession, user_id: str) -> User | None:
     query = select(User).where(User.id == user_id)
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     return (await db.execute(query)).scalar_one_or_none()
 
 
 async def _locked_team(db: AsyncSession, team_id: str) -> Team | None:
     query = select(Team).where(Team.id == team_id)
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     return (await db.execute(query)).scalar_one_or_none()
 
 

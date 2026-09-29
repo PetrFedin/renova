@@ -21,6 +21,7 @@ from app.models.entities import (
     UserRole,
 )
 from app.services import outbox_service as outbox
+from app.db.locking import lock_rows
 
 TEAM_MEMBER_ROLES = frozenset({"member", "viewer", "foreman"})
 
@@ -55,19 +56,13 @@ def _normalize_team_name(name: str) -> str:
 
 async def _locked_user(db: AsyncSession, user_id: str) -> User | None:
     query = select(User).where(User.id == user_id)
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     return (await db.execute(query)).scalar_one_or_none()
 
 
 async def _locked_team(db: AsyncSession, team_id: str) -> Team | None:
     query = select(Team).where(Team.id == team_id)
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     return (await db.execute(query)).scalar_one_or_none()
 
 
@@ -81,10 +76,7 @@ async def _locked_member(
         TeamMember.team_id == team_id,
         TeamMember.user_id == user_id,
     )
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     return (await db.execute(query)).scalar_one_or_none()
 
 

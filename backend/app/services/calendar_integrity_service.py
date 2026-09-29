@@ -17,6 +17,7 @@ from app.models.entities import (
     User,
     UserRole,
 )
+from app.db.locking import lock_rows
 
 
 @dataclass(frozen=True)
@@ -82,10 +83,7 @@ async def visible_items(
 
 async def _locked_project(db: AsyncSession, project_id: str) -> Project | None:
     query = select(Project).where(Project.id == project_id)
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     return (await db.execute(query)).scalar_one_or_none()
 
 
