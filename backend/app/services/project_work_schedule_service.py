@@ -14,6 +14,10 @@ from app.models.work_schedule import (
 )
 from app.schemas.project_work_schedule import WorkScheduleCreateIn, WorkScheduleItemIn, WorkScheduleUpdateIn
 from app.services import outbox_service as outbox
+from app.services.client_write_idempotency import commit_client_write, replay_entity_id
+from app.services.client_write_side_effects import clear_request_side_effect_context
+
+WORK_SCHEDULE_CREATE_SCOPE = "work_schedule.create"
 
 
 def is_project_member(user: User, project: Project) -> bool:
@@ -63,6 +67,109 @@ async def require_project_member(db: AsyncSession, user: User, project_id: str) 
     if not is_project_member(user, project):
         raise HTTPException(status_code=403, detail="project_forbidden")
     return project
+
+
+async def _reload_project(db: AsyncSession, project_id: str) -> Project:
+    """Re-fetch the authoritative Project row, bypassing the identity map.
+
+    #462/#420: the caller may hold a `Project` obtained before any await
+    below; re-fetching with `populate_existing=True` forces the ORM to
+    refresh attributes so a concurrent contractor/customer reassignment
+    cannot ride through on a stale in-memory instance.
+    """
+    query = select(Project).where(Project.id == project_id).execution_options(populate_existing=True)
+    fresh = (await db.execute(query)).scalar_one_or_none()
+    if fresh is None or getattr(fresh, "trashed_at", None):
+        raise HTTPException(status_code=403, detail="work_schedule_project_authority_stale")
+    return fresh
+
+
+async def _require_manage_authority(db: AsyncSession, *, project: Project, user: User, forbidden_detail: str) -> None:
+    from app.services.team_service import can_access_project
+
+    if not await can_access_project(db, user, project, write=True):
+        raise HTTPException(status_code=403, detail="work_schedule_project_authority_stale")
+    if not await can_manage_schedule(db, user, project):
+        raise HTTPException(status_code=403, detail=forbidden_detail)
+
+
+async def _validate_item_stage_ref(db: AsyncSession, *, project_id: str, stage_id: str | None) -> None:
+    """#481: a non-null stage_id must belong to the path project, or 404."""
+    if stage_id is None:
+        return
+    stage = await db.get(Stage, stage_id)
+    if stage is None or stage.project_id != project_id:
+        raise HTTPException(status_code=404, detail="work_schedule_item_stage_not_found")
+
+
+def _reject_dependency_on_create(item: WorkScheduleItemIn) -> None:
+    """#481: a newly created schedule has no stable persisted item identity
+    to depend on yet, so accepting a dependency at create time is unsafe."""
+    if item.depends_on_item_id is not None:
+        raise HTTPException(status_code=422, detail="work_schedule_dependency_create_not_supported")
+
+
+async def _validate_dependency_ref_for_replace(
+    db: AsyncSession, *, project_id: str, schedule_id: str, depends_on_item_id: str
+) -> None:
+    """#481: full replacement deletes the entire existing item set, so a
+    dependency pointing at an old row of the *same* schedule is a dangling
+    reference the moment the replacement runs. Missing/foreign items 404
+    (privacy-preserving); an existing same-schedule item is a distinct,
+    explicit 422 because that identity is about to be deleted."""
+    dep = await db.get(ProjectWorkScheduleItem, depends_on_item_id)
+    if dep is None or dep.project_id != project_id or dep.schedule_id != schedule_id:
+        raise HTTPException(status_code=404, detail="work_schedule_dependency_not_found")
+    raise HTTPException(status_code=422, detail="work_schedule_dependency_replace_not_supported")
+
+
+async def _validate_items_for_create(db: AsyncSession, *, project_id: str, items: list[WorkScheduleItemIn]) -> None:
+    for item in items:
+        await _validate_item_stage_ref(db, project_id=project_id, stage_id=item.stage_id)
+        _reject_dependency_on_create(item)
+
+
+async def _validate_items_for_replace(
+    db: AsyncSession, *, project_id: str, schedule_id: str, items: list[WorkScheduleItemIn]
+) -> None:
+    for item in items:
+        await _validate_item_stage_ref(db, project_id=project_id, stage_id=item.stage_id)
+        if item.depends_on_item_id is not None:
+            await _validate_dependency_ref_for_replace(
+                db, project_id=project_id, schedule_id=schedule_id, depends_on_item_id=item.depends_on_item_id
+            )
+
+
+def canonical_work_schedule_item_payload(item: WorkScheduleItemIn) -> dict:
+    return {
+        "stage_id": item.stage_id,
+        "title": item.title,
+        "description": item.description,
+        "planned_start_date": item.planned_start_date.isoformat(),
+        "planned_finish_date": item.planned_finish_date.isoformat(),
+        "depends_on_item_id": item.depends_on_item_id,
+        "requires_customer_acceptance": item.requires_customer_acceptance,
+        "requires_photo": item.requires_photo,
+        "requires_hidden_work_acceptance": item.requires_hidden_work_acceptance,
+        "sort_order": item.sort_order,
+    }
+
+
+def canonical_work_schedule_create_payload(
+    *,
+    title: str,
+    description: str | None,
+    planned_start_date: date | None,
+    planned_finish_date: date | None,
+    items: list[WorkScheduleItemIn],
+) -> dict:
+    return {
+        "title": title,
+        "description": description,
+        "planned_start_date": planned_start_date.isoformat() if planned_start_date else None,
+        "planned_finish_date": planned_finish_date.isoformat() if planned_finish_date else None,
+        "items": [canonical_work_schedule_item_payload(item) for item in items],
+    }
 
 
 def stage_status_to_schedule_status(stage: Stage) -> WorkScheduleItemStatus:
@@ -214,33 +321,102 @@ async def create_schedule(
     project: Project,
     user: User,
     body: WorkScheduleCreateIn,
-) -> ProjectWorkSchedule:
+    *,
+    client_request_id: str | None = None,
+) -> tuple[ProjectWorkSchedule, bool]:
+    """Create exactly one schedule per client_request_id (#462/#420).
+
+    Stage/dependency references on the incoming items are validated against
+    the path project before anything is materialized (#481). The schedule
+    row, its initial items and the ClientWriteRequest ledger entry commit in
+    a single transaction, so a response lost after the server commit replays
+    into the original schedule instead of minting a duplicate that could win
+    `get_active_schedule()`'s "latest wins" selection.
+    """
     from app.services.team_service import can_access_project
 
     if not await can_access_project(db, user, project, write=True):
         raise HTTPException(status_code=403, detail="only_project_members_can_create_schedule")
     if not await can_manage_schedule(db, user, project):
         raise HTTPException(status_code=403, detail="only_contractor_or_foreman_can_create_schedule")
-    schedule = ProjectWorkSchedule(
-        project_id=project.id,
+
+    await _validate_items_for_create(db, project_id=project.id, items=body.items)
+
+    payload = canonical_work_schedule_create_payload(
         title=body.title,
         description=body.description,
-        planned_start_date=body.planned_start_date or project.planned_start_date,
-        planned_finish_date=body.planned_finish_date or project.planned_end_date,
+        planned_start_date=body.planned_start_date,
+        planned_finish_date=body.planned_finish_date,
+        items=body.items,
+    )
+
+    replay_id = await replay_entity_id(
+        db,
+        scope=WORK_SCHEDULE_CREATE_SCOPE,
+        project_id=project.id,
+        user_id=user.id,
+        request_id=client_request_id,
+        payload=payload,
+    )
+    if replay_id:
+        existing = await get_schedule(db, project_id=project.id, schedule_id=replay_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="work_schedule_idempotency_target_missing")
+        return existing, True
+
+    # #420: recheck authority against a freshly loaded Project right before
+    # materializing the schedule so a revocation that lands while the checks
+    # above were running cannot ride through on a stale authorization.
+    fresh_project = await _reload_project(db, project.id)
+    await _require_manage_authority(
+        db,
+        project=fresh_project,
+        user=user,
+        forbidden_detail="only_contractor_or_foreman_can_create_schedule",
+    )
+
+    schedule = ProjectWorkSchedule(
+        project_id=fresh_project.id,
+        title=body.title,
+        description=body.description,
+        planned_start_date=body.planned_start_date or fresh_project.planned_start_date,
+        planned_finish_date=body.planned_finish_date or fresh_project.planned_end_date,
         created_by=user.id,
         created_at=utc_now(),
         updated_at=utc_now(),
     )
     db.add(schedule)
     await db.flush()
-    if body.items:
-        for index, item in enumerate(body.items):
-            await create_item(db, schedule, item, index)
-    else:
-        await sync_items_from_stages(db, schedule)
-    await db.commit()
+    try:
+        if body.items:
+            for index, item in enumerate(body.items):
+                await create_item(db, schedule, item, index)
+        else:
+            await sync_items_from_stages(db, schedule)
+        await db.flush()
+        created, canonical_id = await commit_client_write(
+            db,
+            scope=WORK_SCHEDULE_CREATE_SCOPE,
+            project_id=fresh_project.id,
+            user_id=user.id,
+            request_id=client_request_id,
+            payload=payload,
+            entity_id=schedule.id,
+        )
+    except BaseException:
+        await db.rollback()
+        clear_request_side_effect_context()
+        raise
+    clear_request_side_effect_context()
+
+    if not created:
+        existing = await get_schedule(db, project_id=fresh_project.id, schedule_id=canonical_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="work_schedule_idempotency_target_missing")
+        return existing, True
+
     await db.refresh(schedule)
-    return await attach_items(db, schedule)
+    return await attach_items(db, schedule), False
 
 
 async def update_schedule(
@@ -257,6 +433,14 @@ async def update_schedule(
     project = await db.get(Project, schedule.project_id)
     if project and not await can_manage_schedule(db, user, project):
         raise HTTPException(status_code=403, detail="only_contractor_or_foreman_can_edit_schedule")
+    if body.items is not None:
+        # #481: validate every new item's stage/dependency reference against
+        # this schedule's project *before* any metadata is mutated or the
+        # previous item set is deleted — a validation failure must leave the
+        # original schedule and item set completely intact.
+        await _validate_items_for_replace(
+            db, project_id=schedule.project_id, schedule_id=schedule.id, items=body.items
+        )
     if body.title is not None:
         schedule.title = body.title
     if body.description is not None:
@@ -361,14 +545,46 @@ async def submit_schedule(
     db: AsyncSession,
     schedule: ProjectWorkSchedule,
     user: User,
-) -> ProjectWorkSchedule:
+) -> tuple[ProjectWorkSchedule, bool]:
+    """Submit once per legal transition; a repeat submit replays (#462/#420).
+
+    The schedule row is row-locked and re-read before any state check so two
+    concurrent submits (or a response-loss retry racing a fresh attempt)
+    serialize instead of double-applying the transition. Authority is
+    rechecked against a freshly loaded Project after that lock wait.
+    Submitting an already-submitted schedule is the same target state the
+    caller asked for, so it replays the current row untouched — it does not
+    bump `schedule_version`/`submitted_at` or re-emit `ScheduleSubmitted`
+    evidence a second time. Submitting from any other illegal source state
+    (e.g. an already-confirmed schedule) fails deterministically with 409
+    instead of silently re-submitting.
+    """
     from app.services.team_service import can_access_project
 
-    project = await db.get(Project, schedule.project_id)
-    if not project or not await can_access_project(db, user, project, write=True):
+    lock_query = select(ProjectWorkSchedule).where(
+        ProjectWorkSchedule.id == schedule.id,
+        ProjectWorkSchedule.project_id == schedule.project_id,
+    )
+    try:
+        lock_query = lock_query.with_for_update()
+    except Exception:
+        pass
+    locked = (await db.execute(lock_query)).scalar_one_or_none()
+    if locked is None:
+        raise HTTPException(status_code=404, detail="work_schedule_not_found")
+    schedule = locked
+
+    project = await _reload_project(db, schedule.project_id)
+    if not await can_access_project(db, user, project, write=True):
         raise HTTPException(status_code=403, detail="project_forbidden")
     if not await can_manage_schedule(db, user, project):
         raise HTTPException(status_code=403, detail="only_contractor_or_foreman_can_submit_schedule")
+
+    if schedule.status == WorkScheduleStatus.submitted:
+        return await attach_items(db, schedule), True
+    if schedule.status not in (WorkScheduleStatus.draft, WorkScheduleStatus.rejected):
+        raise HTTPException(status_code=409, detail="work_schedule_submit_invalid_state")
+
     items = await load_items(db, schedule.id)
     if not items:
         raise HTTPException(status_code=409, detail="schedule_items_required")
@@ -407,7 +623,7 @@ async def submit_schedule(
 
     await db.refresh(schedule)
     await _dispatch_schedule_effects(db, source="work_schedule.submit")
-    return await attach_items(db, schedule)
+    return await attach_items(db, schedule), False
 
 
 async def confirm_schedule(
