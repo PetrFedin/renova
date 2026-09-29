@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
+from app.services import stage_status_service as st_status
 from app.models.entities import User, UserRole
 from app.models.entities import PaymentStatus
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectDetail, ProjectOut, EstimateLineOut, StageOut, RoomOut
@@ -31,6 +32,18 @@ def _filter_stages_for_user(p, user: User):
     ]
 
 
+
+def _live_progress(p) -> float:
+    """Прогресс по этапам — единственная правда о готовности проекта.
+
+    Колонка `projects.progress_percent` не обновляется работой: её пишет
+    только демо-сидер. Карточка объекта показывала ноль независимо от того,
+    сколько сделано.
+    """
+    stages = list(getattr(p, "stages", None) or [])
+    return round(st_status.weighted_progress(stages), 1)
+
+
 def _project_out(
     p,
     *,
@@ -49,7 +62,11 @@ def _project_out(
         budget_planned=p.budget_planned,
         budget_spent=p.budget_spent,
         customer_budget=float(customer_budget) if customer_budget is not None else None,
-        progress_percent=p.progress_percent,
+        # Колонку projects.progress_percent не пишет ничто, кроме демо-сидера
+        # (seed_demo.py), поэтому на живом проекте она навсегда остаётся нулём.
+        # Ответ противоречил сам себе: этап на 100%, прогресс проекта 0.
+        # Считаем тем же weighted_progress, что и /dashboard.
+        progress_percent=_live_progress(p),
         vat_rate=float(getattr(p, "vat_rate", 0) or 0),
         rooms_count=len(p.rooms) if p.rooms else 0,
         stages_count=len(p.stages) if p.stages else 0,
