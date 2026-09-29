@@ -32,7 +32,6 @@ const KNOWN_DEBT: Record<string, number> = {
   [debtKey('lib/chatPrefs.ts', 'async')]: 1,
   [debtKey('lib/customerBudgetPrefs.ts', 'async')]: 1,
   [debtKey('lib/homeWidgetPrefs.ts', 'async')]: 1,
-  [debtKey('lib/hooks/useProjectBuckets.ts', 'async')]: 1,
   [debtKey('lib/voiceRecord.ts', 'async')]: 1,
   [debtKey('lib/whisperStub.ts', 'async')]: 1,
 };

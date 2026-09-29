@@ -2,14 +2,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type ProjectSummary } from '@/lib/api';
 import type { ProjectBucket } from '@/components/renova/ProjectBucketToolbar';
-import { reportCatch } from '@/lib/reportError';
+import { reportError } from '@/lib/reportError';
+import { nextBucketCount } from '@/lib/domain/bucketCountRead';
 
 export function useProjectBuckets(userId: string | undefined, canManage: boolean) {
   const [bucket, setBucket] = useState<ProjectBucket>('active');
   const [items, setItems] = useState<ProjectSummary[]>([]);
-  const [archivedCount, setArchivedCount] = useState(0);
-  const [trashedCount, setTrashedCount] = useState(0);
+  // null = unknown (not yet loaded, or the last read failed) — never fabricate a confirmed 0.
+  const [archivedCount, setArchivedCount] = useState<number | null>(null);
+  const [trashedCount, setTrashedCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const [itemsError, setItemsError] = useState(false);
+  const [countsError, setCountsError] = useState(false);
   const countsLoadedRef = useRef(false);
 
   /** Список архива/корзины — только когда пользователь открыл эту вкладку (active берётся из context). */
@@ -18,18 +22,25 @@ export function useProjectBuckets(userId: string | undefined, canManage: boolean
     if (bucket === 'active') {
       setItems([]);
       setLoading(false);
+      setItemsError(false);
       return;
     }
     setLoading(true);
     try {
       const list = await api.listProjectsByBucket(userId, bucket);
       setItems(list);
-      if (bucket === 'archived') setArchivedCount(list.length);
-      if (bucket === 'trashed') setTrashedCount(list.length);
+      setItemsError(false);
+      if (bucket === 'archived') setArchivedCount(nextBucketCount(archivedCount, { ok: true, count: list.length }));
+      if (bucket === 'trashed') setTrashedCount(nextBucketCount(trashedCount, { ok: true, count: list.length }));
+    } catch (error) {
+      // A failed list read must not render as an empty bucket — keep prior items (stale)
+      // and let the caller show an explicit error instead of a fabricated "пусто".
+      reportError('projectBuckets.reload', error, { userId, bucket });
+      setItemsError(true);
     } finally {
       setLoading(false);
     }
-  }, [userId, bucket]);
+  }, [userId, bucket, archivedCount, trashedCount]);
 
   /** Счётчики для toolbar — после первого paint, без спиннера на active. */
   const reloadCounts = useCallback(async () => {
@@ -41,15 +52,20 @@ export function useProjectBuckets(userId: string | undefined, canManage: boolean
       ]);
       setArchivedCount(archived.length);
       setTrashedCount(trashed.length);
+      setCountsError(false);
       countsLoadedRef.current = true;
-    } catch {
-      /* noop — бейджи останутся 0 */
+    } catch (error) {
+      // Read failure is unknown, not zero — preserve whatever count (confirmed or still
+      // unknown) we already had rather than collapsing the badge to a fabricated 0.
+      reportError('projectBuckets.counts', error, { userId });
+      setCountsError(true);
     }
   }, [userId, canManage]);
 
   useEffect(() => {
-    reload().catch(reportCatch('projectBuckets.reload'));
-  }, [reload]);
+    void reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, bucket]);
 
   useEffect(() => {
     if (!userId || !canManage) {
@@ -58,7 +74,7 @@ export function useProjectBuckets(userId: string | undefined, canManage: boolean
     }
     countsLoadedRef.current = false;
     const t = setTimeout(() => {
-      reloadCounts().catch(reportCatch('projectBuckets.counts'));
+      void reloadCounts();
     }, 0);
     return () => clearTimeout(t);
   }, [userId, canManage, reloadCounts]);
@@ -74,6 +90,8 @@ export function useProjectBuckets(userId: string | undefined, canManage: boolean
     archivedCount,
     trashedCount,
     loading,
+    itemsError,
+    countsError,
     reload: reloadAll,
   };
 }

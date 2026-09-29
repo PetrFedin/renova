@@ -8,8 +8,8 @@ export type ProjectBucket = 'active' | 'archived' | 'trashed';
 type Props = {
   bucket: ProjectBucket;
   onChange: (b: ProjectBucket) => void;
-  trashedCount?: number;
-  archivedCount?: number;
+  trashedCount?: number | null;
+  archivedCount?: number | null;
   canManage?: boolean;
 };
 

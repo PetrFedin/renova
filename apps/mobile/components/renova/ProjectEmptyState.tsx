@@ -173,7 +173,7 @@ export function ProjectEmptyState({
   const pathname = usePathname();
   const { user, projects, loadProject, showPaywall, ensureActiveProject, projectResolving, readOnly, refreshProjects } = useRenova();
   const canManageBuckets = user?.role === 'customer' && !readOnly;
-  const { bucket, setBucket, items: bucketItems, archivedCount, trashedCount, loading: bucketLoading, reload: reloadBuckets } = useProjectBuckets(user?.id, canManageBuckets);
+  const { bucket, setBucket, items: bucketItems, archivedCount, trashedCount, loading: bucketLoading, itemsError: bucketItemsError, reload: reloadBuckets } = useProjectBuckets(user?.id, canManageBuckets);
   const { lifecycleHandlers, emptyTrash } = useProjectLifecycleActions(reloadBuckets);
   const [pendingById, setPendingById] = useState<Record<string, number>>({});
   const [templateCreatingId, setTemplateCreatingId] = useState<string | null>(null);
@@ -348,7 +348,7 @@ export function ProjectEmptyState({
         canManage={canManageBuckets}
       />
       {bucketLoading ? <ActivityIndicator color={RenovaTheme.colors.primary} style={{ marginVertical: 12 }} /> : null}
-      {bucket === 'trashed' && canManageBuckets && trashedCount > 0 ? (
+      {bucket === 'trashed' && canManageBuckets && !!trashedCount && trashedCount > 0 ? (
         <PrimaryButton title="Очистить корзину" variant="outline" onPress={emptyTrash} />
       ) : null}
 
@@ -367,6 +367,8 @@ export function ProjectEmptyState({
             lifecycleHandlers={lifecycleHandlers}
           />
         </>
+      ) : bucket !== 'active' && bucketItemsError ? (
+        <Text style={s.actionError}>{bucket === 'archived' ? 'Не удалось загрузить архив' : 'Не удалось загрузить корзину'}</Text>
       ) : (
         <Text style={formMetaText.caption}>{bucket === 'active' ? 'Нет проектов' : bucket === 'archived' ? 'Архив пуст' : 'Корзина пуста'}</Text>
       )}
