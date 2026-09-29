@@ -37,15 +37,24 @@ async def user_out_with_token(
     device_id: str | None = None,
     issue_refresh: bool = True,
 ) -> UserOut:
-    """UserOut + JWT access; refresh только на login (не на каждый /me)."""
+    """UserOut + JWT access; refresh только на login (не на каждый /me).
+
+    Сессия создаётся раньше токена, чтобы её идентификатор попал в claim `sid`.
+    Без него `logout` гасил только refresh: access оставался рабочим до конца
+    своего срока — до 20 минут в staging и production, до двух недель в
+    разработке. Теперь выход на одном устройстве обрывает именно его, а
+    остальные устройства не трогает.
+    """
     out = UserOut.model_validate(user, from_attributes=True)
     role = user.role.value if hasattr(user.role, "value") else str(user.role)
-    out.access_token = create_access_token(user.id, {"role": role})
-    out.token_type = "bearer"
+    claims: dict[str, str] = {"role": role}
     if issue_refresh and db is not None:
         from app.services import session_service as sess_svc
-        _, raw = await sess_svc.create_session(db, user.id, device_id=device_id)
+        session, raw = await sess_svc.create_session(db, user.id, device_id=device_id)
         out.refresh_token = raw
+        claims["sid"] = session.id
+    out.access_token = create_access_token(user.id, claims)
+    out.token_type = "bearer"
     return out
 
 
@@ -246,7 +255,8 @@ async def refresh_tokens(body: RefreshRequest, db: AsyncSession = Depends(get_db
         raise HTTPException(401, "account_deleted")
     out = UserOut.model_validate(user, from_attributes=True)
     role = user.role.value if hasattr(user.role, "value") else str(user.role)
-    out.access_token = create_access_token(user.id, {"role": role})
+    # Обновление выдаёт новую сессию — новый токен привязывается к ней.
+    out.access_token = create_access_token(user.id, {"role": role, "sid": session.id})
     out.refresh_token = raw
     out.token_type = "bearer"
     return out
@@ -254,9 +264,15 @@ async def refresh_tokens(body: RefreshRequest, db: AsyncSession = Depends(get_db
 
 @router.post("/logout")
 async def logout_session(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
+    """Выход на этом устройстве: сессия закрывается вместе с её access-токеном.
+
+    Access-токен несёт `sid` этой сессии, и `get_current_user` отказывает,
+    когда сессия закрыта. Другие устройства продолжают работать — для выхода
+    сразу на всех есть `/auth/sessions/revoke-all`.
+    """
     from app.services import session_service as sess_svc
-    await sess_svc.revoke_session(db, body.refresh_token)
-    return {"ok": True}
+    revoked = await sess_svc.revoke_session(db, body.refresh_token)
+    return {"ok": True, "revoked": revoked, "access_invalidated": revoked}
 
 
 @router.post("/sessions/revoke-all")

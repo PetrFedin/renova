@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.security import bearer_user_id, decode_access_token
 from app.db.session import get_db
-from app.models.entities import Project, User
+from app.models.entities import Project, User, UserSession
 from app.services import project_service as proj_svc
 from app.services import team_service as team_svc
 from app.services.access_token_guard import (
@@ -87,6 +87,29 @@ async def resolve_user_id(
     raise HTTPException(401, "Требуется Authorization: Bearer <access_token>")
 
 
+async def _assert_session_alive(db: AsyncSession, authorization: str, *, user_id: str) -> None:
+    """Закрытая сессия обрывает и свой access-токен.
+
+    `logout` гасил только refresh, а access оставался рабочим до конца срока:
+    до 20 минут в staging и production, до двух недель в разработке. Токены,
+    выданные до появления claim `sid`, продолжают работать как раньше — иначе
+    выкатка разлогинила бы всех разом.
+    """
+    token = _bearer_token(authorization)
+    try:
+        payload = decode_access_token(token)
+    except Exception:
+        # Разбор и его ошибки — забота `_validate_access_session`; здесь молчим,
+        # чтобы не подменять её сообщение своим.
+        return
+    sid = payload.get("sid")
+    if not sid:
+        return
+    session = await db.get(UserSession, sid)
+    if session is None or session.user_id != user_id or session.revoked_at is not None:
+        raise HTTPException(401, "session_revoked")
+
+
 async def get_current_user(
     user_id: str = Depends(resolve_user_id),
     authorization: str | None = Header(default=None, alias="Authorization"),
@@ -106,6 +129,8 @@ async def get_current_user(
             user_id=user.id,
             invalid_before=cutoff,
         )
+    if authorization:
+        await _assert_session_alive(db, authorization, user_id=user.id)
     return user
 
 
