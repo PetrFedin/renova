@@ -110,10 +110,21 @@ async def add_line(db: AsyncSession, project_id: str, data: dict) -> EstimateLin
     return line
 
 
+def material_actual_total(lines: list[EstimateLine]) -> float:
+    """Authoritative material actual from explicit actual quantities only.
+
+    ``quantity_actual == 0`` is a real zero. It must never fall back to planned
+    quantity. The current ORM column is non-null/default 0; the defensive ``None``
+    branch also maps to zero rather than manufacturing fact from plan.
+    """
+    materials = [l for l in lines if l.line_type == LineType.material]
+    return sum((l.quantity_actual if l.quantity_actual is not None else 0) * l.unit_price for l in materials)
+
+
 def material_stats(lines: list[EstimateLine]) -> dict:
     materials = [l for l in lines if l.line_type == LineType.material]
     planned = sum(l.quantity_planned * l.unit_price for l in materials)
-    actual = sum((l.quantity_actual or l.quantity_planned) * l.unit_price for l in materials)
+    actual = material_actual_total(materials)
     overrun = ((actual - planned) / planned * 100) if planned else 0
     return {"planned": round(planned, 2), "actual": round(actual, 2), "overrun_percent": round(overrun, 1)}
 
