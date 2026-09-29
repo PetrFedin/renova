@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
-from app.models.entities import PaymentType, Stage, User, UserRole
+from app.models.entities import PaymentStatus, PaymentType, Stage, User, UserRole
 from app.schemas.project import PaymentCreate, PaymentOut, YookassaCheckoutIn, YookassaCheckoutOut
 from app.services import payment_service as pay_svc
 from app.services.client_write_idempotency import (
@@ -268,6 +268,14 @@ async def create_payment(
     return PaymentOut(**pay_svc.payment_dict(payment, receipt_id=receipt_id))
 
 
+# Терминальные состояния платежа: подтверждать нечего, и приёмка тут ни при чём.
+_TERMINAL_PAYMENT_MESSAGE: dict[PaymentStatus, str] = {
+    PaymentStatus.cancelled: "Счёт отменён — подтвердить его нельзя",
+    PaymentStatus.refunded: "Платёж возвращён — подтвердить его нельзя",
+    PaymentStatus.disputed: "По платежу открыт спор — сначала закройте спор",
+}
+
+
 class ConfirmPaymentIn(BaseModel):
     """Фиксация внешнего перевода (не эквайринг Renova), кроме путей с чеком/ЮKassa."""
     transfer_ack: bool = False
@@ -297,19 +305,31 @@ async def confirm_payment(
         transfer_ack=ack,
     )
     if not payment:
+        # Причина отказа выясняется до того, как о ней сообщат. Раньше ветка
+        # этапного платежа стояла первой и объясняла приёмкой любой отказ —
+        # включая отменённый и оспоренный платёж на давно принятом этапе.
+        terminal = _TERMINAL_PAYMENT_MESSAGE.get(existing.status)
+        if terminal:
+            raise HTTPException(409, terminal)
+
+        stage_not_accepted = False
+        if existing.payment_type == PaymentType.stage and existing.stage_id:
+            stage = await db.get(Stage, existing.stage_id)
+            stage_not_accepted = not stage or not stage.customer_accepted_at
+
         receipt_id = await pay_svc.receipt_id_for_payment(db, payment_id)
-        if not (receipt_id or ack) and existing.status.value == "pending":
-            settlement_blocked = True
-            if existing.payment_type == PaymentType.stage and existing.stage_id:
-                stage = await db.get(Stage, existing.stage_id)
-                if not stage or not stage.customer_accepted_at:
-                    settlement_blocked = False
-            if settlement_blocked:
-                raise HTTPException(
-                    409,
-                    "Сначала отметьте перевод или прикрепите чек — подтверждение без расчёта запрещено",
-                )
-        if existing.payment_type == PaymentType.stage:
+        if (
+            not (receipt_id or ack)
+            and existing.status.value == "pending"
+            and not stage_not_accepted
+        ):
+            raise HTTPException(
+                409,
+                "Сначала отметьте перевод или прикрепите чек — подтверждение без расчёта запрещено",
+            )
+
+        if stage_not_accepted:
+            # Событие в ленту — только когда блокировка настоящая.
             from app.services import activity_service as act
             await act.log_event(
                 db,
@@ -322,6 +342,7 @@ async def confirm_payment(
                 stage_id=existing.stage_id,
             )
             raise HTTPException(409, "Сначала примите этап — оплата без приёмки запрещена")
+
         if existing.status.value != "pending":
             raise HTTPException(409, "Платёж уже обработан")
         raise HTTPException(409, "Платёж нельзя подтвердить")
