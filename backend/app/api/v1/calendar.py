@@ -6,8 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_project, require_project_dep
 from app.db.session import get_db
 from app.models.entities import User, UserRole
+from app.services import calendar_import_service as cal_import_svc
 from app.services import calendar_service as cal_svc
 from app.services import stage_service as stage_svc
+from app.services.client_write_idempotency import IdempotencyConflict
 
 router = APIRouter(prefix="/projects", tags=["calendar"])
 
@@ -69,47 +71,28 @@ async def export_ical(project_id: str, user: User = Depends(get_current_user), d
 
 class IcalImportIn(BaseModel):
     content: str
+    client_request_id: str | None = None
 
 @router.post("/{project_id}/calendar/import")
 async def import_ical(project_id: str, body: IcalImportIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Import stage dates from an .ics file — atomic and response-loss safe (#422).
+
+    The whole file is applied in one transaction (or none of it, on any
+    failure), and DTEND is parsed alongside DTSTART so multi-day stages keep
+    their real end date. A retried request with byte-identical content (or
+    an explicit client_request_id) replays the original result instead of
+    re-mapping events onto a different set of stages; the same id with
+    different content is rejected as a conflict.
+    """
     await require_project(db, project_id, user, write=True)
-    import re
-    from datetime import datetime as dt
-    events = []
-    summary = None
-    current_uid = None
-    for line in body.content.replace("\r", "").split("\n"):
-        line = line.strip()
-        if line.startswith("UID:"):
-            current_uid = line[4:].strip()
-        elif line.startswith("SUMMARY:"):
-            summary = line[8:]
-        elif line.startswith("DTSTART"):
-            raw = line.split(":", 1)[-1][:8]
-            if len(raw) == 8:
-                events.append({"title": summary or "Event", "date": f"{raw[:4]}-{raw[4:6]}-{raw[6:8]}", "uid": current_uid})
-            current_uid = None
-            summary = None
-    updated = 0
-    p = await require_project(db, project_id, user, write=False)
-    stages = sorted(p.stages, key=lambda s: s.sort_order)
-    for ev in events:
-        d = dt.strptime(ev["date"], "%Y-%m-%d").date()
-        uid = ev.get('uid') or ''
-        stage = None
-        if uid:
-            for st in stages:
-                if st.ical_uid == uid or uid.endswith(st.id):
-                    stage = st; break
-        if not stage and ev.get('title'):
-            stage = next((st for st in stages if st.name.lower() in ev['title'].lower() or ev['title'].lower() in st.name.lower()), None)
-        if not stage:
-            unused = [st for st in stages if not st.planned_start]
-            stage = unused[0] if unused else None
-        if stage:
-            await stage_svc.update_stage_dates(db, project_id, stage.id, d, d)
-            if uid:
-                stage.ical_uid = uid
-            updated += 1
-    await db.commit()
-    return {"ok": True, "parsed": len(events), "updated_stages": updated}
+    try:
+        result = await cal_import_svc.import_ical_atomic(
+            db,
+            project_id=project_id,
+            actor_id=user.id,
+            content=body.content,
+            client_request_id=body.client_request_id,
+        )
+    except IdempotencyConflict:
+        raise HTTPException(409, "calendar_import_conflict")
+    return result
