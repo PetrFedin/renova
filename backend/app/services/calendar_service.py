@@ -56,7 +56,11 @@ def build_calendar(project: Project, waste_orders=None) -> dict:
                 "title": f"Старт: {s.name}",
                 "date": s.actual_start.isoformat(),
                 "stage_id": s.id,
-                "uid": getattr(s, "ical_uid", None) or f"renova-{s.id}@app",
+                # Distinct per event kind, not the shared ical_uid: reusing one UID
+                # across a stage's period/started/ready/accepted events makes an
+                # imported calendar client (Google/Apple) treat them as revisions
+                # of the same event and silently drop all but one.
+                "uid": f"renova-started-{s.id}@app",
                 "status": s.status.value,
             })
         if s.contractor_ready_at:
@@ -65,7 +69,7 @@ def build_calendar(project: Project, waste_orders=None) -> dict:
                 "kind": "contractor_ready",
                 "title": f"Готово: {s.name}",
                 "date": s.contractor_ready_at.date().isoformat(),
-                "stage_id": s.id, "uid": getattr(s, "ical_uid", None) or f"renova-{s.id}@app",
+                "stage_id": s.id, "uid": f"renova-ready-{s.id}@app",
                 "status": s.status.value,
             })
         if s.customer_accepted_at:
@@ -74,7 +78,7 @@ def build_calendar(project: Project, waste_orders=None) -> dict:
                 "kind": "customer_accepted",
                 "title": f"Принято: {s.name}",
                 "date": s.customer_accepted_at.date().isoformat(),
-                "stage_id": s.id, "uid": getattr(s, "ical_uid", None) or f"renova-{s.id}@app",
+                "stage_id": s.id, "uid": f"renova-accepted-{s.id}@app",
                 "status": s.status.value,
             })
 
