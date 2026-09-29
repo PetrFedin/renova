@@ -1,5 +1,6 @@
 /** Сборка API-клиента — доменные модули + единый export api */
 import { authApi } from './auth';
+import { participantsApi } from './participants';
 import { projectsApi } from './projects';
 import { roomsApi } from './rooms';
 import { stagesApi } from './stages';
@@ -27,6 +28,8 @@ import { technicalSupervisionApi } from './technicalSupervision';
 
 export const api = {
   ...authApi,
+  /** B6: project participants (namespaced to avoid list/add/remove name collisions). */
+  participants: participantsApi,
   ...projectsApi,
   ...roomsApi,
   ...stagesApi,
@@ -71,3 +74,5 @@ export type {
   WorkScheduleItem,
   WorkScheduleItemStatus,
 } from './workSchedule';
+
+export type { ParticipantScope, ParticipantScopeType, ProjectParticipant, ParticipantMutation } from './types/participants';
