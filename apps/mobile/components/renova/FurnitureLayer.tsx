@@ -37,7 +37,38 @@ export function FurnitureLayer({ userId, projectId, planId, role }: { userId: st
           )}
         </View>
       ))}
-      {role === 'contractor' && planId && <PrimaryButton title="+ Диван" variant="outline" onPress={async () => { try { await api.createFurniture(userId, projectId, { name: 'Диван', width_m: 2.1, depth_m: 0.9, floor_plan_id: planId, x_pct: 30, y_pct: 60 }); await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any) }); } catch { await api.enqueueOfflineCreate(`/api/v1/projects/${projectId}/furniture`, 'POST', { name: 'Диван', floor_plan_id: planId }, userId); } load(); }} />}
+      {role === 'contractor' && planId && (
+        <PrimaryButton
+          title="+ Диван"
+          variant="outline"
+          onPress={async () => {
+            // #442/#468: go through the canonical floorApi.createFurniture
+            // producer only — it already mints the stable client_request_id
+            // and queues the exact original payload on transport/5xx/429
+            // failure. A deterministic 4xx (e.g. cross-project floor_plan_id)
+            // must surface as a real error, never be silently converted into
+            // an offline-queued duplicate-payload create.
+            try {
+              await api.createFurniture(userId, projectId, {
+                name: 'Диван',
+                width_m: 2.1,
+                depth_m: 0.9,
+                floor_plan_id: planId,
+                x_pct: 30,
+                y_pct: 60,
+              });
+              await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any) });
+            } catch (e) {
+              if (isOfflineQueued(e)) {
+                notifyOfflineQueued('Мебель на плане');
+              } else {
+                reportCatch('components.renova.FurnitureLayer.createFurniture')(e);
+              }
+            }
+            load();
+          }}
+        />
+      )}
     </View>
   );
 }

@@ -245,6 +245,7 @@ export function FloorPlanPanel({
 
     setUploading(true);
     try {
+      let queued = false;
       try {
         const blob = await (await fetch(selectedAsset.uri)).blob();
         const key = await uploadMediaBlob(userId, projectId, blob, blob.type || 'image/jpeg');
@@ -254,8 +255,23 @@ export function FloorPlanPanel({
           floor_level: floor,
         });
       } catch (error) {
-        reportError('components.renova.FloorPlanPanel.uploadPlan', error, { projectId, floor });
-        Alert.alert('Загрузка', 'Не удалось загрузить план');
+        // #442/#475: createFloorPlan already carries a stable
+        // client_request_id, so a transport/5xx/429 failure here is queued
+        // as a replay-safe retry, not a lost create — recognize it as
+        // deferred sync instead of a generic failure that invites the user
+        // to retry (and mint a second logical intent).
+        if (isOfflineQueued(error)) {
+          queued = true;
+        } else {
+          reportError('components.renova.FloorPlanPanel.uploadPlan', error, { projectId, floor });
+          Alert.alert('Загрузка', 'Не удалось загрузить план');
+          return;
+        }
+      }
+
+      if (queued) {
+        load();
+        notifyOfflineQueued('План этажа');
         return;
       }
 
