@@ -422,6 +422,11 @@ class Subscription(Base):
     status: Mapped[SubscriptionStatus] = mapped_column(Enum(SubscriptionStatus), default=SubscriptionStatus.free)
     plan: Mapped[str] = mapped_column(String(32), default="free")
     expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    #: Когда исполнитель взял пробный период. H1.1 даёт его один раз, а `plan`
+    #: описывает только настоящее: покупка Pro пишет туда "pro", истечение Pro —
+    #: "free", и признак "trial_used" исчезает вместе с ними. Факт из прошлого
+    #: живёт здесь и не затирается ничем.
+    trial_started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class ChatThreadRead(Base):
