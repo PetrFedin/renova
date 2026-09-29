@@ -59,7 +59,7 @@ async def patch_line(
         raise HTTPException(403, "Только исполнитель редактирует смету")
     await require_project(db, project_id, user, write=True)
     await _require_estimate_editable(db, project_id)
-    line = await update_line(db, line_id, **body.model_dump(exclude_none=True))
+    line = await update_line(db, line_id, project_id=project_id, **body.model_dump(exclude_none=True))
     if not line:
         raise HTTPException(404, "Строка не найдена")
     return {"ok": True, "id": line.id}

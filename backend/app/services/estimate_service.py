@@ -64,12 +64,17 @@ async def update_line(
     db: AsyncSession,
     line_id: str,
     *,
+    project_id: str,
     quantity_planned: float | None = None,
     unit_price: float | None = None,
     quantity_actual: float | None = None,
 ) -> EstimateLine | None:
     line = await db.get(EstimateLine, line_id)
-    if not line:
+    # Строка обязана принадлежать объекту из адреса. Доступ проверяется по
+    # `project_id` из URL, а строка бралась по одному лишь `line_id`: подрядчик
+    # подставлял свой объект и чужой идентификатор строки и менял цену в чужой
+    # смете, после чего `recalc_budget` ниже пересчитывал бюджет жертвы.
+    if not line or line.project_id != project_id:
         return None
     if quantity_planned is not None:
         line.quantity_planned = quantity_planned

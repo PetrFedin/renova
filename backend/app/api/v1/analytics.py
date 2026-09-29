@@ -72,9 +72,23 @@ async def budget_alerts(project_id: str, threshold_pct: float = 5, user: User = 
 @router.get("/projects/{project_id}/analytics/budget-room-lines/{room_id}")
 async def budget_room_lines(project_id: str, room_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from sqlalchemy import select
-    from app.models.entities import EstimateLine
+    from app.models.entities import EstimateLine, Room
     await require_project(db, project_id, user, write=False)
-    lines = (await db.execute(select(EstimateLine).where(EstimateLine.room_id == room_id))).scalars().all()
+    # Комната обязана принадлежать объекту из адреса. Доступ проверялся по
+    # `project_id` из URL, а строки брались по одному лишь `room_id`: любой,
+    # у кого есть хоть один свой объект, подставлял свой `project_id` и чужой
+    # `room_id` и читал чужие наименования работ вместе с суммами плана и факта.
+    room = await db.get(Room, room_id)
+    if not room or room.project_id != project_id:
+        raise HTTPException(404, "Комната не найдена")
+    lines = (
+        await db.execute(
+            select(EstimateLine).where(
+                EstimateLine.room_id == room_id,
+                EstimateLine.project_id == project_id,
+            )
+        )
+    ).scalars().all()
     out = []
     for l in lines:
         plan = l.quantity_planned * l.unit_price
