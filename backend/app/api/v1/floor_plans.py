@@ -125,6 +125,81 @@ async def create_furniture(project_id: str, body: FurnitureIn, user: User = Depe
     await act.log_event(db, project_id=project_id, user_id=user.id, kind="plan", title=f"Мебель: {f.name}", room_id=f.room_id)
     return {"id": f.id, "name": f.name, "width_m": f.width_m, "depth_m": f.depth_m, "height_m": f.height_m, "x_pct": f.x_pct, "y_pct": f.y_pct}
 
+@router.delete("/{project_id}/floor-plans/{plan_id}")
+async def delete_floor_plan(project_id: str, plan_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Удалить план этажа.
+
+    Пины уходят вместе с планом: пин — это точка **на плане**, без него он
+    ничего не значит.
+
+    Мебель не удаляется, а открепляется. Предмет мебели принадлежит объекту и
+    комнате; на плане он лишь размещён. Удалять его вместе с планом значило бы
+    стирать данные, которые человек вводил отдельно.
+    """
+    await require_project(db, project_id, user, write=True)
+    plan = await db.get(FloorPlan, plan_id)
+    if not plan or plan.project_id != project_id:
+        raise HTTPException(404, "План не найден")
+
+    pins = list(
+        (await db.execute(select(FloorPlanPin).where(FloorPlanPin.floor_plan_id == plan_id)))
+        .scalars()
+        .all()
+    )
+    for pin in pins:
+        await db.delete(pin)
+
+    placed = list(
+        (
+            await db.execute(
+                select(FurnitureItem).where(
+                    FurnitureItem.project_id == project_id,
+                    FurnitureItem.floor_plan_id == plan_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for item in placed:
+        item.floor_plan_id = None
+        item.x_pct = None
+        item.y_pct = None
+
+    await db.delete(plan)
+    await db.commit()
+    return {"ok": True, "id": plan_id, "pins_removed": len(pins), "furniture_detached": len(placed)}
+
+
+@router.delete("/{project_id}/floor-plans/{plan_id}/pins/{pin_id}")
+async def delete_pin(project_id: str, plan_id: str, pin_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Снять пин с плана."""
+    await require_project(db, project_id, user, write=True)
+    plan = await db.get(FloorPlan, plan_id)
+    if not plan or plan.project_id != project_id:
+        raise HTTPException(404, "План не найден")
+    pin = await db.get(FloorPlanPin, pin_id)
+    # Пин сверяется и с планом из пути: без этого снять можно было бы чужой,
+    # зная идентификатор.
+    if not pin or pin.floor_plan_id != plan_id:
+        raise HTTPException(404, "Пин не найден")
+    await db.delete(pin)
+    await db.commit()
+    return {"ok": True, "id": pin_id}
+
+
+@router.delete("/{project_id}/furniture/{item_id}")
+async def delete_furniture(project_id: str, item_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Удалить предмет мебели."""
+    await require_project(db, project_id, user, write=True)
+    item = await db.get(FurnitureItem, item_id)
+    if not item or item.project_id != project_id:
+        raise HTTPException(404, "Предмет не найден")
+    await db.delete(item)
+    await db.commit()
+    return {"ok": True, "id": item_id}
+
+
 @router.patch("/{project_id}/floor-plans/{plan_id}/pins/{pin_id}")
 async def move_pin(project_id: str, plan_id: str, pin_id: str, body: PinPatch, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=True)
