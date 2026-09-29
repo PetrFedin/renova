@@ -196,6 +196,16 @@ async def write_bytes_at_key(
     return normalized
 
 
+def public_url(key: str) -> str:
+    """Публичная ссылка на уже лежащий в хранилище файл.
+
+    Выбор между S3 и локальной раздачей повторяет тот, что делает
+    ``save_image``: иначе вызывающие собирали бы ссылку вручную и расходились
+    с ним при переключении хранилища.
+    """
+    return _s3_public_url(key) if _s3_client() is not None else _local_url(key)
+
+
 async def save_image(base64_or_data_url: str, *, folder: str = "photos") -> tuple[str, str]:
     data, extension, content_type = _decode_image(base64_or_data_url)
     safe_folder = normalize_storage_key(folder)
