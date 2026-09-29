@@ -1,11 +1,13 @@
 ---
-description: Renova agent entrypoint. AGENTS.md is authoritative; local runtime must use the canonical development commands and never staging/production profiles.
+description: Renova agent entrypoint. AGENTS.md is authoritative; Cursor uses the Cursor adapter and canonical local development commands.
 alwaysApply: true
 ---
 
 # Renova agent runtime entrypoint
 
-Before editing or running the repository, read `AGENTS.md`. It is the single authoritative engineering instruction set. This Cursor rule is only a bootstrap pointer and must not grow into a second architecture/policy document.
+Before editing or running the repository, read `AGENTS.md`. It is the single authoritative engineering instruction set. Then activate exactly one client adapter: `.agent/platforms/cursor.md`. It routes into `.agent/kickoff.md` and the shared `renova-product-engineering` skill layer.
+
+The **host application is Cursor** even when Cursor is running a Claude, GPT, or another foundation model. Do not activate Claude Code, Codex, or ChatGPT/GPT adapters from the model name.
 
 Canonical local sequence:
 
