@@ -1,12 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
-from app.models.entities import User
+from app.models.entities import Stage, User
 from app.models.work_schedule import ProjectWorkScheduleItem
 from app.schemas.project_work_schedule import (
     WorkScheduleCreateIn,
+    WorkScheduleItemIn,
     WorkScheduleItemOut,
     WorkScheduleItemStatusIn,
     WorkScheduleOut,
@@ -26,6 +28,61 @@ from app.services.project_work_schedule_service import (
 )
 
 router = APIRouter(prefix="/projects/{project_id}/work-schedules", tags=["work-schedules"])
+
+
+async def _require_schedule_item_refs(
+    db: AsyncSession,
+    project_id: str,
+    items: list[WorkScheduleItemIn],
+    *,
+    schedule_id: str | None,
+    replacing: bool,
+) -> None:
+    """Validate all user-controlled child references before schedule mutation.
+
+    The current full-replacement DTO has no client-local item identity, so a
+    dependency targeting an existing item cannot remain valid after replacement
+    deletes that row. Fail closed instead of creating a dangling dependency.
+    """
+    for item in items:
+        if item.stage_id:
+            stage_id = (
+                await db.execute(
+                    select(Stage.id).where(
+                        Stage.id == item.stage_id,
+                        Stage.project_id == project_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if stage_id is None:
+                raise HTTPException(status_code=404, detail="work_schedule_stage_not_found")
+
+        if not item.depends_on_item_id:
+            continue
+
+        if schedule_id is None:
+            raise HTTPException(
+                status_code=422,
+                detail="work_schedule_dependency_create_not_supported",
+            )
+
+        dependency_id = (
+            await db.execute(
+                select(ProjectWorkScheduleItem.id).where(
+                    ProjectWorkScheduleItem.id == item.depends_on_item_id,
+                    ProjectWorkScheduleItem.schedule_id == schedule_id,
+                    ProjectWorkScheduleItem.project_id == project_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if dependency_id is None:
+            raise HTTPException(status_code=404, detail="work_schedule_dependency_not_found")
+
+        if replacing:
+            raise HTTPException(
+                status_code=422,
+                detail="work_schedule_dependency_replace_not_supported",
+            )
 
 
 @router.get("", response_model=list[WorkScheduleOut])
@@ -56,6 +113,14 @@ async def create_project_work_schedule(
     user: User = Depends(get_current_user),
 ):
     project = await require_project(db, project_id, user, write=True)
+    if body.items:
+        await _require_schedule_item_refs(
+            db,
+            project.id,
+            body.items,
+            schedule_id=None,
+            replacing=False,
+        )
     return await create_schedule(db, project=project, user=user, body=body)
 
 
@@ -85,6 +150,14 @@ async def update_project_work_schedule(
     schedule = await get_schedule(db, project_id=project.id, schedule_id=schedule_id)
     if not schedule:
         raise HTTPException(status_code=404, detail="work_schedule_not_found")
+    if body.items is not None:
+        await _require_schedule_item_refs(
+            db,
+            project.id,
+            body.items,
+            schedule_id=schedule.id,
+            replacing=True,
+        )
     return await update_schedule(db, schedule=schedule, user=user, body=body)
 
 
