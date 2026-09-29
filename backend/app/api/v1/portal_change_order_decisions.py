@@ -53,12 +53,18 @@ async def portal_approve_change_order(
     _require_portal_scope(claims, "accept_stage")
     user, _project = await _require_customer(db, claims=claims, project_id=project_id)
 
-    order, _document = await co_svc.approve_with_sign_draft(
-        db,
-        project_id=project_id,
-        order_id=order_id,
-        created_by=user.id,
-    )
+    try:
+        order, _document = await co_svc.approve_with_sign_draft(
+            db,
+            project_id=project_id,
+            order_id=order_id,
+            created_by=user.id,
+        )
+    except co_svc.ChangeOrderFinalStateConflict as error:
+        raise HTTPException(
+            409,
+            detail={"code": co_svc.CHANGE_ORDER_FINAL_STATE_CONFLICT},
+        ) from error
     if not order:
         raise HTTPException(404, "change_order_not_found")
     return {"id": order.id, "status": order.status.value}
@@ -76,12 +82,18 @@ async def portal_reject_change_order(
     _require_portal_scope(claims, "accept_stage")
     user, _project = await _require_customer(db, claims=claims, project_id=project_id)
 
-    order, _replayed = await co_svc.reject_with_effects(
-        db,
-        project_id=project_id,
-        order_id=order_id,
-        rejected_by=user.id,
-    )
+    try:
+        order, _replayed = await co_svc.reject_with_effects(
+            db,
+            project_id=project_id,
+            order_id=order_id,
+            rejected_by=user.id,
+        )
+    except co_svc.ChangeOrderFinalStateConflict as error:
+        raise HTTPException(
+            409,
+            detail={"code": co_svc.CHANGE_ORDER_FINAL_STATE_CONFLICT},
+        ) from error
     if not order:
         raise HTTPException(404, "change_order_not_found")
     return {"id": order.id, "status": order.status.value}

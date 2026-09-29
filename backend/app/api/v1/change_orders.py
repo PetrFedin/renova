@@ -116,12 +116,21 @@ async def approve_co(project_id: str, order_id: str, user: User = Depends(get_cu
     await require_project(db, project_id, user, write=True)
     if user.role != UserRole.customer:
         raise HTTPException(403)
-    co, draft_meta = await co_svc.approve_with_sign_draft(
-        db,
-        project_id=project_id,
-        order_id=order_id,
-        created_by=user.id,
-    )
+    try:
+        co, draft_meta = await co_svc.approve_with_sign_draft(
+            db,
+            project_id=project_id,
+            order_id=order_id,
+            created_by=user.id,
+        )
+    except co_svc.ChangeOrderFinalStateConflict as error:
+        raise HTTPException(
+            409,
+            detail={
+                "code": co_svc.CHANGE_ORDER_FINAL_STATE_CONFLICT,
+                "message": "Доп. работы уже отклонены и не могут быть согласованы",
+            },
+        ) from error
     if not co:
         raise HTTPException(404)
 
@@ -146,12 +155,21 @@ async def reject_co(project_id: str, order_id: str, user: User = Depends(get_cur
     await require_project(db, project_id, user, write=True)
     if user.role != UserRole.customer:
         raise HTTPException(403)
-    co, replayed = await co_svc.reject_with_effects(
-        db,
-        project_id=project_id,
-        order_id=order_id,
-        rejected_by=user.id,
-    )
+    try:
+        co, replayed = await co_svc.reject_with_effects(
+            db,
+            project_id=project_id,
+            order_id=order_id,
+            rejected_by=user.id,
+        )
+    except co_svc.ChangeOrderFinalStateConflict as error:
+        raise HTTPException(
+            409,
+            detail={
+                "code": co_svc.CHANGE_ORDER_FINAL_STATE_CONFLICT,
+                "message": "Доп. работы уже согласованы и не могут быть отклонены",
+            },
+        ) from error
     if not co:
         raise HTTPException(404)
 

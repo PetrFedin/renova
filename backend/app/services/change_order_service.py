@@ -7,6 +7,21 @@ from app.models.project_documents import DocumentStatus, DocumentType, ProjectDo
 from app.services.budget_service import apply_change_order_to_budget, sync_project_budget_planned
 from app.services.client_write_side_effects import PreparedSideEffect, activate_client_write_side_effects
 
+CHANGE_ORDER_FINAL_STATE_CONFLICT = "change_order_final_state_conflict"
+
+
+class ChangeOrderFinalStateConflict(ValueError):
+    """The order already resolved to the opposite terminal state.
+
+    This is distinct from a missing/foreign order: the row exists and is
+    owned by this project, but a prior decision already moved it to the
+    other terminal status, so this decision cannot apply. Callers should
+    surface this as 409, not 404.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(CHANGE_ORDER_FINAL_STATE_CONFLICT)
+
 
 def _member_ids(project: Project) -> list[str]:
     seen: set[str] = set()
@@ -238,8 +253,11 @@ async def approve_with_sign_draft(
     except Exception:
         pass
     order = (await db.execute(query)).scalar_one_or_none()
-    if not order or order.status == ChangeOrderStatus.rejected:
+    if not order:
         return None, None
+    if order.status == ChangeOrderStatus.rejected:
+        await db.rollback()
+        raise ChangeOrderFinalStateConflict()
 
     existing_document = await _linked_document(db, order.id)
     if order.status == ChangeOrderStatus.approved and existing_document:
@@ -338,8 +356,11 @@ async def reject_with_effects(
     except Exception:
         pass
     order = (await db.execute(query)).scalar_one_or_none()
-    if not order or order.status == ChangeOrderStatus.approved:
+    if not order:
         return None, False
+    if order.status == ChangeOrderStatus.approved:
+        await db.rollback()
+        raise ChangeOrderFinalStateConflict()
     if order.status == ChangeOrderStatus.rejected:
         await db.commit()
         return order, True

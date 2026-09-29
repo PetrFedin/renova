@@ -184,18 +184,24 @@ async def test_approved_row_without_document_is_repaired_once(change_order_db):
 
 @pytest.mark.asyncio
 async def test_rejected_order_cannot_be_approved(change_order_db):
+    """#446: opposite terminal state is a typed conflict, not a missing-resource 404.
+
+    The order exists and is owned by this project — it just already resolved
+    to the other terminal status. That must surface as a distinguishable
+    conflict so mobile/offline recovery can tell it apart from deletion or
+    foreign scope, per the issue's required 409 contract.
+    """
     customer, _, project, order = await seed_order(
         change_order_db,
         order_id="co-rejected-0001",
         status=ChangeOrderStatus.rejected,
     )
-    approved, meta = await change_order_service.approve_with_sign_draft(
-        change_order_db,
-        project_id=project.id,
-        order_id=order.id,
-        created_by=customer.id,
-    )
-    assert approved is None
-    assert meta is None
+    with pytest.raises(change_order_service.ChangeOrderFinalStateConflict):
+        await change_order_service.approve_with_sign_draft(
+            change_order_db,
+            project_id=project.id,
+            order_id=order.id,
+            created_by=customer.id,
+        )
     assert (await change_order_db.scalar(select(func.count()).select_from(ProjectDocument))) == 0
     assert (await change_order_db.scalar(select(func.count()).select_from(BudgetLine))) == 0
