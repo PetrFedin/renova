@@ -38,7 +38,14 @@ function TeamSection() {
 
   const reloadTeam = useCallback(() => {
     if (!user) return;
-    api.getTeam(user.id).then(setTeam).catch((e) => { reportError('components.screens.profile.ContractorPro.Team', e); setTeam(null); });
+    api.getTeam(user.id).then(setTeam).catch((e) => {
+      // Transient failure (network blip, 429 rate-limit, 5xx) must not be
+      // confused with "team doesn't exist": clobbering to null here flips the
+      // UI to "Создать бригаду" and risks the owner recreating a duplicate
+      // team over one that actually still exists server-side. Keep whatever
+      // team state we already have and only report the failure.
+      reportError('components.screens.profile.ContractorPro.Team', e);
+    });
   }, [user?.id]);
   useEffect(() => { reloadTeam(); }, [reloadTeam]);
   useProjectDataReload(reloadTeam);
