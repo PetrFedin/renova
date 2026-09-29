@@ -56,6 +56,18 @@ async def prepare_client_write_side_effects(db: AsyncSession, *, scope: str, pro
         activity_row = await outbox.enqueue(db, aggregate_type="selection", aggregate_id=row.id, event_type=outbox.ACTIVITY_EVENT, payload={"project_id": project_id, "user_id": user_id, "kind": "selection", "title": f"Подбор: {row.title}", "body": row.category, "room_id": row.room_id, "link_path": "/(customer)/(tabs)/repair?tab=selections"})
         effects.append(PreparedSideEffect(effect_type="activity", outbox_id=activity_row.id))
         return effects
+    if scope == "issue.create":
+        issue = await db.get(ProjectIssue, entity_id)
+        project = await db.get(Project, project_id)
+        if not issue or not project:
+            return effects
+        activity_row = await outbox.enqueue(db, aggregate_type="project_issue", aggregate_id=issue.id, event_type=outbox.ACTIVITY_EVENT, payload={"project_id": project_id, "user_id": user_id, "kind": "IssueCreated", "title": issue.title, "body": issue.severity, "room_id": issue.room_id, "stage_id": issue.stage_id, "link_path": "/control"})
+        effects.append(PreparedSideEffect(effect_type="activity", outbox_id=activity_row.id))
+        notify_targets = {uid for uid in (project.customer_id, project.contractor_id) if uid and uid != user_id}
+        for target_id in notify_targets:
+            notification_row = await outbox.enqueue(db, aggregate_type="project_issue", aggregate_id=issue.id, event_type=outbox.NOTIFICATION_EVENT, payload={"user_id": target_id, "project_id": project_id, "notification_type": "issue", "title": f"Новое замечание: {issue.title}", "body": issue.description or issue.severity, "link_path": "/control", "return_to": None})
+            effects.append(PreparedSideEffect(effect_type="notification", outbox_id=notification_row.id, match_key=target_id))
+        return effects
     if scope == "warranty_claim.create":
         issue = await db.get(ProjectIssue, entity_id)
         project = await db.get(Project, project_id)

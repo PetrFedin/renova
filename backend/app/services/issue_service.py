@@ -7,7 +7,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import FloorPlan, Project, ProjectIssue, Room, Stage, UserRole
+from app.services import outbox_inline_dispatch
 from app.services import outbox_service as outbox
+from app.services.client_write_idempotency import commit_client_write, replay_entity_id
+from app.services.client_write_side_effects import clear_request_side_effect_context
+
+ISSUE_CREATE_SCOPE = "issue.create"
 
 ISSUE_TRANSITIONS: dict[str, set[str]] = {
     "open": {"in_progress", "fixed"},
@@ -153,6 +158,131 @@ async def create_issue(
     await db.commit()
     await db.refresh(issue)
     return issue
+
+
+def canonical_issue_create_payload(
+    *,
+    title: str,
+    description: str | None,
+    room_id: str | None,
+    stage_id: str | None,
+    severity: str,
+    floor_plan_id: str | None,
+    x_pct: float | None,
+    y_pct: float | None,
+    photo_key: str | None,
+) -> dict:
+    return {
+        "title": title,
+        "description": description,
+        "room_id": room_id,
+        "stage_id": stage_id,
+        "severity": severity,
+        "floor_plan_id": floor_plan_id,
+        "x_pct": x_pct,
+        "y_pct": y_pct,
+        "photo_key": photo_key,
+    }
+
+
+async def create_or_replay_issue(
+    db: AsyncSession,
+    project_id: str,
+    title: str,
+    *,
+    user_id: str,
+    description: str | None = None,
+    room_id: str | None = None,
+    stage_id: str | None = None,
+    severity: str = "medium",
+    due_days: int = 3,
+    floor_plan_id: str | None = None,
+    x_pct: float | None = None,
+    y_pct: float | None = None,
+    photo_key: str | None = None,
+    client_request_id: str | None = None,
+) -> tuple[ProjectIssue, bool]:
+    """Create exactly one ProjectIssue per client_request_id (#417).
+
+    A lost response after the first commit must replay into the original
+    ProjectIssue instead of creating a duplicate. The same request_id with a
+    changed canonical payload raises IdempotencyConflict rather than silently
+    overwriting the earlier defect's meaning. Distinct request_ids with
+    byte-identical issue values remain distinct deliberate defects/remarks.
+    The ProjectIssue, its activity DomainOutbox row(s), recipient
+    notification DomainOutbox row(s) and the ClientWriteRequest ledger entry
+    are all prepared and committed in a single transaction; inline delivery
+    only happens after that commit.
+    """
+    await validate_issue_links(
+        db, project_id, room_id=room_id, stage_id=stage_id, floor_plan_id=floor_plan_id,
+    )
+    payload = canonical_issue_create_payload(
+        title=title,
+        description=description,
+        room_id=room_id,
+        stage_id=stage_id,
+        severity=severity,
+        floor_plan_id=floor_plan_id,
+        x_pct=x_pct,
+        y_pct=y_pct,
+        photo_key=photo_key,
+    )
+    try:
+        replay_id = await replay_entity_id(
+            db,
+            scope=ISSUE_CREATE_SCOPE,
+            project_id=project_id,
+            user_id=user_id,
+            request_id=client_request_id,
+            payload=payload,
+        )
+        if replay_id:
+            existing = await db.get(ProjectIssue, replay_id)
+            if not existing or existing.project_id != project_id:
+                raise ValueError("issue_idempotency_target_missing")
+            return existing, False
+
+        issue = ProjectIssue(
+            project_id=project_id,
+            room_id=room_id,
+            stage_id=stage_id,
+            title=title,
+            description=description,
+            severity=severity,
+            status="open",
+            due_at=datetime.now(timezone.utc) + timedelta(days=due_days),
+            floor_plan_id=floor_plan_id,
+            x_pct=x_pct,
+            y_pct=y_pct,
+            photo_key=photo_key,
+        )
+        db.add(issue)
+        await db.flush()
+        created, canonical_issue_id = await commit_client_write(
+            db,
+            scope=ISSUE_CREATE_SCOPE,
+            project_id=project_id,
+            user_id=user_id,
+            request_id=client_request_id,
+            payload=payload,
+            entity_id=issue.id,
+        )
+    except BaseException:
+        await db.rollback()
+        clear_request_side_effect_context()
+        raise
+    clear_request_side_effect_context()
+
+    if not created:
+        existing = await db.get(ProjectIssue, canonical_issue_id)
+        if not existing:
+            raise ValueError("issue_idempotency_target_missing")
+        return existing, False
+
+    await db.refresh(issue)
+    await outbox_inline_dispatch.dispatch_best_effort(db, source=ISSUE_CREATE_SCOPE, limit=4)
+    return issue, True
 
 
 def validate_issue_transition(

@@ -1,5 +1,6 @@
 /** API: issues */
 import { req, ApiError } from './client';
+import { createClientRequestId } from '@/lib/clientRequestId';
 import type { ProjectIssue } from './types';
 
 async function enqueueOffline(path: string, method: string, body: string | undefined, userId: string) {
@@ -11,11 +12,17 @@ async function enqueueOffline(path: string, method: string, body: string | undef
 export const issuesApi = {
   listIssues: (userId: string, projectId: string, status?: string) => req<ProjectIssue[]>(`/api/v1/projects/${projectId}/issues${status ? `?status=${status}` : ''}`, {}, userId),
   createIssue: async (userId: string, projectId: string, body: object) => {
+    // Same client_request_id and exact serialized body are sent on the
+    // immediate attempt and on every offline-queue replay so a lost response
+    // cannot create a duplicate ProjectIssue (#417, following the #316/#398
+    // pattern). Central handling of transport-class errors (ApiError status
+    // 0/429/ambiguous 5xx) before this enqueue remains out of scope — #317.
+    const requestBody = JSON.stringify({ ...body, client_request_id: createClientRequestId('issue-create') });
     try {
-      return await req<ProjectIssue>(`/api/v1/projects/${projectId}/issues`, { method: 'POST', body: JSON.stringify(body) }, userId);
+      return await req<ProjectIssue>(`/api/v1/projects/${projectId}/issues`, { method: 'POST', body: requestBody }, userId);
     } catch (e) {
       if (e instanceof ApiError) throw e;
-      await enqueueOffline(`/api/v1/projects/${projectId}/issues`, 'POST', JSON.stringify(body), userId);
+      await enqueueOffline(`/api/v1/projects/${projectId}/issues`, 'POST', requestBody, userId);
     }
   },
   escalateIssue: async (userId: string, projectId: string, issueId: string) => {

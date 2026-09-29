@@ -1,6 +1,6 @@
 """Renova OS API — риски, workflow, замечания."""
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project
@@ -13,8 +13,19 @@ from app.services import project_service as proj_svc
 from app.services import risk_engine as risk
 from app.services import stage_service as stage_svc
 from app.services import workflow_service as wf
+from app.services.client_write_idempotency import IdempotencyConflict
 
 router = APIRouter(tags=["renova-os"])
+
+
+def _idempotency_http_error() -> HTTPException:
+    return HTTPException(
+        409,
+        detail={
+            "code": "idempotency_conflict",
+            "message": "Этот запрос уже использован с другими данными",
+        },
+    )
 
 
 class IssueIn(BaseModel):
@@ -27,6 +38,7 @@ class IssueIn(BaseModel):
     x_pct: float | None = None
     y_pct: float | None = None
     photo_key: str | None = None
+    client_request_id: str | None = Field(default=None, min_length=8, max_length=80)
 
 
 class CheckIn(BaseModel):
@@ -98,45 +110,26 @@ async def create_issue(
     project = await require_project(db, project_id, user, write=True)
     await team_svc.require_capability(db, user, project, "field_write")
     try:
-        issue = await iss.create_issue(
+        issue, _created = await iss.create_or_replay_issue(
             db, project_id, body.title,
+            user_id=user.id,
             description=body.description, room_id=body.room_id, stage_id=body.stage_id, severity=body.severity,
             floor_plan_id=body.floor_plan_id, x_pct=body.x_pct, y_pct=body.y_pct, photo_key=body.photo_key,
+            client_request_id=body.client_request_id,
         )
+    except IdempotencyConflict as exc:
+        raise _idempotency_http_error() from exc
     except ValueError as exc:
         code = str(exc)
         if code in ("issue_room_not_found", "issue_stage_not_found", "issue_floor_plan_not_found"):
             raise HTTPException(404, detail=code) from exc
+        if code == "issue_idempotency_target_missing":
+            raise HTTPException(409, detail={"code": code}) from exc
         raise
-    await act.log_event(
-        db,
-        project_id=project_id,
-        user_id=user.id,
-        kind="IssueCreated",
-        title=issue.title,
-        body=issue.severity,
-        link_path="/control",
-    )
-    from app.services import notification_service as notif_svc
-    from app.services import project_service as proj_svc
-
-    proj = await proj_svc.get_project(db, project_id)
-    if proj:
-        notify_targets = {
-            uid
-            for uid in (proj.customer_id, proj.contractor_id)
-            if uid and uid != user.id
-        }
-        for uid in notify_targets:
-            await notif_svc.notify(
-                db,
-                user_id=uid,
-                project_id=project_id,
-                notification_type="issue",
-                title=f"Новое замечание: {issue.title}",
-                body=issue.description or issue.severity,
-                link_path="/control",
-            )
+    # The IssueCreated activity event and recipient notification(s) were
+    # already enqueued atomically with the ProjectIssue + ClientWriteRequest
+    # commit above (see client_write_side_effects.prepare_client_write_side_effects,
+    # scope "issue.create") — no separate post-create commit boundary here.
     return iss.issue_dict(issue)
 
 
