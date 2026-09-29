@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import Project, User, UserRole
 from app.services import project_assignment_service as assignment
@@ -46,6 +46,17 @@ async def assign_contractor(
 ):
     if user.role != UserRole.contractor:
         raise HTTPException(403, detail={"code": "contractor_only"})
+    # Доступ к объекту должен уже быть. Маршрут не проверял его вовсе, и любой
+    # исполнитель, зная только UUID, делал себя подрядчиком чужого объекта:
+    #
+    #     GET  /projects/{id}   403   — до
+    #     POST /projects/{id}/assign  200
+    #     GET  /projects/{id}   200   — после, вместе со сметой и бюджетом
+    #
+    # Клиент и так зовёт assign только после успешного чтения проекта
+    # (lib/sessionBootstrap.ts: «getProject already proved readable access»),
+    # то есть для законного пути ничего не меняется.
+    await require_project(db, project_id, user, write=False)
     result = await assignment.assign_contractor(
         db, project_id=project_id, contractor_id=user.id, actor_id=user.id,
     )

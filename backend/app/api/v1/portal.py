@@ -129,19 +129,30 @@ async def create_customer_portal_link(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """W122: magic link клиентского портала (Houzz/BT).
+    """W122: magic link клиентского портала.
 
-    Заказчик — для себя; исполнитель объекта — для customer_id (шаринг ЛК).
+    Только заказчик и только для себя.
+
+    Раньше ссылку мог выписать и исполнитель объекта — «шаринг ЛК», — но токен
+    при этом выписывался на `customer_id`, то есть исполнитель получал
+    учётные данные заказчика:
+
+        POST /projects/{id}/portal-link   от исполнителя
+        POST /auth/portal/session         → JWT, аутентифицирующий как заказчик
+        GET  /auth/me                     → роль и телефон заказчика
+        GET  /projects/{другой}           → 403 по X-User-Id, 200 по Bearer
+        POST /projects/{другой}/trash     → 200
+
+    Внутри объекта это позволяло исполнителю согласовывать собственные доп.
+    работы от имени заказчика. Выдача чужих учётных данных не может быть
+    возможностью «поделиться»: если исполнителю нужно показать объект третьему
+    лицу, для этого есть гостевой доступ `/viewers/{id}/portal-link`, который
+    read-only по построению.
     """
     proj = await require_project(db, project_id, user, write=True)
-    if user.id == proj.customer_id:
-        target_user_id = user.id
-    elif proj.contractor_id and user.id == proj.contractor_id:
-        if not proj.customer_id:
-            raise HTTPException(400, "no_customer_on_project")
-        target_user_id = proj.customer_id
-    else:
-        raise HTTPException(403, "portal_link_customer_or_contractor_only")
+    if user.id != proj.customer_id:
+        raise HTTPException(403, "portal_link_customer_only")
+    target_user_id = user.id
     scopes = ["read"]
     if body.allow_accept_stage:
         scopes.extend(["accept_stage", "sign_document"])
