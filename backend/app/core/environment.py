@@ -297,6 +297,7 @@ def collect_warnings(
     environment: str,
     database_url: str,
     secret_key: str,
+    forwarded_allow_ips: str | None = None,
     kontur_mode: str | None = None,
     kontur_api_key: str | None = None,
     yookassa_shop_id: str | None = None,
@@ -313,6 +314,19 @@ def collect_warnings(
     """Soft warnings for development/staging (do not fail startup)."""
     name = normalize_environment(environment)
     warnings: list[str] = []
+    if name in ("staging", "production"):
+        trusted = (forwarded_allow_ips or "").strip()
+        if not trusted:
+            warnings.append(
+                f"{name}: FORWARDED_ALLOW_IPS не задан — если API стоит за балансировщиком, "
+                "приложение видит его адрес вместо адреса клиента: лимит частоты станет общим "
+                "на всех, а белый список IP для вебхуков перестанет отличать провайдера"
+            )
+        elif trusted == "*":
+            warnings.append(
+                f"{name}: FORWARDED_ALLOW_IPS=* доверяет заголовку X-Forwarded-For от кого угодно — "
+                "адрес клиента можно подделать и обойти лимит частоты и белый список вебхуков"
+            )
     if name == "development":
         if _is_default_secret(secret_key):
             warnings.append("development: SECRET_KEY is default — OK for local only")

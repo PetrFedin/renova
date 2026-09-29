@@ -2,4 +2,9 @@
 set -eu
 ROLE_FILE="${RENOVA_RUNTIME_ROLE_FILE:-/tmp/renova-runtime-role}"
 printf '%s\n' api > "$ROLE_FILE"
-exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8100}"
+# Реальный адрес клиента виден, только если uvicorn доверяет заголовкам
+# пересылки от конкретного прокси. По нему считаются лимит частоты и белый
+# список IP для вебхуков — без настройки они видят адрес балансировщика,
+# то есть всех клиентов как одного. Значение по умолчанию прежнее.
+exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8100}" \
+  --proxy-headers --forwarded-allow-ips "${FORWARDED_ALLOW_IPS:-127.0.0.1}"

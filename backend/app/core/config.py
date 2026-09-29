@@ -79,6 +79,10 @@ class Settings(BaseSettings):
     log_json: bool = False
     cors_allowed_origins: str = ""
     rate_limit_rpm: int = 120
+    #: Кому из прокси доверять заголовок X-Forwarded-For. Пусто — никому, кроме
+    #: localhost: тогда за балансировщиком приложение видит его адрес, а не адрес
+    #: клиента. Читается uvicorn из того же окружения при запуске.
+    forwarded_allow_ips: str = ""
 
     twilio_sid: str | None = None
     twilio_token: str | None = None
