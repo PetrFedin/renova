@@ -60,27 +60,71 @@ async def export_pdf(project_id: str, user: User = Depends(get_current_user), db
     return pdf_response(pdf, f"estimate-{project_id[:8]}.pdf")
 
 
+#: Состояния этапа по-русски. В акте стояло сырое значение перечисления
+#: («Status: active»), хотя это документ для людей. Отдельная таблица, а не
+#: `DISPLAY_LABELS` из `stage_status_service`: там другой набор ключей —
+#: вычисляемые состояния карточки, а не значения `StageStatus`.
+STAGE_STATUS_LABEL: dict[str, str] = {
+    "planned": "запланирован",
+    "active": "в работе",
+    "review": "сдан на приёмку",
+    "done": "принят",
+}
+
+
 @router.get("/{project_id}/stages/{stage_id}/acceptance.pdf")
 async def export_acceptance(project_id: str, stage_id: str, checks: str | None = None, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from app.services import stage_service as st_svc
 
-    await require_project(db, project_id, user, write=False)
+    from app.services import workflow_service as wf
+
+    project = await require_project(db, project_id, user, write=False)
     stage = await st_svc.get_stage_full(db, stage_id)
     if not stage or stage.project_id != project_id:
         raise HTTPException(404)
+
+    accepted = stage.customer_accepted_at is not None
     pdf = new_pdf()
-    pdf_line(pdf, f"Priyomka: {stage.name}", size=14)
-    pdf_line(pdf, f"Status: {stage.status.value}")
-    pdf_line(pdf, f"Oplata: {stage.payment_amount:.0f} RUB")
-    if stage.customer_accepted_at:
-        pdf_line(pdf, f"Prinyato: {stage.customer_accepted_at.isoformat()[:10]}")
-    if checks:
-        pdf_line(pdf, "Checklist:", size=11)
-        for item in checks.split("|"):
-            pdf_line(pdf, f"[x] {item}")
-    pdf_line(pdf, "Photos:", size=11)
-    for photo in stage.photos[:10]:
-        pdf_line(pdf, f"- {photo.caption or 'photo'} ({photo.created_at.date()})")
+    pdf_line(pdf, "АКТ ПРИЁМКИ ЭТАПА" if accepted else "ЭТАП НЕ ПРИНЯТ", size=14)
+    if not accepted:
+        # Раньше этот же файл выдавался с галочками «выполнено» на этапе,
+        # который никто не принимал. Документ обязан называть своё состояние
+        # сам, иначе он выглядит подтверждением того, чего не было.
+        pdf_line(pdf, "Заказчик этап не принял. Документ не является актом приёмки")
+        pdf_line(pdf, "и ничего не подтверждает.")
+    pdf_line(pdf, "")
+
+    pdf_line(pdf, "ОБЪЕКТ", size=11)
+    pdf_line(pdf, project.name)
+    if project.address:
+        pdf_line(pdf, project.address)
+    pdf_line(pdf, "")
+
+    pdf_line(pdf, "ЭТАП", size=11)
+    pdf_line(pdf, stage.name)
+    pdf_line(pdf, f"Состояние: {STAGE_STATUS_LABEL.get(stage.status.value, stage.status.value)}")
+    pdf_line(pdf, f"Стоимость этапа: {stage.payment_amount:,.2f} руб.".replace(",", " "))
+    if accepted:
+        pdf_line(pdf, f"Принято: {stage.customer_accepted_at.isoformat()[:10]}")
+    pdf_line(pdf, "")
+
+    # Чек-лист берётся из самого этапа. Прежде он подставлялся из параметра
+    # адреса `?checks=…`, и в акт попадало что угодно — с отметкой
+    # «выполнено» напротив каждой строки.
+    items = wf.stage_checklist(stage)
+    if items:
+        pdf_line(pdf, "ЧЕК-ЛИСТ ЭТАПА", size=11)
+        for item in items:
+            mark = "[x]" if item.get("done") else "[ ]"
+            pdf_line(pdf, f"{mark} {item.get('text') or item.get('title') or ''}")
+        pdf_line(pdf, "")
+
+    pdf_line(pdf, "ФОТОГРАФИИ", size=11)
+    if stage.photos:
+        for photo in stage.photos[:10]:
+            pdf_line(pdf, f"- {photo.caption or 'без подписи'} ({photo.created_at.date()})")
+    else:
+        pdf_line(pdf, "не приложены")
     return pdf_response(pdf, f"acceptance-{stage_id[:8]}.pdf")
 
 
