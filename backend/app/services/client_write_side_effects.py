@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Iterable
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.entities import ChangeOrder, Expense, Payment, Project, ProjectIssue, Receipt
+from app.models.entities import ChangeOrder, Expense, Payment, Project, ProjectIssue, Receipt, SelectionItem
 from app.models.payment_evidence import PaymentEvidence
 from app.services import outbox_service as outbox
 
@@ -48,6 +48,13 @@ async def prepare_client_write_side_effects(db: AsyncSession, *, scope: str, pro
         if project.customer_id and project.customer_id != user_id:
             notification_row = await outbox.enqueue(db, aggregate_type="change_order", aggregate_id=order.id, event_type=outbox.PAYMENT_CREATED_EVENT, payload={"user_id": project.customer_id, "project_id": project_id, "notification_type": "change_order", "title": f"Согласуйте доп. работы: {order.title}", "body": f"{order.amount:.0f} ₽ · смета → Доп. работы", "link_path": "/(customer)/(tabs)/object?tab=estimate&estimateLayer=changes", "return_to": "/(customer)/(tabs)/"})
             effects.append(PreparedSideEffect(effect_type="notification", outbox_id=notification_row.id, match_key=project.customer_id))
+        return effects
+    if scope == "selection.create":
+        row = await db.get(SelectionItem, entity_id)
+        if not row:
+            return effects
+        activity_row = await outbox.enqueue(db, aggregate_type="selection", aggregate_id=row.id, event_type=outbox.ACTIVITY_EVENT, payload={"project_id": project_id, "user_id": user_id, "kind": "selection", "title": f"Подбор: {row.title}", "body": row.category, "room_id": row.room_id, "link_path": "/(customer)/(tabs)/repair?tab=selections"})
+        effects.append(PreparedSideEffect(effect_type="activity", outbox_id=activity_row.id))
         return effects
     if scope == "warranty_claim.create":
         issue = await db.get(ProjectIssue, entity_id)

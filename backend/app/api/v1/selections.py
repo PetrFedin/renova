@@ -11,10 +11,27 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import Project, Room, SelectionItem, SelectionStatus, User, UserRole
 from app.services import activity_service as act
+from app.services.client_write_idempotency import (
+    IdempotencyConflict,
+    commit_client_write,
+    replay_entity_id,
+)
 
 router = APIRouter(prefix="/projects", tags=["selections"])
 
 CATEGORIES = ("tile", "plumbing", "lighting", "doors", "kitchen", "paint", "other")
+
+SELECTION_CREATE_SCOPE = "selection.create"
+
+
+def _idempotency_http_error() -> HTTPException:
+    return HTTPException(
+        409,
+        detail={
+            "code": "idempotency_conflict",
+            "message": "Этот запрос уже использован с другими данными",
+        },
+    )
 
 
 async def _validate_room_id(db: AsyncSession, *, project_id: str, room_id: str | None) -> None:
@@ -44,6 +61,7 @@ class SelectionIn(BaseModel):
     shop_url: str | None = None
     shop_name: str | None = None
     notes: str | None = None
+    client_request_id: str | None = Field(default=None, min_length=8, max_length=80)
 
 
 class SelectionRejectIn(BaseModel):
@@ -118,6 +136,26 @@ async def create_selection(
     if body.category not in CATEGORIES:
         raise HTTPException(422, "invalid_category")
     await _validate_room_id(db, project_id=project_id, room_id=body.room_id)
+
+    payload = body.model_dump(exclude={"client_request_id"})
+    try:
+        replay_id = await replay_entity_id(
+            db,
+            scope=SELECTION_CREATE_SCOPE,
+            project_id=project_id,
+            user_id=user.id,
+            request_id=body.client_request_id,
+            payload=payload,
+        )
+    except IdempotencyConflict as exc:
+        raise _idempotency_http_error() from exc
+
+    if replay_id:
+        existing = await db.get(SelectionItem, replay_id)
+        if not existing or existing.project_id != project_id:
+            raise HTTPException(409, detail={"code": "idempotency_target_missing"})
+        return _out(existing)
+
     row = SelectionItem(
         project_id=project_id,
         room_id=body.room_id,
@@ -133,18 +171,36 @@ async def create_selection(
         status=SelectionStatus.draft,
     )
     db.add(row)
-    await db.commit()
+    await db.flush()
+    try:
+        created, entity_id = await commit_client_write(
+            db,
+            scope=SELECTION_CREATE_SCOPE,
+            project_id=project_id,
+            user_id=user.id,
+            request_id=body.client_request_id,
+            payload=payload,
+            entity_id=row.id,
+        )
+    except IdempotencyConflict as exc:
+        raise _idempotency_http_error() from exc
+
+    if not created:
+        existing = await db.get(SelectionItem, entity_id)
+        if not existing:
+            raise HTTPException(409, detail={"code": "idempotency_target_missing"})
+        return _out(existing)
+
     await db.refresh(row)
-    await act.log_event(
-        db,
-        project_id=project_id,
-        user_id=user.id,
-        kind="selection",
-        title=f"Подбор: {row.title}",
-        body=row.category,
-        room_id=row.room_id,
-        link_path="/(customer)/(tabs)/repair?tab=selections",
-    )
+    # The Design/selection activity event was already enqueued atomically with
+    # the SelectionItem + ClientWriteRequest commit above (see
+    # client_write_side_effects.prepare_client_write_side_effects, scope
+    # "selection.create") — no separate post-create commit boundary here.
+    from app.services.client_write_side_effects import clear_request_side_effect_context
+    from app.services.outbox_inline_dispatch import dispatch_best_effort
+
+    clear_request_side_effect_context()
+    await dispatch_best_effort(db, source=SELECTION_CREATE_SCOPE, limit=10)
     return _out(row)
 
 

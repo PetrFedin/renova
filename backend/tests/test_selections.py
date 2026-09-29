@@ -4,7 +4,10 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app.api.v1.selections import SelectionIn, approve_selection, create_selection, propose_selection
+from app.models.client_write_request import ClientWriteRequest
 from app.models.entities import (
+    ActivityEvent,
+    DomainOutbox,
     MaterialPick,
     Project,
     Room,
@@ -244,3 +247,110 @@ async def test_approve_succeeds_for_same_project_room(db):
 
     pick_count = (await db.execute(select(func.count()).select_from(MaterialPick))).scalar_one()
     assert pick_count == 1
+
+
+async def _seed_single_project(db, suffix: str):
+    contractor = User(id=f"contr-idem-{suffix}", phone=f"+7999777{suffix:0>4}", role=UserRole.contractor)
+    customer = User(id=f"cust-idem-{suffix}", phone=f"+7999888{suffix:0>4}", role=UserRole.customer)
+    db.add_all([contractor, customer])
+    project = Project(
+        id=f"proj-idem-{suffix}",
+        name="Idempotent selection create",
+        renovation_type="cosmetic",
+        customer_id=customer.id,
+        contractor_id=contractor.id,
+        budget_planned=100000,
+        budget_spent=0,
+    )
+    db.add(project)
+    await db.commit()
+    return contractor, customer, project
+
+
+@pytest.mark.asyncio
+async def test_create_selection_replays_same_request_id(db):
+    """Issue #415: a lost response after the first commit must replay into the
+    original SelectionItem instead of creating a duplicate."""
+    contractor, _customer, project = await _seed_single_project(db, "2001")
+
+    body = SelectionIn(
+        title="Плитка Kerama",
+        category="tile",
+        price=4500,
+        client_request_id="selection-create-idem-2001",
+    )
+    out = await create_selection(project.id, body, user=contractor, db=db)
+
+    assert (await db.execute(select(func.count()).select_from(SelectionItem))).scalar_one() == 1
+    assert (await db.execute(select(func.count()).select_from(ClientWriteRequest))).scalar_one() == 1
+    assert (await db.execute(select(func.count()).select_from(ActivityEvent))).scalar_one() == 1
+    assert (await db.execute(select(func.count()).select_from(DomainOutbox))).scalar_one() == 1
+
+    replay_body = SelectionIn(
+        title="Плитка Kerama",
+        category="tile",
+        price=4500,
+        client_request_id="selection-create-idem-2001",
+    )
+    replay_out = await create_selection(project.id, replay_body, user=contractor, db=db)
+
+    assert replay_out["id"] == out["id"]
+    assert (await db.execute(select(func.count()).select_from(SelectionItem))).scalar_one() == 1
+    assert (await db.execute(select(func.count()).select_from(ClientWriteRequest))).scalar_one() == 1
+    # No second activity event/outbox row must be created by the replay.
+    assert (await db.execute(select(func.count()).select_from(ActivityEvent))).scalar_one() == 1
+    assert (await db.execute(select(func.count()).select_from(DomainOutbox))).scalar_one() == 1
+
+
+@pytest.mark.asyncio
+async def test_create_selection_conflicting_payload_same_request_id_raises(db):
+    """Same request_id with a changed canonical payload must raise
+    IdempotencyConflict (surfaced as HTTP 409 idempotency_conflict), never
+    silently overwrite or duplicate."""
+    contractor, _customer, project = await _seed_single_project(db, "2002")
+
+    body = SelectionIn(
+        title="Плитка Kerama",
+        category="tile",
+        price=4500,
+        client_request_id="selection-create-conflict-2002",
+    )
+    await create_selection(project.id, body, user=contractor, db=db)
+
+    conflicting = SelectionIn(
+        title="Плитка Kerama",
+        category="tile",
+        price=9999,
+        client_request_id="selection-create-conflict-2002",
+    )
+    with pytest.raises(HTTPException) as excinfo:
+        await create_selection(project.id, conflicting, user=contractor, db=db)
+    assert excinfo.value.status_code == 409
+    assert excinfo.value.detail["code"] == "idempotency_conflict"
+
+    assert (await db.execute(select(func.count()).select_from(SelectionItem))).scalar_one() == 1
+
+
+@pytest.mark.asyncio
+async def test_create_selection_distinct_request_ids_stay_distinct(db):
+    """Distinct client_request_id values with byte-identical selection values
+    remain distinct user intents — never collapsed into one row."""
+    contractor, _customer, project = await _seed_single_project(db, "2003")
+
+    body_a = SelectionIn(
+        title="Плитка Kerama",
+        category="tile",
+        price=4500,
+        client_request_id="selection-create-distinct-2003-a",
+    )
+    body_b = SelectionIn(
+        title="Плитка Kerama",
+        category="tile",
+        price=4500,
+        client_request_id="selection-create-distinct-2003-b",
+    )
+    out_a = await create_selection(project.id, body_a, user=contractor, db=db)
+    out_b = await create_selection(project.id, body_b, user=contractor, db=db)
+
+    assert out_a["id"] != out_b["id"]
+    assert (await db.execute(select(func.count()).select_from(SelectionItem))).scalar_one() == 2

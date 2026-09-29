@@ -1,5 +1,6 @@
 /** P2.2: selections tracker API — W109 offline queue for field propose/approve */
 import { req, ApiError } from './client';
+import { createClientRequestId } from '@/lib/clientRequestId';
 
 export type SelectionItem = {
   id: string;
@@ -58,14 +59,19 @@ export const selectionsApi = {
     shop_url?: string | null;
     shop_name?: string | null;
     notes?: string | null;
-  }) =>
-    withOffline(
-      () => req<SelectionItem>(`/api/v1/projects/${projectId}/selections`, { method: 'POST', body: JSON.stringify(body) }, userId),
+  }) => {
+    // Same client_request_id and exact serialized body is sent on the first
+    // attempt and on every offline replay so a lost response cannot create a
+    // duplicate SelectionItem (#415, following the #316/#398 pattern).
+    const requestBody = JSON.stringify({ ...body, client_request_id: createClientRequestId('selection-create') });
+    return withOffline(
+      () => req<SelectionItem>(`/api/v1/projects/${projectId}/selections`, { method: 'POST', body: requestBody }, userId),
       `/api/v1/projects/${projectId}/selections`,
       'POST',
-      JSON.stringify(body),
+      requestBody,
       userId,
-    ),
+    );
+  },
   proposeSelection: (userId: string, projectId: string, id: string) =>
     withOffline(
       () => req<SelectionItem>(`/api/v1/projects/${projectId}/selections/${id}/propose`, { method: 'POST', body: '{}' }, userId),
