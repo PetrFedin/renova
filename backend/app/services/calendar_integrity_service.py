@@ -89,12 +89,18 @@ async def _locked_project(db: AsyncSession, project_id: str) -> Project | None:
     return (await db.execute(query)).scalar_one_or_none()
 
 
+# Колонки `calendar_items.start_at` и `end_at` объявлены как `DateTime` без
+# `timezone=True`, и в проекте принято хранить в них наивный UTC — см.
+# `app/core/timeutil.py`. Дата с часовым поясом уходила в запрос как есть, и
+# PostgreSQL отказывался её принимать: «can't subtract offset-naive and
+# offset-aware datetimes». На SQLite такая дата проходит, поэтому тесты молчали,
+# а синхронизация этапов в календарь падала только на боевой базе.
 def _stage_start(stage: Stage) -> datetime:
-    return datetime.combine(stage.planned_start, time(hour=9), tzinfo=timezone.utc)
+    return datetime.combine(stage.planned_start, time(hour=9))
 
 
 def _stage_end(stage: Stage) -> datetime:
-    return datetime.combine(stage.planned_end or stage.planned_start, time(hour=18), tzinfo=timezone.utc)
+    return datetime.combine(stage.planned_end or stage.planned_start, time(hour=18))
 
 
 def _same_value(current, desired) -> bool:
