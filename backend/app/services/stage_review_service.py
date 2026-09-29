@@ -305,7 +305,11 @@ def _append_rework_item(stage: Stage, reason: str) -> float:
     checklist.append(
         {
             "id": f"rework-{uuid.uuid4().hex[:16]}",
-            "title": f"Устранить замечание: {reason[:180]}",
+            # Ключ именно `text`: так называются все остальные пункты
+            # (см. workflow_templates.stage_checklist) и так их читает экран
+            # этапа. С ключом `title` пункт приходил, но рисовался пустой
+            # строкой — исполнитель видел, что что-то добавилось, и не знал что.
+            "text": f"Устранить замечание: {reason[:180]}",
             "done": False,
         }
     )
