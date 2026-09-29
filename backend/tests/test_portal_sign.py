@@ -46,6 +46,9 @@ async def test_portal_sign_draft_document():
                 created_by=cust["id"],
                 title="Доп. работы: тест",
                 document_type=DocumentType.contract.value,
+                # Договор без содержания подписывать нельзя — см.
+                # test_contract_is_not_a_blank_page.
+                href=f"/api/v1/projects/{pid}/contract.pdf",
             )
             doc.status = DocumentStatus.draft.value
             await db.commit()

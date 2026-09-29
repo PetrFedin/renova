@@ -23,6 +23,10 @@ async def test_sign_in_app_via_registry(db):
         created_by="u1",
         title="Договор",
         document_type="contract",
+        # Договор без содержания подписывать нельзя (см.
+        # test_contract_is_not_a_blank_page): в бою ссылка проставляется
+        # автоматически при фиксации сметы.
+        href="/api/v1/projects/p1/contract.pdf",
     )
     signature = await sign_document(
         db,
@@ -43,6 +47,7 @@ async def test_sign_kontur_unavailable(db):
         created_by="u1",
         title="Договор 2",
         document_type="contract",
+        href="/api/v1/projects/p1/contract.pdf",
     )
     with pytest.raises(ValueError, match="provider_unavailable:kontur"):
         await sign_document(
