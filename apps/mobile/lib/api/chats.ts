@@ -40,7 +40,9 @@ export const chatsApi = {
   chatInbox: (userId: string) => req<ChatThread[]>(`/api/v1/chats/inbox`, {}, userId),
   chatUnreadTotal: (userId: string) => req<{ count: number }>(`/api/v1/chats/unread-total`, {}, userId),
   createChat: async (userId: string, projectId: string, title: string, topic?: string) => {
-    const body = JSON.stringify({ title, topic });
+    // Same client_request_id is sent on the first attempt and on every offline
+    // replay so a lost response cannot create a second ChatThread (#390).
+    const body = JSON.stringify({ title, topic, client_request_id: newChatClientRequestId() });
     try {
       return await req<ChatThread>(`/api/v1/projects/${projectId}/chats`, { method: 'POST', body }, userId);
     } catch (e) {

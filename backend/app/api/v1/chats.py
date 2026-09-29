@@ -91,6 +91,9 @@ async def _chat_capabilities(
 class ThreadCreate(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     topic: str | None = None
+    # Offline queue replay identity (apps/mobile/lib/offlineQueue.ts).
+    # Same id + same {title, topic} -> the original ChatThread is returned.
+    client_request_id: str | None = Field(default=None, max_length=128)
 
 
 class ThreadState(BaseModel):
@@ -150,7 +153,17 @@ async def list_chats(project_id: str, archived: bool = False, user: User = Depen
 @router.post("/{project_id}/chats")
 async def create_chat(project_id: str, body: ThreadCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=True)
-    t = await chat_svc.create_thread(db, project_id, user.id, body.title, body.topic)
+    try:
+        t = await chat_svc.create_thread(
+            db,
+            project_id,
+            user.id,
+            body.title,
+            body.topic,
+            client_request_id=body.client_request_id,
+        )
+    except IdempotencyConflict as exc:
+        raise HTTPException(409, detail={"code": "idempotency_conflict"}) from exc
     return chat_svc.thread_dict(t)
 
 

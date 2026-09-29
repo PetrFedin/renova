@@ -192,26 +192,81 @@ async def list_inbox(db: AsyncSession, user_id: str, project_ids: list[tuple[str
     return inbox
 
 
-async def create_thread(db: AsyncSession, project_id: str, user_id: str, title: str, topic: str | None) -> ChatThread:
+CHAT_THREAD_CREATE_SCOPE = "chat_thread.create"
+
+
+async def _load_thread(db: AsyncSession, thread_id: str) -> ChatThread:
+    t = await db.get(ChatThread, thread_id)
+    if t is None:
+        raise RuntimeError("chat_thread_idempotency_ledger_corrupt")
+    return t
+
+
+async def create_thread(
+    db: AsyncSession,
+    project_id: str,
+    user_id: str,
+    title: str,
+    topic: str | None,
+    *,
+    client_request_id: str | None = None,
+) -> ChatThread:
+    """Create exactly one chat thread per client_request_id.
+
+    A lost response after the first commit must replay into the original
+    thread, not a duplicate or a title-matched sibling thread — two
+    legitimate threads can share a title (#390). Same key with a different
+    {title, topic} canonical payload raises IdempotencyConflict instead of
+    silently reusing an unrelated thread.
+    """
+    from app.services.client_write_idempotency import commit_client_write, replay_entity_id
+
     clean_title = " ".join((title or "").strip().split())
     if not clean_title:
         raise ValueError("empty_title")
-    existing = await find_thread_by_title(db, project_id, clean_title)
-    if existing:
-        return existing
-    t = ChatThread(project_id=project_id, title=clean_title, topic=topic, created_by=user_id)
-    db.add(t)
-    await db.flush()
-    db.add(
-        ChatMessage(
-            thread_id=t.id,
+
+    payload = {"title": clean_title, "topic": topic}
+    try:
+        replay_id = await replay_entity_id(
+            db,
+            scope=CHAT_THREAD_CREATE_SCOPE,
+            project_id=project_id,
             user_id=user_id,
-            author_role="system",
-            message_type=ChatMessageType.system,
-            text=f"Чат «{clean_title}» создан",
+            request_id=client_request_id,
+            payload=payload,
         )
-    )
-    await db.commit()
+        if replay_id:
+            return await _load_thread(db, replay_id)
+
+        t = ChatThread(project_id=project_id, title=clean_title, topic=topic, created_by=user_id)
+        db.add(t)
+        await db.flush()
+        db.add(
+            ChatMessage(
+                thread_id=t.id,
+                user_id=user_id,
+                author_role="system",
+                message_type=ChatMessageType.system,
+                text=f"Чат «{clean_title}» создан",
+            )
+        )
+        await db.flush()
+        created, entity_id = await commit_client_write(
+            db,
+            scope=CHAT_THREAD_CREATE_SCOPE,
+            project_id=project_id,
+            user_id=user_id,
+            request_id=client_request_id,
+            payload=payload,
+            entity_id=t.id,
+        )
+    except BaseException:
+        await db.rollback()
+        raise
+
+    if not created:
+        return await _load_thread(db, entity_id)
+
     await db.refresh(t)
     return t
 
