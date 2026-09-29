@@ -100,6 +100,13 @@ async def assign_contractor(
         await participant_service.sync_current_lead_in_transaction(
             db, project=project, contractor_id=contractor_id, actor_id=actor_id,
         )
+        # Появился исполнитель — значит, нужен договор. Без него объект
+        # попадал в тупик: работы заблокированы, а подписывать нечего.
+        from app.services import project_document_service as documents
+
+        await documents.ensure_contract_draft(
+            db, project_id=project_id, created_by=project.customer_id,
+        )
         await db.commit()
     except BaseException:
         await db.rollback()
