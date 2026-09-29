@@ -1,6 +1,7 @@
 /** API: floor */
 import { req, cachedGet, API_BASE, ApiError } from './client';
 import type { FloorPlan, FurnitureItem, WasteOrder } from './types';
+import { createClientRequestId } from '@/lib/clientRequestId';
 export const floorApi = {
   listFloorPlans: (userId: string, projectId: string) => req<FloorPlan[]>(`/api/v1/projects/${projectId}/floor-plans`, {}, userId),
   createFloorPlan: (userId: string, projectId: string, body: object) => req<FloorPlan>(`/api/v1/projects/${projectId}/floor-plans`, { method: 'POST', body: JSON.stringify(body) }, userId),
@@ -31,19 +32,26 @@ export const floorApi = {
   },
   listWasteOrders: (userId: string, projectId: string) => req<WasteOrder[]>(`/api/v1/projects/${projectId}/waste-orders`, {}, userId),
   createWasteOrder: async (userId: string, projectId: string, body: object) => {
+    // #470: mint the client_request_id once, before the first send, and
+    // reuse the exact same serialized body on every offline-queue replay so
+    // a lost response after a server commit cannot replay as a second
+    // WasteOrder. 429 is an explicit "retry later" from a server that has
+    // not committed, so it is replay-safe and queues like transport/5xx;
+    // any other 4xx is authoritative and must surface to the caller.
+    const requestBody = JSON.stringify({ ...body, client_request_id: createClientRequestId('waste-order') });
     try {
       return await req<WasteOrder>(
         `/api/v1/projects/${projectId}/waste-orders`,
-        { method: 'POST', body: JSON.stringify(body) },
+        { method: 'POST', body: requestBody },
         userId,
       );
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 429) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/waste-orders`,
         method: 'POST',
-        body: JSON.stringify(body),
+        body: requestBody,
         userId,
       });
       throw new Error('offline_queued');

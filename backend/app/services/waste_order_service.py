@@ -1,12 +1,16 @@
 """Waste-order lifecycle with role, state and durable side-effect integrity."""
 from __future__ import annotations
 
+from datetime import date as date_type
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import Project, User, WasteOrder, WasteOrderStatus
+from app.models.entities import Project, Room, User, WasteOrder, WasteOrderStatus
 from app.services import outbox_service as outbox
 from app.services import team_service
+
+WASTE_ORDER_CREATE_SCOPE = "waste_order.create"
 
 _ALLOWED: dict[WasteOrderStatus, set[WasteOrderStatus]] = {
     WasteOrderStatus.draft: {WasteOrderStatus.requested},
@@ -49,6 +53,39 @@ def validate_transition(
             raise ValueError("waste_order_actor_forbidden")
         return
     raise ValueError("waste_order_actor_forbidden")
+
+
+async def _reload_project(
+    db: AsyncSession,
+    project_id: str,
+    *,
+    lock: bool = True,
+) -> Project:
+    """Fetch the authoritative Project row, bypassing the session identity map.
+
+    A caller (the route handler) fetches `Project` via `require_project()`
+    before this service acquires any row lock. If that lock is granted only
+    after a wait, a concurrent commit — most importantly a `contractor_id`/
+    `customer_id` reassignment — may have landed in between. Using the
+    caller's now-stale in-memory `Project` for authority decisions lets a
+    revoked assignment ride through on the old identity (#470). Re-fetching
+    with `populate_existing=True` forces the ORM to refresh attributes from
+    the database instead of returning the cached instance.
+    """
+    query = (
+        select(Project)
+        .where(Project.id == project_id)
+        .execution_options(populate_existing=True)
+    )
+    if lock:
+        try:
+            query = query.with_for_update()
+        except Exception:
+            pass
+    fresh = (await db.execute(query)).scalar_one_or_none()
+    if fresh is None or getattr(fresh, "trashed_at", None):
+        raise ValueError("waste_order_project_authority_stale")
+    return fresh
 
 
 def _activity_copy(
@@ -158,6 +195,109 @@ async def _prepare_effects(
         )
 
 
+async def create_order(
+    db: AsyncSession,
+    *,
+    project: Project,
+    actor: User,
+    room_id: str | None,
+    volume_m3: float,
+    waste_type: str,
+    scheduled_date: date_type | None,
+    price: float,
+    notes: str | None,
+    client_request_id: str | None,
+) -> tuple[WasteOrder, bool]:
+    """Create exactly one WasteOrder per client_request_id (#470).
+
+    A lost response after the first commit must replay into the original
+    order, not a second one. Same key with a changed canonical payload raises
+    IdempotencyConflict instead of silently reinterpreting the earlier
+    intent. `room_id` is validated against the URL project before anything is
+    written so a room from another project can never be attached here.
+    """
+    from app.services.client_write_idempotency import commit_client_write, replay_entity_id
+
+    try:
+        fresh_project = await _reload_project(db, project.id)
+        if not await team_service.can_access_project(db, actor, fresh_project, write=True):
+            raise ValueError("waste_order_project_authority_stale")
+        if room_id is not None:
+            room_ok = await db.scalar(
+                select(Room.id).where(
+                    Room.id == room_id,
+                    Room.project_id == fresh_project.id,
+                )
+            )
+            if room_ok is None:
+                raise ValueError("waste_order_room_invalid")
+    except BaseException:
+        await db.rollback()
+        raise
+
+    payload = {
+        "room_id": room_id,
+        "volume_m3": volume_m3,
+        "waste_type": waste_type,
+        "scheduled_date": scheduled_date.isoformat() if scheduled_date else None,
+        "price": price,
+        "notes": notes,
+    }
+
+    # Same client_request_id and exact serialized body arrive on the first
+    # attempt and on every mobile offline-queue replay, so a same-key/
+    # same-payload replay must resolve to the original order.
+    replay_id = await replay_entity_id(
+        db,
+        scope=WASTE_ORDER_CREATE_SCOPE,
+        project_id=fresh_project.id,
+        user_id=actor.id,
+        request_id=client_request_id,
+        payload=payload,
+    )
+    if replay_id:
+        existing = await db.get(WasteOrder, replay_id)
+        if not existing or existing.project_id != fresh_project.id:
+            raise ValueError("idempotency_entity_missing")
+        return existing, True
+
+    order = WasteOrder(
+        project_id=fresh_project.id,
+        room_id=room_id,
+        volume_m3=volume_m3,
+        waste_type=waste_type,
+        scheduled_date=scheduled_date,
+        price=price,
+        notes=notes,
+    )
+    db.add(order)
+    try:
+        await db.flush()
+        # Commits the WasteOrder and the request ledger atomically so a lost
+        # response can never replay this into a second WasteOrder.
+        created, entity_id = await commit_client_write(
+            db,
+            scope=WASTE_ORDER_CREATE_SCOPE,
+            project_id=fresh_project.id,
+            user_id=actor.id,
+            request_id=client_request_id,
+            payload=payload,
+            entity_id=order.id,
+        )
+    except BaseException:
+        await db.rollback()
+        raise
+
+    if not created:
+        existing = await db.get(WasteOrder, entity_id)
+        if not existing:
+            raise ValueError("idempotency_entity_missing")
+        return existing, True
+
+    await db.refresh(order)
+    return order, False
+
+
 async def transition_order(
     db: AsyncSession,
     *,
@@ -178,6 +318,13 @@ async def transition_order(
     order = (await db.execute(query)).scalar_one_or_none()
     if not order:
         return None, False
+
+    # #470: `project` may have been fetched by the route before this
+    # WasteOrder row lock was granted. Reload it now so contractor_id/
+    # customer_id assignment semantics below reflect what is actually
+    # committed at the moment authority is evaluated, not whatever they were
+    # when the request first arrived.
+    project = await _reload_project(db, project.id, lock=False)
 
     current = WasteOrderStatus(_status_value(order.status))
     if current == target:

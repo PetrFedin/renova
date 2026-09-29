@@ -9,6 +9,7 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import User, WasteOrder, WasteOrderStatus
 from app.services import waste_order_service as waste_svc
+from app.services.client_write_idempotency import IdempotencyConflict
 
 router = APIRouter(prefix="/projects", tags=["waste"])
 
@@ -20,6 +21,10 @@ class WasteIn(BaseModel):
     scheduled_date: date | None = None
     price: float = Field(default=0, ge=0)
     notes: str | None = None
+    # #470: same key and exact serialized body arrive on first send and every
+    # offline-queue replay so a lost response can never replay into a
+    # second WasteOrder.
+    client_request_id: str | None = Field(default=None, max_length=80)
 
 
 def _out(waste_order: WasteOrder, *, replayed: bool | None = None) -> dict:
@@ -74,12 +79,48 @@ async def create_waste(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_project(db, project_id, user, write=True)
-    order = WasteOrder(project_id=project_id, **body.model_dump())
-    db.add(order)
-    await db.commit()
-    await db.refresh(order)
-    return _out(order)
+    project = await require_project(db, project_id, user, write=True)
+    try:
+        order, replayed = await waste_svc.create_order(
+            db,
+            project=project,
+            actor=user,
+            room_id=body.room_id,
+            volume_m3=body.volume_m3,
+            waste_type=body.waste_type,
+            scheduled_date=body.scheduled_date,
+            price=body.price,
+            notes=body.notes,
+            client_request_id=body.client_request_id,
+        )
+    except IdempotencyConflict as error:
+        raise HTTPException(
+            409,
+            detail={
+                "code": "idempotency_conflict",
+                "message": "Повтор запроса с другими данными.",
+            },
+        ) from error
+    except ValueError as error:
+        code = str(error)
+        if code == "waste_order_room_invalid":
+            raise HTTPException(
+                422,
+                detail={
+                    "code": code,
+                    "message": "Комната принадлежит другому проекту.",
+                },
+            ) from error
+        if code == "waste_order_project_authority_stale":
+            raise HTTPException(
+                403,
+                detail={
+                    "code": code,
+                    "message": "Доступ к проекту изменился, повторите запрос.",
+                },
+            ) from error
+        raise
+    return _out(order, replayed=replayed)
 
 
 async def _transition(
@@ -107,6 +148,14 @@ async def _transition(
                 detail={
                     "code": code,
                     "message": "Этот переход недоступен для вашей роли.",
+                },
+            ) from error
+        if code == "waste_order_project_authority_stale":
+            raise HTTPException(
+                403,
+                detail={
+                    "code": code,
+                    "message": "Доступ к проекту изменился, повторите запрос.",
                 },
             ) from error
         if code.startswith("invalid_waste_order_transition:"):
