@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.services import budget_forecast as bf
 from app.models.entities import (
     MaterialPick,
     MaterialPickStatus,
@@ -38,20 +39,34 @@ async def compute_project_risks(db: AsyncSession, project: Project) -> list[dict
     planned = project.budget_planned or 0
     spent = project.budget_spent or 0
     if planned > 0:
-        forecast = spent + (planned - spent) * max(0, (100 - progress) / max(progress, 1)) if progress < 100 else spent
-        overrun = forecast - planned
+        # The spend extrapolated over the work done, or None while there is not
+        # enough of either to extend. The previous formula scaled the *unspent*
+        # budget by work-left over work-done, so at zero spend the answer did
+        # not depend on spending at all and below 1% of progress the multiplier
+        # reached ninety-nine: "+18 754 332 ₽ к смете" against a 194 437 ₽
+        # estimate.
+        forecast = bf.forecast_total(spent, progress)
+        overrun = bf.forecast_overrun(forecast, planned)
+
+        # This risk is about the *pace of spending*, which is observable
+        # without any forecast, so it stays whether or not one can be given.
         if spent >= planned * 0.9 and progress < 85:
+            pace_impact = (
+                f"Прогноз перерасхода {round(overrun)} ₽"
+                if overrun
+                else "Прогноз появится, когда работ будет выполнено больше"
+            )
             risks.append({
                 "id": _rid("budget", "pace"),
                 "kind": "budget",
                 "severity": "high",
                 "title": "Бюджет опережает прогресс",
                 "cause": f"Потрачено {round(spent/planned*100)}%, выполнено {round(progress)}%",
-                "impact": f"Прогноз перерасхода {round(max(0, overrun))} ₽",
+                "impact": pace_impact,
                 "action": "Проверьте смету и расходы по комнатам",
                 "href": "/(customer)/(tabs)/budget",
             })
-        elif overrun > planned * 0.05:
+        elif overrun is not None and overrun > planned * 0.05:
             risks.append({
                 "id": _rid("budget", "forecast"),
                 "kind": "budget",
