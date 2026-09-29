@@ -85,6 +85,35 @@ async def patch_expense(
     }
 
 
+@router.post("/{expense_id}/restore")
+async def restore_expense(
+    project_id: str,
+    expense_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Вернуть снятый с учёта расход в бюджет."""
+    await require_project(db, project_id, user, write=True)
+    try:
+        mutation = await integrity.restore_expense(
+            db,
+            project_id=project_id,
+            expense_id=expense_id,
+            actor_id=user.id,
+        )
+    except ValueError as error:
+        await db.rollback()
+        raise _expense_error(error) from error
+    if not mutation:
+        raise HTTPException(404, detail={"code": "expense_not_found", "message": "Расход не найден"})
+    return {
+        "ok": True,
+        "expense_id": mutation.expense.id,
+        "status": mutation.expense.status,
+        "replayed": mutation.replayed,
+    }
+
+
 @router.delete("/{expense_id}")
 async def delete_expense(
     project_id: str,

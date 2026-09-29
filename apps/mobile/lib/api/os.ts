@@ -33,6 +33,12 @@ export const osApi = {
     try { return await req<void>(`/api/v1/projects/${projectId}/os/expenses/${expenseId}`, { method: 'DELETE' }, userId); }
     catch (e) { if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e; const { enqueue } = await import('@/lib/offlineQueue'); await enqueue({ path: `/api/v1/projects/${projectId}/os/expenses/${expenseId}`, method: 'DELETE', body: '{}', userId }); throw new Error('offline_queued'); }
   },
+  /** Вернуть снятый с учёта расход в бюджет. */
+  restoreOsExpense: async (userId: string, projectId: string, expenseId: string) => {
+    const path = `/api/v1/projects/${projectId}/os/expenses/${expenseId}/restore`;
+    try { return await req<{ ok: boolean; status: string }>(path, { method: 'POST' }, userId); }
+    catch (e) { if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e; const { enqueue } = await import('@/lib/offlineQueue'); await enqueue({ path, method: 'POST', body: '{}', userId }); throw new Error('offline_queued'); }
+  },
   patchOsExpense: async (userId: string, projectId: string, expenseId: string, body: { amount?: number; title?: string; category?: string; room_id?: string | null; stage_id?: string | null }) => {
     const serialized = JSON.stringify(body);
     try { return await req<import('./types').OsExpense>(`/api/v1/projects/${projectId}/os/expenses/${expenseId}`, { method: 'PATCH', body: serialized }, userId); }
