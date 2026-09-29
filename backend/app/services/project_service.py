@@ -499,10 +499,48 @@ async def restore_project(db: AsyncSession, project_id: str, user: User) -> Proj
     return p
 
 
+async def _legal_held_project_ids(db: AsyncSession, project_ids: list[str]) -> set[str]:
+    """Issue #319 follow-up: project_documents.project_id is intentionally NOT
+    cascaded at the DB level (see w24projectpurgecascade01) because
+    ProjectDocument.legal_hold / retention_until is an application-level
+    compliance gate (project_document_service.soft_delete_document raises
+    legal_hold_blocks_delete) that a DB-level CASCADE would silently bypass.
+    Purge must honor the same gate at the project level."""
+    if not project_ids:
+        return set()
+    from app.models.project_documents import ProjectDocument
+
+    rows = (
+        await db.execute(
+            select(ProjectDocument.project_id)
+            .where(ProjectDocument.project_id.in_(project_ids), ProjectDocument.legal_hold.is_(True))
+            .distinct()
+        )
+    ).scalars().all()
+    return set(rows)
+
+
+async def _delete_purgeable_project_documents(db: AsyncSession, project_ids: list[str]) -> None:
+    """Delete project_documents (and, via ON DELETE CASCADE, their versions
+    and signatures) for projects already confirmed to hold no legal_hold
+    documents. Must run before the project row itself is deleted, since
+    project_documents.project_id has no DB-level cascade."""
+    if not project_ids:
+        return
+    from sqlalchemy import delete as sa_delete
+
+    from app.models.project_documents import ProjectDocument
+
+    await db.execute(sa_delete(ProjectDocument).where(ProjectDocument.project_id.in_(project_ids)))
+
+
 async def purge_project(db: AsyncSession, project_id: str, user: User) -> None:
     p = await _assert_customer_owner(db, project_id, user)
     if not p.trashed_at:
         raise ValueError("not_trashed")
+    if await _legal_held_project_ids(db, [project_id]):
+        raise ValueError("legal_hold_blocks_purge")
+    await _delete_purgeable_project_documents(db, [project_id])
     await db.delete(p)
     await db.commit()
 
@@ -518,9 +556,28 @@ async def empty_trash(db: AsyncSession, user: User) -> int:
     if user.role.value != "customer":
         return 0
     from sqlalchemy import delete
-    r = await db.execute(
-        delete(Project).where(Project.customer_id == user.id, Project.trashed_at.isnot(None))
+
+    trashed_ids = list(
+        (
+            await db.execute(
+                select(Project.id).where(Project.customer_id == user.id, Project.trashed_at.isnot(None))
+            )
+        ).scalars().all()
     )
+    if not trashed_ids:
+        return 0
+
+    # Issue #319 follow-up: projects with legal-held documents are silently
+    # skipped rather than purged — empty_trash is a best-effort bulk sweep
+    # with no per-project error channel back to the caller (see
+    # api/v1/projects.empty_trash, which only returns {"deleted": n}).
+    held = await _legal_held_project_ids(db, trashed_ids)
+    purgeable_ids = [pid for pid in trashed_ids if pid not in held]
+    if not purgeable_ids:
+        return 0
+
+    await _delete_purgeable_project_documents(db, purgeable_ids)
+    r = await db.execute(delete(Project).where(Project.id.in_(purgeable_ids)))
     await db.commit()
     return r.rowcount or 0
 

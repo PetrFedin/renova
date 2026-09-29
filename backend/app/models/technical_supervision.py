@@ -35,7 +35,7 @@ class ProjectTechnicalSupervisorAssignment(Base):
         String(36), ForeignKey("users.id"), nullable=True
     )
     supersedes_assignment_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("project_technical_supervisor_assignments.id"), nullable=True
+        String(36), ForeignKey("project_technical_supervisor_assignments.id", ondelete="SET NULL"), nullable=True
     )
 
     __table_args__ = (

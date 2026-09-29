@@ -118,8 +118,8 @@ class Room(Base):
     __tablename__ = "rooms"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"))
-    floor_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("property_floors.id"), nullable=True, index=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"))
+    floor_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("property_floors.id", ondelete="SET NULL"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(100))
     room_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     floor_level: Mapped[int] = mapped_column(Integer, default=1)
@@ -141,8 +141,8 @@ class EstimateLine(Base):
     __tablename__ = "estimate_lines"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"))
-    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"))
+    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id", ondelete="SET NULL"), nullable=True)
     line_type: Mapped[LineType] = mapped_column(Enum(LineType))
     name: Mapped[str] = mapped_column(String(255))
     unit: Mapped[str] = mapped_column(String(16))
@@ -161,7 +161,7 @@ class Stage(Base):
     __tablename__ = "stages"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"))
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(255))
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[StageStatus] = mapped_column(Enum(StageStatus), default=StageStatus.planned)
@@ -178,7 +178,7 @@ class Stage(Base):
     ical_uid: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     rework_deadline: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     work_type: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
-    depends_on_stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id"), nullable=True)
+    depends_on_stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id", ondelete="SET NULL"), nullable=True)
     room_ids_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     checklist_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     assignee_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True, index=True)
@@ -194,7 +194,7 @@ class StageComment(Base):
     __tablename__ = "stage_comments"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    stage_id: Mapped[str] = mapped_column(String(36), ForeignKey("stages.id"))
+    stage_id: Mapped[str] = mapped_column(String(36), ForeignKey("stages.id", ondelete="CASCADE"))
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
     author_role: Mapped[str] = mapped_column(String(16))
     text: Mapped[str] = mapped_column(Text)
@@ -207,7 +207,7 @@ class StagePhoto(Base):
     __tablename__ = "stage_photos"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    stage_id: Mapped[str] = mapped_column(String(36), ForeignKey("stages.id"))
+    stage_id: Mapped[str] = mapped_column(String(36), ForeignKey("stages.id", ondelete="CASCADE"))
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
     caption: Mapped[str | None] = mapped_column(String(255), nullable=True)
     storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
@@ -222,8 +222,8 @@ class Payment(Base):
     __tablename__ = "payments"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"))
-    stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id"), nullable=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"))
+    stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id", ondelete="SET NULL"), nullable=True)
     payment_type: Mapped[PaymentType] = mapped_column(Enum(PaymentType))
     status: Mapped[PaymentStatus] = mapped_column(Enum(PaymentStatus), default=PaymentStatus.pending)
     title: Mapped[str] = mapped_column(String(255))
@@ -243,7 +243,7 @@ class ChangeOrder(Base):
     __tablename__ = "change_orders"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"))
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"))
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     amount: Mapped[float] = mapped_column(Float)
@@ -258,7 +258,7 @@ class Receipt(Base):
     __tablename__ = "receipts"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"))
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"))
     amount: Mapped[float] = mapped_column(Float)
     qr_raw: Mapped[str | None] = mapped_column(Text, nullable=True)
     fn: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -269,7 +269,7 @@ class Receipt(Base):
     expense_category: Mapped[str] = mapped_column(String(32), default="materials")
     room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True)
     stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id"), nullable=True)
-    payment_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("payments.id"), nullable=True)
+    payment_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("payments.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     project: Mapped["Project"] = relationship(back_populates="receipts")
@@ -280,7 +280,7 @@ class ProjectViewer(Base):
     __table_args__ = (UniqueConstraint("project_id", "user_id", name="uq_project_viewer"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
@@ -326,8 +326,8 @@ class RoomChangeRequest(Base):
     __tablename__ = "room_change_requests"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"))
-    room_id: Mapped[str] = mapped_column(String(36), ForeignKey("rooms.id"))
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"))
+    room_id: Mapped[str] = mapped_column(String(36), ForeignKey("rooms.id", ondelete="CASCADE"))
     requested_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
     status: Mapped[RoomChangeStatus] = mapped_column(Enum(RoomChangeStatus), default=RoomChangeStatus.pending)
     message: Mapped[str] = mapped_column(Text)
@@ -342,7 +342,7 @@ class ChatThread(Base):
     __tablename__ = "chat_threads"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"))
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"))
     title: Mapped[str] = mapped_column(String(255))
     topic: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
@@ -357,7 +357,7 @@ class ChatMessage(Base):
     __tablename__ = "chat_messages"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    thread_id: Mapped[str] = mapped_column(String(36), ForeignKey("chat_threads.id"))
+    thread_id: Mapped[str] = mapped_column(String(36), ForeignKey("chat_threads.id", ondelete="CASCADE"))
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
     author_role: Mapped[str] = mapped_column(String(16))
     message_type: Mapped[ChatMessageType] = mapped_column(Enum(ChatMessageType), default=ChatMessageType.text)
@@ -366,7 +366,7 @@ class ChatMessage(Base):
     image_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     confirmed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     is_pinned: Mapped[bool] = mapped_column(Boolean, default=False)
-    reply_to_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("chat_messages.id"), nullable=True)
+    reply_to_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("chat_messages.id", ondelete="SET NULL"), nullable=True)
     meta_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
@@ -378,7 +378,7 @@ class AppNotification(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
-    project_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("projects.id"), nullable=True)
+    project_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True)
     notification_type: Mapped[NotificationType] = mapped_column(Enum(NotificationType))
     title: Mapped[str] = mapped_column(String(255))
     body: Mapped[str] = mapped_column(Text)
@@ -431,7 +431,7 @@ class ChatThreadRead(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
-    thread_id: Mapped[str] = mapped_column(String(36), ForeignKey("chat_threads.id"), index=True)
+    thread_id: Mapped[str] = mapped_column(String(36), ForeignKey("chat_threads.id", ondelete="CASCADE"), index=True)
     last_read_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     is_pinned: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -444,7 +444,7 @@ class ChatThreadParticipant(Base):
     __tablename__ = "chat_thread_participants"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    thread_id: Mapped[str] = mapped_column(String(36), ForeignKey("chat_threads.id"), index=True)
+    thread_id: Mapped[str] = mapped_column(String(36), ForeignKey("chat_threads.id", ondelete="CASCADE"), index=True)
     user_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True, index=True)
     phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     profile_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
@@ -516,7 +516,7 @@ class BudgetAlertSent(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
-    room_id: Mapped[str] = mapped_column(String(36), ForeignKey("rooms.id"), index=True)
+    room_id: Mapped[str] = mapped_column(String(36), ForeignKey("rooms.id", ondelete="CASCADE"), index=True)
     sent_date: Mapped[str] = mapped_column(String(10))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
@@ -538,7 +538,7 @@ class CommentReaction(Base):
     __table_args__ = (UniqueConstraint("comment_id", "user_id", name="uq_comment_react"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    comment_id: Mapped[str] = mapped_column(String(36), ForeignKey("stage_comments.id"), index=True)
+    comment_id: Mapped[str] = mapped_column(String(36), ForeignKey("stage_comments.id", ondelete="CASCADE"), index=True)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
     reaction: Mapped[str] = mapped_column(String(8))
 
@@ -547,7 +547,7 @@ class RoomChangeLog(Base):
     __tablename__ = "room_change_logs"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    room_id: Mapped[str] = mapped_column(String(36), ForeignKey("rooms.id"), index=True)
+    room_id: Mapped[str] = mapped_column(String(36), ForeignKey("rooms.id", ondelete="CASCADE"), index=True)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
     field_name: Mapped[str] = mapped_column(String(64))
     old_value: Mapped[str] = mapped_column(String(255))
@@ -559,7 +559,7 @@ class MarginSnapshot(Base):
     __tablename__ = "margin_snapshots"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
     margin_estimated: Mapped[float] = mapped_column(Float, default=0)
     recorded_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
 
@@ -568,7 +568,7 @@ class ProjectChecklistTemplate(Base):
     __tablename__ = "project_checklist_templates"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(64))
     items_json: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
@@ -591,7 +591,7 @@ class Supplier(Base):
     __tablename__ = "suppliers"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(128))
     category: Mapped[str | None] = mapped_column(String(32), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -603,8 +603,8 @@ class Purchase(Base):
     __tablename__ = "purchases"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
-    supplier_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("suppliers.id"), nullable=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    supplier_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("suppliers.id", ondelete="SET NULL"), nullable=True)
     supplier_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     status: Mapped[PurchaseStatus] = mapped_column(Enum(PurchaseStatus), default=PurchaseStatus.draft)
     total_amount: Mapped[float] = mapped_column(Float, default=0)
@@ -622,8 +622,8 @@ class PurchaseItem(Base):
     __tablename__ = "purchase_items"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    purchase_id: Mapped[str] = mapped_column(String(36), ForeignKey("purchases.id"), index=True)
-    material_pick_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("material_picks.id"), nullable=True)
+    purchase_id: Mapped[str] = mapped_column(String(36), ForeignKey("purchases.id", ondelete="CASCADE"), index=True)
+    material_pick_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("material_picks.id", ondelete="SET NULL"), nullable=True)
     name: Mapped[str] = mapped_column(String(255))
     qty: Mapped[float] = mapped_column(Float, default=1)
     unit: Mapped[str] = mapped_column(String(16), default="шт")
@@ -643,8 +643,8 @@ class MaterialPick(Base):
     __tablename__ = "material_picks"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
-    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True, index=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id", ondelete="SET NULL"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(255))
     qty: Mapped[float] = mapped_column(Float, default=1)
     unit: Mapped[str] = mapped_column(String(16), default="шт")
@@ -676,8 +676,8 @@ class SelectionItem(Base):
     __tablename__ = "selection_items"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
-    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True, index=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id", ondelete="SET NULL"), nullable=True, index=True)
     category: Mapped[str] = mapped_column(String(32), default="other", index=True)
     title: Mapped[str] = mapped_column(String(255))
     sku: Mapped[str | None] = mapped_column(String(128), nullable=True)
@@ -697,7 +697,7 @@ class ActivityEvent(Base):
     __tablename__ = "activity_events"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
     user_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     kind: Mapped[str] = mapped_column(String(32), index=True)
     title: Mapped[str] = mapped_column(String(255))
@@ -720,7 +720,7 @@ class FloorPlan(Base):
     __tablename__ = "floor_plans"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(128), default="Планировка")
     image_key: Mapped[str] = mapped_column(String(512))
     width_px: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -733,8 +733,8 @@ class FloorPlanPin(Base):
     __tablename__ = "floor_plan_pins"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    floor_plan_id: Mapped[str] = mapped_column(String(36), ForeignKey("floor_plans.id"), index=True)
-    room_id: Mapped[str] = mapped_column(String(36), ForeignKey("rooms.id"), index=True)
+    floor_plan_id: Mapped[str] = mapped_column(String(36), ForeignKey("floor_plans.id", ondelete="CASCADE"), index=True)
+    room_id: Mapped[str] = mapped_column(String(36), ForeignKey("rooms.id", ondelete="CASCADE"), index=True)
     x_pct: Mapped[float] = mapped_column(Float, default=50)
     y_pct: Mapped[float] = mapped_column(Float, default=50)
     label: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -744,8 +744,8 @@ class WasteOrder(Base):
     __tablename__ = "waste_orders"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
-    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True, index=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id", ondelete="SET NULL"), nullable=True, index=True)
     volume_m3: Mapped[float] = mapped_column(Float, default=1)
     waste_type: Mapped[str] = mapped_column(String(64), default="construction")
     scheduled_date: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -759,9 +759,9 @@ class FurnitureItem(Base):
     __tablename__ = "furniture_items"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
-    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True, index=True)
-    floor_plan_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("floor_plans.id"), nullable=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id", ondelete="SET NULL"), nullable=True, index=True)
+    floor_plan_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("floor_plans.id", ondelete="SET NULL"), nullable=True)
     name: Mapped[str] = mapped_column(String(128))
     width_m: Mapped[float] = mapped_column(Float, default=0.6)
     depth_m: Mapped[float] = mapped_column(Float, default=0.6)
@@ -776,7 +776,7 @@ class DesignPackage(Base):
     __tablename__ = "design_packages"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
     title: Mapped[str] = mapped_column(String(255))
     version: Mapped[int] = mapped_column(Integer, default=1)
     file_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
@@ -879,16 +879,16 @@ class ProjectIssue(Base):
     __tablename__ = "project_issues"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
-    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True)
-    stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id"), nullable=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id", ondelete="SET NULL"), nullable=True)
+    stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id", ondelete="SET NULL"), nullable=True)
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     severity: Mapped[str] = mapped_column(String(16), default="medium")
     status: Mapped[str] = mapped_column(String(16), default="open", index=True)
     assignee_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     due_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    floor_plan_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("floor_plans.id"), nullable=True, index=True)
+    floor_plan_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("floor_plans.id", ondelete="SET NULL"), nullable=True, index=True)
     x_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     y_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     photo_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
@@ -914,10 +914,10 @@ class WorkDependency(Base):
     __tablename__ = "work_dependencies"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
-    stage_id: Mapped[str] = mapped_column(String(36), ForeignKey("stages.id"), index=True)
-    depends_on_stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id"), nullable=True)
-    depends_on_material_pick_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("material_picks.id"), nullable=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    stage_id: Mapped[str] = mapped_column(String(36), ForeignKey("stages.id", ondelete="CASCADE"), index=True)
+    depends_on_stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id", ondelete="SET NULL"), nullable=True)
+    depends_on_material_pick_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("material_picks.id", ondelete="SET NULL"), nullable=True)
     dependency_type: Mapped[str] = mapped_column(String(16), default="work")
     criticality: Mapped[str] = mapped_column(String(16), default="high")
     status: Mapped[str] = mapped_column(String(16), default="pending")
@@ -929,7 +929,7 @@ class PropertyFloor(Base):
     __tablename__ = "property_floors"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(64))
     floor_number: Mapped[int] = mapped_column(Integer, default=1)
     area_sqm: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -942,7 +942,7 @@ class PropertyObject(Base):
     __tablename__ = "property_objects"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), unique=True, index=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), unique=True, index=True)
     object_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     total_area_sqm: Mapped[float | None] = mapped_column(Float, nullable=True)
     floors_count: Mapped[int] = mapped_column(Integer, default=1)
@@ -975,9 +975,9 @@ class WorkAcceptance(Base):
     __tablename__ = "work_acceptances"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
-    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True)
-    stage_id: Mapped[str] = mapped_column(String(36), ForeignKey("stages.id"), index=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id", ondelete="SET NULL"), nullable=True)
+    stage_id: Mapped[str] = mapped_column(String(36), ForeignKey("stages.id", ondelete="CASCADE"), index=True)
     requested_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     accepted_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     requested_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -1003,10 +1003,10 @@ class BudgetLine(Base):
     __tablename__ = "budget_lines"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
-    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True)
-    stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id"), nullable=True)
-    estimate_line_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("estimate_lines.id"), nullable=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id", ondelete="SET NULL"), nullable=True)
+    stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id", ondelete="SET NULL"), nullable=True)
+    estimate_line_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("estimate_lines.id", ondelete="SET NULL"), nullable=True)
     category: Mapped[str] = mapped_column(String(32), default="other")
     description: Mapped[str] = mapped_column(String(255))
     planned_amount: Mapped[float] = mapped_column(Float, default=0)
@@ -1021,12 +1021,12 @@ class Expense(Base):
     __tablename__ = "expenses"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
-    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True)
-    stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id"), nullable=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id", ondelete="SET NULL"), nullable=True)
+    stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id", ondelete="SET NULL"), nullable=True)
     material_pick_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
-    receipt_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("receipts.id"), nullable=True)
-    payment_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("payments.id"), nullable=True)
+    receipt_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("receipts.id", ondelete="SET NULL"), nullable=True)
+    payment_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("payments.id", ondelete="SET NULL"), nullable=True)
     purchase_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     title: Mapped[str] = mapped_column(String(255))
     category: Mapped[str] = mapped_column(String(32), default="materials")
@@ -1058,9 +1058,9 @@ class WorkOrder(Base):
     __tablename__ = "work_orders"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
-    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True, index=True)
-    stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id"), nullable=True, index=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id", ondelete="SET NULL"), nullable=True, index=True)
+    stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id", ondelete="SET NULL"), nullable=True, index=True)
     work_type: Mapped[str] = mapped_column(String(64), index=True)
     title: Mapped[str] = mapped_column(String(255))
     status: Mapped[WorkOrderStatus] = mapped_column(Enum(WorkOrderStatus), default=WorkOrderStatus.draft)
@@ -1069,7 +1069,7 @@ class WorkOrder(Base):
     actual_start: Mapped[date | None] = mapped_column(Date, nullable=True)
     actual_end: Mapped[date | None] = mapped_column(Date, nullable=True)
     assignee_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
-    chat_thread_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("chat_threads.id"), nullable=True)
+    chat_thread_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("chat_threads.id", ondelete="SET NULL"), nullable=True)
     budget_planned: Mapped[float] = mapped_column(Float, default=0)
     budget_spent: Mapped[float] = mapped_column(Float, default=0)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -1085,7 +1085,7 @@ class ScratchpadLine(Base):
     __tablename__ = "scratchpad_lines"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
     text: Mapped[str] = mapped_column(Text)
     line_kind: Mapped[str] = mapped_column(String(32), default="note")
     done: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -1130,7 +1130,7 @@ class PaymentEvent(Base):
     __tablename__ = "payment_events"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    payment_id: Mapped[str] = mapped_column(String(36), ForeignKey("payments.id"), index=True)
+    payment_id: Mapped[str] = mapped_column(String(36), ForeignKey("payments.id", ondelete="CASCADE"), index=True)
     actor_user_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     source: Mapped[str] = mapped_column(String(32))  # manual|webhook|bank_import|chat|system
     old_status: Mapped[str | None] = mapped_column(String(32), nullable=True)

@@ -279,6 +279,8 @@ async def purge_project(project_id: str, user: User = Depends(get_current_user),
     except ValueError as e:
         if str(e) == "not_trashed":
             raise HTTPException(400, "Сначала переместите объект в корзину")
+        if str(e) == "legal_hold_blocks_purge":
+            raise HTTPException(409, "Нельзя удалить объект — есть документы на юридическом удержании (legal hold)")
         raise _lifecycle_http_error(e)
     return {"ok": True}
 

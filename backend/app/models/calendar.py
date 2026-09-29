@@ -38,10 +38,10 @@ class CalendarItem(Base):
         String(36), ForeignKey("users.id"), index=True
     )
     project_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("projects.id"), nullable=True, index=True
+        String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
     )
     stage_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("stages.id"), nullable=True, index=True
+        String(36), ForeignKey("stages.id", ondelete="SET NULL"), nullable=True, index=True
     )
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)

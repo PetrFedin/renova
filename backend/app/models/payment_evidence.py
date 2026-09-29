@@ -32,8 +32,8 @@ class PaymentEvidence(Base):
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
-    payment_id: Mapped[str] = mapped_column(String(36), ForeignKey("payments.id"), index=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    payment_id: Mapped[str] = mapped_column(String(36), ForeignKey("payments.id", ondelete="CASCADE"), index=True)
     version: Mapped[int] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(24), default="upload_pending", index=True)
 

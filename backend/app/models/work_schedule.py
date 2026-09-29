@@ -37,7 +37,7 @@ class ProjectWorkSchedule(Base):
     __tablename__ = "project_work_schedules"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True, nullable=False)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True, nullable=False)
     status: Mapped[WorkScheduleStatus] = mapped_column(
         Enum(WorkScheduleStatus), default=WorkScheduleStatus.draft, index=True, nullable=False
     )
@@ -58,7 +58,7 @@ class ProjectWorkSchedule(Base):
     # E5: monotonic version; supersedes_id → previous schedule row when re-issued after reject
     schedule_version: Mapped[int] = mapped_column(Integer, default=1)
     supersedes_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("project_work_schedules.id"), nullable=True, index=True
+        String(36), ForeignKey("project_work_schedules.id", ondelete="SET NULL"), nullable=True, index=True
     )
 
 
@@ -66,9 +66,9 @@ class ProjectWorkScheduleItem(Base):
     __tablename__ = "project_work_schedule_items"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    schedule_id: Mapped[str] = mapped_column(String(36), ForeignKey("project_work_schedules.id"), index=True, nullable=False)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True, nullable=False)
-    stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id"), nullable=True, index=True)
+    schedule_id: Mapped[str] = mapped_column(String(36), ForeignKey("project_work_schedules.id", ondelete="CASCADE"), index=True, nullable=False)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True, nullable=False)
+    stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id", ondelete="SET NULL"), nullable=True, index=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[WorkScheduleItemStatus] = mapped_column(
@@ -79,7 +79,7 @@ class ProjectWorkScheduleItem(Base):
     actual_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     actual_finish_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     depends_on_item_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("project_work_schedule_items.id"), nullable=True, index=True
+        String(36), ForeignKey("project_work_schedule_items.id", ondelete="SET NULL"), nullable=True, index=True
     )
     requires_customer_acceptance: Mapped[bool] = mapped_column(Boolean, default=True)
     requires_photo: Mapped[bool] = mapped_column(Boolean, default=True)

@@ -43,9 +43,9 @@ class ProjectDocument(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), index=True)
-    stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id"), nullable=True, index=True)
-    payment_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("payments.id"), nullable=True, index=True)
-    receipt_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("receipts.id"), nullable=True)
+    stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id", ondelete="SET NULL"), nullable=True, index=True)
+    payment_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("payments.id", ondelete="SET NULL"), nullable=True, index=True)
+    receipt_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("receipts.id", ondelete="SET NULL"), nullable=True)
     change_order_id: Mapped[str | None] = mapped_column(
         String(36),
         ForeignKey("change_orders.id", ondelete="SET NULL"),
@@ -54,7 +54,7 @@ class ProjectDocument(Base):
         index=True,
     )
     work_acceptance_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("work_acceptances.id"), nullable=True, index=True
+        String(36), ForeignKey("work_acceptances.id", ondelete="SET NULL"), nullable=True, index=True
     )
     document_type: Mapped[str] = mapped_column(String(32), index=True, default=DocumentType.other.value)
     title: Mapped[str] = mapped_column(String(255))
@@ -72,7 +72,7 @@ class DocumentVersion(Base):
     __tablename__ = "document_versions"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    document_id: Mapped[str] = mapped_column(String(36), ForeignKey("project_documents.id"), index=True)
+    document_id: Mapped[str] = mapped_column(String(36), ForeignKey("project_documents.id", ondelete="CASCADE"), index=True)
     version_number: Mapped[int] = mapped_column(Integer, default=1)
     storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     mime_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
@@ -94,8 +94,8 @@ class DocumentSignature(Base):
     __tablename__ = "document_signatures"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    document_id: Mapped[str] = mapped_column(String(36), ForeignKey("project_documents.id"), index=True)
-    version_id: Mapped[str] = mapped_column(String(36), ForeignKey("document_versions.id"), index=True)
+    document_id: Mapped[str] = mapped_column(String(36), ForeignKey("project_documents.id", ondelete="CASCADE"), index=True)
+    version_id: Mapped[str] = mapped_column(String(36), ForeignKey("document_versions.id", ondelete="CASCADE"), index=True)
     signer_user_id: Mapped[str] = mapped_column(String(36), index=True)
     signer_role: Mapped[str] = mapped_column(String(32), default="customer")
     signature_type: Mapped[str] = mapped_column(String(32), default="in_app")
