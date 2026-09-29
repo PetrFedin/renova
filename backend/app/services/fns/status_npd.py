@@ -98,6 +98,8 @@ def _raise_provider_error(response: httpx.Response) -> None:
 
 async def check_taxpayer_npd_status(inn: str, on_date: date | None = None) -> dict:
     """Check NPD status without coercing unknown provider values to truth."""
+    if str(getattr(settings, "npd_status_provider_mode", "off") or "off").strip().lower() == "simulated":
+        return await _check_via_simulated_provider(inn, on_date)
     canonical_inn = normalize_inn(inn)
     request_date = normalize_request_date(on_date)
     url = (settings.fns_npd_status_url or "").strip()
@@ -130,4 +132,28 @@ async def check_taxpayer_npd_status(inn: str, on_date: date | None = None) -> di
         "is_npd": provider_status,
         "message": message.strip(),
         "verified_live": True,
+    }
+
+
+async def _check_via_simulated_provider(inn: str, on_date: date | None) -> dict:
+    """PRODUCT-COMPLETION-MANDATE A5: simulated provider via the port; legacy live path untouched."""
+    from datetime import datetime, timezone
+
+    from app.services.providers import base as provider_base
+    from app.services.providers import registry as provider_registry
+
+    canonical_inn = normalize_inn(inn)
+    request_date = normalize_request_date(on_date)
+    provider = provider_registry.npd_status_provider()
+    result = await provider.check(canonical_inn, datetime.combine(request_date, datetime.min.time(), tzinfo=timezone.utc))
+    if result.status is provider_base.NpdStatus.UNKNOWN:
+        raise FnsNpdUnavailable("Сервис ФНС временно недоступен (симулятор)")
+    is_npd = result.status is provider_base.NpdStatus.ACTIVE
+    return {
+        "inn": canonical_inn,
+        "request_date": request_date.isoformat(),
+        "is_npd": is_npd,
+        "message": ("Плательщик НПД (симулятор)" if is_npd else "Не является плательщиком НПД (симулятор)"),
+        "verified_live": False,
+        "provider": provider.name,
     }
