@@ -511,8 +511,61 @@ async def read_map(db: AsyncSession, thread_id: str) -> dict[str, datetime]:
     return {x.user_id: x.last_read_at for x in r.scalars().all()}
 
 
-async def toggle_reaction(db: AsyncSession, message_id: str, user_id: str, emoji: str) -> dict:
-    msg = await db.get(ChatMessage, message_id)
+CHAT_MESSAGE_REACT_SCOPE = "chat_message.react"
+
+
+async def toggle_reaction(
+    db: AsyncSession,
+    message_id: str,
+    user_id: str,
+    emoji: str,
+    *,
+    project_id: str | None = None,
+    client_request_id: str | None = None,
+) -> dict:
+    """Toggle a user's reaction, replay-safe per queued client intent (#384).
+
+    The mobile offline queue can replay a lost/ambiguous POST .../react. The
+    naive toggle below is idempotent in isolation but NOT replay-safe: a
+    replayed request after the first one already committed would flip the
+    reaction back off. `client_request_id` gives each user tap a stable
+    intent identity (apps/mobile/lib/offlineQueue.ts persists the exact
+    serialized body, id included, through restart): the same id + the same
+    {message_id, emoji} payload returns the canonical reaction state without
+    toggling again, while the same id with a *different* payload — a stale
+    request racing a newer, distinct intent — fails closed with
+    IdempotencyConflict instead of silently applying the wrong toggle. Two
+    genuine taps get two different ids and remain two distinct toggles; no
+    network pre-read of desired state is needed. `project_id`/`client_request_id`
+    are optional so internal/service callers (seed data, tests) keep the plain
+    toggle semantics.
+    """
+    from app.services.client_write_idempotency import commit_client_write, replay_entity_id
+
+    payload = {"message_id": message_id, "emoji": emoji}
+    use_ledger = bool(client_request_id and project_id)
+
+    if use_ledger:
+        replay_id = await replay_entity_id(
+            db,
+            scope=CHAT_MESSAGE_REACT_SCOPE,
+            project_id=project_id,
+            user_id=user_id,
+            request_id=client_request_id,
+            payload=payload,
+        )
+        if replay_id:
+            msg = await db.get(ChatMessage, replay_id)
+            return _parse_meta(msg.meta_json).get("reactions", {}) if msg else {}
+
+    # Row lock: reaction writes race other read-modify-write mutators of the
+    # same ChatMessage.meta_json (e.g. create_task_from_message's linked_task_id
+    # backlink). Without this, one writer's stale read can silently clobber the
+    # other's field in the shared JSON blob.
+    result = await db.execute(
+        select(ChatMessage).where(ChatMessage.id == message_id).with_for_update()
+    )
+    msg = result.scalar_one_or_none()
     if not msg:
         return {}
     meta = _parse_meta(msg.meta_json)
@@ -525,7 +578,26 @@ async def toggle_reaction(db: AsyncSession, message_id: str, user_id: str, emoji
     else:
         users.append(user_id)
     msg.meta_json = _dump_meta(meta)
-    await db.commit()
+
+    if use_ledger:
+        created, entity_id = await commit_client_write(
+            db,
+            scope=CHAT_MESSAGE_REACT_SCOPE,
+            project_id=project_id,
+            user_id=user_id,
+            request_id=client_request_id,
+            payload=payload,
+            entity_id=message_id,
+        )
+        if not created:
+            # Lost a race to a concurrent replay of the same intent: our
+            # mutation above was rolled back with it. Return the winner's
+            # canonical state instead of our now-stale in-memory dict.
+            winner = await db.get(ChatMessage, entity_id)
+            return _parse_meta(winner.meta_json).get("reactions", {}) if winner else {}
+    else:
+        await db.commit()
+
     from app.api.v1.ws import broadcast
 
     await broadcast(msg.thread_id, {"type": "reaction", "message_id": message_id, "reactions": reactions})
@@ -860,7 +932,13 @@ async def create_task_from_message(
     text = f"📋 Задача: {title}" + (f" · до {due_at[:10]}" if due_at else "")
     meta = {"work_order_id": wo.id, "assignee_id": assignee_id, "due_at": due_at}
     msg = await send_message(db, thread, user_id, role, text, "task", meta=meta)
-    orig = await db.get(ChatMessage, message_id)
+    # Row lock: this backlink write races toggle_reaction's read-modify-write of
+    # the same ChatMessage.meta_json (#384) — without it, whichever writer reads
+    # last wins and silently drops the other's field from the shared JSON blob.
+    orig_result = await db.execute(
+        select(ChatMessage).where(ChatMessage.id == message_id).with_for_update()
+    )
+    orig = orig_result.scalar_one_or_none()
     if orig:
         om = _parse_meta(orig.meta_json)
         om["linked_task_id"] = wo.id

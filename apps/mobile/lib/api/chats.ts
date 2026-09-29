@@ -86,7 +86,14 @@ export const chatsApi = {
     { method: 'POST', body: JSON.stringify(body) },
     userId,
   ),
-  /** W115: реакции в чате — очередь офлайн */
+  /** W115: реакции в чате — очередь офлайн
+   *
+   * #384: the same client_request_id is sent on the first attempt and on every
+   * offline replay (offlineQueue persists this exact serialized body, id
+   * included, through restart), so a lost response cannot flip the reaction
+   * back off when the queue retries. A second real tap calls this function
+   * again and gets a fresh id, so it remains a distinct toggle.
+   */
   reactChatMessage: async (
     userId: string,
     projectId: string,
@@ -94,10 +101,11 @@ export const chatsApi = {
     messageId: string,
     emoji: string,
   ) => {
+    const body = JSON.stringify({ emoji, client_request_id: newChatClientRequestId() });
     try {
       return await req<{ reactions: Record<string, string[]> }>(
         `/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/react`,
-        { method: 'POST', body: JSON.stringify({ emoji }) },
+        { method: 'POST', body },
         userId,
       );
     } catch (e) {
@@ -106,7 +114,7 @@ export const chatsApi = {
       await enqueue({
         path: `/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}/react`,
         method: 'POST',
-        body: JSON.stringify({ emoji }),
+        body,
         userId,
       });
       throw new Error('offline_queued');

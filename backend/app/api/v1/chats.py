@@ -115,6 +115,10 @@ class MessageCreate(BaseModel):
 
 class ReactionBody(BaseModel):
     emoji: str = Field(min_length=1, max_length=8)
+    # Offline queue replay identity (apps/mobile/lib/offlineQueue.ts). Same id +
+    # same {message_id, emoji} -> canonical reaction state without re-toggling;
+    # same id with a changed payload -> 409 idempotency_conflict (#384).
+    client_request_id: str | None = Field(default=None, max_length=128)
 
 
 class InviteBody(BaseModel):
@@ -359,7 +363,17 @@ async def react_message(project_id: str, thread_id: str, message_id: str, body: 
         db, project_id, thread_id, user, write=False, allow_participant=True,
     )
     await require_chat_message(db, t, message_id)
-    reactions = await chat_svc.toggle_reaction(db, message_id, user.id, body.emoji)
+    try:
+        reactions = await chat_svc.toggle_reaction(
+            db,
+            message_id,
+            user.id,
+            body.emoji,
+            project_id=project_id,
+            client_request_id=body.client_request_id,
+        )
+    except IdempotencyConflict as exc:
+        raise HTTPException(409, detail={"code": "idempotency_conflict"}) from exc
     return {"reactions": reactions}
 
 
