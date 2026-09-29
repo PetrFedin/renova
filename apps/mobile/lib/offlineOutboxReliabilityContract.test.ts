@@ -23,7 +23,7 @@ must(queue.includes('withQueueLock') && queue.includes('mergeQueueFlushMutations
 must(queue.includes('version: (job.version ?? 0) + 1'), 'manual retry invalidates stale network result');
 must(queue.includes('parseOfflineQueueStorage(raw, key)'), 'storage corruption cannot masquerade as an empty queue');
 must(queue.includes('normalizeStoredJobs(raw, KEY)'), 'malformed stored jobs fail closed');
-must(queue.includes('updateJobBody') && queue.includes('dedupeExactJobs'), 'recovery mutations run against latest locked queue');
+must(queue.includes('updateJobBody') && queue.includes('dedupeReplayedIntents'), 'recovery mutations run against latest locked queue');
 must(!queue.includes('export async function writeQueue'), 'stale UI snapshots cannot replace the canonical queue');
 must(storage.includes("code = 'offline_queue_storage_corrupt'"), 'storage corruption has a stable observable code');
 must(policy.includes('RETRY_BASE_MS = 5_000') && policy.includes('RETRY_MAX_MS = 5 * 60_000'), 'retry backoff is bounded');

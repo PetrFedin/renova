@@ -38,7 +38,7 @@ must(queue.includes('return parseOfflineQueueStorage(raw, key);'), 'Offline queu
 must(queue.includes('normalizeStoredJobs(raw, KEY)'), 'Offline queue rejects malformed stored jobs');
 must(!queue.includes('export async function writeQueue'), 'Offline recovery cannot replace the whole queue from a stale UI snapshot');
 must(queue.includes('export async function updateJobBody'), 'Conflict body update is atomic against latest queue');
-must(queue.includes('export async function dedupeExactJobs'), 'Queue dedupe is atomic against latest queue');
+must(queue.includes('export async function dedupeReplayedIntents'), 'Queue dedupe is atomic against latest queue');
 const persistLegacyAt = queue.indexOf('await AsyncStorage.setItem(KEY, JSON.stringify(merged));');
 const cleanupLegacyAt = queue.indexOf('await AsyncStorage.removeItem(key);');
 must(
@@ -66,7 +66,7 @@ must(invalidShapeRejected, 'Non-array offline queue storage must never become []
 const conflicts = readFileSync(join(root, 'app/_stack/conflicts.tsx'), 'utf8');
 must(conflicts.includes('loadError') && conflicts.includes('Повторить чтение'), 'Conflict recovery exposes storage read errors');
 must(conflicts.includes('updateJobBody') && !conflicts.includes('writeQueue'), 'Conflict merge does not overwrite the whole queue');
-must(conflicts.includes('dedupeExactJobs'), 'Conflict dedupe operates on the latest locked queue');
+must(conflicts.includes('dedupeReplayedIntents'), 'Conflict dedupe operates on the latest locked queue');
 must(
   conflicts.includes('setJobs([])') && conflicts.includes('Never render/edit a stale snapshot'),
   'Conflict recovery never edits stale jobs after a failed read',

@@ -8,7 +8,7 @@ import { FieldMergePicker } from '@/components/renova/FieldMergePicker';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import {
-  dedupeExactJobs,
+  dedupeReplayedIntents,
   getQueue,
   removeJob,
   retryJob,
@@ -114,11 +114,11 @@ export default function ConflictsScreen() {
     setSyncing(true);
     setActionError(null);
     try {
-      await dedupeExactJobs();
+      await dedupeReplayedIntents();
       await reload();
     } catch (error) {
       reportError('offline.conflicts.dedupe', error);
-      setActionError('Не удалось проверить дубли. Очередь не была перезаписана.');
+      setActionError('Не удалось проверить повторы. Очередь не была перезаписана.');
     } finally {
       setSyncing(false);
     }
@@ -243,7 +243,7 @@ export default function ConflictsScreen() {
         {!loadError && jobs.length > 0 && (
           <>
             <PrimaryButton
-              title="Убрать точные дубли"
+              title="Убрать повторные действия"
               variant="outline"
               disabled={Boolean(busyId || syncing)}
               onPress={() => { void dedupeNow(); }}
