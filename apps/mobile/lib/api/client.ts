@@ -361,7 +361,43 @@ export type ReqOptions = RequestInit & {
   cacheFallback?: boolean;
 };
 
+/**
+ * In-flight GET dedupe (#329): a single Home render issues ~200 requests, and
+ * the same URL repeats up to a dozen times in one burst as independent
+ * widgets ask for the same resource at the same moment. Collapsing identical
+ * *in-flight* GETs into one network call costs nothing in freshness — every
+ * caller would have received the same response anyway — unlike the TTL
+ * cache in `cachedGet`, which would risk serving stale data after a write.
+ * Mutating methods are never merged: two POSTs are two distinct intents and
+ * must both reach the server (idempotency there is handled by
+ * `client_request_id`, not by collapsing the calls).
+ */
+const _inFlightGets = new Map<string, Promise<unknown>>();
+
+/** Number of GETs currently merged and waiting on the network — test hook. */
+export function inFlightGetCount(): number {
+  return _inFlightGets.size;
+}
+
+function inFlightKey(path: string, userId?: string): string {
+  return `${userId || ''}:${path}`;
+}
+
 export async function req<T>(path: string, opts: ReqOptions = {}, userId?: string): Promise<T> {
+  if (!canUseDurableCache(opts)) return performReq<T>(path, opts, userId);
+
+  const key = inFlightKey(path, userId);
+  const existing = _inFlightGets.get(key);
+  if (existing) return existing as Promise<T>;
+
+  const promise = performReq<T>(path, opts, userId).finally(() => {
+    _inFlightGets.delete(key);
+  });
+  _inFlightGets.set(key, promise);
+  return promise;
+}
+
+async function performReq<T>(path: string, opts: ReqOptions = {}, userId?: string): Promise<T> {
   const { cacheFallback = true, provenance, ...fetchOpts } = opts;
   const isFormData = typeof FormData !== 'undefined' && fetchOpts.body instanceof FormData;
   const headers: Record<string, string> = {
