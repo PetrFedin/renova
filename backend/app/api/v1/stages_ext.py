@@ -18,6 +18,7 @@ from app.models.entities import Project, Stage, StageStatus, User, UserRole
 from app.schemas.project import StageCommentIn, StageDatesIn, StagePhotoIn
 from app.services import stage_mutation_service as stage_mutation_svc
 from app.services import stage_review_service as stage_review_svc
+from app.services.client_write_idempotency import IdempotencyConflict
 from app.services import stage_service as stage_svc
 
 router = APIRouter(prefix="/projects", tags=["stages"])
@@ -167,13 +168,18 @@ async def add_comment(
     stage = await stage_svc.get_stage_full(db, stage_id)
     if not stage or stage.project_id != project_id:
         raise HTTPException(404, "Этап не найден")
-    comment = await stage_svc.add_comment(
-        db,
-        stage_id,
-        user.id,
-        user.role.value,
-        body.text,
-    )
+    try:
+        comment = await stage_svc.add_comment(
+            db,
+            stage_id,
+            user.id,
+            user.role.value,
+            body.text,
+            project_id=project_id,
+            client_request_id=body.client_request_id,
+        )
+    except IdempotencyConflict as exc:
+        raise HTTPException(409, detail={"code": "idempotency_conflict"}) from exc
     return {
         "id": comment.id,
         "text": comment.text,

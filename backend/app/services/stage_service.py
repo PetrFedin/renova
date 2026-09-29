@@ -41,10 +41,76 @@ async def get_stage_full(db: AsyncSession, stage_id: str) -> Stage | None:
     return result.scalar_one_or_none()
 
 
-async def add_comment(db: AsyncSession, stage_id: str, user_id: str, role: str, text: str) -> StageComment:
-    c = StageComment(stage_id=stage_id, user_id=user_id, author_role=role, text=text)
-    db.add(c)
-    await db.commit()
+STAGE_COMMENT_CREATE_SCOPE = "stage_comment.create"
+
+
+async def _load_comment(db: AsyncSession, *, stage_id: str, comment_id: str) -> StageComment:
+    comment = await db.get(StageComment, comment_id)
+    if comment is None or comment.stage_id != stage_id:
+        raise RuntimeError("stage_comment_idempotency_ledger_corrupt")
+    return comment
+
+
+async def add_comment(
+    db: AsyncSession,
+    stage_id: str,
+    user_id: str,
+    role: str,
+    text: str,
+    *,
+    project_id: str | None = None,
+    client_request_id: str | None = None,
+) -> StageComment:
+    """Create exactly one stage comment per client_request_id.
+
+    A lost response after the first commit must replay into the original
+    comment, not a duplicate. Same key with a different {stage_id, text}
+    canonical payload raises IdempotencyConflict instead of silently
+    overwriting the earlier comment's meaning.
+    """
+    from app.services.client_write_idempotency import commit_client_write, replay_entity_id
+
+    if project_id is None:
+        # Legacy callers without project scoping cannot be made idempotent;
+        # fall back to unconditional creation.
+        c = StageComment(stage_id=stage_id, user_id=user_id, author_role=role, text=text)
+        db.add(c)
+        await db.commit()
+        await db.refresh(c)
+        return c
+
+    payload = {"stage_id": stage_id, "text": text}
+    try:
+        replay_id = await replay_entity_id(
+            db,
+            scope=STAGE_COMMENT_CREATE_SCOPE,
+            project_id=project_id,
+            user_id=user_id,
+            request_id=client_request_id,
+            payload=payload,
+        )
+        if replay_id:
+            return await _load_comment(db, stage_id=stage_id, comment_id=replay_id)
+
+        c = StageComment(stage_id=stage_id, user_id=user_id, author_role=role, text=text)
+        db.add(c)
+        await db.flush()
+        created, entity_id = await commit_client_write(
+            db,
+            scope=STAGE_COMMENT_CREATE_SCOPE,
+            project_id=project_id,
+            user_id=user_id,
+            request_id=client_request_id,
+            payload=payload,
+            entity_id=c.id,
+        )
+    except BaseException:
+        await db.rollback()
+        raise
+
+    if not created:
+        return await _load_comment(db, stage_id=stage_id, comment_id=entity_id)
+
     await db.refresh(c)
     return c
 

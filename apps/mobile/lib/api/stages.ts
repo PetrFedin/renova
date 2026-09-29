@@ -2,6 +2,7 @@
 import { req, cachedGet, API_BASE, ApiError } from './client';
 import type { ProjectPlan, Stage, StageChecklistItem, StageDetail, StagePaymentPlan, WorkAcceptance, WorkCompletionCheck, WorkSnapshot } from './types';
 import { acceptanceDecisionBody } from '@/lib/acceptanceDecide';
+import { createClientRequestId } from '@/lib/clientRequestId';
 
 async function activeAcceptance(userId: string, projectId: string, stageId: string): Promise<WorkAcceptance | null> {
   const items = await req<WorkAcceptance[]>(
@@ -18,12 +19,16 @@ export const stagesApi = {
   getStage: (userId: string, projectId: string, stageId: string) =>
     cachedGet<StageDetail>(`/api/v1/projects/${projectId}/stages/${stageId}`, userId),
   addStageComment: async (userId: string, projectId: string, stageId: string, text: string) => {
+    // Same client_request_id and exact serialized body is sent on the first
+    // attempt and on every offline replay so a lost response cannot create a
+    // second StageComment (#398, following the #316 pattern).
+    const requestBody = JSON.stringify({ text, client_request_id: createClientRequestId('stage-comment') });
     try {
-      return await req(`/api/v1/projects/${projectId}/stages/${stageId}/comments`, { method: 'POST', body: JSON.stringify({ text }) }, userId);
+      return await req(`/api/v1/projects/${projectId}/stages/${stageId}/comments`, { method: 'POST', body: requestBody }, userId);
     } catch (e) {
       if (e instanceof ApiError) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({ path: `/api/v1/projects/${projectId}/stages/${stageId}/comments`, method: 'POST', body: JSON.stringify({ text }), userId });
+      await enqueue({ path: `/api/v1/projects/${projectId}/stages/${stageId}/comments`, method: 'POST', body: requestBody, userId });
       throw new Error('offline_queued');
     }
   },

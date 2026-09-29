@@ -163,6 +163,7 @@ class PaymentOut(BaseModel):
 
 class StageCommentIn(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
+    client_request_id: str | None = Field(default=None, max_length=80)
 
 
 class StagePhotoIn(BaseModel):
