@@ -13,6 +13,7 @@ from app.models.entities import (
     Project,
     Room,
     RoomChangeLog,
+    RoomChangeRequest,
     User,
     UserRole,
 )
@@ -498,14 +499,16 @@ async def test_room_edit_authority_transitions_across_executor_lifecycle(db):
     assert captured.value.status_code == 403
     assert await db.scalar(select(Room.width_m).where(Room.id == room_id)) == 5
 
-    request = await room_change_service.create_request(
+    request, request_replayed = await room_change_service.create_request(
         db,
         project=project,
         actor=customer,
         room_id=room_id,
         message="Расширить комнату",
         payload={"width_m": 7},
+        client_request_id="room-lifecycle-change-request",
     )
+    assert request_replayed is False
 
     resolved_request, resolved_room, replayed, changes = (
         await room_change_service.decide_request(
@@ -531,6 +534,99 @@ async def test_room_edit_authority_transitions_across_executor_lifecycle(db):
         select(Project.budget_planned).where(Project.id == project_id)
     )
     assert stored_budget == pytest.approx(float(calculated_budget), abs=0.01)
+
+
+@pytest.mark.asyncio
+async def test_room_change_request_create_is_idempotent_and_conflict_safe(db):
+    """#436 acceptance: stable client_request_id on room-change-request
+    create — same id + same payload replays one request; same id + a
+    different payload is a typed conflict; a fresh id always mints a second,
+    distinct request even for an identical room/message/payload."""
+    customer, contractor, project = await seed_project(db, "change-request-idempotency")
+    project_id = project.id
+    customer_id = customer.id
+    created_room = await mutations.create_room(
+        db,
+        project=project,
+        actor=contractor,
+        data=room_payload(),
+        client_request_id="room-change-req-room-create",
+    )
+    room_id = created_room.room.id
+    request_id = "room-change-request-0001"
+
+    first, first_replayed = await room_change_service.create_request(
+        db,
+        project=project,
+        actor=customer,
+        room_id=room_id,
+        message="Расширить комнату",
+        payload={"width_m": 6},
+        client_request_id=request_id,
+    )
+    assert first_replayed is False
+
+    second, second_replayed = await room_change_service.create_request(
+        db,
+        project=project,
+        actor=customer,
+        room_id=room_id,
+        message="Расширить комнату",
+        payload={"width_m": 6},
+        client_request_id=request_id,
+    )
+    assert second_replayed is True
+    assert second.id == first.id
+    assert await db.scalar(
+        select(func.count())
+        .select_from(RoomChangeRequest)
+        .where(RoomChangeRequest.project_id == project_id)
+    ) == 1
+    assert await db.scalar(
+        select(func.count())
+        .select_from(DomainOutbox)
+        .where(
+            DomainOutbox.aggregate_type == "room_change_request",
+            DomainOutbox.aggregate_id == first.id,
+        )
+    ) == 2
+
+    customer = await db.get(User, customer_id)
+    project = await db.get(Project, project_id)
+    with pytest.raises(IdempotencyConflict):
+        await room_change_service.create_request(
+            db,
+            project=project,
+            actor=customer,
+            room_id=room_id,
+            message="Расширить комнату сильнее",
+            payload={"width_m": 6},
+            client_request_id=request_id,
+        )
+    assert await db.scalar(
+        select(func.count())
+        .select_from(RoomChangeRequest)
+        .where(RoomChangeRequest.project_id == project_id)
+    ) == 1
+
+    customer = await db.get(User, customer_id)
+    project = await db.get(Project, project_id)
+    third, third_replayed = await room_change_service.create_request(
+        db,
+        project=project,
+        actor=customer,
+        room_id=room_id,
+        message="Расширить комнату",
+        payload={"width_m": 6},
+        client_request_id="room-change-request-0002",
+    )
+    assert third_replayed is False
+    assert third.id != first.id
+    assert await db.scalar(
+        select(func.count())
+        .select_from(RoomChangeRequest)
+        .where(RoomChangeRequest.project_id == project_id)
+    ) == 2
 
 
 @pytest.mark.asyncio

@@ -20,6 +20,7 @@ class RoomChangeCreate(BaseModel):
     room_id: str
     message: str = Field(min_length=1, max_length=4000)
     payload: dict | None = None
+    client_request_id: str | None = Field(default=None, min_length=8, max_length=80)
 
 
 def _payload_json(request: RoomChangeRequest) -> dict | None:
@@ -46,6 +47,16 @@ def _request_error(error: ValueError) -> HTTPException:
             409,
             detail={"code": code, "message": "Запрос уже закрыт другим решением"},
         )
+    if code == "idempotency_conflict":
+        return HTTPException(
+            409,
+            detail={
+                "code": code,
+                "message": "Идентификатор запроса уже использован для другого изменения",
+            },
+        )
+    if code == "idempotency_entity_missing":
+        return HTTPException(409, detail={"code": code})
     if code.startswith("room_patch_") or code in {
         "room_change_payload_invalid",
         "room_change_message_required",
@@ -90,20 +101,21 @@ async def create_request(
 ):
     project: Project = await require_project(db, project_id, user, write=True)
     try:
-        request = await request_svc.create_request(
+        request, replayed = await request_svc.create_request(
             db,
             project=project,
             actor=user,
             room_id=body.room_id,
             message=body.message,
             payload=body.payload,
+            client_request_id=body.client_request_id,
         )
     except ValueError as error:
         raise _request_error(error) from error
     return {
         "id": request.id,
         "status": request.status.value if hasattr(request.status, "value") else str(request.status),
-        "replayed": False,
+        "replayed": replayed,
     }
 
 

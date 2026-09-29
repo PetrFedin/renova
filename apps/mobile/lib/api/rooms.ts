@@ -1,6 +1,7 @@
 /** API: rooms */
 import { req, cachedGet, API_BASE, OFFLINE_ROOMS, ApiError } from './client';
 import type { Room, RoomChangeRequest, RoomSnapshot, User } from './types';
+import { createClientRequestId } from '@/lib/clientRequestId';
 
 function roomCacheKey(projectId: string, archived: boolean | undefined): string {
   const scope = archived === true ? 'archived' : archived === false ? 'active' : 'default';
@@ -62,15 +63,19 @@ export const roomsApi = {
     }
   },
   createRoom: async (userId: string, projectId: string, body: object) => {
+    // Same client_request_id and exact serialized body is sent on the first
+    // attempt and on every offline replay so a lost response cannot create a
+    // duplicate room/estimate/outbox effect set (#436, #316/#398 pattern).
+    const requestBody = JSON.stringify({ ...body, client_request_id: createClientRequestId('room-create') });
     try {
-      return await req<Room>(`/api/v1/projects/${projectId}/rooms`, { method: 'POST', body: JSON.stringify(body) }, userId);
+      return await req<Room>(`/api/v1/projects/${projectId}/rooms`, { method: 'POST', body: requestBody }, userId);
     } catch (e) {
       if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/rooms`,
         method: 'POST',
-        body: JSON.stringify(body),
+        body: requestBody,
         userId,
       });
       throw new Error('offline_queued');
@@ -96,12 +101,16 @@ export const roomsApi = {
   listRoomChangeRequests: (userId: string, projectId: string) =>
     req<RoomChangeRequest[]>(`/api/v1/projects/${projectId}/room-change-requests`, {}, userId),
   createRoomChangeRequest: async (userId: string, projectId: string, body: object) => {
+    // Same client_request_id and exact serialized body is sent on the first
+    // attempt and on every offline replay so a lost response cannot create a
+    // duplicate RoomChangeRequest/notification (#436, #316/#398 pattern).
+    const requestBody = JSON.stringify({ ...body, client_request_id: createClientRequestId('room-change-request') });
     try {
-      return await req(`/api/v1/projects/${projectId}/room-change-requests`, { method: 'POST', body: JSON.stringify(body) }, userId);
+      return await req(`/api/v1/projects/${projectId}/room-change-requests`, { method: 'POST', body: requestBody }, userId);
     } catch (e) {
       if (e instanceof ApiError) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
-      await enqueue({ path: `/api/v1/projects/${projectId}/room-change-requests`, method: 'POST', body: JSON.stringify(body), userId });
+      await enqueue({ path: `/api/v1/projects/${projectId}/room-change-requests`, method: 'POST', body: requestBody, userId });
       throw new Error('offline_queued');
     }
   },
