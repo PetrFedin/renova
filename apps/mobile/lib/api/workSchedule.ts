@@ -1,4 +1,5 @@
 import { req, ApiError } from './client';
+import { createClientRequestId } from '@/lib/clientRequestId';
 
 export type WorkScheduleStatus = 'draft' | 'submitted' | 'confirmed' | 'rejected' | 'archived';
 export type WorkScheduleItemStatus =
@@ -94,7 +95,11 @@ export const workScheduleApi = {
   },
 
   createWorkSchedule: async (userId: string, projectId: string, body: Partial<WorkSchedule> = {}) => {
-    const payload = JSON.stringify(body);
+    // Same client_request_id and exact serialized body is sent on the first
+    // attempt and on every offline replay so a lost response cannot create a
+    // duplicate schedule that could win get_active_schedule()'s "latest
+    // wins" selection (#462/#420).
+    const payload = JSON.stringify({ ...body, client_request_id: createClientRequestId('work-schedule-create') });
     try {
       return await req<WorkSchedule>(
         `/api/v1/projects/${projectId}/work-schedules`,
