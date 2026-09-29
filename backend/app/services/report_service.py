@@ -103,7 +103,9 @@ async def final_report(db: AsyncSession, project_id: str) -> dict:
     summary = await bud.budget_summary(db, project_id)
     risks = await risk.compute_project_risks(db, p)
     issues = await iss.list_issues(db, project_id, status=None)
-    expenses = await bud.list_expenses(db, project_id, limit=500)
+    # Не `list_expenses`: у него потолок в 500 строк, и на большом проекте
+    # «Всего операций» молча занижалось бы, не совпадая с разбивкой по статьям.
+    confirmed = await _confirmed_expenses(db, project_id)
     stages = (await db.execute(select(Stage).where(Stage.project_id == project_id))).scalars().all()
     works = [{"name": s.name, "status": s.status.value, "amount": s.payment_amount} for s in stages]
     savings = round(summary["budget_planned"] - summary["budget_spent"], 2)
@@ -117,8 +119,8 @@ async def final_report(db: AsyncSession, project_id: str) -> dict:
         "overrun": over,
         "forecast_total": summary["forecast_total"],
         "works": works,
-        "expenses_count": len(expenses),
-        "expenses_total": round(sum(e.amount for e in expenses if e.status == "confirmed"), 2),
+        "expenses_count": len(confirmed),
+        "expenses_total": round(sum(e.amount for e in confirmed), 2),
         "issues_total": len(issues),
         "issues_open": len([i for i in issues if i.status != "closed"]),
         "risks_remaining": len(risks),
@@ -129,7 +131,12 @@ async def final_report(db: AsyncSession, project_id: str) -> dict:
 
 EXPENSE_CATEGORY_LABELS = {
     "materials": "Материалы",
+    # Две записи на одни работы: чеки заводятся с «labor» (см. receipts.py),
+    # расходы из платежей и закупок — с «works» (budget_service_legacy).
+    # Обе попадают в `Expense.category`, и без второй строки статья вышла бы
+    # в отчёт латиницей.
     "labor": "Работы",
+    "works": "Работы",
     "delivery": "Доставка",
     "tools": "Инструмент",
     "other": "Прочее",
@@ -153,14 +160,31 @@ def parse_expense_categories(raw: str | None) -> set[str] | None:
     return picked or None
 
 
-async def _expenses_by_category(db: AsyncSession, project_id: str) -> list[dict]:
-    from app.models.entities import Receipt
+async def _confirmed_expenses(db: AsyncSession, project_id: str) -> list[Expense]:
+    """Расходы, из которых сложен «Факт» проекта.
 
-    receipts = list((await db.execute(select(Receipt).where(Receipt.project_id == project_id))).scalars().all())
+    Ровно тот же отбор, что и в `refresh_budget_facts`, где пишется
+    `projects.budget_spent`: только подтверждённые. Чеки сюда попадают через
+    `expense_from_receipt` — своей категорией и своей суммой, — поэтому считать
+    их отдельно не нужно и нельзя: неподтверждённый чек в «Факт» не входит.
+    """
+    return list(
+        (
+            await db.execute(
+                select(Expense).where(
+                    Expense.project_id == project_id,
+                    Expense.status == "confirmed",
+                )
+            )
+        ).scalars().all()
+    )
+
+
+async def _expenses_by_category(db: AsyncSession, project_id: str) -> list[dict]:
     totals: dict[str, float] = {}
-    for rec in receipts:
-        cat = getattr(rec, "expense_category", "materials") or "materials"
-        totals[cat] = totals.get(cat, 0.0) + float(rec.amount or 0)
+    for exp in await _confirmed_expenses(db, project_id):
+        cat = exp.category or "other"
+        totals[cat] = totals.get(cat, 0.0) + float(exp.amount or 0)
     return [
         {
             "category": cat,
