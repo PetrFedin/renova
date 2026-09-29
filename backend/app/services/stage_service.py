@@ -162,8 +162,21 @@ async def start_stage(db: AsyncSession, stage_id: str) -> tuple[Stage | None, di
     await act.log_event(db, project_id=stage.project_id, user_id=None, kind="StageStarted", title=f"Начат: {stage.name}", link_path=f"/stage/{stage.id}", stage_id=stage.id)
     return stage, None
 
-async def update_stage_dates(db: AsyncSession, stage_id: str, start: date | None, end: date | None) -> Stage | None:
-    stage = await db.get(Stage, stage_id)
+async def update_stage_dates(db: AsyncSession, project_id: str, stage_id: str, start: date | None, end: date | None) -> Stage | None:
+    """Mutate a stage's planned dates, scoped to its owning project.
+
+    Stage.id == stage_id AND Stage.project_id == project_id must both hold in the
+    same lookup used for the mutation, before any assignment or commit. A stage_id
+    belonging to a different project simply matches no row - fail closed, nothing
+    is written. Do not split this into an unscoped db.get() followed by a
+    post-hoc project check: that reintroduces the mutate-then-validate window
+    (issue #421).
+    """
+    stage = (
+        await db.execute(
+            select(Stage).where(Stage.id == stage_id, Stage.project_id == project_id)
+        )
+    ).scalar_one_or_none()
     if not stage:
         return None
     if start:

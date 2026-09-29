@@ -37,8 +37,8 @@ async def update_stage_dates(
     await require_project(db, project_id, user, write=True)
     if user.role != UserRole.contractor:
         raise HTTPException(403, "Только исполнитель меняет даты")
-    stage = await stage_svc.update_stage_dates(db, body.stage_id, body.planned_start, body.planned_end)
-    if not stage or stage.project_id != project_id:
+    stage = await stage_svc.update_stage_dates(db, project_id, body.stage_id, body.planned_start, body.planned_end)
+    if not stage:
         raise HTTPException(404)
     from sqlalchemy import select
     from app.models.entities import WasteOrder
@@ -107,7 +107,7 @@ async def import_ical(project_id: str, body: IcalImportIn, user: User = Depends(
             unused = [st for st in stages if not st.planned_start]
             stage = unused[0] if unused else None
         if stage:
-            await stage_svc.update_stage_dates(db, stage.id, d, d)
+            await stage_svc.update_stage_dates(db, project_id, stage.id, d, d)
             if uid:
                 stage.ical_uid = uid
             updated += 1
