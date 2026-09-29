@@ -13,6 +13,7 @@ from app.schemas.project_work_schedule import (
     WorkScheduleRejectIn,
     WorkScheduleUpdateIn,
 )
+from app.services.client_write_idempotency import IdempotencyConflict
 from app.services.project_work_schedule_service import (
     confirm_schedule,
     create_schedule,
@@ -26,6 +27,13 @@ from app.services.project_work_schedule_service import (
 )
 
 router = APIRouter(prefix="/projects/{project_id}/work-schedules", tags=["work-schedules"])
+
+
+def _idempotency_http_error() -> HTTPException:
+    return HTTPException(
+        status_code=409,
+        detail={"code": "idempotency_conflict", "message": "Повтор запроса с другими данными."},
+    )
 
 
 @router.get("", response_model=list[WorkScheduleOut])
@@ -56,7 +64,13 @@ async def create_project_work_schedule(
     user: User = Depends(get_current_user),
 ):
     project = await require_project(db, project_id, user, write=True)
-    return await create_schedule(db, project=project, user=user, body=body)
+    try:
+        schedule, _replayed = await create_schedule(
+            db, project=project, user=user, body=body, client_request_id=body.client_request_id
+        )
+    except IdempotencyConflict as exc:
+        raise _idempotency_http_error() from exc
+    return schedule
 
 
 @router.get("/{schedule_id}", response_model=WorkScheduleOut)
@@ -99,7 +113,8 @@ async def submit_project_work_schedule(
     schedule = await get_schedule(db, project_id=project.id, schedule_id=schedule_id)
     if not schedule:
         raise HTTPException(status_code=404, detail="work_schedule_not_found")
-    return await submit_schedule(db, schedule=schedule, user=user)
+    schedule, _replayed = await submit_schedule(db, schedule=schedule, user=user)
+    return schedule
 
 
 @router.post("/{schedule_id}/confirm", response_model=WorkScheduleOut)
