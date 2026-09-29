@@ -111,11 +111,35 @@ async def add_line(db: AsyncSession, project_id: str, data: dict) -> EstimateLin
 
 
 def material_stats(lines: list[EstimateLine]) -> dict:
+    """План и факт по материалам.
+
+    Факт — это то, что записано, а не план. Раньше здесь стояло
+    `(l.quantity_actual or l.quantity_planned)`, то есть при пустом факте
+    подставлялся план: заказчик видел «материалы: факт 112 465,80 ₽» при
+    нулевых расходах, а отклонение всегда выходило нулевым — сигнал
+    перерасхода не мог сработать в принципе.
+
+    Отдельно считается, по скольким строкам факт вообще вносили. Без этого
+    ноль в факте неотличим от «ещё не покупали», и отклонение −100 % выглядит
+    как провал, хотя означает лишь отсутствие данных. Поэтому при пустом факте
+    отклонение — None, а не число.
+    """
     materials = [l for l in lines if l.line_type == LineType.material]
     planned = sum(l.quantity_planned * l.unit_price for l in materials)
-    actual = sum((l.quantity_actual or l.quantity_planned) * l.unit_price for l in materials)
-    overrun = ((actual - planned) / planned * 100) if planned else 0
-    return {"planned": round(planned, 2), "actual": round(actual, 2), "overrun_percent": round(overrun, 1)}
+    with_fact = [l for l in materials if l.quantity_actual]
+    actual = sum((l.quantity_actual or 0) * l.unit_price for l in with_fact)
+    overrun = (
+        round((actual - planned) / planned * 100, 1)
+        if planned and with_fact
+        else None
+    )
+    return {
+        "planned": round(planned, 2),
+        "actual": round(actual, 2),
+        "overrun_percent": overrun,
+        "lines_total": len(materials),
+        "lines_with_fact": len(with_fact),
+    }
 
 
 async def get_estimate_lock_diff(db: AsyncSession, project_id: str) -> dict | None:

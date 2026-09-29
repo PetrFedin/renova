@@ -73,11 +73,29 @@ export function EstimateDetailLayer({
 
       {stats && (
         <ObjectSection title="Расходники · план и факт">
-          <View style={[s.card, stats.overrun_percent > 5 && s.warn]}>
+          <View style={[s.card, (stats.overrun_percent ?? 0) > 5 && s.warn]}>
             <Text>
               План: {formatRub(stats.planned)} · Факт: {formatRub(stats.actual)}
             </Text>
-            <Text style={s.overrun}>Отклонение: {stats.overrun_percent}%</Text>
+            {/*
+              Ноль в факте означает две разные вещи: «уложились ровно» и «факт
+              ещё не вносили». Раньше сервер подставлял план вместо пустого
+              факта, и отклонение всегда выходило нулевым. Теперь факт честный,
+              а отклонение считается только когда есть от чего считать.
+            */}
+            {stats.overrun_percent === null || stats.overrun_percent === undefined ? (
+              <Text style={s.overrun}>
+                Факт по материалам ещё не вносили
+                {stats.lines_total ? ` · строк в смете: ${stats.lines_total}` : ''}
+              </Text>
+            ) : (
+              <Text style={s.overrun}>
+                Отклонение: {stats.overrun_percent}%
+                {stats.lines_with_fact !== undefined && stats.lines_total
+                  ? ` · факт по ${stats.lines_with_fact} из ${stats.lines_total}`
+                  : ''}
+              </Text>
+            )}
           </View>
         </ObjectSection>
       )}

@@ -27,10 +27,13 @@ async def analytics(project_id: str, user: User = Depends(get_current_user), db:
     p = await require_project(db, project_id, user, write=False)
     materials = [l for l in p.estimate_lines if l.line_type == LineType.material]
     mp = sum(l.quantity_planned * l.unit_price for l in materials)
-    mf = sum((l.quantity_actual or l.quantity_planned) * l.unit_price for l in materials)
+    # Факт — это то, что записано. Раньше при пустом факте подставлялся план,
+    # и заказчик видел «материалы: факт 112 465,80 ₽» при нулевых расходах.
+    with_fact = [l for l in materials if l.quantity_actual]
+    mf = sum((l.quantity_actual or 0) * l.unit_price for l in with_fact)
     prog = sum(s.percent_complete for s in p.stages) / (len(p.stages) or 1)
     dl = (p.planned_end_date - date.today()).days if p.planned_end_date else None
-    return {"budget_planned": p.budget_planned, "budget_spent": p.budget_spent, "margin_estimated": round(p.budget_planned - mp, 2), "materials_plan": round(mp, 2), "materials_fact": round(mf, 2), "progress_percent": round(prog, 1), "days_left": dl, "forecast_delay_days": max(0, -dl) if dl is not None and prog < 100 else 0}
+    return {"budget_planned": p.budget_planned, "budget_spent": p.budget_spent, "margin_estimated": round(p.budget_planned - mp, 2), "materials_plan": round(mp, 2), "materials_fact": round(mf, 2), "materials_fact_lines": len(with_fact), "materials_lines": len(materials), "progress_percent": round(prog, 1), "days_left": dl, "forecast_delay_days": max(0, -dl) if dl is not None and prog < 100 else 0}
 
 @router.get("/projects/{project_id}/analytics/budget-alerts")
 async def budget_alerts(project_id: str, threshold_pct: float = 5, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
