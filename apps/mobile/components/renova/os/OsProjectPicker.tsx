@@ -19,6 +19,8 @@ import { ProjectCardLifecycleIcons } from '@/components/renova/ProjectCardLifecy
 import { canManageProjectLifecycle } from '@/lib/domain/projectLifecycle';
 import type { OsRole } from '@/constants/osSections';
 import { filterOutJunkProjects } from '@/lib/junkProjects';
+import { reportError } from '@/lib/reportError';
+import { resolveConfirmedPendingPayments } from '@/lib/domain/enrichProjectsPendingPayments';
 
 function projectMeta(p: ProjectSummary, pendingById: Record<string, number>): string {
   const type = p.property_type === 'house' ? 'Дом' : 'Квартира';
@@ -125,7 +127,7 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
   const { user, projects, activeProject, loadProject, showPaywall, readOnly } = useRenova();
   const canManageBuckets = user?.role === 'customer' && !readOnly;
   const [open, setOpen] = useState(false);
-  const { bucket, setBucket, items: bucketItems, archivedCount, trashedCount, reload: reloadBuckets } = useProjectBuckets(open ? user?.id : undefined, canManageBuckets);
+  const { bucket, setBucket, items: bucketItems, archivedCount, trashedCount, itemsError: bucketItemsError, reload: reloadBuckets } = useProjectBuckets(open ? user?.id : undefined, canManageBuckets);
   const { lifecycleHandlers, emptyTrash } = useProjectLifecycleActions(reloadBuckets);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [pendingById, setPendingById] = useState<Record<string, number>>({});
@@ -164,17 +166,17 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
 
     let cancelled = false;
     const t = setTimeout(() => {
-      Promise.all(
-        closing.map(async (p) => {
-          try {
-            const n = (await api.countPendingPayments(user.id, p.id)) || 0;
-            return [p.id, n] as const;
-          } catch {
-            return [p.id, 0] as const;
-          }
-        }),
-      ).then((rows) => {
-        if (!cancelled) setPendingById((prev) => ({ ...prev, ...Object.fromEntries(rows) }));
+      // Unknown payment state must remain «Закрытие»; a failed read is not zero pending
+      // payments — resolveConfirmedPendingPayments omits failed ids instead of zeroing them.
+      resolveConfirmedPendingPayments(
+        closing.map((p) => p.id),
+        (id) => api.countPendingPayments(user.id, id),
+        (id, error) => reportError('osProjectPicker.pendingPayments', error, { projectId: id }),
+      ).then((confirmed) => {
+        if (cancelled) return;
+        if (Object.keys(confirmed).length) {
+          setPendingById((prev) => ({ ...prev, ...confirmed }));
+        }
       });
     }, 0);
     return () => {
@@ -243,7 +245,7 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
               <View style={s.menu}>
                 <Text style={s.menuHead}>Объекты</Text>
                 <ProjectBucketToolbar bucket={bucket} onChange={setBucket} archivedCount={archivedCount} trashedCount={trashedCount} canManage={canManageBuckets} />
-                {bucket === 'trashed' && canManageBuckets && trashedCount > 0 ? (
+                {bucket === 'trashed' && canManageBuckets && !!trashedCount && trashedCount > 0 ? (
                   <Pressable style={s.emptyTrashBtn} onPress={emptyTrash}>
                     <Text style={s.emptyTrashT}>Очистить корзину</Text>
                   </Pressable>
@@ -322,9 +324,15 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
                 ) : null}
 
                 {!inProgress.length && !completed.length ? (
-                  <Text style={s.emptyBucket}>
-                    {bucket === 'active' ? 'Нет проектов' : bucket === 'archived' ? 'Архив пуст' : 'Корзина пуста'}
-                  </Text>
+                  bucket !== 'active' && bucketItemsError ? (
+                    <Text style={s.emptyBucketError}>
+                      {bucket === 'archived' ? 'Не удалось загрузить архив' : 'Не удалось загрузить корзину'}
+                    </Text>
+                  ) : (
+                    <Text style={s.emptyBucket}>
+                      {bucket === 'active' ? 'Нет проектов' : bucket === 'archived' ? 'Архив пуст' : 'Корзина пуста'}
+                    </Text>
+                  )
                 ) : null}
 
                 <View style={s.divider} />
@@ -458,4 +466,5 @@ const s = StyleSheet.create({
   },
   emptyTrashT: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.danger },
   emptyBucket: { fontSize: 12, color: RenovaTheme.colors.textMuted, paddingHorizontal: 16, paddingVertical: 8 },
+  emptyBucketError: { fontSize: 12, color: RenovaTheme.colors.danger, paddingHorizontal: 16, paddingVertical: 8 },
 });
