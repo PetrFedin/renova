@@ -197,3 +197,42 @@ async def join(
 ):
     _require_contractor(user)
     return await team_join_svc.join_by_token(db, user.id, body.token)
+
+
+class RemoveMemberIn(BaseModel):
+    user_id: str
+
+
+@router.delete("/member")
+async def remove_member(
+    body: RemoveMemberIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Владелец исключает участника."""
+    _require_contractor(user)
+    try:
+        removed = await team_svc.remove_member_as_owner(
+            db,
+            owner_id=user.id,
+            user_id=body.user_id,
+        )
+    except ValueError as error:
+        raise _team_error(error) from error
+    if not removed:
+        raise HTTPException(403, detail={"code": "team_member_remove_forbidden"})
+    return {"ok": True}
+
+
+@router.post("/leave")
+async def leave(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Участник выходит из чужой бригады.
+
+    Для технадзора, оказавшегося в бригаде проверяемого подрядчика, это
+    единственный способ вернуть себе независимость и доступ к проекту.
+    """
+    _require_contractor(user)
+    return await team_svc.leave_team(db, user_id=user.id)
