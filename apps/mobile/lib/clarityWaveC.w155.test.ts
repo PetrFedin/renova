@@ -11,6 +11,7 @@ const control = readFileSync(join(mobile, 'components/screens/control/CustomerCo
 const planFrame = readFileSync(join(mobile, 'components/screens/object/PlanSectionFrame.tsx'), 'utf8');
 const docs = readFileSync(join(mobile, 'components/renova/DocumentsHub.tsx'), 'utf8');
 const empty = readFileSync(join(mobile, 'components/ui/EmptyActionState.tsx'), 'utf8');
+const sheetSurface = readFileSync(join(mobile, 'components/renova/SheetSurface.tsx'), 'utf8');
 
 console.assert(screen.includes('listRowStyles') && screen.includes('screenTypography'), 'screenTypography');
 console.assert(!home.includes("textTransform: 'uppercase'"), 'home zone no uppercase');
@@ -20,10 +21,16 @@ console.assert(control.includes('listRowStyles') && control.includes('screenTypo
 console.assert(!planFrame.includes('fontStyle: \'italic\'') && planFrame.includes('numberOfLines={2}'), 'plan frame quiet');
 console.assert(docs.includes('hairlineWidth') && docs.includes("fontWeight: '600'"), 'docs list quiet');
 console.assert(empty.includes('hairlineWidth') && empty.includes('screenTypography'), 'empty soft');
+console.assert(
+  sheetSurface.includes('useReducedMotion')
+    && sheetSurface.includes("animationType={reducedMotion ? 'fade' : 'slide'}"),
+  'shared sheet respects system Reduced Motion',
+);
 
 const ok =
   screen.includes('listRowStyles') &&
   hub.includes('borderBottomColor: RenovaTheme.colors.primary') &&
-  control.includes('listRowStyles');
+  control.includes('listRowStyles') &&
+  sheetSurface.includes('useReducedMotion');
 if (!ok) process.exit(1);
 console.log('clarityWaveC.w155.test OK');

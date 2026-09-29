@@ -12,6 +12,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useReducedMotion } from 'react-native-reanimated';
 
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';
@@ -34,6 +35,7 @@ export type SheetSurfaceProps = {
  * Shared bottom-sheet chrome for Renova operational surfaces.
  * Provides safe close semantics, keyboard avoidance, scrollable content,
  * safe-area padding and a footer that stays outside the scroll region.
+ * System Reduced Motion removes the large slide translation and keeps a fade.
  */
 export function SheetSurface({
   visible,
@@ -49,6 +51,7 @@ export function SheetSurface({
   testID,
 }: SheetSurfaceProps) {
   const insets = useSafeAreaInsets();
+  const reducedMotion = useReducedMotion();
   const closeSafely = () => {
     if (!busy) onClose();
   };
@@ -57,7 +60,7 @@ export function SheetSurface({
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      animationType={reducedMotion ? 'fade' : 'slide'}
       statusBarTranslucent
       onRequestClose={closeSafely}
     >
