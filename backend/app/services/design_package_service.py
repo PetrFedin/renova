@@ -12,6 +12,19 @@ from app.services import team_service
 
 DesignAction = Literal["submit", "approve", "reject"]
 
+DESIGN_PACKAGE_CREATE_SCOPE = "design_package.create"
+
+
+async def _load_package(db: AsyncSession, *, project_id: str, package_id: str) -> DesignPackage:
+    query = select(DesignPackage).where(
+        DesignPackage.id == package_id,
+        DesignPackage.project_id == project_id,
+    )
+    package = (await db.execute(query)).scalar_one_or_none()
+    if package is None:
+        raise ValueError("design_package_not_found")
+    return package
+
 
 def _target(action: DesignAction) -> str:
     return {
@@ -86,8 +99,17 @@ async def create_package(
     title: str,
     file_key: str | None = None,
     notes: str | None = None,
+    client_request_id: str | None = None,
 ) -> DesignPackage:
-    """Create the next version with its audit event in one transaction."""
+    """Create exactly one DesignPackage per client_request_id.
+
+    A lost response after the first commit must replay into the original
+    package/version, not mint a second one. Same key with a different
+    canonical {title, file_key, notes} payload raises IdempotencyConflict
+    instead of silently creating/overwriting a version (#413).
+    """
+    from app.services.client_write_idempotency import commit_client_write, replay_entity_id
+
     if not await _is_executor(db, project, actor):
         raise ValueError("design_decision_actor_forbidden")
     normalized_title = (title or "").strip()
@@ -97,6 +119,23 @@ async def create_package(
     if normalized_file_key and len(normalized_file_key) > 512:
         raise ValueError("design_file_key_invalid")
     normalized_notes = (notes or "").strip() or None
+
+    payload = {
+        "title": normalized_title,
+        "file_key": normalized_file_key,
+        "notes": normalized_notes,
+    }
+
+    replay_id = await replay_entity_id(
+        db,
+        scope=DESIGN_PACKAGE_CREATE_SCOPE,
+        project_id=project.id,
+        user_id=actor.id,
+        request_id=client_request_id,
+        payload=payload,
+    )
+    if replay_id:
+        return await _load_package(db, project_id=project.id, package_id=replay_id)
 
     lock_query = select(Project.id).where(Project.id == project.id)
     try:
@@ -137,10 +176,22 @@ async def create_package(
         },
     )
     try:
-        await db.commit()
+        created, entity_id = await commit_client_write(
+            db,
+            scope=DESIGN_PACKAGE_CREATE_SCOPE,
+            project_id=project.id,
+            user_id=actor.id,
+            request_id=client_request_id,
+            payload=payload,
+            entity_id=package.id,
+        )
     except BaseException:
         await db.rollback()
         raise
+
+    if not created:
+        return await _load_package(db, project_id=project.id, package_id=entity_id)
+
     await db.refresh(package)
 
     from app.services.outbox_inline_dispatch import dispatch_best_effort

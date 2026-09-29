@@ -9,6 +9,7 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import DesignPackage, Project, User
 from app.services import design_package_service as design_svc
+from app.services.client_write_idempotency import IdempotencyConflict
 
 router = APIRouter(prefix="/projects", tags=["design"])
 
@@ -17,6 +18,7 @@ class DesignIn(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     file_key: str | None = Field(default=None, max_length=512)
     notes: str | None = Field(default=None, max_length=4000)
+    client_request_id: str | None = Field(default=None, min_length=8, max_length=80)
 
 
 def _out(package: DesignPackage, *, replayed: bool | None = None) -> dict:
@@ -83,7 +85,10 @@ async def create_design(
             title=body.title,
             file_key=body.file_key,
             notes=body.notes,
+            client_request_id=body.client_request_id,
         )
+    except IdempotencyConflict as error:
+        raise HTTPException(409, detail={"code": "idempotency_conflict"}) from error
     except ValueError as error:
         raise _design_error(error) from error
     return _out(package, replayed=False)

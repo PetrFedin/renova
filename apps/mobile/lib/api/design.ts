@@ -1,5 +1,6 @@
 /** API: design — W110 submit/create offline (approve уже в очереди) */
 import { req, cachedGet, API_BASE, ApiError } from './client';
+import { createClientRequestId } from '@/lib/clientRequestId';
 
 export const designApi = {
   listDesignPackages: (userId: string, projectId: string) =>
@@ -9,10 +10,14 @@ export const designApi = {
       userId,
     ),
   createDesignPackage: async (userId: string, projectId: string, body: object) => {
+    // Same client_request_id and exact serialized body is sent on the first
+    // attempt and on every offline replay so a lost response cannot mint a
+    // second DesignPackage/version (#413, following the #316/#398 pattern).
+    const requestBody = JSON.stringify({ ...body, client_request_id: createClientRequestId('design-package') });
     try {
       return await req(`/api/v1/projects/${projectId}/design-packages`, {
         method: 'POST',
-        body: JSON.stringify(body),
+        body: requestBody,
       }, userId);
     } catch (e) {
       if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
@@ -20,7 +25,7 @@ export const designApi = {
       await enqueue({
         path: `/api/v1/projects/${projectId}/design-packages`,
         method: 'POST',
-        body: JSON.stringify(body),
+        body: requestBody,
         userId,
       });
       throw new Error('offline_queued');
