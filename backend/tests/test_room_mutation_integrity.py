@@ -17,11 +17,12 @@ from app.models.entities import (
     UserRole,
 )
 from app.schemas.project import RoomUpdate
+from app.services import room_change_service
 from app.services import room_mutation_service as mutations
 from app.services.client_write_idempotency import IdempotencyConflict
 
 
-async def seed_project(db, suffix: str):
+async def seed_project(db, suffix: str, *, with_contractor: bool = True):
     phone_tail = sum(
         (index + 1) * ord(character)
         for index, character in enumerate(suffix)
@@ -41,7 +42,7 @@ async def seed_project(db, suffix: str):
         name="Room mutation integrity",
         renovation_type="cosmetic",
         customer_id=customer.id,
-        contractor_id=contractor.id,
+        contractor_id=contractor.id if with_contractor else None,
     )
     db.add_all([customer, contractor, project])
     await db.commit()
@@ -387,6 +388,149 @@ async def test_effect_failure_rolls_back_room_estimates_budget_and_audit(db, mon
         .select_from(DomainOutbox)
         .where(DomainOutbox.aggregate_id == room_id)
     ) == baseline_outbox
+
+
+@pytest.mark.asyncio
+async def test_customer_owner_can_edit_room_directly_before_executor_linked(db):
+    """#435: pre-executor state, direct PATCH by the customer-owner must succeed."""
+    customer, _, project = await seed_project(db, "pre-exec", with_contractor=False)
+    created = await mutations.create_room(
+        db,
+        project=project,
+        actor=customer,
+        data=room_payload(),
+        client_request_id="room-pre-exec-create",
+    )
+    room_id = created.room.id
+
+    result = await mutations.update_room(
+        db,
+        project=project,
+        room_id=room_id,
+        actor=customer,
+        data={"width_m": 5},
+    )
+    assert result is not None
+    assert result.replayed is False
+    assert await db.scalar(select(Room.width_m).where(Room.id == room_id)) == 5
+
+    via_api = await rooms_api.update_room(
+        project.id,
+        room_id,
+        RoomUpdate(width_m=6),
+        user=customer,
+        db=db,
+    )
+    assert via_api["width_m"] == 6
+
+
+@pytest.mark.asyncio
+async def test_unrelated_customer_cannot_edit_room_before_executor_linked(db):
+    _, _, project_a = await seed_project(db, "pre-exec-a", with_contractor=False)
+    outsider, _, _ = await seed_project(db, "pre-exec-b", with_contractor=False)
+    created = await mutations.create_room(
+        db,
+        project=project_a,
+        actor=await db.get(User, project_a.customer_id),
+        data=room_payload(),
+        client_request_id="room-pre-exec-outsider-create",
+    )
+
+    with pytest.raises(HTTPException) as captured:
+        await rooms_api.update_room(
+            project_a.id,
+            created.room.id,
+            RoomUpdate(width_m=5),
+            user=outsider,
+            db=db,
+        )
+    assert captured.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_room_edit_authority_transitions_across_executor_lifecycle(db):
+    """#435 acceptance transition test: customer edits -> executor attached ->
+    customer direct edit denied -> customer request created -> executor
+    approves -> room/estimate/budget update."""
+    customer, contractor, project = await seed_project(db, "lifecycle", with_contractor=False)
+    project_id = project.id
+
+    created = await mutations.create_room(
+        db,
+        project=project,
+        actor=customer,
+        data=room_payload(),
+        client_request_id="room-lifecycle-create",
+    )
+    room_id = created.room.id
+
+    pre_exec = await mutations.update_room(
+        db,
+        project=project,
+        room_id=room_id,
+        actor=customer,
+        data={"width_m": 5},
+    )
+    assert pre_exec is not None
+    assert await db.scalar(select(Room.width_m).where(Room.id == room_id)) == 5
+
+    project.contractor_id = contractor.id
+    db.add(project)
+    await db.commit()
+    project = await db.get(Project, project_id)
+
+    with pytest.raises(ValueError, match="room_direct_editor_forbidden"):
+        await mutations.update_room(
+            db,
+            project=project,
+            room_id=room_id,
+            actor=customer,
+            data={"width_m": 7},
+        )
+    with pytest.raises(HTTPException) as captured:
+        await rooms_api.update_room(
+            project.id,
+            room_id,
+            RoomUpdate(width_m=7),
+            user=customer,
+            db=db,
+        )
+    assert captured.value.status_code == 403
+    assert await db.scalar(select(Room.width_m).where(Room.id == room_id)) == 5
+
+    request = await room_change_service.create_request(
+        db,
+        project=project,
+        actor=customer,
+        room_id=room_id,
+        message="Расширить комнату",
+        payload={"width_m": 7},
+    )
+
+    resolved_request, resolved_room, replayed, changes = (
+        await room_change_service.decide_request(
+            db,
+            project=project,
+            request_id=request.id,
+            actor=contractor,
+            decision="approve",
+        )
+    )
+    assert resolved_request is not None
+    assert resolved_room is not None
+    assert replayed is False
+    assert "width_m" in changes
+    assert await db.scalar(select(Room.width_m).where(Room.id == room_id)) == 7
+
+    calculated_budget = await db.scalar(
+        select(func.sum(EstimateLine.quantity_planned * EstimateLine.unit_price)).where(
+            EstimateLine.project_id == project_id
+        )
+    )
+    stored_budget = await db.scalar(
+        select(Project.budget_planned).where(Project.id == project_id)
+    )
+    assert stored_budget == pytest.approx(float(calculated_budget), abs=0.01)
 
 
 @pytest.mark.asyncio

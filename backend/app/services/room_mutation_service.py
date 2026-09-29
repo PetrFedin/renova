@@ -28,7 +28,24 @@ async def _require_direct_editor(
     project: Project,
     actor: User,
 ) -> None:
-    """Customers must use Room Change; only writable contractor-side members edit directly."""
+    """One authority predicate for direct room create/update.
+
+    Pre-executor (no contractor linked yet): the customer-owner may edit the
+    project's rooms directly — this mirrors the mobile UI, which reads the
+    same `project.contractor_id` to decide whether to offer direct edit
+    (see RoomDetailScreen.ownerCanEdit / OsRoomsScreen). Once an executor is
+    linked, the customer must go through Room Change requests instead, and
+    only write-scoped contractor-side members may edit directly.
+
+    NOTE: `project.contractor_id` is the current single-executor signal.
+    The multi-contractor participant rollout (#300/#344) must extend this
+    predicate explicitly rather than assume a null `contractor_id` still
+    proves "no executor" once participants exist — see #435.
+    """
+    if project.contractor_id is None:
+        if project.customer_id == actor.id:
+            return
+        raise ValueError("room_direct_editor_forbidden")
     if actor.role != UserRole.contractor:
         raise ValueError("room_direct_editor_forbidden")
     mode, read_only = await team_service.project_access_mode(db, actor, project)
