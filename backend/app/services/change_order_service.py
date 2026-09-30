@@ -2,7 +2,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import ChangeOrder, ChangeOrderStatus, Project
+from app.models.entities import ChangeOrder, ChangeOrderStatus, Payment, Project
 from app.models.project_documents import DocumentStatus, DocumentType, ProjectDocument
 from app.services.budget_service import apply_change_order_to_budget, sync_project_budget_planned
 from app.services.client_write_side_effects import PreparedSideEffect, activate_client_write_side_effects
@@ -82,6 +82,57 @@ async def approve(db: AsyncSession, order_id: str) -> ChangeOrder | None:
     await db.commit()
     await db.refresh(order)
     return order
+
+
+def change_order_payment_marker(order_id: str) -> str:
+    """Связь допработа -> счёт без отдельной колонки: маркер в начале notes платежа."""
+    return f"CO:{order_id}"
+
+
+async def linked_payment(db: AsyncSession, order_id: str) -> Payment | None:
+    return (
+        await db.execute(
+            select(Payment)
+            .where(Payment.notes.like(f"{change_order_payment_marker(order_id)};%"))
+            .order_by(Payment.created_at.asc())
+            .limit(1)
+        )
+    ).scalars().first()
+
+
+async def payments_by_order(db: AsyncSession, project_id: str) -> dict[str, Payment]:
+    """order_id -> счёт допработы (по маркеру) для всех платежей проекта."""
+    result = await db.execute(
+        select(Payment)
+        .where(Payment.project_id == project_id, Payment.notes.like("CO:%;%"))
+        .order_by(Payment.created_at.asc())
+    )
+    mapping: dict[str, Payment] = {}
+    for payment in result.scalars().all():
+        order_id = (payment.notes or "").split(";", 1)[0][3:]
+        mapping.setdefault(order_id, payment)
+    return mapping
+
+
+async def _ensure_order_payment(
+    db: AsyncSession, *, order: ChangeOrder, created_by: str
+) -> Payment:
+    """Один счёт на согласованную допработу (повтор не создаёт второй)."""
+    from app.services.payment_service import prepare_payment
+
+    existing = await linked_payment(db, order.id)
+    if existing:
+        return existing
+    return await prepare_payment(
+        db,
+        order.project_id,
+        created_by,
+        f"Оплата доп. работ: {order.title}"[:255],
+        float(order.amount),
+        "advance",
+        None,
+        f"{change_order_payment_marker(order.id)}; доп. работы",
+    )
 
 
 async def _linked_document(db: AsyncSession, order_id: str) -> ProjectDocument | None:
@@ -261,11 +312,14 @@ async def approve_with_sign_draft(
 
     existing_document = await _linked_document(db, order.id)
     if order.status == ChangeOrderStatus.approved and existing_document:
+        existing_payment = await linked_payment(db, order.id)
         await db.commit()
         return order, {
             "id": existing_document.id,
             "title": existing_document.title,
             "status": existing_document.status,
+            "payment_id": existing_payment.id if existing_payment else None,
+            "payment_status": existing_payment.status.value if existing_payment else None,
             "schedule_synced": False,
             "replayed": True,
         }
@@ -276,6 +330,7 @@ async def approve_with_sign_draft(
 
     await apply_change_order_to_budget(db, order)
     await sync_project_budget_planned(db, order.project_id)
+    payment = await _ensure_order_payment(db, order=order, created_by=created_by)
 
     from app.services import project_document_service as documents
 
@@ -340,6 +395,8 @@ async def approve_with_sign_draft(
         "id": draft.id,
         "title": draft.title,
         "status": draft.status,
+        "payment_id": payment.id,
+        "payment_status": payment.status.value,
         "schedule_synced": schedule_synced,
         "replayed": not newly_approved,
     }

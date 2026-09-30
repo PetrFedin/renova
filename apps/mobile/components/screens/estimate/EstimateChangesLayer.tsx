@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ObjectSection } from '@/components/screens/object/ObjectSection';
-import { changeOrderStatusLabel } from '@/constants/labels';
+import { changeOrderPaymentLine, changeOrderStatusLabel } from '@/constants/labels';
 import { api, type ChangeOrder } from '@/lib/api';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { budgetTabRoute } from '@/constants/osSections';
@@ -163,6 +163,9 @@ export function EstimateChangesLayer({
                 {o.title} · {formatRub(o.amount)}
               </Text>
               <Text style={s.meta}>Статус: {changeOrderStatusLabel(o.status)}</Text>
+              {changeOrderPaymentLine(o.status, o.payment_status) ? (
+                <Text style={s.meta}>{changeOrderPaymentLine(o.status, o.payment_status)}</Text>
+              ) : null}
               {o.status === 'approved' ? (
                 <PrimaryButton
                   title="В бюджет"

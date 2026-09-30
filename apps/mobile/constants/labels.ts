@@ -116,6 +116,15 @@ export function changeOrderStatusLabel(status: string): string {
   return CHANGE_ORDER_STATUS_LABEL[status] ?? status;
 }
 
+/** Строка оплаты допработы из payment_status (счёт создаётся при согласовании). */
+export function changeOrderPaymentLine(status: string, paymentStatus?: string | null): string | null {
+  if (status !== 'approved') return null;
+  if (!paymentStatus) return 'Счёт не выставлен';
+  if (paymentStatus === 'confirmed' || paymentStatus === 'paid_unverified') return 'Счёт оплачен';
+  if (paymentStatus === 'cancelled' || paymentStatus === 'refunded') return 'Счёт отменён';
+  return 'Счёт выставлен, ждёт оплаты';
+}
+
 export function roomChangeStatusLabel(status: string): string {
   return ROOM_CHANGE_STATUS_LABEL[status] ?? status;
 }

@@ -121,4 +121,7 @@ export type ChangeOrder = {
   amount: number;
   status: string;
   description?: string;
+  /** Счёт на оплату допработы (создаётся при согласовании) */
+  payment_id?: string | null;
+  payment_status?: string | null;
 };

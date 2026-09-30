@@ -111,10 +111,10 @@ async def prepare_client_write_side_effects(db: AsyncSession, *, scope: str, pro
         if not evidence or not project:
             return effects
         approved = evidence.status == "approved"
-        activity_row = await outbox.enqueue(db, aggregate_type="payment_evidence", aggregate_id=evidence.id, event_type=outbox.ACTIVITY_EVENT, payload={"project_id": project_id, "user_id": user_id, "kind": "PaymentEvidenceApproved" if approved else "PaymentEvidenceRejected", "title": "Подтверждение перевода принято" if approved else "Подтверждение перевода отклонено", "body": evidence.rejection_reason, "link_path": "/(customer)/(tabs)/budget?tab=payments"})
+        activity_row = await outbox.enqueue(db, aggregate_type="payment_evidence", aggregate_id=evidence.id, event_type=outbox.ACTIVITY_EVENT, payload={"project_id": project_id, "user_id": user_id, "kind": "PaymentEvidenceApproved" if approved else "PaymentEvidenceRejected", "title": "Подтверждение перевода принято" if approved else "Подтверждение перевода отклонено", "body": evidence.rejection_reason or "", "link_path": "/(customer)/(tabs)/budget?tab=payments"})
         effects.append(PreparedSideEffect(effect_type="activity", outbox_id=activity_row.id))
         if project.customer_id:
-            notification_row = await outbox.enqueue(db, aggregate_type="payment_evidence", aggregate_id=evidence.id, event_type=outbox.NOTIFICATION_EVENT, payload={"user_id": project.customer_id, "project_id": project_id, "notification_type": "payment_confirmed" if approved else "payment_pending", "title": "Перевод подтверждён" if approved else "Нужно повторно приложить подтверждение перевода", "body": evidence.rejection_reason, "link_path": "/(customer)/(tabs)/budget?tab=payments", "return_to": "/(customer)/(tabs)/"})
+            notification_row = await outbox.enqueue(db, aggregate_type="payment_evidence", aggregate_id=evidence.id, event_type=outbox.NOTIFICATION_EVENT, payload={"user_id": project.customer_id, "project_id": project_id, "notification_type": "payment_confirmed" if approved else "payment_pending", "title": "Перевод подтверждён" if approved else "Нужно повторно приложить подтверждение перевода", "body": evidence.rejection_reason or "", "link_path": "/(customer)/(tabs)/budget?tab=payments", "return_to": "/(customer)/(tabs)/"})
             effects.append(PreparedSideEffect(effect_type="notification", outbox_id=notification_row.id, match_key=project.customer_id))
         return effects
     return effects

@@ -29,7 +29,19 @@ async def _dispatch_prepared_effects(db: AsyncSession, *, source: str) -> None:
 async def list_co(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=False)
     items = await co_svc.list_orders(db, project_id)
-    return [{"id": x.id, "title": x.title, "amount": x.amount, "status": x.status.value, "description": x.description} for x in items]
+    payments = await co_svc.payments_by_order(db, project_id)
+    return [
+        {
+            "id": x.id,
+            "title": x.title,
+            "amount": x.amount,
+            "status": x.status.value,
+            "description": x.description,
+            "payment_id": payments[x.id].id if x.id in payments else None,
+            "payment_status": payments[x.id].status.value if x.id in payments else None,
+        }
+        for x in items
+    ]
 
 
 @router.post("")
@@ -134,20 +146,24 @@ async def approve_co(project_id: str, order_id: str, user: User = Depends(get_cu
     if not co:
         raise HTTPException(404)
 
+    # Ответ собираем ДО диспетча outbox: dispatch_best_effort может сделать
+    # rollback и протухнуть ORM-объекты (JRN-004), а решение уже закоммичено.
     draft_id = (draft_meta or {}).get("id")
     replayed = bool((draft_meta or {}).get("replayed"))
-    if not replayed:
-        await _dispatch_prepared_effects(db, source="change_order.approve")
-
-    return {
+    response = {
         "ok": True,
         "status": co.status.value,
         "document_id": draft_id,
+        "payment_id": (draft_meta or {}).get("payment_id"),
+        "payment_status": (draft_meta or {}).get("payment_status"),
         "amount": co.amount,
         "title": co.title,
         "schedule_synced": bool((draft_meta or {}).get("schedule_synced")),
         "replayed": replayed,
     }
+    if not replayed:
+        await _dispatch_prepared_effects(db, source="change_order.approve")
+    return response
 
 
 @router.post("/{order_id}/reject")
@@ -173,7 +189,7 @@ async def reject_co(project_id: str, order_id: str, user: User = Depends(get_cur
     if not co:
         raise HTTPException(404)
 
+    response = {"ok": True, "status": co.status.value, "replayed": replayed}
     if not replayed:
         await _dispatch_prepared_effects(db, source="change_order.reject")
-
-    return {"ok": True, "status": co.status.value, "replayed": replayed}
+    return response
