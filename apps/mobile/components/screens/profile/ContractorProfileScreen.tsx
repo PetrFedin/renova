@@ -8,6 +8,7 @@ import { BudgetWidgetSettings } from '@/components/renova/os/BudgetWidgetSetting
 import { HomeWidgetSettings } from '@/components/renova/os/HomeWidgetSettings';
 import { RoleSwitchButton, roleDisplayLabel } from '@/components/renova/RoleSwitchButton';
 import { AdminHubLink } from '@/components/renova/AdminHubLink';
+import { useAdminAccess } from '@/lib/hooks/useAdminAccess';
 import { ProfileExtraLinks } from '@/components/renova/ProfileExtraLinks';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
@@ -63,7 +64,7 @@ function TeamSection() {
             onChangeText={setPhone}
             keyboardType="phone-pad"
           />
-          <PrimaryButton title="QR-код бригады" variant="outline" onPress={() => nav.href('/(contractor)/team-qr')} />
+          <PrimaryButton title="QR-код бригады" variant="outline" onPress={() => nav.href('/team-qr')} />
           <PrimaryButton
             title="Пригласить"
             variant="outline"
@@ -103,6 +104,7 @@ function TeamSection() {
 
 export function ContractorProfileScreen() {
   const nav = useNavFromHere();
+  const adminAccess = useAdminAccess();
   const { user, refreshMe, activeProject } = useRenova();
   const [inn, setInn] = useState(user?.inn || '');
   const [msg, setMsg] = useState(user?.npd_verified ? 'НПД подтверждён' : '');
@@ -193,12 +195,12 @@ export function ContractorProfileScreen() {
       <ProfileSection title="Работа">
         <View style={ps.actionGap}>
           <PrimaryButton title="Документы объекта" variant="outline" onPress={() => pushOsNav('/documents', nav.from, 'contractor')} />
-          <PrimaryButton title="Подписка Про" onPress={() => nav.href('/(contractor)/subscription')} />
-          {Platform.OS === 'web' ? (
+          <PrimaryButton title="Подписка Про" onPress={() => nav.href('/subscription')} />
+          {Platform.OS === 'web' && adminAccess === 'granted' ? (
             <PrimaryButton
               title="Журнал аудита (веб-версия)"
               variant="outline"
-              onPress={() => nav.href('/(contractor)/audit')}
+              onPress={() => nav.href('/audit')}
             />
           ) : null}
           <AdminHubLink />

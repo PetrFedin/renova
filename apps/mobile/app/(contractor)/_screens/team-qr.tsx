@@ -50,7 +50,7 @@ export default function TeamQrScreen() {
         ...(isPro
           ? {
               primaryLabel: 'Подписка',
-              onPrimary: () => pushOsNav('/(contractor)/subscription', undefined, 'contractor'),
+              onPrimary: () => pushOsNav('/subscription', undefined, 'contractor'),
               secondaryLabel: 'Позже',
               onSecondary: () => undefined,
             }

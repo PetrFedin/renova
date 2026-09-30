@@ -81,7 +81,7 @@ export default function AdminDashboardScreen() {
   useProjectDataReload(reload);
 
   const openOutbox = useCallback(() => {
-    router.push('/(contractor)/outbox-dead-letters' as never);
+    router.push('/outbox-dead-letters' as never);
   }, [router]);
 
   if (Platform.OS !== 'web') {

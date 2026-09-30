@@ -100,7 +100,7 @@ export function alertTeamInviteSent(role: OsRole = 'contractor') {
     title: 'Приглашение отправлено',
     message: 'Участник сможет войти по SMS или QR бригады.',
     primaryLabel: 'QR бригады',
-    onPrimary: () => pushOsNav('/(contractor)/team-qr', undefined, role),
+    onPrimary: () => pushOsNav('/team-qr', undefined, role),
     secondaryLabel: 'Позже',
     onSecondary: () => undefined,
   });
@@ -112,7 +112,7 @@ export function alertTeamCreated(role: OsRole = 'contractor') {
     title: 'Бригада создана',
     message: 'Пригласите участников или покажите QR на объекте.',
     primaryLabel: 'QR бригады',
-    onPrimary: () => pushOsNav('/(contractor)/team-qr', undefined, role),
+    onPrimary: () => pushOsNav('/team-qr', undefined, role),
     secondaryLabel: 'График',
     onSecondary: () => pushOsNav(calendarTabRoute(role), undefined, role),
   });

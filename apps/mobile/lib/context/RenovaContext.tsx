@@ -303,7 +303,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
         if (user.role === 'contractor') {
           // Назначение на объект — это изменение прав. Делать его от имени
           // устаревшей сессии нельзя: рубеж проверен строкой выше.
-          try { p = await api.assignProject(user.id, id); } catch (e: any) { if (String(e?.message || '').includes('402') || String(e).includes('subscription')) { const { pushOsNav } = await import('@/lib/pushOsNav'); pushOsNav('/(contractor)/subscription', undefined, 'contractor'); throw e; } }
+          try { p = await api.assignProject(user.id, id); } catch (e: any) { if (String(e?.message || '').includes('402') || String(e).includes('subscription')) { const { pushOsNav } = await import('@/lib/pushOsNav'); pushOsNav('/subscription', undefined, 'contractor'); throw e; } }
           if (dropStaleWrite(stamp, 'loadProject')) return;
         }
         p = await syncCustomerBudgetOnLoad(user, p);
@@ -815,7 +815,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
           onUpgrade={async () => {
             await api.checkoutPro(user.id);
             setPaywallVisible(false);
-            replaceOsNav('/(contractor)/subscription', undefined, 'contractor');
+            replaceOsNav('/subscription', undefined, 'contractor');
           }}
         />
       )}
