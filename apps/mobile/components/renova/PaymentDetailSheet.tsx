@@ -36,6 +36,13 @@ function fmtDate(iso: string | null | undefined) {
 }
 
 /** Clarity I: gate приёмки — sheet с CTA, не Alert */
+/** 409 «сначала приёмка» отличаем от прочих конфликтов (сумма чека, лимит этапа, счёт уже обработан). */
+function isAcceptanceConflict(error: unknown): boolean {
+  if (!(error instanceof ApiError) || error.status !== 409) return false;
+  if (error.code === 'stage_not_accepted') return true;
+  return /примите этап|приёмк/i.test(error.message || '');
+}
+
 function confirmAcceptanceFirst(goToAcceptance: () => void) {
   showActionConfirm({
     title: 'Сначала приёмка',
@@ -48,7 +55,7 @@ function confirmAcceptanceFirst(goToAcceptance: () => void) {
 }
 
 type PayStep = 'info' | 'transfer' | 'confirm';
-type PaymentMutation = 'card' | 'confirm' | 'dispute' | 'resolveDispute' | null;
+type PaymentMutation = 'card' | 'confirm' | 'dispute' | 'resolveDispute' | 'cancel' | 'edit' | 'received' | 'notReceived' | null;
 
 export function PaymentDetailSheet({
   payment,
@@ -85,6 +92,8 @@ export function PaymentDetailSheet({
   const [disputeReason, setDisputeReason] = useState('');
   const [resolutionOpen, setResolutionOpen] = useState(false);
   const [resolutionNote, setResolutionNote] = useState('');
+  const [editOpen, setEditOpen] = useState(false);
+  const [editAmount, setEditAmount] = useState('');
 
   const reloadReceiptFlag = useCallback(async () => {
     if (!payment) return;
@@ -115,6 +124,8 @@ export function PaymentDetailSheet({
     setDisputeReason('');
     setResolutionOpen(false);
     setResolutionNote('');
+    setEditOpen(false);
+    setEditAmount(payment.amount ? String(payment.amount) : '');
     void reloadReceiptFlag().catch(reportCatch('payment.receiptFlag'));
   }, [payment?.id, reloadReceiptFlag]);
 
@@ -123,10 +134,12 @@ export function PaymentDetailSheet({
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active' && !mutationRef.current) {
         void reloadReceiptFlag().catch(reportCatch('payment.receiptFlag'));
+        // Чек мог быть приложен к счёту «без чека» на экране скана — сервер сам подтвердит счёт.
+        if (payment.status === 'paid_unverified' || payment.status === 'processing') onChanged?.();
       }
     });
     return () => subscription.remove();
-  }, [payment?.id, reloadReceiptFlag]);
+  }, [payment?.id, payment?.status, reloadReceiptFlag, onChanged]);
 
   useEffect(() => {
     if (!payment || !userId || !projectId) return;
@@ -164,7 +177,14 @@ export function PaymentDetailSheet({
   const canUseRequisites = reqLoaded && !reqError && !reqMissing && Boolean(reqText.trim());
   const stage = stages.find((candidate) => candidate.id === payment.stage_id);
   const isCustomer = role === 'customer';
+  const isContractor = role === 'contractor';
   const canConfirm = isCustomer && !readOnly && payment.status === 'pending';
+  // Выходы из «оплачено без проверки» и «в обработке» без админа платформы.
+  const canAttachReceiptLater = isCustomer && !readOnly && payment.status === 'paid_unverified';
+  const canResumeCard = isCustomer && !readOnly && payment.status === 'processing';
+  const canRecipientRespond = isContractor && !readOnly && payment.status === 'paid_unverified';
+  const canCancelInvoice = !readOnly && payment.status === 'pending';
+  const canEditInvoice = isContractor && !readOnly && payment.status === 'pending';
   const canDispute = isCustomer && !readOnly && ['confirmed', 'paid_unverified'].includes(payment.status);
   const canResolveDispute = isCustomer && !readOnly && payment.status === 'disputed';
   const stageNeedsAcceptance = Boolean(stage && stage.status !== 'done');
@@ -216,13 +236,15 @@ export function PaymentDetailSheet({
 
   const openReceipt = () => {
     if (mutationRef.current) return;
-    setReceiptAttached(true);
+    // Флаг «чек приложен» ставит только успешный скан (reloadReceiptFlag), а не нажатие кнопки.
     pushOsNav({ pathname: '/scan-receipt', params: { paymentId: payment.id } }, pathname, role);
     showActionConfirm({
       title: 'Чек',
-      message: 'После сканирования вернитесь к счёту и нажмите «Я оплатил — подтвердить».',
-      primaryLabel: 'К подтверждению',
-      onPrimary: () => setStep('confirm'),
+      message: canAttachReceiptLater
+        ? 'Чек должен покрывать всю сумму счёта. После сканирования счёт подтвердится автоматически.'
+        : 'После сканирования вернитесь к счёту и нажмите «Я оплатил — подтвердить». Чек должен покрывать всю сумму счёта.',
+      primaryLabel: canAttachReceiptLater ? 'Понятно' : 'К подтверждению',
+      onPrimary: () => { if (!canAttachReceiptLater) setStep('confirm'); },
       secondaryLabel: 'Позже',
       onSecondary: () => undefined,
     });
@@ -364,8 +386,11 @@ export function PaymentDetailSheet({
         onPrimary: () => undefined,
       });
     } catch (error: unknown) {
-      if (error instanceof ApiError && error.status === 409) {
+      if (isAcceptanceConflict(error)) {
         confirmAcceptanceFirst(goToAcceptance);
+      } else if (error instanceof ApiError && error.status === 409) {
+        onChanged?.();
+        showActionConfirm({ title: 'Оплату нельзя начать', message: apiErrorMessage(error, 'Счёт уже обработан. Обновите список.') });
       } else if (error instanceof ApiError && error.status === 503) {
         showActionConfirm({
           title: 'ЮKassa',
@@ -411,8 +436,10 @@ export function PaymentDetailSheet({
                 transfer_ack: Boolean(transferAck || receiptAttached),
               });
             } catch (error: unknown) {
-              if (error instanceof ApiError && error.status === 409) {
+              if (isAcceptanceConflict(error)) {
                 confirmAcceptanceFirst(goToAcceptance);
+              } else if (error instanceof ApiError && error.status === 409) {
+                showActionConfirm({ title: 'Оплата не подтверждена', message: apiErrorMessage(error, 'Проверьте счёт и повторите.') });
               } else {
                 reportError('payment.confirm.mutation', error, { userId, projectId, paymentId: payment.id });
                 showActionConfirm({ title: 'Оплата не подтверждена', message: apiErrorMessage(error, 'Повторите операцию.') });
@@ -435,7 +462,7 @@ export function PaymentDetailSheet({
             } else if (confirmed?.status === 'paid_unverified') {
               showActionConfirm({
                 title: 'Принято без проверки',
-                message: 'Статус «оплачено, не верифицировано». Прикрепите чек — тогда сумма войдёт в бюджет как подтверждённый факт.',
+                message: 'Статус «оплачено без проверки». Приложите чек на полную сумму (кнопка в карточке счёта) или дождитесь, пока исполнитель подтвердит получение денег — тогда сумма войдёт в бюджет.',
                 primaryLabel: 'Понятно',
                 onPrimary: () => undefined,
               });
@@ -560,6 +587,102 @@ export function PaymentDetailSheet({
     });
   };
 
+  const runInvoiceMutation = async (
+    kind: 'cancel' | 'edit' | 'received' | 'notReceived',
+    operation: string,
+    call: () => Promise<unknown>,
+    doneTitle: string,
+    doneMessage: string,
+  ) => {
+    if (!beginMutation(kind)) return;
+    try {
+      try {
+        await call();
+      } catch (error: unknown) {
+        reportError(`payment.${operation}.mutation`, error, { userId, projectId, paymentId: payment.id });
+        onChanged?.();
+        showActionConfirm({
+          title: 'Не удалось выполнить',
+          message: apiErrorMessage(error, 'Проверьте статус счёта и повторите операцию.'),
+          primaryLabel: 'Понятно',
+          onPrimary: () => undefined,
+        });
+        return;
+      }
+      await reconcileCommittedPayment(operation);
+      onClose();
+      showActionConfirm({ title: doneTitle, message: doneMessage, primaryLabel: 'Понятно', onPrimary: () => undefined });
+    } finally {
+      endMutation();
+    }
+  };
+
+  const cancelInvoice = () => {
+    if (mutationRef.current) return;
+    showActionConfirm({
+      title: isCustomer ? 'Отклонить счёт?' : 'Отозвать счёт?',
+      message: `${formatRub(payment.amount)} — «${payment.title}». Счёт станет отменённым; при необходимости можно выставить новый.`,
+      primaryLabel: isCustomer ? 'Отклонить' : 'Отозвать',
+      primaryDestructive: true,
+      onPrimary: () => {
+        void runInvoiceMutation(
+          'cancel',
+          'cancel',
+          () => api.cancelPayment(userId, projectId, payment.id, {
+            reason: isCustomer ? 'Отклонён заказчиком' : 'Отозван исполнителем',
+          }),
+          'Счёт отменён',
+          'Отменённый счёт не учитывается в оплатах этапа и не мешает завершению объекта.',
+        );
+      },
+      secondaryLabel: 'Назад',
+      onSecondary: () => undefined,
+    });
+  };
+
+  const saveEdit = () => {
+    if (mutationRef.current) return;
+    const amount = Number(String(editAmount).replace(/\s/g, '').replace(',', '.'));
+    if (!Number.isFinite(amount) || amount <= 0) {
+      showActionConfirm({ title: 'Проверьте сумму', message: 'Введите сумму счёта больше нуля.', primaryLabel: 'Понятно', onPrimary: () => undefined });
+      return;
+    }
+    void runInvoiceMutation(
+      'edit',
+      'edit',
+      () => api.updatePayment(userId, projectId, payment.id, { amount: Math.round(amount * 100) / 100 }),
+      'Счёт исправлен',
+      'Заказчик увидит новую сумму счёта.',
+    );
+  };
+
+  const respondReceived = (received: boolean) => {
+    if (mutationRef.current) return;
+    showActionConfirm({
+      title: received ? 'Деньги получены?' : 'Деньги не получены?',
+      message: received
+        ? `${formatRub(payment.amount)} войдёт в подтверждённый факт бюджета проекта.`
+        : 'Счёт вернётся к заказчику как неоплаченный, он увидит ваш ответ.',
+      primaryLabel: received ? 'Деньги получены' : 'Не получены',
+      primaryDestructive: !received,
+      onPrimary: () => {
+        void runInvoiceMutation(
+          received ? 'received' : 'notReceived',
+          received ? 'recipient_received' : 'recipient_denied',
+          () => api.respondPaymentReceived(userId, projectId, payment.id, received
+            ? { received: true }
+            : { received: false, note: 'Исполнитель не получил перевод' }),
+          received ? 'Получение подтверждено' : 'Ответ отправлен',
+          received
+            ? 'Счёт оплачен, сумма учтена в факте бюджета.'
+            : 'Счёт снова ожидает оплаты заказчиком.',
+        );
+      },
+      secondaryLabel: 'Назад',
+      onSecondary: () => undefined,
+    });
+  };
+
   const footer = canConfirm ? (
     <>
       {step === 'info' ? (
@@ -570,6 +693,7 @@ export function PaymentDetailSheet({
             <PrimaryButton title="Оплатить картой (ЮKassa)" variant="accent" onPress={() => { void payWithCard(); }} loading={mutation === 'card'} disabled={busy && mutation !== 'card'} fullWidth />
             <PrimaryButton title="Перевести (СБП / реквизиты)" variant="outline" onPress={() => setStep('transfer')} disabled={busy} fullWidth />
             <PrimaryButton title="Прикрепить чек" variant="outline" onPress={openReceipt} disabled={busy} fullWidth />
+            {canCancelInvoice ? <PrimaryButton title="Отклонить счёт" variant="dangerOutline" onPress={cancelInvoice} loading={mutation === 'cancel'} disabled={busy && mutation !== 'cancel'} fullWidth /> : null}
           </>
         )
       ) : null}
@@ -596,7 +720,10 @@ export function PaymentDetailSheet({
           <PrimaryButton title="Отмена" variant="ghost" onPress={() => { setDisputeOpen(false); setDisputeReason(''); }} disabled={busy} fullWidth />
         </>
       ) : (
-        <PrimaryButton title="Оспорить оплату" variant="dangerOutline" onPress={() => setDisputeOpen(true)} disabled={busy} fullWidth />
+        <>
+          {canAttachReceiptLater ? <PrimaryButton title="Приложить чек" variant="accent" onPress={openReceipt} disabled={busy} fullWidth /> : null}
+          <PrimaryButton title="Оспорить оплату" variant="dangerOutline" onPress={() => setDisputeOpen(true)} disabled={busy} fullWidth />
+        </>
       )}
       <PrimaryButton title="Закрыть" variant="ghost" onPress={closeSafely} disabled={busy} fullWidth />
     </>
@@ -609,6 +736,33 @@ export function PaymentDetailSheet({
         </>
       ) : (
         <PrimaryButton title="Отозвать спор" variant="outline" onPress={() => setResolutionOpen(true)} disabled={busy} fullWidth />
+      )}
+      <PrimaryButton title="Закрыть" variant="ghost" onPress={closeSafely} disabled={busy} fullWidth />
+    </>
+  ) : canResumeCard ? (
+    <>
+      <PrimaryButton title="Продолжить оплату картой" variant="accent" onPress={() => { void payWithCard(); }} loading={mutation === 'card'} disabled={busy && mutation !== 'card'} fullWidth />
+      <PrimaryButton title="Проверить статус" variant="outline" onPress={() => { onChanged?.(); onClose(); }} disabled={busy} fullWidth />
+      <PrimaryButton title="Закрыть" variant="ghost" onPress={closeSafely} disabled={busy} fullWidth />
+    </>
+  ) : canRecipientRespond ? (
+    <>
+      <PrimaryButton title="Деньги получены" variant="accent" onPress={() => respondReceived(true)} loading={mutation === 'received'} disabled={busy && mutation !== 'received'} fullWidth />
+      <PrimaryButton title="Не получены" variant="dangerOutline" onPress={() => respondReceived(false)} loading={mutation === 'notReceived'} disabled={busy && mutation !== 'notReceived'} fullWidth />
+      <PrimaryButton title="Закрыть" variant="ghost" onPress={closeSafely} disabled={busy} fullWidth />
+    </>
+  ) : canCancelInvoice ? (
+    <>
+      {editOpen ? (
+        <>
+          <PrimaryButton title="Сохранить сумму" variant="accent" onPress={saveEdit} loading={mutation === 'edit'} disabled={busy && mutation !== 'edit'} fullWidth />
+          <PrimaryButton title="Отмена" variant="ghost" onPress={() => setEditOpen(false)} disabled={busy} fullWidth />
+        </>
+      ) : (
+        <>
+          {canEditInvoice ? <PrimaryButton title="Исправить сумму" variant="outline" onPress={() => setEditOpen(true)} disabled={busy} fullWidth /> : null}
+          <PrimaryButton title={isCustomer ? 'Отклонить счёт' : 'Отозвать счёт'} variant="dangerOutline" onPress={cancelInvoice} loading={mutation === 'cancel'} disabled={busy && mutation !== 'cancel'} fullWidth />
+        </>
       )}
       <PrimaryButton title="Закрыть" variant="ghost" onPress={closeSafely} disabled={busy} fullWidth />
     </>
@@ -662,6 +816,30 @@ export function PaymentDetailSheet({
         </View>
       ) : null}
 
+      {editOpen && canEditInvoice ? (
+        <View style={sheetContentStyles.section}>
+          <Text style={sheetContentStyles.fieldLabel}>Новая сумма, ₽</Text>
+          <TextInput value={editAmount} onChangeText={setEditAmount} editable={!busy} keyboardType="decimal-pad" accessibilityLabel="Новая сумма счёта" style={sheetContentStyles.input} />
+          <Text style={formMetaText.caption}>Сумма всех счетов этапа не может быть больше суммы этапа.</Text>
+        </View>
+      ) : null}
+
+      {payment.status === 'paid_unverified' ? (
+        <InfoBanner
+          tone="warning"
+          title="Оплачено без проверки"
+          message={isContractor
+            ? `Заказчик отметил перевод на ${formatRub(payment.amount)}. Если деньги пришли, подтвердите — сумма войдёт в факт бюджета. Если нет — счёт вернётся заказчику.`
+            : 'Сумма пока не в подтверждённом факте. Приложите чек на полную сумму счёта или дождитесь, пока исполнитель подтвердит получение денег.'}
+        />
+      ) : null}
+
+      {payment.status === 'processing' ? (
+        <InfoBanner tone="info" title="Оплата в обработке" message="Платёж передан в ЮKassa и ждёт подтверждения. Если вы закрыли страницу оплаты — продолжите её или проверьте статус." />
+      ) : null}
+
+      {payment.status === 'cancelled' ? <InfoBanner tone="info" title="Счёт отменён" message="Сумма не учитывается в оплатах этапа. При необходимости исполнитель выставит новый счёт." /> : null}
+
       {payment.status === 'disputed' ? <InfoBanner tone="warning" title="Оплата оспорена" message="Сумма не учитывается как подтверждённый факт бюджета до разрешения спора или возврата." /> : null}
 
       <View style={sheetContentStyles.row}><Text style={sheetContentStyles.label}>Тип</Text><Text style={sheetContentStyles.value}>{typeLabel}</Text></View>
@@ -682,7 +860,7 @@ export function PaymentDetailSheet({
         </View>
       ) : null}
 
-      {!isCustomer && payment.status === 'pending' ? <Text style={[sheetContentStyles.note, { color: RenovaTheme.colors.warningText }]}>Ожидает подтверждения заказчиком</Text> : null}
+      {!isCustomer && payment.status === 'pending' ? <Text style={[sheetContentStyles.note, { color: RenovaTheme.colors.warningText }]}>Ожидает оплаты заказчиком</Text> : null}
     </SheetSurface>
   );
 }

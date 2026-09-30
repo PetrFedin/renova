@@ -74,7 +74,7 @@ export function BudgetPaymentsSection({
     <>
       <Text style={s.dataHint}>
         Счета — оплата работ или материалов исполнителю. После ручного перевода
-        приложите подтверждение: в подтверждённый расход сумма попадёт только после проверки.
+        приложите чек на полную сумму или дождитесь подтверждения получения исполнителем: в подтверждённый расход сумма попадёт только после этого. Ошибочный счёт можно отозвать, пока он не оплачен.
       </Text>
 
       {canOperate ? (
@@ -147,7 +147,7 @@ export function BudgetPaymentsSection({
 
       {filteredPayments.map((payment) => {
         const confirmedDate = formatConfirmedDate(payment.confirmed_at);
-        const statusColor = payment.status === 'pending' || payment.status === 'paid_unverified'
+        const statusColor = payment.status === 'pending' || payment.status === 'paid_unverified' || payment.status === 'processing'
           ? RenovaTheme.colors.warning
           : payment.status === 'confirmed'
             ? RenovaTheme.colors.success
@@ -161,6 +161,14 @@ export function BudgetPaymentsSection({
           && canOperate
           && stageAllowsPaymentEvidence
           && (payment.status === 'pending' || payment.status === 'paid_unverified');
+        // Кому что делать дальше: без этого «оплачено без чека» и «в обработке» были тупиком.
+        const actionHint = role === 'contractor' && payment.status === 'paid_unverified'
+          ? 'Заказчик отметил перевод — подтвердите, что деньги пришли'
+          : role === 'customer' && payment.status === 'paid_unverified'
+            ? 'Приложите чек на полную сумму или дождитесь подтверждения исполнителя'
+            : role === 'customer' && payment.status === 'processing'
+              ? 'Оплата в обработке — продолжите или проверьте статус'
+              : null;
         const evidenceTitle = payment.status === 'pending'
           ? 'Я перевёл — приложить подтверждение'
           : 'Подтверждение перевода';
@@ -179,6 +187,7 @@ export function BudgetPaymentsSection({
                   {PAYMENT_TYPE_LABEL[payment.payment_type] || payment.payment_type} · {formatRub(payment.amount)}
                   {confirmedDate ? ` · ${confirmedDate}` : ''}
                 </Text>
+                {actionHint ? <Text style={[s.rowMeta, { color: RenovaTheme.colors.warningText }]}>{actionHint}</Text> : null}
               </View>
               <Text style={[s.status, { color: statusColor }]}>
                 {PAYMENT_STATUS_LABEL[payment.status] || payment.status}

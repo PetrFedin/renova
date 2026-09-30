@@ -23,9 +23,12 @@ export const PAYMENT_TYPE_LABEL: Record<string, string> = {
 
 export const PAYMENT_STATUS_LABEL: Record<string, string> = {
   pending: 'Ожидает оплаты',
+  processing: 'Оплата в обработке',
   paid_unverified: 'Оплачено без чека',
   confirmed: 'Оплачено',
-  rejected: 'Отклонено',
+  disputed: 'Оспорено',
+  cancelled: 'Отменён',
+  refunded: 'Возвращён',
 };
 
 export const STAGE_DEPENDENCY_TYPE_LABEL: Record<string, string> = {

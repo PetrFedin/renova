@@ -177,6 +177,12 @@ export function BudgetSummarySection(props: Props) {
               </View>
             ) : null}
           </View>
+          {(summary?.paid_unverified_count ?? 0) > 0 ? (
+            <Text style={s.dataHint}>
+              Не в факте: {formatRub(summary?.paid_unverified_total ?? 0)} оплачено без проверки ({summary?.paid_unverified_count}) —
+              нужен чек или подтверждение получения исполнителем.
+            </Text>
+          ) : null}
 
           <BudgetFactStatus
             serverFact={view.spent}

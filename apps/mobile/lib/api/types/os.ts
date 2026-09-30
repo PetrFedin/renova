@@ -56,6 +56,9 @@ export type OsBudgetSummary = {
     description?: string;
   }[];
   change_orders_approved_sum?: number;
+  /** «Оплачено без проверки»: не в факте, но не скрывается (fail-visible). */
+  paid_unverified_total?: number;
+  paid_unverified_count?: number;
 };
 
 export type OsExpense = {

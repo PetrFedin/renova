@@ -74,7 +74,7 @@ export function useOsBudgetScreen() {
   const pending = payments.filter((p) => p.status === 'pending' || p.status === 'paid_unverified');
   const sortedPayments = [...payments].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
   const filteredPayments = payFilter === 'pending'
-    ? sortedPayments.filter((p) => p.status === 'pending')
+    ? sortedPayments.filter((p) => p.status === 'pending' || p.status === 'processing')
     : payFilter === 'paid_unverified'
       ? sortedPayments.filter((p) => p.status === 'paid_unverified')
       : payFilter === 'confirmed'

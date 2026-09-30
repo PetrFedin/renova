@@ -217,6 +217,37 @@ export const paymentsApi = {
       { method: 'POST', body: JSON.stringify(body) },
       userId,
     ),
+  /** Отмена счёта в ожидании оплаты (исполнитель — отзыв, заказчик — отклонение). Только online. */
+  cancelPayment: (userId: string, projectId: string, paymentId: string, body?: { reason?: string }) =>
+    req<Payment>(
+      `/api/v1/projects/${projectId}/payments/${paymentId}/cancel`,
+      { method: 'POST', body: JSON.stringify(body ?? {}) },
+      userId,
+    ),
+  /** Исправление счёта исполнителем, пока он в ожидании оплаты. Только online. */
+  updatePayment: (
+    userId: string,
+    projectId: string,
+    paymentId: string,
+    body: { title?: string; amount?: number; notes?: string | null },
+  ) =>
+    req<Payment>(
+      `/api/v1/projects/${projectId}/payments/${paymentId}`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+      userId,
+    ),
+  /** Исполнитель-получатель: «деньги получены» (в факт) или «не получены» (счёт снова ждёт оплаты). Только online. */
+  respondPaymentReceived: (
+    userId: string,
+    projectId: string,
+    paymentId: string,
+    body: { received: boolean; note?: string },
+  ) =>
+    req<Payment>(
+      `/api/v1/projects/${projectId}/payments/${paymentId}/recipient-response`,
+      { method: 'POST', body: JSON.stringify(body) },
+      userId,
+    ),
   /** Спор — только online: финансовый статус нельзя ставить в локальную очередь. */
   disputePayment: (
     userId: string,
