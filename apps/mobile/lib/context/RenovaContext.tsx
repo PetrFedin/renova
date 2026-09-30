@@ -300,12 +300,8 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
         let p = await api.getProject(user.id, id);
         if (dropStaleWrite(stamp, 'loadProject')) return;
         if (user.role === 'contractor' && !p) throw new Error('not found');
-        if (user.role === 'contractor') {
-          // Назначение на объект — это изменение прав. Делать его от имени
-          // устаревшей сессии нельзя: рубеж проверен строкой выше.
-          try { p = await api.assignProject(user.id, id); } catch (e: any) { if (String(e?.message || '').includes('402') || String(e).includes('subscription')) { const { pushOsNav } = await import('@/lib/pushOsNav'); pushOsNav('/subscription', undefined, 'contractor'); throw e; } }
-          if (dropStaleWrite(stamp, 'loadProject')) return;
-        }
+        // Исполнитель больше не «назначает себя» при открытии объекта (ROLE-028):
+        // желание вести объект — заявка, которую подтверждает заказчик.
         p = await syncCustomerBudgetOnLoad(user, p);
         // Последняя проверка перед публикацией: дальше идут глобальное
         // состояние, постоянное хранилище и рассылка по шине.

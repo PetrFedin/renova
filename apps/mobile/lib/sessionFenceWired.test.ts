@@ -38,10 +38,10 @@ for (const name of ['refreshProjects', 'loadProject']) {
 }
 
 const load = body('loadProject');
-// Назначение на объект меняет права — оно тоже под рубежом.
-const assign = load.indexOf('api.assignProject');
-const beforeAssign = load.lastIndexOf('dropStaleWrite(stamp,', assign);
-if (beforeAssign === -1) throw new Error('назначение на объект идёт без проверки рубежа');
+// Открытие объекта не назначает исполнителя: заявка подтверждается заказчиком.
+if (load.includes('assignProject') || load.includes('claimProject')) {
+  throw new Error('loadProject не должен назначать/заявлять исполнителя');
+}
 // Хранилище и шина — после последней проверки.
 for (const sink of ['AsyncStorage.setItem(KEYS.projectId', 'notifyProjectDataChanged()']) {
   const at = load.indexOf(sink);

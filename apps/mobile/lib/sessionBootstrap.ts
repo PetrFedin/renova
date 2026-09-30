@@ -94,15 +94,6 @@ export async function loadActiveProject(
     if (p) await AsyncStorage.setItem(KEYS.projectId, fallback);
     return p;
   }
-  if (role === 'contractor' && p) {
-    try {
-      p = await api.assignProject(userId, pickId);
-    } catch (error) {
-      // getProject already proved readable access; assignment reconciliation is
-      // non-blocking, but failure must remain observable.
-      reportError('sessionBootstrap.assignProject', error, { userId, projectId: pickId });
-    }
-  }
   if (p) await AsyncStorage.setItem(KEYS.projectId, p.id);
   return p;
 }

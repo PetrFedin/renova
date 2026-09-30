@@ -22,6 +22,7 @@ import { adminApi } from './admin';
 import { scratchpadApi } from './scratchpad';
 import { workScheduleApi } from './workSchedule';
 import { miscApi } from './misc';
+import { assignmentRequestsApi } from './assignmentRequests';
 import { selectionsApi } from './selections';
 import { technicalSupervisionApi } from './technicalSupervision';
 
@@ -49,6 +50,7 @@ export const api = {
   ...scratchpadApi,
   ...workScheduleApi,
   ...miscApi,
+  ...assignmentRequestsApi,
   ...selectionsApi,
   ...technicalSupervisionApi,
 };

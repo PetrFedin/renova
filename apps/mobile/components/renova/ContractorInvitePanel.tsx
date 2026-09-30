@@ -1,5 +1,10 @@
 /** Подключение исполнителя к объекту */
-import { View, Text, StyleSheet, Share } from 'react-native';
+import { useState } from 'react';
+import { View, Text, StyleSheet, Share, Alert } from 'react-native';
+import { AssignmentRequestsCard } from '@/components/renova/AssignmentRequestsCard';
+import { api } from '@/lib/api';
+import { apiErrorMessage } from '@/lib/formatPhone';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { ContractorDirectory } from '@/components/renova/ContractorDirectory';
 import { RenovaTheme } from '@/constants/Theme';
 import { StatusPill } from '@/components/ui/StatusPill';
@@ -28,6 +33,30 @@ export function ContractorInvitePanel({
   onLinked,
 }: Props) {
   const linked = Boolean(linkedContractorId);
+  const [releasing, setReleasing] = useState(false);
+
+  const release = async () => {
+    setReleasing(true);
+    try {
+      await api.releaseContractor(userId, projectId);
+      onLinked?.();
+    } catch (e: unknown) {
+      // 409: уже есть начатые этапы, платежи или подписи — сервер объясняет, что сделать сначала
+      Alert.alert('Заменить исполнителя пока нельзя', apiErrorMessage(e, 'Проверьте подключение'));
+    } finally {
+      setReleasing(false);
+    }
+  };
+
+  const askRelease = () =>
+    showActionConfirm({
+      title: 'Заменить исполнителя?',
+      message: 'Исполнитель будет отключён от объекта. Данные объекта сохранятся, смету нужно будет согласовать заново. Затем вы сможете выбрать другого исполнителя.',
+      primaryLabel: 'Отключить',
+      primaryDestructive: true,
+      onPrimary: () => { void release(); },
+      secondaryLabel: 'Отмена',
+    });
 
   return (
     <View style={[embedded || compact ? s.embedded : s.box]}>
@@ -35,9 +64,17 @@ export function ContractorInvitePanel({
         <View style={s.statusRow}>
           <StatusPill label="Подключён" tone="success" />
           <Text style={s.statusText}>Исполнитель ведёт этот объект</Text>
+          <PrimaryButton
+            title={releasing ? '…' : 'Заменить исполнителя'}
+            variant="outline"
+            compact
+            disabled={releasing}
+            onPress={askRelease}
+          />
         </View>
       ) : (
         <>
+          <AssignmentRequestsCard userId={userId} projectId={projectId} onResolved={onLinked} />
           <View style={s.codeRow}>
             <Text style={s.codeLabel}>Код объекта</Text>
             <Text style={s.codeValue}>{projectLinkCode(projectId)}</Text>

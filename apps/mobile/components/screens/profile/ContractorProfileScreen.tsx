@@ -3,6 +3,7 @@ import { ScrollView, View, Text, TextInput, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { PortalSharePanel } from '@/components/renova/PortalSharePanel';
+import { ContractorClaimPanel } from '@/components/renova/ContractorClaimPanel';
 import { DockBarSettings } from '@/components/renova/os/DockBarSettings';
 import { BudgetWidgetSettings } from '@/components/renova/os/BudgetWidgetSettings';
 import { HomeWidgetSettings } from '@/components/renova/os/HomeWidgetSettings';
@@ -135,6 +136,12 @@ export function ContractorProfileScreen() {
       <ProfileSection title="Аккаунт" bare>
         <Text style={ps.userMeta}>Сейчас: {roleLabel}</Text>
       </ProfileSection>
+
+      {user ? (
+        <ProfileSection title="Новый объект по коду">
+          <ContractorClaimPanel userId={user.id} />
+        </ProfileSection>
+      ) : null}
 
       <ProfileSection title="Реквизиты для оплаты">
         <Text style={ps.userMeta}>Заказчик увидит эти данные при переводе (СБП / карта / счёт). Без демо-карт.</Text>

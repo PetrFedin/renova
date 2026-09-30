@@ -12,6 +12,8 @@ import { contractorMeta } from '@/lib/domain/contractorMeta';
 
 type C = {
   id: string;
+  /** users.id исполнителя — именно он хранится в project.contractor_id (ROLE-006). */
+  user_id?: string;
   name: string;
   company?: string;
   specialties?: string;
@@ -23,6 +25,10 @@ type C = {
   /** Почему исполнитель в выдаче — словами, от сервера. */
   match_basis?: string;
 };
+
+function contractorUserId(c: C): string {
+  return c.user_id || c.id;
+}
 
 function contractorTitle(c: C): string {
   return c.company || c.name;
@@ -85,7 +91,7 @@ export function ContractorDirectory({
   };
 
   const visible = linkedOnly && linkedContractorId
-    ? items.filter((c) => c.id === linkedContractorId)
+    ? items.filter((c) => contractorUserId(c) === linkedContractorId)
     : items;
 
   if (!visible.length) {
@@ -99,7 +105,7 @@ export function ContractorDirectory({
   return (
     <View style={embedded ? s.embeddedBox : s.box}>
       {visible.map((c) => {
-        const isLinked = linkedContractorId === c.id;
+        const isLinked = linkedContractorId === contractorUserId(c);
         return (
           <View key={c.id} style={[s.card, isLinked && s.cardLinked]}>
             <Text style={s.name}>{contractorTitle(c)}</Text>
@@ -107,11 +113,11 @@ export function ContractorDirectory({
             {c.match_basis ? <Text style={s.basis}>{c.match_basis}</Text> : null}
             {projectId && !linkedContractorId ? (
               <PrimaryButton
-                title={busyId === c.id ? '…' : 'Подключить'}
+                title={busyId === contractorUserId(c) ? '…' : 'Подключить'}
                 variant="outline"
                 compact
                 disabled={!!busyId}
-                onPress={() => link(c.id)}
+                onPress={() => link(contractorUserId(c))}
               />
             ) : null}
           </View>
