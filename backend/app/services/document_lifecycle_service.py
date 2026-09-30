@@ -130,9 +130,9 @@ async def _enqueue_sign_effects(
                 "body": role,
                 "link_path": "/documents",
                 "return_to": (
-                    "/(customer)/(tabs)/home"
+                    "/(customer)/(tabs)/"
                     if is_customer
-                    else "/(contractor)/(tabs)/home"
+                    else "/(contractor)/(tabs)/"
                 ),
             },
         )
@@ -223,7 +223,7 @@ async def _enqueue_archive_effects(
                 "title": f"Документ в архиве: {document.title}",
                 "body": document_kind,
                 "link_path": "/documents",
-                "return_to": "/(customer)/(tabs)/home",
+                "return_to": "/(customer)/(tabs)/",
             },
         )
 

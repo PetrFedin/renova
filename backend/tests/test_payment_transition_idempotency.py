@@ -96,7 +96,7 @@ async def test_transfer_ack_replay_has_one_audit_and_no_duplicate_side_effects(t
         title=f"Перевод отмечен (без чека): {payment.title}",
         body=str(payment.amount),
         link_path="/(contractor)/(tabs)/budget",
-        return_to="/(contractor)/(tabs)/home",
+        return_to="/(contractor)/(tabs)/",
     )
     assert (await transition_db.scalar(select(func.count()).select_from(ActivityEvent))) == 1
     assert (await transition_db.scalar(select(func.count()).select_from(AppNotification))) == 1

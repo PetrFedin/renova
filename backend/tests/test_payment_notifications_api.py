@@ -98,7 +98,7 @@ async def test_manual_create_and_confirm_use_honest_notification_types(monkeypat
                 "title": "Счёт к оплате: Оплата этапа",
                 "body": "5000.0",
                 "link_path": "/(customer)/(tabs)/budget?tab=payments",
-                "return_to": "/(customer)/(tabs)/home",
+                "return_to": "/(customer)/(tabs)/",
             }
         ]
 
@@ -118,6 +118,6 @@ async def test_manual_create_and_confirm_use_honest_notification_types(monkeypat
                 "title": "Перевод отмечен (без чека): Оплата этапа",
                 "body": "5000.0",
                 "link_path": "/(contractor)/(tabs)/budget",
-                "return_to": "/(contractor)/(tabs)/home",
+                "return_to": "/(contractor)/(tabs)/",
             }
         ]

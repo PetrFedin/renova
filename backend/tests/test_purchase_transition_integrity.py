@@ -171,7 +171,7 @@ async def test_delivery_replay_updates_inventory_and_fact_once(purchase_db, monk
         title=title,
         body=body or "",
         link_path="/(customer)/(tabs)/repair?tab=materials",
-        return_to="/(customer)/(tabs)/home",
+        return_to="/(customer)/(tabs)/",
     )
     clear_request_side_effect_context()
     assert (await purchase_db.scalar(select(func.count()).select_from(ActivityEvent))) == 1

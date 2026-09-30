@@ -65,9 +65,9 @@ async def _prepare_effects(
                 "body": body,
                 "link_path": "/documents",
                 "return_to": (
-                    "/(customer)/(tabs)/home"
+                    "/(customer)/(tabs)/"
                     if is_customer
-                    else "/(contractor)/(tabs)/home"
+                    else "/(contractor)/(tabs)/"
                 ),
             },
         )

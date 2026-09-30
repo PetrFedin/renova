@@ -145,7 +145,7 @@ async def test_payment_push_failure_recovers_without_duplicate_notification(outb
             title=f"Счёт к оплате: {payment.title}",
             body=str(payment.amount),
             link_path="/(customer)/(tabs)/budget?tab=payments",
-            return_to="/(customer)/(tabs)/home",
+            return_to="/(customer)/(tabs)/",
         )
 
     assert (await outbox_db.scalar(select(func.count()).select_from(AppNotification))) == 1

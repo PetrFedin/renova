@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from app.core.timeutil import utc_now
 from datetime import datetime, timedelta
+from urllib.parse import quote
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,7 +35,10 @@ def _stored_link(link_path: str | None, return_to: str | None) -> str | None:
     if not link_path or not return_to:
         return link_path
     separator = "&" if "?" in link_path else "?"
-    return f"{link_path}{separator}returnTo={return_to}"
+    # return_to may itself carry a query ("/x?tab=y"); unencoded it would add a
+    # second "?" and leak its "&"/"=" into the outer query, so the client (which
+    # splits on the first "?") would mis-parse the link.
+    return f"{link_path}{separator}returnTo={quote(return_to, safe='/()')}"
 
 
 async def notify(

@@ -548,7 +548,7 @@ async def _expand_acceptance_side_effects(
                         "title": f"Этап принят: {stage.name}",
                         "body": comment or "Работы по этапу приняты заказчиком.",
                         "link_path": f"/stage/{stage.id}",
-                        "return_to": "/(customer)/(tabs)/home",
+                        "return_to": "/(customer)/(tabs)/",
                     },
                 )
             )
@@ -565,7 +565,7 @@ async def _expand_acceptance_side_effects(
                     "title": "Подтвердите оплату этапа",
                     "body": stage.name,
                     "link_path": "/(customer)/(tabs)/budget?tab=payments",
-                    "return_to": "/(customer)/(tabs)/home",
+                    "return_to": "/(customer)/(tabs)/",
                 },
             )
         )
@@ -583,9 +583,9 @@ async def _expand_acceptance_side_effects(
                     "body": "PDF сформирован автоматически после приёмки",
                     "link_path": "/documents",
                     "return_to": (
-                        "/(customer)/(tabs)/home"
+                        "/(customer)/(tabs)/"
                         if member_id == project.customer_id
-                        else "/(contractor)/(tabs)/home"
+                        else "/(contractor)/(tabs)/"
                     ),
                 },
             )

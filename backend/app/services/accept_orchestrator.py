@@ -204,14 +204,14 @@ async def emit_acceptance_side_effects(db: AsyncSession, *, project: Project, st
     for member_id in project_member_ids(project):
         if member_id == accepted_by:
             continue
-        await notif.notify(db, user_id=member_id, project_id=project.id, notification_type="stage_review", title=f"Этап принят: {stage.name}", body=comment or "Работы по этапу приняты заказчиком.", link_path=f"/stage/{stage.id}", return_to="/(customer)/(tabs)/home")
+        await notif.notify(db, user_id=member_id, project_id=project.id, notification_type="stage_review", title=f"Этап принят: {stage.name}", body=comment or "Работы по этапу приняты заказчиком.", link_path=f"/stage/{stage.id}", return_to="/(customer)/(tabs)/")
     if payment and project.customer_id:
-        await notif.notify(db, user_id=project.customer_id, project_id=project.id, notification_type="payment_pending", title="Подтвердите оплату этапа", body=stage.name, link_path="/(customer)/(tabs)/budget?tab=payments", return_to="/(customer)/(tabs)/home")
+        await notif.notify(db, user_id=project.customer_id, project_id=project.id, notification_type="payment_pending", title="Подтвердите оплату этапа", body=stage.name, link_path="/(customer)/(tabs)/budget?tab=payments", return_to="/(customer)/(tabs)/")
     self_managed = is_self_managed_project(project)
     for member_id in project_member_ids(project):
         if self_managed and member_id == accepted_by:
             continue
-        await notif.notify(db, user_id=member_id, project_id=project.id, notification_type="document", title=f"Акт приёмки готов: {stage.name}", body="PDF сформирован автоматически после приёмки", link_path="/documents", return_to="/(customer)/(tabs)/home" if member_id == project.customer_id else "/(contractor)/(tabs)/home")
+        await notif.notify(db, user_id=member_id, project_id=project.id, notification_type="document", title=f"Акт приёмки готов: {stage.name}", body="PDF сформирован автоматически после приёмки", link_path="/documents", return_to="/(customer)/(tabs)/" if member_id == project.customer_id else "/(contractor)/(tabs)/")
     if next_stage:
         for member_id in project_member_ids(project):
             if self_managed and member_id == accepted_by:

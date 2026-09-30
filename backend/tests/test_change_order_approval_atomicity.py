@@ -111,7 +111,7 @@ async def test_approve_commits_budget_document_and_effects_once(change_order_db,
         title=f"Доп. работы согласованы: {order.title}",
         body=str(order.amount),
         link_path="/(contractor)/(tabs)/budget",
-        return_to="/(contractor)/(tabs)/home",
+        return_to="/(contractor)/(tabs)/",
     )
     await notification_service.notify(
         change_order_db,

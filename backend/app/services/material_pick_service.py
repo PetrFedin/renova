@@ -355,7 +355,7 @@ async def _prepare_supply_effects(
                 "title": "Изменён источник материала",
                 "body": f"Повторно согласуйте: {pick.name}",
                 "link_path": "/approvals",
-                "return_to": "/(customer)/(tabs)/home",
+                "return_to": "/(customer)/(tabs)/",
             },
         )
         effects.append(
@@ -408,7 +408,7 @@ async def _prepare_effects(
                 "title": event.notification_title,
                 "body": event.notification_body or pick.name,
                 "link_path": event.notification_link,
-                "return_to": "/(customer)/(tabs)/home",
+                "return_to": "/(customer)/(tabs)/",
             },
         )
         effects.append(

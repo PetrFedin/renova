@@ -535,7 +535,7 @@ async def portal_return_work(
             title=f"Доработка по этапу: {stage.name}",
             body=body.comment or "Этап возвращён после проверки (портал).",
             link_path=f"/stage/{stage.id}",
-            return_to="/(contractor)/(tabs)/home",
+            return_to="/(contractor)/(tabs)/",
         )
     return acceptance_dict(row)
 

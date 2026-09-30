@@ -150,7 +150,7 @@ async def test_submit_approve_and_reject_are_replay_safe(material_db, monkeypatc
         title=submit_event.notification_title or "Материал на согласовании",
         body=submit_event.notification_body or pick.name,
         link_path=submit_event.notification_link,
-        return_to="/(customer)/(tabs)/home",
+        return_to="/(customer)/(tabs)/",
     )
     clear_request_side_effect_context()
     assert await outbox_service.dispatch_pending(material_db, worker_id="material-submit-worker") == 2
