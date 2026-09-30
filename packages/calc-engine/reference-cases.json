@@ -1,0 +1,42 @@
+{
+  "_comment": "Эталоны расхода материалов. Один файл читают backend (backend/tests/test_calc_reference_cases.py) и mobile/calc-engine (apps/mobile/lib/calc-engine/referenceCases.test.ts). Менять только вместе с нормами в docs/technical-spec/CALCULATION-REGISTRY.md.",
+  "norms": {
+    "paint_coats": 2,
+    "paint_coverage_sqm_per_l_per_coat": 8,
+    "paint_reserve": 1.05,
+    "wallpaper_reserve": 1.15,
+    "wallpaper_roll_sqm": 5,
+    "tile_reserve": 1.10,
+    "floor_covering_reserve": 1.08,
+    "plaster_kg_per_sqm": 8
+  },
+  "cases": [
+    {
+      "name": "spalnya-4.2x3.1x2.7",
+      "room": { "length_m": 4.2, "width_m": 3.1, "height_m": 2.7, "openings_sq_m": 2 },
+      "expected": {
+        "floor_sq_m": 13.02, "wall_sq_m": 37.42, "perimeter_m": 14.6,
+        "paint_l": 9.82, "laminate_sq_m": 14.06, "floor_tile_sq_m": 14.32,
+        "wallpaper_rolls": 9, "plaster_kg": 299.36, "bathroom_tile_sq_m": 55.48
+      }
+    },
+    {
+      "name": "gostinaya-5x4x2.5",
+      "room": { "length_m": 5, "width_m": 4, "height_m": 2.5, "openings_sq_m": 3 },
+      "expected": {
+        "floor_sq_m": 20, "wall_sq_m": 42, "perimeter_m": 18,
+        "paint_l": 11.03, "laminate_sq_m": 21.6, "floor_tile_sq_m": 22,
+        "wallpaper_rolls": 10, "plaster_kg": 336, "bathroom_tile_sq_m": 68.2
+      }
+    },
+    {
+      "name": "kladovka-3x2.5x2.6",
+      "room": { "length_m": 3, "width_m": 2.5, "height_m": 2.6, "openings_sq_m": 1.5 },
+      "expected": {
+        "floor_sq_m": 7.5, "wall_sq_m": 27.1, "perimeter_m": 11,
+        "paint_l": 7.11, "laminate_sq_m": 8.1, "floor_tile_sq_m": 8.25,
+        "wallpaper_rolls": 7, "plaster_kg": 216.8, "bathroom_tile_sq_m": 38.06
+      }
+    }
+  ]
+}

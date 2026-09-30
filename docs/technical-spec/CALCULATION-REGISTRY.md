@@ -231,6 +231,22 @@ materials_fact = Σ quantity_actual × unit_price   (materials только)
 
 `EstimateLine.quantity_actual` — non-null numeric column, default `0`; `0` здесь означает измеренный факт "израсходовано/остаток ровно ноль", а не "не введено". Раньше обе точки считали `(quantity_actual or quantity_planned) * unit_price`: в Python `0` — falsy, поэтому явный ноль подменялся plan-количеством и `materials_fact`/`material_stats.actual` показывали план вместо факта. Ноль подстановки не имеет — это тот же класс дефекта, что #318 (works_fact) и mobile `resolveConfirmedPendingPayments`/`bucketCountRead` (не путать null/unknown с 0), только здесь unknown-состояния в схеме нет вовсе: поле non-nullable, значит "не введено" не существует как отдельное состояние и не должно быть выдумано через falsiness. Regression: `backend/tests/test_material_actuals_zero.py` — explicit zero, positive actual, смешанные material/work строки, `material_stats` reconciliation.
 
+## 18a. Нормы расхода материалов комнаты — единый канон (EST-030)
+
+Источник истины — строки сметы, которые backend сохраняет: `backend/app/services/calc/estimate.py` (`generate_lines`, `paint_liters`, `wallpaper_rolls`, константы норм). Остальные реализации обязаны совпадать с ним; общие эталоны — `packages/calc-engine/reference-cases.json`, их читают `backend/tests/test_calc_reference_cases.py` и `apps/mobile/lib/calc-engine/referenceCases.test.ts` (оба входят в CI: pytest и `npm run mobile:test`).
+
+```text
+краска, л   = стены × 2 слоя / 8 м²/л на слой × 1,05        (комната 4,2×3,1×2,7, проёмы 2 м²: 9,82 л)
+обои, рул.  = ceil(стены × 1,15 / 5 м²)                     запас 15% на подгонку рисунка, 0 при нулевых стенах
+плитка      = площадь × 1,10   (ванная: (пол + стены) × 1,10)
+ламинат     = пол × 1,08
+штукатурка  = стены × 8 кг/м²
+```
+
+Приведено к канону: `material_calculator.py` (краска была 0,15 л/м² × 2 слоя = 11,23 л, обои — `round()` вместо потолочного округления и минимум 1 рулон, ламинат 1,07, примечание «запас 7%» при диагонали 12%, отрицательные площади), краска в `generate_lines` (раньше без второго слоя: 4,91 л при названии строки «2 слоя»; изменяет только вновь сгенерированные строки, сохранённые сметы не пересчитываются). Мобильный `calc-engine` уже соответствовал канону; добавлен `wallpaperRolls`.
+
+Оставшиеся намеренные отличия: (1) `calc_room_materials` выводит и плитку, и ламинат — это варианты покрытия пола на выбор, не две одновременные строки; (2) раскладка плитки `diagonal`/`complex` (запас 15%/20%) есть только в `material_calculator`; (3) `calcRoomMetrics` (mobile) по умолчанию считает проёмы 0 м², backend `calc_room_metrics` — 2 м²: эталоны задают проёмы явно; (4) `packages/calc-engine` — устаревшая копия, нигде не импортируется, поддерживается лишь тестом `src/index.test.ts` (входит в `mobile:test`); (5) результат `calc-materials` не сохраняется и не питает потребности (открыто, EST-030).
+
 ## 19. Непокрытые расчёты и их приёмка
 
 Сохраняется обязательный backlog: acceptance pending/age/SLA; home KPI; project phase/lifecycle; estimate layers/margin; category/floor/room analytics; procurement priority/readiness; notification/attention/unread counts; rework/quality SLA; contractor/manager portfolio metrics; schedule/version delay; warranty после уже merged #295; chat после уже merged #292; external observability/SLO #235/#283.

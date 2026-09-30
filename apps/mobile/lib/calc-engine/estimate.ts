@@ -62,6 +62,14 @@ export function quantityWithWaste(baseQty: number, kind: 'tile' | 'wallpaper' | 
   return round2(baseQty * materialWasteFactor(kind));
 }
 
+/** Рулонов обоев: запас 15% на подгонку рисунка, округление вверх (не round). Эталоны: reference-cases.json */
+export function wallpaperRolls(wallSqM: number, rollSqM = 5): number {
+  if (!Number.isFinite(wallSqM) || wallSqM < 0) throw new RangeError('wallSqM must be a non-negative finite number');
+  if (!Number.isFinite(rollSqM) || rollSqM <= 0) throw new RangeError('rollSqM must be positive');
+  if (wallSqM === 0) return 0;
+  return Math.ceil(round2(wallSqM * materialWasteFactor('wallpaper')) / rollSqM - 1e-9);
+}
+
 function sumRoundedLineTotals<T>(lines: T[], getTotal: (line: T) => number): number {
   // Складываем уже округлённые суммы строк: итог совпадает с тем, что видит пользователь.
   return round2(lines.reduce((sum, line) => sum + getTotal(line), 0));

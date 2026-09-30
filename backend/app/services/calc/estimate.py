@@ -35,9 +35,32 @@ def calc_room_metrics(length_m: float, width_m: float, height_m: float, openings
     return RoomMetrics(floor_sq_m, wall_sq_m, perimeter_m, _r2(floor_sq_m * height_m))
 
 
+# Канонические нормы расхода (общие с material_calculator и мобильным calc-engine;
+# эталоны: packages/calc-engine/reference-cases.json).
+PAINT_COATS = 2
+PAINT_COVERAGE_SQM_PER_L_PER_COAT = 8.0
+WASTE_FACTORS = {"tile": 1.1, "wallpaper": 1.15, "paint": 1.05, "default": 1.08}
+PLASTER_KG_PER_SQM = 8.0
+WALLPAPER_ROLL_SQM = 5.0
+
+
 def _waste(base: float, kind: str) -> float:
-    factors = {"tile": 1.1, "wallpaper": 1.15, "paint": 1.05, "default": 1.08}
-    return _r2(base * factors.get(kind, 1.08))
+    return _r2(base * WASTE_FACTORS.get(kind, 1.08))
+
+
+def paint_liters(wall_sq_m: float, coats: int = PAINT_COATS) -> float:
+    """Краска, л: площадь × слои / покрытие одного слоя × запас 5%."""
+    return _r2(max(0.0, wall_sq_m) * coats / PAINT_COVERAGE_SQM_PER_L_PER_COAT * WASTE_FACTORS["paint"])
+
+
+def wallpaper_rolls(wall_sq_m: float, roll_sq_m: float = WALLPAPER_ROLL_SQM) -> int:
+    """Обои, рулоны: запас 15% на подгонку рисунка, округление вверх (не round)."""
+    import math
+
+    area = max(0.0, wall_sq_m)
+    if area == 0:
+        return 0
+    return math.ceil(_r2(area * WASTE_FACTORS["wallpaper"]) / roll_sq_m - 1e-9)
 
 
 
@@ -68,7 +91,7 @@ def generate_lines(reno_type: str, room_id: str, room_name: str, m: RoomMetrics)
         lines = generate_lines("cosmetic", room_id, room_name, m)
         lines.insert(0, CalcLine("work", "Демонтаж покрытий", "m2", _r2(m.wall_sq_m + m.floor_sq_m), 120, room_id, room_name))
         lines.append(CalcLine("work", "Штукатурка стен", "m2", m.wall_sq_m, 420, room_id, room_name))
-        lines.append(CalcLine("material", "Штукатурная смесь", "kg", _r2(m.wall_sq_m * 8), 18, room_id, room_name))
+        lines.append(CalcLine("material", "Штукатурная смесь", "kg", _r2(m.wall_sq_m * PLASTER_KG_PER_SQM), 18, room_id, room_name))
         return lines
     if reno_type == "bathroom":
         tile_q = _waste(m.wall_sq_m + m.floor_sq_m, "tile")
@@ -78,12 +101,11 @@ def generate_lines(reno_type: str, room_id: str, room_name: str, m: RoomMetrics)
             CalcLine("material", "Керамогранит", "m2", tile_q, 890, room_id, room_name),
             CalcLine("material", "Гидроизоляция Ceresit", "kg", _r2(m.floor_sq_m * 2), 420, room_id, room_name),
         ]
-    paint_q = _waste(m.wall_sq_m, "paint")
     return [
         CalcLine("work", "Подготовка стен", "m2", m.wall_sq_m, 180, room_id, room_name),
         CalcLine("work", "Покраска стен 2 слоя", "m2", m.wall_sq_m, 320, room_id, room_name),
         CalcLine("work", "Укладка ламината", "m2", m.floor_sq_m, 450, room_id, room_name),
-        CalcLine("material", "Краска интерьерная", "l", _r2(paint_q / 8), 890, room_id, room_name),
+        CalcLine("material", "Краска интерьерная", "l", paint_liters(m.wall_sq_m), 890, room_id, room_name),
         CalcLine("material", "Ламинат", "m2", _waste(m.floor_sq_m, "default"), 1200, room_id, room_name),
     ]
 
