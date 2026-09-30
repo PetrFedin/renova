@@ -14,6 +14,7 @@ import { useDetailLevel } from '@/lib/useDetailLevel';
 import { homeWidgetVisibleForLevel } from '@/lib/detailLevelPolicy';
 import type { HomeWidgetId } from '@/constants/homeWidgets';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { useStaleCacheStatus } from '@/lib/useStaleCacheStatus';
 import { buildProjectOsSnapshot } from '@/lib/domain/buildProjectOsSnapshot';
 import { buildHomeMoreSummary, homeMoreHasVisibleContent } from '@/lib/domain/buildHomeMoreSummary';
 import { formatProjectHeaderMeta } from '@/lib/domain/resolveProjectPhase';
@@ -47,7 +48,11 @@ const HOME_SOURCE_NAMES = [
 ] as const;
 
 export function OsHomeScreen({ role }: { role: OsRole }) {
-  const { user, activeProject, projects, readOnly, refreshProjects, loadProject, projectResolving, loading: ctxLoading } = useRenova();
+  const { user, activeProject, projects, readOnly, refreshProjects, loadProject, projectResolving, loading: ctxLoading, apiReachable } = useRenova();
+  // Глобальный DataStatusBanner уже показывает «нет связи» / «данные устарели» —
+  // не дублируем это отдельной плашкой на главной, если он уже виден (#видел
+  // пользователь 3 баннера друг на друге одновременно).
+  const { isStale: globalCacheStale } = useStaleCacheStatus();
   const [dash, setDash] = useState<Dashboard | null>(null);
   const [receipts, setReceipts] = useState<ReceiptItem[]>([]);
   const [picks, setPicks] = useState<MaterialPick[]>([]);
@@ -380,7 +385,9 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
 
   return (
     <ScrollView style={s.container} contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
-      {loadWarning ? <InfoBanner tone="warning" title="Главная обновлена частично" message={loadWarning} /> : null}
+      {loadWarning && apiReachable && !globalCacheStale ? (
+        <InfoBanner tone="warning" title="Главная обновлена частично" message={loadWarning} />
+      ) : null}
       <IntegrationHonestyBadge />
       <HomeScreenBody
         role={role}

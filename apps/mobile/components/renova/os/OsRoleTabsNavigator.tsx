@@ -10,8 +10,7 @@ import { Platform, View, StyleSheet } from 'react-native';
 import { Slot } from 'expo-router';
 import { OsTabsHeaderBar } from '@/components/renova/os/OsTabsLayoutOptions';
 import { OsDockBar } from '@/components/renova/os/OsDockBar';
-import { ApiStatusBanner } from '@/components/renova/ApiStatusBanner';
-import { StaleCacheBanner } from '@/components/renova/StaleCacheBanner';
+import { DataStatusBanner } from '@/components/renova/DataStatusBanner';
 import { ActiveProjectSync } from '@/components/renova/ActiveProjectSync';
 import { OsQuickFab } from '@/components/renova/os/OsQuickFab';
 import { OsPendingProjectPickEffect } from '@/components/renova/os/OsPendingProjectPickEffect';
@@ -24,8 +23,7 @@ function OsTabsChromeHeader({ role }: { role: OsRole }) {
     <View>
       {/* OsTabsHeaderBar уже рисует единый OsPathBar (Назад + крошки) */}
       <OsTabsHeaderBar role={role} />
-      <ApiStatusBanner showEmpty />
-      <StaleCacheBanner />
+      <DataStatusBanner showEmpty />
     </View>
   );
 }
