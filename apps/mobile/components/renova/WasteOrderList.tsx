@@ -83,7 +83,7 @@ export function WasteOrderList({ userId, projectId, role }: { userId: string; pr
               }}
             />
           )}
-          {role === 'contractor' && w.status === 'approved' && (
+          {role === 'contractor' && w.status === 'scheduled' && (
             <PrimaryButton
               title="Вывезено"
               onPress={() => runWasteAction('Завершение вывоза', () => api.completeWasteOrder(userId, projectId, w.id), async () => { await syncAfter(); load(); alertWasteOrderAdvanced(role as OsRole, 'completed'); })}
