@@ -152,6 +152,23 @@ async def list_threads(db: AsyncSession, project_id: str) -> list[ChatThread]:
     return list(r.scalars().all())
 
 
+def _desc(value: str | None) -> tuple:
+    """Sort key fragment for descending order of ISO timestamps (None last)."""
+    if not value:
+        return (1, [])
+    return (0, [-ord(ch) for ch in value])
+
+
+def _thread_order_key(x: dict) -> tuple:
+    """Pinned threads first (most recently pinned first), then newest activity first."""
+    pinned = bool(x.get("is_pinned"))
+    return (
+        0 if pinned else 1,
+        _desc(x.get("pinned_at")) if pinned else (0, []),
+        _desc(x.get("updated_at")),
+    )
+
+
 async def list_threads_enriched(db: AsyncSession, project_id: str, user_id: str) -> list[dict]:
     threads = await list_threads(db, project_id)
     out = []
@@ -170,7 +187,7 @@ async def list_threads_enriched(db: AsyncSession, project_id: str, user_id: str)
                 pinned_at=state.pinned_at if state else None,
             )
         )
-    out.sort(key=lambda x: (not x.get("is_pinned"), x.get("updated_at") or ""), reverse=True)
+    out.sort(key=_thread_order_key)
     return out
 
 
@@ -181,14 +198,7 @@ async def list_inbox(db: AsyncSession, user_id: str, project_ids: list[tuple[str
         for th in await list_threads_enriched(db, pid, user_id):
             th["project_name"] = pname
             inbox.append(th)
-    inbox.sort(
-        key=lambda x: (
-            not x.get("is_pinned"),
-            x.get("pinned_at") or "",
-            x.get("updated_at") or "",
-        ),
-        reverse=True,
-    )
+    inbox.sort(key=_thread_order_key)
     return inbox
 
 
