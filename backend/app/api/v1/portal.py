@@ -604,8 +604,8 @@ async def portal_sign_document(
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
 
-    if doc.status == DocumentStatus.draft.value:
-        doc.status = DocumentStatus.active.value
+    # draft -> active выставляет sign_document, и только когда подписали все
+    # обязательные стороны (для договора — обе), а не после первой подписи.
 
     await act.log_event(
         db,

@@ -12,14 +12,17 @@
 уже известно: стороны, объект, предмет, сумма, НДС, состав работ и
 материалов, порядок оплаты по этапам.
 
-Файл не хранится: договор рисуется ручкой `GET /projects/{id}/contract.pdf`
-по требованию — тем же способом, что и акт приёмки
-(`ensure_acceptance_act_document`). Так документ всегда отражает текущее
-состояние сметы, а не слепок, снятый неизвестно когда.
+Пока договор не подписан, он рисуется ручкой `GET /projects/{id}/contract.pdf`
+по текущей смете. В момент первой подписи условия фиксируются снимком
+(`content_snapshot` версии, JSON) и его sha256: подписывается конкретный текст,
+и после подписи PDF рисуется из снимка, а не из пересчёта по смете (DOC-009).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import hashlib
+import json
+
+from dataclasses import asdict, dataclass, field
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -186,3 +189,74 @@ def contract_notes(terms: ContractTerms) -> str:
     if terms.locked_at:
         parts.append(f"Смета зафиксирована {terms.locked_at}")
     return " · ".join(parts)
+
+
+def snapshot_json(terms: ContractTerms) -> str:
+    """Каноничный текст снимка: стабильный порядок ключей, без пробелов."""
+    return json.dumps(asdict(terms), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def snapshot_hash(snapshot: str) -> str:
+    return hashlib.sha256(snapshot.encode("utf-8")).hexdigest()
+
+
+def terms_from_snapshot(snapshot: str) -> ContractTerms:
+    data = json.loads(snapshot)
+    data["stages"] = [(str(name), float(amount)) for name, amount in data.get("stages", [])]
+    return ContractTerms(**data)
+
+
+def render_contract_pdf(terms: ContractTerms):
+    """Нарисовать договор по условиям (живым или из снимка)."""
+    from app.services.pdf_helper import new_pdf, pdf_line
+
+    pdf = new_pdf()
+    pdf_line(pdf, "ДОГОВОР ПОДРЯДА", size=14)
+    if terms.locked_at:
+        pdf_line(pdf, f"Смета зафиксирована: {terms.locked_at}")
+    pdf_line(pdf, "")
+
+    pdf_line(pdf, "СТОРОНЫ", size=11)
+    pdf_line(pdf, f"Заказчик: {terms.customer}")
+    # Молчать про отсутствие исполнителя нельзя: это существенное условие.
+    pdf_line(pdf, f"Исполнитель: {terms.contractor or 'не назначен'}")
+    pdf_line(pdf, "")
+
+    pdf_line(pdf, "ОБЪЕКТ", size=11)
+    pdf_line(pdf, terms.project_name)
+    if terms.address:
+        pdf_line(pdf, terms.address)
+    pdf_line(pdf, "")
+
+    pdf_line(pdf, "ПРЕДМЕТ И ЦЕНА", size=11)
+    pdf_line(pdf, f"Работы: {terms.works_total:.0f} RUB ({terms.works_count} поз.)")
+    pdf_line(pdf, f"Материалы: {terms.materials_total:.0f} RUB ({terms.materials_count} поз.)")
+    pdf_line(pdf, f"Смета: {terms.estimate_total:.0f} RUB")
+    if terms.change_orders_count:
+        # Отдельной строкой, а не растворять в итоге: заказчик должен видеть,
+        # из чего сложилась цена.
+        pdf_line(
+            pdf,
+            f"Доп. работы (согласованы): {terms.change_orders_total:.0f} RUB"
+            f" ({terms.change_orders_count})",
+        )
+    pdf_line(pdf, f"Итого: {terms.total:.0f} RUB, {terms.vat_label}")
+    pdf_line(pdf, "")
+
+    pdf_line(pdf, "ПОРЯДОК ОПЛАТЫ", size=11)
+    if terms.stages:
+        for name, amount in terms.stages:
+            pdf_line(pdf, f"- {name}: {amount:.0f} RUB")
+        pdf_line(pdf, f"Распределено по этапам: {terms.scheduled_payments:.0f} RUB")
+        remainder = round(terms.total - terms.scheduled_payments, 2)
+        if abs(remainder) >= 1:
+            # Расхождение показываем, а не прячем: иначе договор врёт про деньги.
+            pdf_line(pdf, f"Не распределено: {remainder:.0f} RUB")
+    else:
+        pdf_line(pdf, "Суммы по этапам не распределены.")
+    pdf_line(pdf, "")
+
+    if not terms.is_signable():
+        pdf_line(pdf, "ДОГОВОР НЕ ГОТОВ К ПОДПИСАНИЮ", size=11)
+        pdf_line(pdf, "В смете нет позиций либо сумма равна нулю.")
+    return pdf

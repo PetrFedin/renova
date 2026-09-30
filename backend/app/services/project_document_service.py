@@ -279,6 +279,45 @@ def _version_has_content(version: DocumentVersion) -> bool:
     return bool(version.href or version.storage_key or version.checksum_sha256)
 
 
+async def _freeze_contract_snapshot(db: AsyncSession, doc: ProjectDocument, version: DocumentVersion) -> str | None:
+    """Снять снимок условий договора, если он ещё «живой»; вернуть хэш снимка.
+
+    Пока у версии нет подписей, снимок пересобирается по текущей смете (нечего
+    ещё защищать). После первой подписи он неизменен: вторая сторона подписывает
+    ровно тот же текст и тот же хэш.
+    """
+    from app.services import contract_document_service as contract_svc
+
+    if version.content_snapshot and await _has_live_signatures(db, doc.id):
+        return contract_svc.snapshot_hash(version.content_snapshot)
+    if version.checksum_sha256 and not version.content_snapshot:
+        # За версией уже стоят настоящие байты со своей контрольной суммой
+        # (файл, а не «живой» договор из сметы): фиксировать нечего.
+        return None
+    terms = await contract_svc.collect_terms(db, doc.project_id)
+    if terms is None:
+        # Проекта нет — фиксировать нечего, подпись идёт как раньше.
+        return None
+    snapshot = contract_svc.snapshot_json(terms)
+    digest = contract_svc.snapshot_hash(snapshot)
+    version.content_snapshot = snapshot
+    version.checksum_sha256 = digest
+    version.mime_type = version.mime_type or "application/pdf"
+    await db.flush()
+    return digest
+
+
+async def frozen_contract_snapshot(db: AsyncSession, project_id: str) -> str | None:
+    """Снимок основного договора, если он подписан или подписание начато."""
+    for doc in await _main_contracts(db, project_id):
+        if not doc.current_version_id:
+            continue
+        version = await db.get(DocumentVersion, doc.current_version_id)
+        if version and version.content_snapshot and await _has_live_signatures(db, doc.id):
+            return version.content_snapshot
+    return None
+
+
 async def sign_document(
     db: AsyncSession,
     doc: ProjectDocument,
@@ -335,6 +374,15 @@ async def sign_document(
 
     if not esign.is_available():
         raise ValueError(f"provider_unavailable:{esign.name}")
+
+    if is_main_contract(doc):
+        # Подписывается конкретный текст: условия фиксируются снимком, а хэш
+        # снимка — единственный допустимый content_hash (и для провайдера).
+        snapshot_hash = await _freeze_contract_snapshot(db, doc, version)
+        if snapshot_hash:
+            if content_hash and content_hash != snapshot_hash:
+                raise ValueError("content_hash_mismatch")
+            content_hash = snapshot_hash
 
     resolved_hash = content_hash or version.checksum_sha256
     if esign.name != "in_app" and not resolved_hash:

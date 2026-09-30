@@ -470,6 +470,34 @@ async def get_contract_gate(project_id: str, user: User = Depends(get_current_us
     return await docs_svc.project_contract_gate(db, project_id)
 
 
+@router.post("/{project_id}/contract")
+async def create_project_contract(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """«Создать договор»: когда гейт отвечает `no_contract`. Идемпотентно.
+
+    Доступно только сторонам договора: заказчику и исполнителю-лиду проекта.
+    """
+    from app.services import contract_document_service as contract_svc
+
+    project = await require_project(db, project_id, user, write=False)
+    if docs_svc.signature_party(project, user.id) is None:
+        raise HTTPException(403, "contract_parties_only")
+    terms = await contract_svc.collect_terms(db, project_id)
+    result = await docs_svc.ensure_contract_draft(db, project_id=project_id, created_by=user.id) if (
+        terms is not None and terms.is_signable()
+    ) else None
+    if result is None:
+        # Договор без предмета и цены создавать нечего: сначала смета.
+        existing = await docs_svc.project_contract_gate(db, project_id)
+        if existing.get("document_id"):
+            return {"created": False, "document_id": existing["document_id"], "gate": existing}
+        raise HTTPException(
+            409,
+            detail={"code": "estimate_not_ready", "message": "Сначала заполните смету: в ней нет позиций или сумма равна нулю."},
+        )
+    await db.commit()
+    return {**result, "gate": await docs_svc.project_contract_gate(db, project_id)}
+
+
 @router.delete("/{project_id}/viewers/{viewer_user_id}")
 async def remove_viewer(project_id: str, viewer_user_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from sqlalchemy import delete

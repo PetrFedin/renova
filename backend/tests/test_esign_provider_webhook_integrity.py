@@ -475,6 +475,9 @@ async def test_external_sign_requires_checksum_and_provider_external_id(
     user, _, document, version, signature = await seed_external_signature(esign_db, suffix="requirements")
     await esign_db.delete(signature)
     version.checksum_sha256 = None
+    # Основной договор получает хэш из снимка условий (DOC-009), поэтому
+    # требование «нужен хэш» проверяем на обычном документе.
+    document.document_type = DocumentType.upload.value
     await esign_db.commit()
     provider = SimpleNamespace(
         name="kontur",
@@ -493,6 +496,7 @@ async def test_external_sign_requires_checksum_and_provider_external_id(
         )
     provider.create_signature.assert_not_awaited()
 
+    document.document_type = DocumentType.contract.value
     version.checksum_sha256 = "d" * 64
     provider.create_signature = AsyncMock(
         return_value=SignResult(
