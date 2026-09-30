@@ -24,10 +24,18 @@ def effective_access_expire_minutes() -> int:
     return configured
 
 
-def create_access_token(subject: str, extra: dict[str, Any] | None = None) -> str:
+def create_access_token(
+    subject: str,
+    extra: dict[str, Any] | None = None,
+    *,
+    expires_minutes: int | None = None,
+) -> str:
     """subject = user.id (JWT `sub`)."""
     now = datetime.now(timezone.utc)
-    expire = now + timedelta(minutes=effective_access_expire_minutes())
+    ttl = effective_access_expire_minutes()
+    if expires_minutes is not None:
+        ttl = min(ttl, max(1, int(expires_minutes)))
+    expire = now + timedelta(minutes=ttl)
     payload: dict[str, Any] = {
         "sub": subject,
         # NumericDate permits fractions; retaining microseconds removes the

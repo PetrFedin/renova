@@ -20,16 +20,18 @@ type Props = {
 
 export function PortalSharePanel({ userId, projectId, role, embedded }: Props) {
   const { user, activeProject } = useRenova();
-  const [allowAccept, setAllowAccept] = useState(true);
-  const [allowPay, setAllowPay] = useState(true);
+  const [allowAccept, setAllowAccept] = useState(false);
+  const [allowPay, setAllowPay] = useState(false);
+  // Исполнитель выдаёт только ссылку на просмотр: права заказчика выпускает лишь заказчик.
+  const canGrant = role !== 'contractor';
   const [busy, setBusy] = useState(false);
 
   const share = async () => {
     setBusy(true);
     try {
       const link = await api.createCustomerPortalLink(userId, projectId, {
-        allow_accept_stage: allowAccept,
-        allow_pay: allowPay,
+        allow_accept_stage: canGrant && allowAccept,
+        allow_pay: canGrant && allowPay,
       });
       await syncProjectSideEffects({
         user: user ?? ({ id: userId } as any),
@@ -37,8 +39,8 @@ export function PortalSharePanel({ userId, projectId, role, embedded }: Props) {
         role,
       });
       const scopeHint = [
-        allowAccept ? 'приёмка и подпись' : null,
-        allowPay ? 'оплата' : null,
+        canGrant && allowAccept ? 'приёмка и подпись' : null,
+        canGrant && allowPay ? 'оплата' : null,
       ].filter(Boolean).join(' · ') || 'только просмотр';
       await shareRenovaLink(link.url, `портал Renova (${scopeHint})`);
       // W135: после шаринга — приёмка / оплаты в кабинете
@@ -57,17 +59,21 @@ export function PortalSharePanel({ userId, projectId, role, embedded }: Props) {
       </Text>
       <Text style={s.hint}>
         {role === 'contractor'
-          ? 'Заказчик откроет ЛК без приложения: приёмка этапа, подпись акта, оплата.'
+          ? 'Заказчик откроет ЛК без приложения — только просмотр. Приёмку, подпись и оплату заказчик включает сам.'
           : 'Отправьте себе или родственнику ссылку на решения по объекту.'}
       </Text>
-      <View style={s.row}>
-        <Text style={s.label}>Приёмка и подпись</Text>
-        <Switch value={allowAccept} onValueChange={setAllowAccept} />
-      </View>
-      <View style={s.row}>
-        <Text style={s.label}>Оплата счетов</Text>
-        <Switch value={allowPay} onValueChange={setAllowPay} />
-      </View>
+      {canGrant ? (
+        <>
+          <View style={s.row}>
+            <Text style={s.label}>Приёмка и подпись</Text>
+            <Switch value={allowAccept} onValueChange={setAllowAccept} />
+          </View>
+          <View style={s.row}>
+            <Text style={s.label}>Оплата счетов</Text>
+            <Switch value={allowPay} onValueChange={setAllowPay} />
+          </View>
+        </>
+      ) : null}
       <PrimaryButton
         title={busy ? '…' : 'Поделиться ссылкой'}
         variant="outline"

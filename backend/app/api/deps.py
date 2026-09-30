@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import Depends, Header, HTTPException
+import re
+
+from fastapi import Depends, Header, HTTPException, Request
 from jwt.exceptions import InvalidTokenError as JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -57,7 +59,45 @@ def _validate_access_session(
         raise HTTPException(401, str(exc)) from None
 
 
+# Токен, выданный /auth/portal/session (claim portal=true), — это НЕ сессия
+# пользователя. Он действует только на проект из ссылки и только на эти
+# маршруты (метод, шаблон пути, требуемый scope ссылки). Всё остальное — 403.
+# Проверка централизована здесь: любой обработчик, берущий пользователя через
+# get_current_user/resolve_user_id, автоматически защищён.
+_PORTAL_ALLOWED_ROUTES: tuple[tuple[str, re.Pattern[str], str], ...] = (
+    ("GET", re.compile(r"^(?:/api/v\d+)?/portal/projects/(?P<pid>[^/]+)/snapshot/?$"), "read"),
+    (
+        "POST",
+        re.compile(r"^(?:/api/v\d+)?/projects/(?P<pid>[^/]+)/payments/[^/]+/yookassa-checkout/?$"),
+        "pay",
+    ),
+)
+
+
+def enforce_portal_token_scope(payload: dict, request: Request | None) -> None:
+    """403, если portal-JWT используется вне проекта/действий, разрешённых ссылкой."""
+    if not payload.get("portal"):
+        return
+    if request is None:
+        raise HTTPException(403, "portal_token_forbidden")
+    scopes = payload.get("scopes") or ["read"]
+    path = request.url.path
+    for method, pattern, scope in _PORTAL_ALLOWED_ROUTES:
+        if request.method != method:
+            continue
+        match = pattern.match(path)
+        if not match:
+            continue
+        if match.group("pid") != payload.get("project_id"):
+            raise HTTPException(403, "portal_token_project_mismatch")
+        if scope not in scopes:
+            raise HTTPException(403, f"portal_{scope}_scope_required")
+        return
+    raise HTTPException(403, "portal_token_forbidden")
+
+
 async def resolve_user_id(
+    request: Request,
     authorization: str | None = Header(default=None, alias="Authorization"),
     x_user_id: str | None = Header(default=None, alias="X-User-Id"),
 ) -> str:
@@ -65,11 +105,13 @@ async def resolve_user_id(
     if authorization:
         try:
             uid = bearer_user_id(authorization)
+            payload = decode_access_token(_bearer_token(authorization))
         except JWTError:
             raise HTTPException(401, "Недействительный или просроченный токен") from None
         except Exception:
             logger.exception("access token parsing failed")
             raise HTTPException(401, "token_validation_failed") from None
+        enforce_portal_token_scope(payload, request)
         if uid:
             return uid
         raise HTTPException(401, "Недействительный Authorization")

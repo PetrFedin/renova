@@ -38,8 +38,9 @@ export const miscApi = {
       {
         method: 'POST',
         body: JSON.stringify({
-          allow_accept_stage: opts?.allow_accept_stage !== false,
-          allow_pay: opts?.allow_pay !== false,
+          // опасные права — только по явному включению (по умолчанию ссылка только на просмотр)
+          allow_accept_stage: opts?.allow_accept_stage === true,
+          allow_pay: opts?.allow_pay === true,
         }),
       },
       userId,

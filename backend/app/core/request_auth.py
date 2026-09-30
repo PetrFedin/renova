@@ -28,6 +28,9 @@ def user_id_from_access_token(token: str | None) -> str | None:
         return None
     if payload.get("typ") not in (None, "access"):
         return None
+    if payload.get("portal"):
+        # magic-link JWT: только проект/действия ссылки, не realtime-сессия
+        return None
     return sub
 
 

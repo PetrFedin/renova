@@ -274,15 +274,17 @@ export function DocumentsHub({
       portalShare: {
         id: 'portal',
         label: isContractor ? 'Портал заказчику' : 'Мой клиентский портал',
-        desc: 'Magic-link: приёмка · подпись · оплата',
+        desc: isContractor ? 'Magic-link: только просмотр' : 'Magic-link: просмотр (права — в профиле)',
         format: 'Link',
         run: async () => {
+          // Безопасный дефолт: ссылка только на просмотр. Приёмка/подпись/оплата
+          // включаются явно заказчиком в PortalSharePanel (исполнителю недоступны).
           const link = await api.createCustomerPortalLink(userId, projectId, {
-            allow_accept_stage: true,
-            allow_pay: true,
+            allow_accept_stage: false,
+            allow_pay: false,
           });
           // Создание magic-link не изменяет ProjectDetail — project sync здесь не нужен.
-          await shareRenovaLink(link.url, 'портал Renova (приёмка · подпись · оплата)');
+          await shareRenovaLink(link.url, 'портал Renova (только просмотр)');
         },
       },
       warrantyClaim: {

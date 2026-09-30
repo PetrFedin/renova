@@ -13,6 +13,10 @@ from app.services import team_service as team_svc
 
 router = APIRouter(tags=["portal"])
 
+# portal-JWT короткоживущий: гость при необходимости обменивает magic-link заново
+PORTAL_ACCESS_TTL_MINUTES = 60
+
+
 
 class PortalSessionIn(BaseModel):
     token: str
@@ -60,7 +64,9 @@ async def portal_session(body: PortalSessionIn, db: AsyncSession = Depends(get_d
             "role": user.role.value,
             "portal": True,
             "project_id": project.id,
+            "scopes": list(claims.get("scopes") or ["read"]),
         },
+        expires_minutes=PORTAL_ACCESS_TTL_MINUTES,
     )
     return {
         "user_id": user.id,
@@ -131,7 +137,8 @@ async def create_customer_portal_link(
 ):
     """W122: magic link клиентского портала (Houzz/BT).
 
-    Заказчик — для себя; исполнитель объекта — для customer_id (шаринг ЛК).
+    Заказчик — для себя (с правами приёмки/подписи/оплаты по явному запросу);
+    исполнитель объекта — для customer_id, но только просмотр (scope read).
     """
     proj = await require_project(db, project_id, user, write=True)
     if user.id == proj.customer_id:
@@ -139,6 +146,10 @@ async def create_customer_portal_link(
     elif proj.contractor_id and user.id == proj.contractor_id:
         if not proj.customer_id:
             raise HTTPException(400, "no_customer_on_project")
+        # Исполнитель может дать заказчику только ссылку на просмотр:
+        # приёмку, подпись и оплату от имени заказчика выпускает лишь он сам.
+        if body.allow_accept_stage or body.allow_pay:
+            raise HTTPException(403, "portal_write_scopes_customer_only")
         target_user_id = proj.customer_id
     else:
         raise HTTPException(403, "portal_link_customer_or_contractor_only")

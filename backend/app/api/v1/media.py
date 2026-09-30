@@ -1,5 +1,5 @@
 """Media download / upload-url. Project-scoped ACL for all project media (#449)."""
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 import mimetypes
@@ -36,12 +36,13 @@ _UPLOAD_EXTENSIONS = {
 
 
 async def _user_from_auth(
+    request: Request,
     db: AsyncSession,
     authorization: str | None,
     x_user_id: str | None,
 ) -> User:
     """Same policy as get_current_user (JWT / optional X-User-Id)."""
-    uid = await resolve_user_id(authorization=authorization, x_user_id=x_user_id)
+    uid = await resolve_user_id(request=request, authorization=authorization, x_user_id=x_user_id)
     result = await db.execute(select(User).where(User.id == uid))
     user = result.scalar_one_or_none()
     if not user:
@@ -73,6 +74,7 @@ async def upload_url(
 
 @router.get("/presign/{file_path:path}")
 async def presign_media(
+    request: Request,
     file_path: str,
     authorization: str | None = Header(default=None, alias="Authorization"),
     x_user_id: str | None = Header(default=None, alias="X-User-Id"),
@@ -83,7 +85,7 @@ async def presign_media(
     project ACL via assert_project_media_access (#449): unrelated account → 404.
     """
     key = file_path.lstrip("/")
-    user = await _user_from_auth(db, authorization, x_user_id)
+    user = await _user_from_auth(request, db, authorization, x_user_id)
     if parse_document_media_key(key) is not None:
         await assert_project_media_access(db, user, key, write=False)
     elif is_chat_media_key(key):
@@ -98,6 +100,7 @@ async def presign_media(
 
 @router.get("/{file_path:path}")
 async def get_media(
+    request: Request,
     file_path: str,
     authorization: str | None = Header(default=None, alias="Authorization"),
     x_user_id: str | None = Header(default=None, alias="X-User-Id"),
@@ -117,7 +120,7 @@ async def get_media(
     for media that was never project-scoped to begin with.
     """
     key = file_path.lstrip("/")
-    user = await _user_from_auth(db, authorization, x_user_id)
+    user = await _user_from_auth(request, db, authorization, x_user_id)
     if parse_document_media_key(key) is not None:
         await assert_project_media_access(db, user, key, write=False)
     elif is_chat_media_key(key):
