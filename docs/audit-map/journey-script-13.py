@@ -5,6 +5,10 @@
     cd backend && .venv/bin/python -m pytest ../docs/audit-map/journey-script-13.py -s -p no:cacheprovider
 
 Файл лежит вне backend/tests, поэтому в обычный pytest-сбор не попадает. Продуктовый код не изменяется.
+
+ИСТОРИЧЕСКИЙ АРТЕФАКТ: скрипт документирует дефекты на момент аудита и после волны 0 (самозаявка исполнителя
+теперь требует подтверждения заказчика) на шагах 30-32 не проходит. Актуальная регрессия под новые правила —
+backend/tests/test_journey_regression.py.
 Лог всех вызовов (метод, путь, тело, код, ответ) пишется в $JOURNEY_LOG (по умолчанию /tmp/journey13-log.json).
 """
 from __future__ import annotations
