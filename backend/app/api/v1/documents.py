@@ -239,6 +239,22 @@ async def _get_project_document(db: AsyncSession, project_id: str, document_id: 
     return doc
 
 
+def _reject_system_document_type(document_type: str | None) -> None:
+    """Основной договор и документ допработ создаёт только система (DOC-004)."""
+    if (document_type or "").strip().lower() in docs_svc.SYSTEM_ONLY_DOCUMENT_TYPES:
+        raise HTTPException(
+            400,
+            detail={
+                "code": "document_type_reserved",
+                "message": (
+                    "Договор подряда создаётся автоматически при фиксации сметы, "
+                    "а документ допработ — при согласовании доп. работ. "
+                    "Загрузите файл с другим типом документа."
+                ),
+            },
+        )
+
+
 @router.post("/{project_id}/documents")
 async def create_project_document(
     project_id: str,
@@ -247,6 +263,7 @@ async def create_project_document(
     db: AsyncSession = Depends(get_db),
 ):
     await require_project_docs(db, project_id, user, write=True)
+    _reject_system_document_type(body.document_type)
     await _validate_document_refs(db, project_id, stage_id=body.stage_id, payment_id=body.payment_id)
     doc = await docs_svc.create_document(
         db,
@@ -278,17 +295,31 @@ async def add_document_version(
 ):
     await require_project_docs(db, project_id, user, write=True)
     doc = await _get_project_document(db, project_id, document_id)
-    version = await docs_svc.add_version(
-        db,
-        doc,
-        created_by=user.id,
-        href=body.href,
-        storage_key=body.storage_key,
-        mime_type=body.mime_type,
-        file_size=body.file_size,
-        checksum_sha256=body.checksum_sha256,
-        notes=body.notes,
-    )
+    try:
+        version = await docs_svc.add_version(
+            db,
+            doc,
+            created_by=user.id,
+            href=body.href,
+            storage_key=body.storage_key,
+            mime_type=body.mime_type,
+            file_size=body.file_size,
+            checksum_sha256=body.checksum_sha256,
+            notes=body.notes,
+        )
+    except ValueError as error:
+        if str(error) == "signed_document_version_locked":
+            raise HTTPException(
+                409,
+                detail={
+                    "code": "signed_document_version_locked",
+                    "message": (
+                        "Договор уже подписан: новую версию добавить нельзя, "
+                        "иначе подписи относились бы к другому тексту."
+                    ),
+                },
+            ) from error
+        raise
     await db.commit()
     return docs_svc.document_dict(doc, version)
 
@@ -428,6 +459,7 @@ async def upload_project_document(
 ):
     """D-06: multipart upload → storage + ProjectDocument + DocumentVersion."""
     await require_project_docs(db, project_id, user, write=True)
+    _reject_system_document_type(document_type)
     await _validate_document_refs(db, project_id, stage_id=stage_id, payment_id=payment_id)
 
     data = await file.read()

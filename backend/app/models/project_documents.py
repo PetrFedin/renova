@@ -22,6 +22,9 @@ class DocumentType(str, enum.Enum):
     receipt = "receipt"
     estimate = "estimate"
     contract = "contract"
+    # Документ допработ (change order): подписывается сторонами, но НЕ является
+    # основным договором и в гейт начала работ не входит.
+    addendum = "addendum"
     invoice = "invoice"
     warranty = "warranty"
     upload = "upload"

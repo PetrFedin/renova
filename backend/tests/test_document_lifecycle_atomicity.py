@@ -60,7 +60,8 @@ async def seed_document(db):
         id="document-atomicity",
         project_id=project.id,
         title="Договор подряда",
-        document_type="contract",
+        # Не основной договор: тот защищён от архива/удаления (main_contract_protected).
+        document_type="other",
         status=DocumentStatus.active.value,
         current_version_id="document-version",
         created_by=customer.id,

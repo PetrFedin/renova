@@ -84,6 +84,32 @@ async def export_acceptance(project_id: str, stage_id: str, checks: str | None =
     return pdf_response(pdf, f"acceptance-{stage_id[:8]}.pdf")
 
 
+@router.get("/{project_id}/change-orders/{order_id}/document.pdf")
+async def export_change_order_document(
+    project_id: str,
+    order_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Дополнительное соглашение по доп. работам — содержание документа допработ (DOC-006)."""
+    from app.models.entities import ChangeOrder
+
+    project = await require_project(db, project_id, user, write=False)
+    order = await db.get(ChangeOrder, order_id)
+    if not order or order.project_id != project_id:
+        raise HTTPException(404, "change_order_not_found")
+    pdf = new_pdf()
+    pdf_line(pdf, "ДОПОЛНИТЕЛЬНОЕ СОГЛАШЕНИЕ (ДОП. РАБОТЫ)", size=14)
+    pdf_line(pdf, f"Объект: {project.name}")
+    pdf_line(pdf, "")
+    pdf_line(pdf, f"Наименование: {order.title}")
+    if order.description:
+        pdf_line(pdf, f"Описание: {order.description}")
+    pdf_line(pdf, f"Стоимость: {order.amount:.0f} RUB")
+    pdf_line(pdf, f"Статус согласования: {getattr(order.status, 'value', order.status)}")
+    return pdf_response(pdf, f"change-order-{order_id[:8]}.pdf")
+
+
 @router.get("/{project_id}/contract.pdf")
 async def export_contract(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Договор подряда из зафиксированной сметы.

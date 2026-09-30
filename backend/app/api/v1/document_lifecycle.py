@@ -64,6 +64,14 @@ def _raise_sign_error(error: ValueError) -> None:
         ) from error
     if message.startswith("unknown_esign_provider:"):
         raise HTTPException(400, message) from error
+    if message == "signer_not_contract_party":
+        raise HTTPException(
+            403,
+            detail={
+                "code": message,
+                "message": "Договор подписывает только заказчик проекта или его исполнитель.",
+            },
+        ) from error
     if message in {"document_not_signable", "document_has_no_version"}:
         raise HTTPException(
             409,
@@ -81,6 +89,14 @@ def _raise_sign_error(error: ValueError) -> None:
 
 def _raise_state_error(error: ValueError) -> None:
     message = str(error)
+    if message == "main_contract_protected":
+        raise HTTPException(
+            409,
+            detail={
+                "code": message,
+                "message": "Основной договор подряда нельзя удалить или заархивировать: его можно только подписать.",
+            },
+        ) from error
     status_code = 404 if message == "document_not_found" else 409
     raise HTTPException(
         status_code,

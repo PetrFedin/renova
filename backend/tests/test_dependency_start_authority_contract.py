@@ -156,7 +156,16 @@ async def _contractor_project_stage(db, *, signed_contract: bool = False):
             signer_role="customer",
             status="signed",
         )
-        rows.extend([contract, version, signature])
+        # Гейт требует подписи ОБЕИХ сторон (заказчик и исполнитель-лид).
+        contractor_signature = DocumentSignature(
+            id=_id(),
+            document_id=document_id,
+            version_id=version_id,
+            signer_user_id=contractor.id,
+            signer_role="contractor",
+            status="signed",
+        )
+        rows.extend([contract, version, signature, contractor_signature])
     db.add_all(rows)
     await db.commit()
     return project, stage, contractor, other_contractor

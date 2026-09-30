@@ -1,12 +1,13 @@
 /**
- * P3-W11/W16 — golden path: lock estimate → sign contract → start stage (API E2E).
+ * P3-W11/W16 — golden path: lock estimate → sign contract (customer AND contractor) → start stage (API E2E).
+ * Подпись одного заказчика гейт не снимает (JRN-002).
  * Использует fresh project (planned stage), не demo-квартиру с active этапом.
  */
 import { test, expect } from '@playwright/test';
 import { API, apiReachable, prepareContractGateScenario, cleanupE2eGateProject, authHeaders } from './helpers';
 
 test.describe('P3-W11 Contract gate golden path', () => {
-  test('lock → sign → start stage', async ({ request }) => {
+  test('lock → both parties sign → start stage', async ({ request }) => {
     test.skip(!(await apiReachable()), 'Need API :8100');
 
     const { contractor, customer, projectId, stageId, documentId } =
@@ -25,6 +26,21 @@ test.describe('P3-W11 Contract gate golden path', () => {
         data: { provider: 'in_app' },
       });
       expect(signed.ok()).toBeTruthy();
+
+      const half = await (
+        await request.get(`${API}/api/v1/projects/${projectId}/contract-gate`, { headers: hCont })
+      ).json();
+      expect(half.ok).toBe(false);
+      const stillBlocked = await request.post(`${API}/api/v1/projects/${projectId}/stages/${stageId}/start`, {
+        headers: hCont,
+      });
+      expect(stillBlocked.status()).toBe(403);
+
+      const signedCont = await request.post(`${API}/api/v1/projects/${projectId}/documents/${documentId}/sign`, {
+        headers: hCont,
+        data: { provider: 'in_app' },
+      });
+      expect(signedCont.ok()).toBeTruthy();
 
       const gate = await (
         await request.get(`${API}/api/v1/projects/${projectId}/contract-gate`, { headers: hCont })

@@ -1,4 +1,7 @@
-"""P3-W11: golden path estimate lock → sign contract → start stage."""
+"""P3-W11: golden path estimate lock → sign contract (BOTH parties) → start stage.
+
+Прежняя версия считала гейт пройденным после подписи одного заказчика (JRN-002);
+теперь нужны подписи заказчика и исполнителя-лида."""
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -6,7 +9,7 @@ from app.db.session import init_db
 from app.main import app
 from app.services.seed_articles import seed_articles
 from app.services.seed_demo import ensure_demo_users
-from tests.helpers_flow import lock_estimate_w57
+from tests.helpers_flow import lock_estimate_w57, self_assign
 
 pytestmark = pytest.mark.asyncio
 
@@ -33,7 +36,7 @@ async def _setup_project(client):
     h_cont = {"X-User-Id": cont["id"]}
     h_cust = {"X-User-Id": cust["id"]}
     pid = (await client.get("/api/v1/projects", headers=h_cust)).json()[0]["id"]
-    await client.post(f"/api/v1/projects/{pid}/assign", headers=h_cont)
+    await self_assign(client, pid, h_cont)
     detail = (await client.get(f"/api/v1/projects/{pid}", headers=h_cont)).json()
     planned = next((s for s in detail["stages"] if s["status"] == "planned"), None)
     assert planned, "expected planned stage"
@@ -54,6 +57,18 @@ async def test_golden_path_lock_sign_start_stage():
             json={"provider": "in_app"},
         )
         assert signed.status_code == 200, signed.text
+        # Подписал только заказчик: гейт закрыт, этап стартовать нельзя.
+        gate = await client.get(f"/api/v1/projects/{pid}/contract-gate", headers=h_cont)
+        assert gate.json().get("ok") is False
+        assert gate.json().get("awaiting_parties") == ["contractor"]
+        still_blocked = await client.post(f"/api/v1/projects/{pid}/stages/{stage_id}/start", headers=h_cont)
+        assert still_blocked.status_code == 403
+        signed_c = await client.post(
+            f"/api/v1/projects/{pid}/documents/{doc_id}/sign",
+            headers=h_cont,
+            json={"provider": "in_app"},
+        )
+        assert signed_c.status_code == 200, signed_c.text
         gate = await client.get(f"/api/v1/projects/{pid}/contract-gate", headers=h_cont)
         assert gate.json().get("ok") is True
         started = await client.post(f"/api/v1/projects/{pid}/stages/{stage_id}/start", headers=h_cont)

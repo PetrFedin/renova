@@ -107,10 +107,16 @@ async def suggest_from_metadata(db: AsyncSession, doc: ProjectDocument, version:
     return version
 
 
+SYSTEM_ONLY_TYPES = {DocumentType.contract.value, DocumentType.addendum.value}
+
+
 async def confirm_metadata_suggestion(db: AsyncSession, doc: ProjectDocument, version: DocumentVersion) -> DocumentVersion:
     if version.ocr_status != OCR_SUGGESTED or not version.ocr_suggested_type:
         raise ValueError("metadata_suggestion_not_ready")
     if version.ocr_suggested_type not in {item.value for item in DocumentType}:
+        raise ValueError("metadata_suggestion_invalid")
+    if version.ocr_suggested_type in SYSTEM_ONLY_TYPES or doc.document_type in SYSTEM_ONLY_TYPES:
+        # Тип договора — гейт начала работ; по имени файла его не выдают и не отнимают.
         raise ValueError("metadata_suggestion_invalid")
     doc.document_type = version.ocr_suggested_type
     version.ocr_status = OCR_CONFIRMED

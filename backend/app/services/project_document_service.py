@@ -7,6 +7,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.entities import Project
 from app.models.project_documents import (
     DocumentSignature,
     DocumentStatus,
@@ -150,6 +151,86 @@ async def create_document(
     return doc
 
 
+
+#: Типы документов, подписываемых сторонами договора. Подпись такого документа
+#: допустима только от заказчика проекта или исполнителя-лида (см. `sign_document`).
+PARTY_SIGNED_TYPES = frozenset({DocumentType.contract.value, DocumentType.addendum.value})
+
+#: Пользовательский ввод не может создавать эти типы: основной договор рождается
+#: только из зафиксированной сметы (`ensure_contract_draft`), документ допработ —
+#: только из change order.
+SYSTEM_ONLY_DOCUMENT_TYPES = frozenset({DocumentType.contract.value, DocumentType.addendum.value})
+
+
+def is_main_contract(doc: ProjectDocument) -> bool:
+    """Основной договор подряда: тип contract и не документ допработ.
+
+    Клиент не может создать документ такого типа (см. SYSTEM_ONLY_DOCUMENT_TYPES),
+    поэтому любой contract без change_order_id создан системой.
+    """
+    return doc.document_type == DocumentType.contract.value and not doc.change_order_id
+
+
+def signature_party(project: Project, user_id: str | None) -> str | None:
+    """Сторона подписи определяется по пользователю проекта, а не по роли в токене."""
+    if user_id and user_id == project.customer_id:
+        return "customer"
+    if user_id and project.contractor_id and user_id == project.contractor_id:
+        return "contractor"
+    return None
+
+
+def required_parties(project: Project) -> set[str]:
+    return {"customer", "contractor"} if project.contractor_id else {"customer"}
+
+
+async def signed_parties(db: AsyncSession, doc: ProjectDocument, project: Project) -> set[str]:
+    """Стороны, подписавшие ТЕКУЩУЮ версию документа (подписи прежних версий не считаются)."""
+    if not doc.current_version_id:
+        return set()
+    rows = list(
+        (
+            await db.execute(
+                select(DocumentSignature).where(
+                    DocumentSignature.document_id == doc.id,
+                    DocumentSignature.version_id == doc.current_version_id,
+                    DocumentSignature.status == "signed",
+                )
+            )
+        ).scalars().all()
+    )
+    parties = {signature_party(project, row.signer_user_id) for row in rows}
+    parties.discard(None)
+    return parties  # type: ignore[return-value]
+
+
+async def _has_live_signatures(db: AsyncSession, document_id: str) -> bool:
+    """Есть подпись, которую новая версия обесценила бы (не отозванная и не провалившаяся)."""
+    row = (
+        await db.execute(
+            select(DocumentSignature.id)
+            .where(
+                DocumentSignature.document_id == document_id,
+                DocumentSignature.status.in_(("submitting", "pending", "signed")),
+            )
+            .limit(1)
+        )
+    ).first()
+    return row is not None
+
+
+async def _activate_if_fully_signed(db: AsyncSession, doc: ProjectDocument) -> None:
+    """draft -> active. У договора сторон — только когда подписали все обязательные стороны."""
+    if doc.status != DocumentStatus.draft.value:
+        return
+    if doc.document_type in PARTY_SIGNED_TYPES:
+        project = await db.get(Project, doc.project_id)
+        if project is None or not (required_parties(project) <= await signed_parties(db, doc, project)):
+            return
+    doc.status = DocumentStatus.active.value
+    await db.flush()
+
+
 async def add_version(
     db: AsyncSession,
     doc: ProjectDocument,
@@ -162,10 +243,13 @@ async def add_version(
     checksum_sha256: str | None = None,
     notes: str | None = None,
 ) -> DocumentVersion:
+    if doc.document_type in PARTY_SIGNED_TYPES and await _has_live_signatures(db, doc.id):
+        # Подписанный договор неизменяем: новая версия под теми же подписями
+        # подменяла бы то, что стороны подписали. Нужна новая редакция — это
+        # отдельное решение сторон, а не тихая подмена ссылки.
+        raise ValueError("signed_document_version_locked")
     current = await get_current_version(db, doc.id)
     next_number = (current.version_number + 1) if current else 1
-    if current:
-        pass
     version = DocumentVersion(
         document_id=doc.id,
         version_number=next_number,
@@ -180,7 +264,8 @@ async def add_version(
     db.add(version)
     await db.flush()
     doc.current_version_id = version.id
-    doc.status = DocumentStatus.active.value
+    if doc.document_type not in PARTY_SIGNED_TYPES:
+        doc.status = DocumentStatus.active.value
     await db.flush()
     return version
 
@@ -264,7 +349,7 @@ async def sign_document(
     #
     # Стоит после проверок провайдера намеренно: у них причина точнее, и
     # перехватывать её более общей ошибкой значило бы ухудшить диагностику.
-    if doc.document_type == DocumentType.contract.value and not _version_has_content(version):
+    if doc.document_type in PARTY_SIGNED_TYPES and not _version_has_content(version):
         raise ValueError("contract_has_no_content")
 
     existing_query = select(DocumentSignature).where(
@@ -325,9 +410,8 @@ async def sign_document(
         )
         db.add(signature)
         await db.flush()
-        if result.status == "signed" and doc.status == DocumentStatus.draft.value:
-            doc.status = DocumentStatus.active.value
-            await db.flush()
+        if result.status == "signed":
+            await _activate_if_fully_signed(db, doc)
         return signature
 
     idempotency_key = signature_idempotency_key(request)
@@ -372,6 +456,10 @@ async def sign_document(
 
 
 async def archive_document(db: AsyncSession, doc: ProjectDocument) -> ProjectDocument:
+    if is_main_contract(doc):
+        # Архив основного договора снимал бы (или, у подписанного, оставлял бы
+        # ложно зелёным) гейт начала работ.
+        raise ValueError("main_contract_protected")
     doc.status = DocumentStatus.archived.value
     doc.archived_at = utc_now()
     await db.flush()
@@ -442,6 +530,10 @@ async def soft_delete_document(db: AsyncSession, doc: ProjectDocument) -> Projec
     """D-04: soft delete. Signed / legal-hold docs cannot be destroyed."""
     if getattr(doc, "legal_hold", False):
         raise ValueError("legal_hold_blocks_delete")
+    if is_main_contract(doc):
+        # Без основного договора пересоздать нечем (DOC-008): гейт и старт
+        # этапа расходились. Договор можно только подписать.
+        raise ValueError("main_contract_protected")
     if await document_has_signatures(db, doc.id):
         raise ValueError("signed_document_cannot_be_deleted")
     doc.status = DocumentStatus.deleted.value
@@ -467,40 +559,45 @@ async def set_legal_hold(
     return doc
 
 
+async def _main_contracts(db: AsyncSession, project_id: str) -> list[ProjectDocument]:
+    """Живые основные договоры проекта (без допработ, удалённых и архивных)."""
+    rows = list(
+        (
+            await db.execute(
+                select(ProjectDocument)
+                .where(
+                    ProjectDocument.project_id == project_id,
+                    ProjectDocument.document_type == DocumentType.contract.value,
+                    ProjectDocument.change_order_id.is_(None),
+                    ProjectDocument.status.notin_(
+                        (DocumentStatus.deleted.value, DocumentStatus.archived.value)
+                    ),
+                )
+                .order_by(ProjectDocument.created_at.asc(), ProjectDocument.id.asc())
+            )
+        ).scalars().all()
+    )
+    return rows
+
+
 async def ensure_contract_draft(
     db: AsyncSession,
     *,
     project_id: str,
     created_by: str | None,
 ) -> dict:
-    """P3-W10: создать draft contract если есть неподписанный договор или его нет."""
-    gate = await project_contract_gate(db, project_id)
-    if gate.get("ok") and gate.get("reason") != "no_contract_required":
-        return {"created": False, "document_id": gate.get("document_id"), "pending_titles": []}
-    contracts = list(
-        (
-            await db.execute(
-                select(ProjectDocument).where(
-                    ProjectDocument.project_id == project_id,
-                    ProjectDocument.document_type == DocumentType.contract.value,
-                    ProjectDocument.status != DocumentStatus.deleted.value,
-                )
-            )
-        ).scalars().all()
-    )
-    pending = [document for document in contracts if document.status == DocumentStatus.draft.value]
-    if pending:
-        return {
-            "created": False,
-            "document_id": pending[0].id,
-            "pending_titles": [document.title for document in pending[:3]],
-        }
+    """Создать основной договор подряда, если его ещё нет (идемпотентно).
+
+    Документ допработ (change_order_id) договором не считается и создание не
+    блокирует (DOC-007).
+    """
+    contracts = await _main_contracts(db, project_id)
     if contracts:
-        return {
-            "created": False,
-            "document_id": contracts[0].id,
-            "pending_titles": [contracts[0].title],
-        }
+        gate = await project_contract_gate(db, project_id)
+        signed_doc = gate.get("document_id") if gate.get("ok") else None
+        primary = next((d for d in contracts if d.id == signed_doc), contracts[0])
+        pending = [d.title for d in contracts if d.status == DocumentStatus.draft.value]
+        return {"created": False, "document_id": primary.id, "pending_titles": pending[:3]}
     # Договор без содержания подписывать нечего, а подпись под ним снимала
     # гейт начала работ. Собираем существенные условия из зафиксированной
     # сметы и даём ссылку на ручку, которая рисует документ.
@@ -522,39 +619,58 @@ async def ensure_contract_draft(
 
 
 async def project_contract_gate(db: AsyncSession, project_id: str) -> dict:
-    """P3-W7: estimate → eSign → work unlock — блок start_stage без подписанного договора."""
-    contracts = list(
-        (
-            await db.execute(
-                select(ProjectDocument).where(
-                    ProjectDocument.project_id == project_id,
-                    ProjectDocument.document_type == DocumentType.contract.value,
-                    ProjectDocument.status != DocumentStatus.deleted.value,
-                )
-            )
-        ).scalars().all()
-    )
+    """Единый предикат «работы можно начинать» (/contract-gate и старт этапа).
+
+    Гейт пройден, только если основной договор подряда подписан ТЕКУЩЕЙ
+    версией всеми обязательными сторонами: заказчиком и, если исполнитель
+    подключён, исполнителем-лидом. У самостоятельного заказчика (исполнителя
+    нет) достаточно его подписи. Документы допработ и произвольные загрузки в
+    гейт не входят. Если основного договора нет, а исполнитель подключён, гейт
+    закрыт (раньше отвечал ok при отсутствии договора, а старт этапа давал 403).
+    """
+    project = await db.get(Project, project_id)
+    if project is None:
+        return {"ok": False, "code": "project_not_found", "message": "Проект не найден", "pending_titles": []}
+    required = required_parties(project)
+    contracts = await _main_contracts(db, project_id)
     if not contracts:
+        if project.contractor_id:
+            return {
+                "ok": False,
+                "code": "contract_not_signed",
+                "reason": "no_contract",
+                "message": "Основной договор подряда ещё не создан: зафиксируйте смету",
+                "pending_titles": [],
+                "required_parties": sorted(required),
+                "signed_parties": [],
+            }
         return {"ok": True, "reason": "no_contract_required"}
+    best_missing: set[str] | None = None
+    best: ProjectDocument | None = None
+    best_signed: set[str] = set()
     for doc in contracts:
-        signatures = list(
-            (
-                await db.execute(
-                    select(DocumentSignature).where(
-                        DocumentSignature.document_id == doc.id,
-                        DocumentSignature.status == "signed",
-                    )
-                )
-            ).scalars().all()
-        )
-        if signatures:
-            return {"ok": True, "document_id": doc.id}
-    pending = [document.title for document in contracts if document.status == DocumentStatus.draft.value]
+        signed = await signed_parties(db, doc, project)
+        missing = required - signed
+        if not missing:
+            return {
+                "ok": True,
+                "document_id": doc.id,
+                "required_parties": sorted(required),
+                "signed_parties": sorted(signed),
+            }
+        if best_missing is None or len(missing) < len(best_missing):
+            best_missing, best, best_signed = missing, doc, signed
+    assert best is not None and best_missing is not None
     return {
         "ok": False,
         "code": "contract_not_signed",
-        "message": "Подпишите договор перед началом работ",
-        "pending_titles": pending[:3],
+        "reason": "awaiting_signatures",
+        "message": "Договор должен быть подписан всеми сторонами перед началом работ",
+        "pending_titles": [best.title],
+        "document_id": best.id,
+        "required_parties": sorted(required),
+        "signed_parties": sorted(best_signed),
+        "awaiting_parties": sorted(best_missing),
     }
 
 
@@ -598,8 +714,9 @@ async def complete_external_signature(
         signature.signed_at = utc_now()
         signature.revoked_at = None
         doc = await db.get(ProjectDocument, signature.document_id)
-        if doc and doc.status == DocumentStatus.draft.value:
-            doc.status = DocumentStatus.active.value
+        await db.flush()
+        if doc:
+            await _activate_if_fully_signed(db, doc)
     else:
         signature.revoked_at = utc_now()
         signature.signed_at = None

@@ -154,6 +154,12 @@ async def sign_document(
     }:
         raise ValueError("document_not_signable")
 
+    if document.document_type in documents.PARTY_SIGNED_TYPES:
+        # Подписывать за сторону может только сама сторона: заказчик проекта
+        # или исполнитель-лид (исполнитель не подпишет за заказчика и наоборот).
+        if documents.signature_party(project, actor.id) is None:
+            raise ValueError("signer_not_contract_party")
+
     try:
         signature, replayed = await _prepare_signature(
             db,

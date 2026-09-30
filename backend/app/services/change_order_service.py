@@ -286,9 +286,15 @@ async def approve_with_sign_draft(
             project_id=project_id,
             created_by=created_by,
             title=f"Доп. работы: {order.title}",
-            document_type=DocumentType.contract.value,
+            # Не «contract»: документ допработ не основной договор и в гейт
+            # начала работ не входит (DOC-003/006/007).
+            document_type=DocumentType.addendum.value,
             change_order_id=order.id,
             notes=f"CO:{order.id}; сумма {order.amount:.0f} ₽; черновик для подписи",
+            # Содержание нужно, иначе подписать нельзя (contract_has_no_content):
+            # документ рисуется по данным change order.
+            href=f"/api/v1/projects/{project_id}/change-orders/{order.id}/document.pdf",
+            mime_type="application/pdf",
         )
     draft.status = DocumentStatus.draft.value
     await db.flush()

@@ -129,7 +129,7 @@ async def test_legal_hold_blocks_soft_delete(db):
         project_id="p1",
         created_by="u1",
         title="Hold me",
-        document_type=DocumentType.contract.value,
+        document_type=DocumentType.other.value,
     )
     await set_legal_hold(db, doc, enabled=True)
     with pytest.raises(ValueError, match="legal_hold_blocks_delete"):

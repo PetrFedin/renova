@@ -45,7 +45,9 @@ async def test_portal_sign_draft_document():
                 project_id=pid,
                 created_by=cust["id"],
                 title="Доп. работы: тест",
-                document_type=DocumentType.contract.value,
+                document_type=DocumentType.addendum.value,
+                # Подписываемый документ обязан иметь содержимое.
+                href=f"/api/v1/projects/{pid}/contract.pdf",
             )
             doc.status = DocumentStatus.draft.value
             await db.commit()

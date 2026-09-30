@@ -1,5 +1,6 @@
 """P3.2d: CO approve → draft document stub."""
 import pytest
+from tests.helpers_flow import self_assign
 from httpx import ASGITransport, AsyncClient
 
 from app.db.session import init_db
@@ -41,7 +42,7 @@ async def test_co_approve_creates_draft_document():
         h_cust = {"X-User-Id": cust["id"]}
         h_cont = {"X-User-Id": cont["id"]}
         pid = (await client.get("/api/v1/projects", headers=h_cust)).json()[0]["id"]
-        await client.post(f"/api/v1/projects/{pid}/assign", headers=h_cont)
+        await self_assign(client, pid, h_cont)
         created = await client.post(
             f"/api/v1/projects/{pid}/change-orders",
             headers=h_cont,
@@ -59,3 +60,16 @@ async def test_co_approve_creates_draft_document():
         draft = next((d for d in items if d.get("title") == "Доп. работы: Перенос розеток"), None)
         assert draft is not None
         assert draft.get("status") == DocumentStatus.draft.value
+
+        # DOC-006: у документа допработ есть содержимое, его можно подписать,
+        # а в гейт основного договора он не входит.
+        assert draft.get("kind") == "addendum"
+        assert draft.get("href")
+        signed = await client.post(
+            f"/api/v1/projects/{pid}/documents/{draft['id']}/sign",
+            headers=h_cust,
+            json={"provider": "in_app"},
+        )
+        assert signed.status_code == 200, signed.text
+        gate = (await client.get(f"/api/v1/projects/{pid}/contract-gate", headers=h_cont)).json()
+        assert gate.get("document_id") != draft["id"]

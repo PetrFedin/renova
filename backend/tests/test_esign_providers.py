@@ -23,6 +23,8 @@ async def test_sign_in_app_via_registry(db):
         created_by="u1",
         title="Договор",
         document_type="contract",
+        # Договор без содержимого подписать нельзя (contract_has_no_content).
+        href="/api/v1/projects/p1/contract.pdf",
     )
     signature = await sign_document(
         db,
