@@ -22,7 +22,7 @@ must(service.includes('query = query.with_for_update()'), 'purchase transition i
 must(service.includes('validate_purchase_transition(current, status)'), 'purchase state graph is enforced');
 must(service.indexOf('if current == status:') < service.indexOf('purchase.status = status'), 'replay exits before mutation');
 must(service.includes('was_delivered=current == PurchaseStatus.delivered'), 'inventory reversal depends on prior delivery');
-must(service.includes('pick.qty_delivered = (pick.qty_delivered or 0) + item.qty'), 'delivery increments inventory once');
+must(service.includes('pick.qty_delivered = (pick.qty_delivered or 0) + (item.qty or 0)'), 'delivery increments inventory once');
 must(service.includes('max(0.0, (pick.qty_delivered or 0) - (item.qty or 0))'), 'return/cancel reverses delivered inventory once');
 must(service.includes('await budget.refresh_budget_facts'), 'purchase facts use canonical budget refresh');
 must(service.includes('activate_client_write_side_effects(effects)'), 'purchase effects are durable and immediately routable');
