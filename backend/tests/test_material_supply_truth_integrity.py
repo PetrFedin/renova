@@ -292,8 +292,12 @@ async def test_generate_needs_assigns_real_project_procurement_owner(db):
     )
     await db.commit()
 
-    managed_created = await purchase_service.generate_needs_from_estimate(db, managed.id)
-    self_created = await purchase_service.generate_needs_from_estimate(db, self_managed.id)
+    managed_created = await purchase_service.generate_needs_from_estimate(
+        db, managed.id, actor_id=contractor.id
+    )
+    self_created = await purchase_service.generate_needs_from_estimate(
+        db, self_managed.id, actor_id=self_managed.customer_id
+    )
 
     assert contractor is not None
     assert managed_created[0].supply_source == "contractor_to_buy"

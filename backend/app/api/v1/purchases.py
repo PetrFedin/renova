@@ -324,21 +324,33 @@ async def update_purchase_status(
     return response
 
 
+class GenerateNeedsIn(BaseModel):
+    client_request_id: str | None = Field(default=None, min_length=8, max_length=80)
+
+
 @router.post("/{project_id}/material-needs/from-estimate")
 async def generate_needs(
     project_id: str,
+    body: GenerateNeedsIn = GenerateNeedsIn(),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.services.client_write_idempotency import IdempotencyConflict
+
     await require_project(db, project_id, user, write=True)
-    created = await pur.generate_needs_from_estimate(db, project_id)
-    if created:
-        await act.log_event(
+    try:
+        created = await pur.generate_needs_from_estimate(
             db,
-            project_id=project_id,
-            user_id=user.id,
-            kind="MaterialCalculated",
-            title=f"Материалы из сметы: {len(created)}",
-            link_path="/(customer)/(tabs)/repair?tab=materials",
+            project_id,
+            actor_id=user.id,
+            client_request_id=body.client_request_id,
         )
+    except IdempotencyConflict as error:
+        raise HTTPException(
+            409,
+            detail={
+                "code": "idempotency_conflict",
+                "message": "Этот идентификатор запроса уже использован для другой генерации материалов",
+            },
+        ) from error
     return {"count": len(created), "created": [{"id": pick.id, "name": pick.name} for pick in created]}

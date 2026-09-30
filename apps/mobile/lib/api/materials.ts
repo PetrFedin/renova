@@ -119,19 +119,24 @@ export const materialsApi = {
     }
   },
   generateMaterialNeeds: async (userId: string, projectId: string) => {
+    // #419: mint the client_request_id once, before the first send, and
+    // replay the exact same serialized body on every offline-queue retry so
+    // a lost response after the server already generated the material needs
+    // cannot regenerate (and duplicate) them on resend.
+    const requestBody = JSON.stringify({ client_request_id: createClientRequestId('material-needs-generate') });
     try {
       return await req<{ count: number; created: { id: string; name: string }[] }>(
         `/api/v1/projects/${projectId}/material-needs/from-estimate`,
-        { method: 'POST' },
+        { method: 'POST', body: requestBody },
         userId,
       );
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 429) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/material-needs/from-estimate`,
         method: 'POST',
-        body: '{}',
+        body: requestBody,
         userId,
       });
       throw new Error('offline_queued');

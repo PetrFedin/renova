@@ -1,4 +1,6 @@
 """Закупки Renova OS: потребность → заказ → доставка → разблокировка работ."""
+import json
+
 from app.core.timeutil import utc_now
 from uuid import uuid4
 
@@ -395,12 +397,106 @@ async def _on_delivered(db: AsyncSession, purchase: Purchase) -> None:
         )
 
 
-async def generate_needs_from_estimate(db: AsyncSession, project_id: str) -> list[MaterialPick]:
-    """Сформировать потребности в материалах из строк сметы."""
+MATERIAL_NEEDS_GENERATE_SCOPE = "material_needs.generate"
+
+
+def _material_needs_generation_payload(project_id: str) -> dict:
+    # The endpoint takes no request body — the whole business intent is "run
+    # the generation for this project" — so the canonical payload only needs
+    # to scope the ledger row to the project. Identity is otherwise carried
+    # by the (scope, project_id, actor_id, request_id) tuple itself (#419).
+    return {"project_id": project_id}
+
+
+async def _material_picks_from_generation(
+    db: AsyncSession, generation: "MaterialNeedsGenerationResult"
+) -> list[MaterialPick]:
+    pick_ids = json.loads(generation.created_pick_ids_json or "[]")
+    if not pick_ids:
+        return []
+    rows = (
+        await db.execute(select(MaterialPick).where(MaterialPick.id.in_(pick_ids)))
+    ).scalars().all()
+    by_id = {row.id: row for row in rows}
+    return [by_id[pid] for pid in pick_ids if pid in by_id]
+
+
+async def generate_needs_from_estimate(
+    db: AsyncSession,
+    project_id: str,
+    *,
+    actor_id: str | None = None,
+    client_request_id: str | None = None,
+) -> list[MaterialPick]:
+    """Сформировать потребности в материалах из строк сметы — атомарно и replay-safe (#419).
+
+    Bug fixed here: the previous implementation committed each `MaterialPick`
+    insert inside the loop, then a separate, unlinked `act.log_event` call
+    recorded the `MaterialCalculated` activity in its own transaction after
+    the route returned control here. That left two real recovery holes: (1)
+    two concurrent calls could both observe "no existing pick" for the same
+    estimate line and both insert it (no serialization contract), and (2) a
+    crash/network loss between the material commit and the activity commit
+    permanently split the material truth from its audit evidence, with nothing
+    to reconstruct it on replay.
+
+    Fixed by making the whole generation — every `MaterialPick` insert, the
+    `MaterialNeedsGenerationResult` evidence row, the durable `MaterialCalculated`
+    activity outbox row, and the `ClientWriteRequest` idempotency ledger row —
+    one atomic commit (mirrors `calendar_import_service.import_ical_atomic`,
+    #422). Concurrent calls for the same project are serialized with a
+    `SELECT ... FOR UPDATE` on the `Project` row before the estimate-line scan,
+    so two racing sessions cannot both decide to insert the same pick.
+    Replay safety is scoped to (project, actor, request id): the same
+    request id with the same (empty) payload returns the original generated
+    set verbatim; reusing it after a real code/schema change to the payload
+    would raise `IdempotencyConflict`. When no `client_request_id` is
+    supplied (direct/legacy callers), the call is not ledgered and always
+    performs a fresh (still dedupe-by-name/room, still atomic) scan.
+    """
+    from app.models.material_needs_generation import MaterialNeedsGenerationResult
+    from app.services import outbox_service as outbox
+    from app.services.client_write_idempotency import commit_client_write, replay_entity_id
+    from app.services.client_write_side_effects import (
+        PreparedSideEffect,
+        activate_client_write_side_effects,
+        clear_request_side_effect_context,
+    )
+
     project = await db.get(Project, project_id)
     if not project:
         return []
-    generated_source = material_supply_service.default_source_for_project(project)
+
+    resolved_actor_id = actor_id or project.customer_id or project.contractor_id or "system"
+    payload = _material_needs_generation_payload(project_id)
+
+    replay_id = await replay_entity_id(
+        db,
+        scope=MATERIAL_NEEDS_GENERATE_SCOPE,
+        project_id=project_id,
+        user_id=resolved_actor_id,
+        request_id=client_request_id,
+        payload=payload,
+    )
+    if replay_id is not None:
+        existing = await db.get(MaterialNeedsGenerationResult, replay_id)
+        if not existing:
+            raise ValueError("material_needs_generation_idempotency_target_missing")
+        return await _material_picks_from_generation(db, existing)
+
+    # Serialize concurrent generation attempts for this project: two sessions
+    # racing this endpoint must not both observe "no existing pick" for the
+    # same estimate line and both insert it (#419 concurrent-duplicate defect).
+    lock_query = select(Project).where(Project.id == project_id)
+    try:
+        lock_query = lock_query.with_for_update()
+    except Exception:
+        pass
+    locked_project = (await db.execute(lock_query)).scalar_one_or_none()
+    if not locked_project:
+        return []
+
+    generated_source = material_supply_service.default_source_for_project(locked_project)
     result = await db.execute(
         select(EstimateLine).where(
             EstimateLine.project_id == project_id,
@@ -408,16 +504,20 @@ async def generate_needs_from_estimate(db: AsyncSession, project_id: str) -> lis
         )
     )
     lines = list(result.scalars().all())
+
+    existing_picks = await db.execute(
+        select(MaterialPick).where(MaterialPick.project_id == project_id)
+    )
+    # Snapshot of already-generated picks taken once, under the project lock,
+    # before any mutation — mirrors the calendar-import fallback-mapping
+    # snapshot so a replay (or a second racing call, once unblocked by the
+    # lock) never double-inserts against a partially-applied prior attempt.
+    existing_by_key = {(pick.name, pick.room_id): pick for pick in existing_picks.scalars().all()}
+
     created: list[MaterialPick] = []
     for line in lines:
-        existing = await db.execute(
-            select(MaterialPick).where(
-                MaterialPick.project_id == project_id,
-                MaterialPick.name == line.name,
-                MaterialPick.room_id == line.room_id,
-            )
-        )
-        if existing.scalar_one_or_none():
+        key = (line.name, line.room_id)
+        if key in existing_by_key:
             continue
         pick = MaterialPick(
             project_id=project_id,
@@ -437,8 +537,75 @@ async def generate_needs_from_estimate(db: AsyncSession, project_id: str) -> lis
         )
         db.add(pick)
         created.append(pick)
-    if created:
-        await db.commit()
-        for pick in created:
-            await db.refresh(pick)
+        existing_by_key[key] = pick  # guard duplicate estimate lines within this same batch
+
+    try:
+        await db.flush()  # assign pick ids before persisting the result/ledger rows
+
+        generation = MaterialNeedsGenerationResult(
+            project_id=project_id,
+            created_pick_ids_json=json.dumps([pick.id for pick in created]),
+            created_count=len(created),
+        )
+        db.add(generation)
+        await db.flush()
+
+        activity_row = None
+        if created:
+            activity_row = await outbox.enqueue(
+                db,
+                aggregate_type="material_needs_generation",
+                aggregate_id=generation.id,
+                event_type=outbox.ACTIVITY_EVENT,
+                payload={
+                    "project_id": project_id,
+                    "user_id": resolved_actor_id,
+                    "kind": "MaterialCalculated",
+                    "title": f"Материалы из сметы: {len(created)}",
+                    "link_path": "/(customer)/(tabs)/repair?tab=materials",
+                },
+            )
+
+        committed, canonical_id = await commit_client_write(
+            db,
+            scope=MATERIAL_NEEDS_GENERATE_SCOPE,
+            project_id=project_id,
+            user_id=resolved_actor_id,
+            request_id=client_request_id,
+            payload=payload,
+            entity_id=generation.id,
+        )
+    except BaseException:
+        await db.rollback()
+        clear_request_side_effect_context()
+        raise
+
+    if not committed:
+        # Lost the idempotency race to a concurrent identical request that
+        # committed first: return its canonical result instead of ours.
+        existing = await db.get(MaterialNeedsGenerationResult, canonical_id)
+        if not existing:
+            raise ValueError("material_needs_generation_idempotency_target_missing")
+        return await _material_picks_from_generation(db, existing)
+
+    if created and activity_row:
+        from app.services import activity_service as act
+
+        activate_client_write_side_effects(
+            [PreparedSideEffect(effect_type="activity", outbox_id=activity_row.id)]
+        )
+        try:
+            await act.log_event(
+                db,
+                project_id=project_id,
+                user_id=resolved_actor_id,
+                kind="MaterialCalculated",
+                title=f"Материалы из сметы: {len(created)}",
+                link_path="/(customer)/(tabs)/repair?tab=materials",
+            )
+        finally:
+            clear_request_side_effect_context()
+
+    for pick in created:
+        await db.refresh(pick)
     return created
