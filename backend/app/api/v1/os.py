@@ -250,11 +250,24 @@ async def calc_room_materials(
 ):
     from app.models.entities import Room
     from app.services.material_calculator import calc_room_materials as calc_fn
-    await require_project(db, project_id, user, write=False)
-    room = await db.get(Room, room_id)
-    if not room or room.project_id != project_id:
+    from sqlalchemy import select
+    from app.services.room_service import room_detail
+    # Роут пишет activity — значит нужен write-доступ (гость/технадзор не пишут).
+    await require_project(db, project_id, user, write=True)
+    room = (await db.execute(select(Room).where(Room.id == room_id, Room.project_id == project_id))).scalar_one_or_none()
+    if not room:
         raise HTTPException(404)
-    items = calc_fn(room.floor_sq_m, room.wall_sq_m, room.perimeter_m)
+    # EST-009: у ORM Room нет floor_sq_m/wall_sq_m/perimeter_m — считаем из размеров.
+    metrics = room_detail(room)
+    if not (metrics["floor_sq_m"] > 0 and metrics["wall_sq_m"] > 0 and metrics["perimeter_m"] > 0):
+        raise HTTPException(
+            422,
+            detail={
+                "code": "room_dimensions_incomplete",
+                "message": "Укажите длину, ширину и высоту комнаты — без размеров материалы не рассчитать",
+            },
+        )
+    items = calc_fn(metrics["floor_sq_m"], metrics["wall_sq_m"], metrics["perimeter_m"])
     await act.log_event(db, project_id=project_id, user_id=user.id, kind="MaterialCalculated", title=f"Расчёт: {room.name}", body=str(len(items)), room_id=room_id, link_path=f"/room/{room_id}")
     return {"room_id": room_id, "items": items}
 

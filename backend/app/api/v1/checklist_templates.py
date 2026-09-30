@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,5 +28,9 @@ async def save_template(body: TemplateIn, user: User = Depends(get_current_user)
 
 @router.get("/{tpl_id}/versions")
 async def user_tpl_versions(tpl_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    # APIA-003/EST-021: шаблон резолвится по (id, владелец) одним запросом; чужой -> 404.
+    owned = (await db.execute(select(ChecklistTemplate.id).where(ChecklistTemplate.id == tpl_id, ChecklistTemplate.user_id == user.id))).first()
+    if not owned:
+        raise HTTPException(404, "Шаблон не найден")
     r = await db.execute(select(ChecklistTemplateVersion).where(ChecklistTemplateVersion.template_id == tpl_id).order_by(ChecklistTemplateVersion.version.desc()))
     return [{"version": v.version, "name": v.name, "items": json.loads(v.items_json), "at": v.created_at.isoformat()} for v in r.scalars().all()]

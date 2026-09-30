@@ -121,7 +121,7 @@ export function ContractorEstimateView() {
         <Text style={styles.sectionTitle}>
           Редактор · {filtered.length} поз. · {formatRub(filteredTotal)}
         </Text>
-        <EstimateEditorByRoom lines={filtered} canWrite={canWrite} onPatch={patchLine} />
+        <EstimateEditorByRoom lines={filtered} canWrite={canWrite} planLocked={Boolean(project.estimate_locked_at)} onPatch={patchLine} />
 
         {user && canWrite && !project.estimate_locked_at && allLines.length > 0 && (
           <>

@@ -11,10 +11,12 @@ import { parseNonNegativeNumber, parsePositiveNumber } from '@/lib/parseLocaleNu
 type Props = {
   line: EstimateLine;
   canWrite: boolean;
+  /** После фиксации сметы план и цена заморожены; факт расхода и заметка правятся. */
+  planLocked?: boolean;
   onPatch: (lineId: string, body: object) => Promise<void>;
 };
 
-export function EstimateLineEditorCard({ line, canWrite, onPatch }: Props) {
+export function EstimateLineEditorCard({ line, canWrite, planLocked = false, onPatch }: Props) {
   const [open, setOpen] = useState(false);
   const [notes, setNotes] = useState(line.notes || '');
   const total = line.quantity_planned * line.unit_price;
@@ -39,9 +41,9 @@ export function EstimateLineEditorCard({ line, canWrite, onPatch }: Props) {
       {open && (
         <View style={s.body}>
           {line.calc_detail ? <Text style={s.calc}>{line.calc_detail}</Text> : null}
-          <FieldRow label="Кол-во план" value={String(line.quantity_planned)} editable={canWrite}
+          <FieldRow label="Кол-во план" value={String(line.quantity_planned)} editable={canWrite && !planLocked}
             onCommit={(v) => commitNumber(v, 'Кол-во план', 'positive', (n) => onPatch(line.id, { quantity_planned: n }))} />
-          <FieldRow label="Цена, ₽" value={String(line.unit_price)} editable={canWrite}
+          <FieldRow label="Цена, ₽" value={String(line.unit_price)} editable={canWrite && !planLocked}
             onCommit={(v) => commitNumber(v, 'Цена', 'nonNegative', (n) => onPatch(line.id, { unit_price: n }))} />
           {!isWork && (
             <FieldRow
@@ -63,7 +65,7 @@ export function EstimateLineEditorCard({ line, canWrite, onPatch }: Props) {
             placeholder="Бренд, артикул, условия, комментарий для бригады…"
             multiline
             onEndEditing={() => {
-              if ((line.notes || '') !== notes.trim()) onPatch(line.id, { notes: notes.trim() || null });
+              if ((line.notes || '') !== notes.trim()) onPatch(line.id, { notes: notes.trim() });
             }}
           />
         </View>

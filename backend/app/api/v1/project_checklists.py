@@ -1,5 +1,5 @@
 import json
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +8,13 @@ from app.db.session import get_db
 from app.models.entities import User, ProjectChecklistTemplate, ChecklistTemplateVersion
 
 router = APIRouter(prefix="/projects", tags=["checklists"])
+
+
+async def _require_project_tpl(db: AsyncSession, project_id: str, tpl_id: str) -> None:
+    """EST-021: шаблон резолвится по (id, project_id) одним запросом; чужой -> 404."""
+    row = (await db.execute(select(ProjectChecklistTemplate.id).where(ProjectChecklistTemplate.id == tpl_id, ProjectChecklistTemplate.project_id == project_id))).first()
+    if not row:
+        raise HTTPException(404, "Шаблон не найден")
 
 class TIn(BaseModel):
     name: str
@@ -28,12 +35,14 @@ async def save_tpl(project_id: str, body: TIn, user: User = Depends(get_current_
 
 @router.get("/{project_id}/checklist-templates/{tpl_id}/versions")
 async def tpl_versions(project_id: str, tpl_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db), _=Depends(require_project_dep())):
+    await _require_project_tpl(db, project_id, tpl_id)
     r = await db.execute(select(ChecklistTemplateVersion).where(ChecklistTemplateVersion.template_id == tpl_id).order_by(ChecklistTemplateVersion.version.desc()))
     return [{"version": v.version, "name": v.name, "items": json.loads(v.items_json), "at": v.created_at.isoformat()} for v in r.scalars().all()]
 
 
 @router.get("/{project_id}/checklist-templates/{tpl_id}/diff")
 async def tpl_diff(project_id: str, tpl_id: str, v1: int = 1, v2: int = 2, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db), _=Depends(require_project_dep())):
+    await _require_project_tpl(db, project_id, tpl_id)
     r = await db.execute(select(ChecklistTemplateVersion).where(ChecklistTemplateVersion.template_id == tpl_id))
     vers = {v.version: json.loads(v.items_json) for v in r.scalars().all()}
     a, b = vers.get(v1, []), vers.get(v2, [])

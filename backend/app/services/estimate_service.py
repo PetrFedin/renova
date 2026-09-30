@@ -70,6 +70,7 @@ async def update_line(
     quantity_planned: float | None = None,
     unit_price: float | None = None,
     quantity_actual: float | None = None,
+    notes: str | None = None,
 ) -> EstimateLine | None:
     """#375: line_id и project_id резолвятся одним запросом — чужой project_id
     в пути не должен позволять мутировать строку сметы другого проекта."""
@@ -88,6 +89,8 @@ async def update_line(
         line.unit_price = unit_price
     if quantity_actual is not None:
         line.quantity_actual = quantity_actual
+    if notes is not None:
+        line.notes = notes.strip() or None
     await db.commit()
     await recalc_budget(db, line.project_id)
     await db.refresh(line)
@@ -286,10 +289,25 @@ async def lock_estimate(db: AsyncSession, project_id: str, *, locked_by: str) ->
                 "code": "proposal_stale",
                 "message": "Предложение сметы устарело (>14 дн.). Исполнитель должен отправить снова.",
             }
+    # EST-003/APIA-004: заказчик фиксирует ровно то, что предложено. Если строки/цены
+    # изменились после propose — фиксация отклоняется, исполнитель должен предложить заново.
+    if proj.contractor_id and proj.estimate_propose_snapshot_json:
+        import json as _json
+        try:
+            baseline = _json.loads(proj.estimate_propose_snapshot_json)
+        except Exception:
+            baseline = None
+        if baseline is not None:
+            diff = diff_estimate_snapshots(baseline, serialize_estimate_lines(lines))
+            if diff["has_changes"]:
+                return proj, {
+                    "code": "estimate_changed_since_proposal",
+                    "message": "Смета изменилась после отправки на согласование. Исполнитель должен отправить её снова.",
+                    "delta_total": diff["delta_total"],
+                }
     proj.estimate_locked_at = utc_now()
     proj.estimate_lock_proposed_at = None
     proj.estimate_lock_proposed_by = None
-    proj.estimate_propose_snapshot_json = None
     proj.estimate_propose_snapshot_json = None
     await recalc_budget(db, project_id)
     # Платёж по этапу создаётся только при payment_amount > 0. Поле

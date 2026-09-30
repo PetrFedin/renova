@@ -31,17 +31,21 @@ def _idempotency_http_error() -> HTTPException:
 
 
 class LinePatch(BaseModel):
-    quantity_planned: float | None = None
-    unit_price: float | None = None
-    quantity_actual: float | None = None
+    # EST-004: те же границы, что при создании (кол-во > 0, цена >= 0: цена бывает ещё не известна);
+    # отрицательные и NaN/inf -> 422. Нулевой ФАКТ допустим (#379).
+    quantity_planned: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    unit_price: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    quantity_actual: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    # EST-005: заметка к строке (пустая строка очищает).
+    notes: str | None = Field(default=None, max_length=2000)
 
 
 class LineCreate(BaseModel):
     line_type: str = Field(pattern="^(material|work)$")
     name: str
     unit: str = "pcs"
-    quantity_planned: float = Field(gt=0)
-    unit_price: float = Field(ge=0)
+    quantity_planned: float = Field(gt=0, allow_inf_nan=False)
+    unit_price: float = Field(ge=0, allow_inf_nan=False)
     room_id: str | None = None
     room_name: str | None = None
     category: str | None = None
@@ -66,8 +70,12 @@ async def patch_line(
     if user.role != UserRole.contractor:
         raise HTTPException(403, "Только исполнитель редактирует смету")
     await require_project(db, project_id, user, write=True)
-    await _require_estimate_editable(db, project_id)
-    line = await update_line(db, line_id, project_id=project_id, **body.model_dump(exclude_none=True))
+    patch = body.model_dump(exclude_none=True)
+    # EST-006: после фиксации план/цена заморожены (правки — через CO), а факт расхода
+    # (quantity_actual) и заметка — это учёт исполнения, а не смета, и вводятся по-прежнему.
+    if set(patch) - {"quantity_actual", "notes"}:
+        await _require_estimate_editable(db, project_id)
+    line = await update_line(db, line_id, project_id=project_id, **patch)
     if not line:
         raise HTTPException(404, "Строка не найдена")
     return {"ok": True, "id": line.id}
@@ -187,6 +195,11 @@ async def lock_project_estimate(project_id: str, user: User = Depends(get_curren
     if result.get("code") == "customer_lock_required":
         raise HTTPException(403, detail=result)
     if result.get("code") == "proposal_required":
+        raise HTTPException(409, detail=result)
+    if result.get("code") == "proposal_stale":
+        # EST-002: раньше 200 ok:true без фиксации — клиент показывал «зафиксировано».
+        raise HTTPException(409, detail={**result, "code": "proposal_expired"})
+    if result.get("code") == "estimate_changed_since_proposal":
         raise HTTPException(409, detail=result)
     return {
         "ok": True,

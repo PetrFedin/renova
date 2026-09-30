@@ -51,23 +51,25 @@ async def budget_alerts(project_id: str, threshold_pct: float = 5, user: User = 
         total_fact = max(fact, receipts_spent)
         pct = (total_fact / plan * 100) if plan else 0
         out.append({"room_id": room.id, "room_name": room.name, "plan": plan, "fact": fact, "receipts_spent": round(receipts_spent, 2), "total_spent": round(total_fact, 2), "over_pct": round(pct - 100, 1) if plan else 0})
-        skip_notify = False
         thr = (getattr(room, 'budget_alert_pct', None) or threshold_pct) / 100
         if plan and fact > plan * (1 + thr) and p.customer_id and user.id == p.customer_id:
             from datetime import date as ddate
+            from sqlalchemy.exc import IntegrityError
             from app.models.entities import BudgetAlertSent
-            today = ddate.today().isoformat()
-            ex = (await db.execute(select(BudgetAlertSent).where(BudgetAlertSent.user_id == p.customer_id, BudgetAlertSent.room_id == room.id, BudgetAlertSent.sent_date == today))).scalar_one_or_none()
-            skip_notify = bool(ex)
             from app.services import notification_service as ns
-            from app.services.email_stub import send_budget_alert_email
-            from app.models.entities import User as U
-            if not skip_notify:
+            today = ddate.today().isoformat()
+            # APIA-001: маркер «уже уведомляли» пишем ДО уведомления и в той же транзакции,
+            # что и notify(); уникальный (user, room, day) не даёт создать дубль при опросе.
+            # User.email не существует — прежний вызов падал уже после commit уведомления.
+            ex = (await db.execute(select(BudgetAlertSent.id).where(BudgetAlertSent.user_id == p.customer_id, BudgetAlertSent.room_id == room.id, BudgetAlertSent.sent_date == today))).first()
+            if not ex:
+                try:
+                    async with db.begin_nested():
+                        db.add(BudgetAlertSent(user_id=p.customer_id, room_id=room.id, sent_date=today))
+                        await db.flush()
+                except IntegrityError:
+                    continue
                 await ns.notify(db, user_id=p.customer_id, project_id=project_id, notification_type='budget_alert', title='Превышение бюджета комнаты', body=f'{room.name}: {fact:.0f}/{plan:.0f}', link_path=f'/room/{room.id}', return_to='/(customer)/(tabs)/')
-                cu = await db.get(U, p.customer_id)
-                if cu and cu.email:
-                    await send_budget_alert_email(cu.email, 'Renova: бюджет', f'{room.name} {fact:.0f}/{plan:.0f}')
-                db.add(BudgetAlertSent(user_id=p.customer_id, room_id=room.id, sent_date=today))
                 await db.commit()
     return out
 
@@ -77,7 +79,8 @@ async def budget_room_lines(project_id: str, room_id: str, user: User = Depends(
     from sqlalchemy import select
     from app.models.entities import EstimateLine
     await require_project(db, project_id, user, write=False)
-    lines = (await db.execute(select(EstimateLine).where(EstimateLine.room_id == room_id))).scalars().all()
+    # APIA-002: строки сметы только комнаты этого проекта (id + project_id одним запросом).
+    lines = (await db.execute(select(EstimateLine).where(EstimateLine.room_id == room_id, EstimateLine.project_id == project_id))).scalars().all()
     out = []
     for l in lines:
         plan = l.quantity_planned * l.unit_price
@@ -97,8 +100,11 @@ async def budget_breakdown(project_id: str, user: User = Depends(get_current_use
     # приравнивал факт к плану для этой категории (issue #318).
     works_fact = sum(l.quantity_actual * l.unit_price for l in lines if l.line_type == LineType.work)
     materials_plan = sum(l.quantity_planned * l.unit_price for l in lines if l.line_type == LineType.material)
-    picks = (await db.execute(select(MaterialPick).where(MaterialPick.project_id == project_id))).scalars().all()
-    materials_fact = sum(x.qty * x.price for x in picks if x.status.value in ("approved", "purchased"))
+    # EST-007: единое определение факта материалов сметы — quantity_actual × unit_price
+    # (docs/technical-spec/CALCULATION-REGISTRY.md §18, как /analytics и material_stats).
+    # Раньше здесь считались picks в статусах approved/purchased — согласованное не равно
+    # купленному, а деньги подтверждает только ledger (budget_spent).
+    materials_fact = sum(l.quantity_actual * l.unit_price for l in lines if l.line_type == LineType.material)
     waste = (await db.execute(select(WasteOrder).where(WasteOrder.project_id == project_id))).scalars().all()
     # У вывоза мусора нет отдельной сметы "план vs факт" — сумма появляется только при
     # создании заказа, поэтому waste одновременно является и планом, и фактом (это не
@@ -114,15 +120,13 @@ async def budget_category_alerts(project_id: str, threshold_pct: float = 10, use
     from app.models.entities import EstimateLine, LineType, MaterialPick, WasteOrder
     await require_project(db, project_id, user, write=False)
     lines = (await db.execute(select(EstimateLine).where(EstimateLine.project_id == project_id))).scalars().all()
-    picks = (await db.execute(select(MaterialPick).where(MaterialPick.project_id == project_id))).scalars().all()
     waste = (await db.execute(select(WasteOrder).where(WasteOrder.project_id == project_id))).scalars().all()
     cats = {"works": 0.0, "materials": 0.0, "waste": 0.0}
     fact = {"works": 0.0, "materials": 0.0, "waste": 0.0}
     for l in lines:
         k = "works" if l.line_type == LineType.work else "materials"
         cats[k] += l.quantity_planned * l.unit_price
-    for p in picks:
-        if p.status.value in ("approved", "purchased"): fact["materials"] += p.qty * p.price
+        fact[k] += l.quantity_actual * l.unit_price  # EST-007: единое определение факта (quantity_actual x цена)
     for w in waste:
         if w.status.value not in ("cancelled", "draft"): fact["waste"] += w.volume_m3 * w.price
     out = []

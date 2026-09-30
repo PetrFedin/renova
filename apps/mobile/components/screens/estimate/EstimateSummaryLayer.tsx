@@ -114,7 +114,12 @@ export function EstimateSummaryLayer({
               onPrimary: () => {
                 void onLockEstimate().catch((e: unknown) => {
                   showActionConfirm({
-                    title: 'Не удалось',
+                    // EST-002/EST-003: сервер отвечает 409 proposal_expired /
+                    // estimate_changed_since_proposal — это не «успех», смета не зафиксирована.
+                    title: (e as { code?: string })?.code === 'proposal_expired'
+                      || (e as { code?: string })?.code === 'estimate_changed_since_proposal'
+                      ? 'Смета не зафиксирована'
+                      : 'Не удалось',
                     message: e instanceof Error ? e.message : 'Ошибка фиксации сметы',
                   });
                 });
