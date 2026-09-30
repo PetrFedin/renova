@@ -78,7 +78,7 @@ export function CustomerControlView() {
   }
 
   const pendingCount = computePendingAcceptanceCount(activeProject.stages, acceptances);
-  const rework = activeProject.stages.filter((s) => s.status === 'rework');
+  const rework = activeProject.stages.filter((s) => s.needs_rework && s.status !== 'done');
   const openIssues = issues.filter((i) => i.status !== 'closed');
   const sortedIssues = focusIssueId
     ? [...openIssues].sort((a, b) => Number(b.id === focusIssueId) - Number(a.id === focusIssueId))

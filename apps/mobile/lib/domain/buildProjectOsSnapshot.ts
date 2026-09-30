@@ -70,7 +70,7 @@ export function buildProjectOsSnapshot(
   const stages = project.stages || [];
   const overdue = stages.filter((s) => s.planned_end && s.planned_end < today && s.status !== 'done');
   const review = stages.filter((s) => s.status === 'review');
-  const rework = stages.filter((s) => s.status === 'rework');
+  const rework = stages.filter((s) => s.needs_rework && s.status !== 'done');
   const active = stages.filter((s) => s.status === 'active' || s.status === 'review');
   const budgetFigures = resolveBudgetFigures(project, osBudget);
   const spent = budgetFigures.spent;

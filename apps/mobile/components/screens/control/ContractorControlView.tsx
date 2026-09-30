@@ -65,7 +65,7 @@ export function ContractorControlView() {
   }
 
   const pendingCount = computePendingAcceptanceCount(activeProject.stages, acceptances);
-  const rework = activeProject.stages.filter((s) => s.status === 'rework');
+  const rework = activeProject.stages.filter((s) => s.needs_rework && s.status !== 'done');
 
   return (
     <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
