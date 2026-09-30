@@ -691,7 +691,6 @@ async def test_25b_stage_payment_counts_in_budget_spent(w):
 QR_1RUB = "t=20260927T1200&s=1.00&fn=9999078901234568&i=12346&fp=1234567891&n=1"
 
 
-@pytest.mark.xfail(strict=True, reason="JRN-007: исполнитель (получатель) прикладывает чек к собственному счёту (волна 1)")
 async def test_25c_contractor_cannot_attach_receipt_to_invoice(w):
     """JRN-007: чек к счёту прикладывает только плательщик, получатель подделать доказательство не может."""
     r = await w.call("lead", "POST", f"{P(w)}/receipts/scan", {
@@ -699,7 +698,6 @@ async def test_25c_contractor_cannot_attach_receipt_to_invoice(w):
     assert r.status_code == 403 and r.json()["detail"]["code"] == "receipt_payment_customer_only"
 
 
-@pytest.mark.xfail(strict=True, reason="MNY-002: чек на 1 ₽ засчитывается как оплата счёта на 5000 ₽, сумма не сверяется (волна 1)")
 async def test_25d_receipt_amount_must_match_invoice(w):
     """MNY-002: чек на 1 ₽ не подтверждает счёт на 5000 ₽."""
     await w.call("cust", "POST", f"{P(w)}/receipts/scan", {
@@ -905,7 +903,6 @@ async def test_34_finish_remaining_stages(w):
     assert all(s["status"] == "done" for s in r.json()["stages"])
 
 
-@pytest.mark.xfail(strict=True, reason="JRN-008: ошибочный счёт нельзя отменить (нет cancel), волна 1 (MNY-006/7/8)")
 async def test_35_invoice_can_be_cancelled(w):
     pend = [p for p in (await w.call("cust", "GET", f"{P(w)}/payments", expect=200)).json() if p["status"] == "pending"]
     assert pend
