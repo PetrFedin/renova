@@ -1,7 +1,6 @@
 /** Горизонтальные вкладки hub — Clarity C: underline, не pill-карточки */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, Pressable, Text, StyleSheet, View } from 'react-native';
-import type { LayoutChangeEvent } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 
 export type HubTab = {
@@ -46,7 +45,7 @@ export function OsHubTabs({ tabs, value, onChange }: Props) {
   const reveal = useRef<() => void>(() => {});
 
   const onTabLayout = useCallback(
-    (id: string) => (e: LayoutChangeEvent) => {
+    (id: string) => (e: { nativeEvent: { layout: { x: number; width: number } } }) => {
       const { x, width } = e.nativeEvent.layout;
       layouts.current[id] = { x, width };
       // Замер вкладок приходит **после** замера контейнера: если не позвать
@@ -84,11 +83,11 @@ export function OsHubTabs({ tabs, value, onChange }: Props) {
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={s.row}
-        onLayout={(e) => {
+        onLayout={(e: { nativeEvent: { layout: { width: number } } }) => {
           viewport.current = e.nativeEvent.layout.width;
           revealSelected();
         }}
-        onScroll={(e) => {
+        onScroll={(e: { nativeEvent: { contentOffset: { x: number } } }) => {
           offset.current = e.nativeEvent.contentOffset.x;
         }}
         scrollEventThrottle={16}

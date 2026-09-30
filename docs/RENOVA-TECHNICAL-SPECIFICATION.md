@@ -35,7 +35,7 @@
 | `apps/mobile/constants/screenTypography.ts` | `f91c9a659a1ab8603ae4d82eb46d76754627b5bb` | Screen typography |
 | `apps/mobile/constants/uiTokens.ts` | `ca2d8e9e03f56efb058041ad8a81c04d15c7a8a0` | Surfaces/chips/inputs |
 | `apps/mobile/constants/screenLayout.ts` | `8961bbbbaa614b9b6f962bafe8649bbec3d0a744` | Screen layout (+tabContentStyle: FAB-safe bottom padding) |
-| `apps/mobile/components/renova/os/OsHubTabs.tsx` | `5502586790937235004cac87765106972de23304` | Hub tabs (+auto-scroll to selected tab) |
+| `apps/mobile/components/renova/os/OsHubTabs.tsx` | `b04ac08459926439b0533db3decce28a4791843c` | Hub tabs (+auto-scroll to selected tab) |
 | `apps/mobile/components/screens/OsObjectHubScreen.tsx` | `3082b1bf59cbf420d403ed82b35bbc2e78697728` | Object hub |
 | `apps/mobile/components/screens/OsRepairHubScreen.tsx` | `5fe0e6229ad4cc82462ea4cfc1f7d213c7687305` | Repair hub |
 | `apps/mobile/components/screens/OsBudgetHubScreen.tsx` | `4e0e8267d68b600cf0d8bdf716a4c8eddaa3bcbd` | Budget hub |

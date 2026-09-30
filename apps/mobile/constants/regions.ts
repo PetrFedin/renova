@@ -56,6 +56,8 @@ export type MarketEstimate = {
   lemana_suggestions: LemanaSuggestion[];
   price_trend_6m: PriceTrendPoint[];
   disclaimer: string;
+  /** true, если расчёт сделан на устройстве по средним ставкам, а не по рыночным ценам. */
+  computed_locally?: boolean;
 };
 
 export type BudgetPlanInput = {
