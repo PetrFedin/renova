@@ -1,7 +1,12 @@
 """Repository-wide pytest integrity hooks."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
+
+# Настройки читают ENVIRONMENT при импорте app.*. Без явного значения приложение
+# fail-closed (production), поэтому тестовый прогон задаёт профиль явно, до импортов.
+os.environ.setdefault("ENVIRONMENT", "test")
 
 
 def pytest_sessionstart(session):

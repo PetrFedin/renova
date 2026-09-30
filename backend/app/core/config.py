@@ -9,7 +9,10 @@ from app.core.environment import normalize_environment
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    environment: str = "development"
+    # Fail-closed: без явного ENVIRONMENT действует профиль production (нет входа по
+    # X-User-Id, демо-входа, слабого секрета, «админа для всех»). Для локального
+    # стенда задавайте ENVIRONMENT=development (или test) явно.
+    environment: str = "production"
     app_name: str = "Renova API"
     database_url: str = "sqlite+aiosqlite:///./renova.db"
     # SQLAlchemy QueuePool defaults made explicit so capacity/saturation has a

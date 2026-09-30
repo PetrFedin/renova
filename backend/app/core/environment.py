@@ -84,7 +84,8 @@ DEFAULT_SECRETS: frozenset[str] = frozenset({
 
 
 def normalize_environment(value: str | None) -> str:
-    name = (value or "development").strip().lower()
+    # fail-closed: пустое/незаданное значение = production, а не development
+    name = (value or "production").strip().lower()
     if name in {"dev", "local"}:
         return "development"
     if name in {"prod", "prd"}:
