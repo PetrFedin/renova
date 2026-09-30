@@ -14,6 +14,7 @@ from app.services.document_media_acl import (
     assert_project_media_write_access,
     mint_project_media_key,
     parse_document_media_key,
+    parse_project_media_key,
 )
 from app.services.chat_media_acl import assert_chat_media_access, is_chat_media_key
 from sqlalchemy import select
@@ -50,6 +51,61 @@ async def _user_from_auth(
     return user
 
 
+_UPLOAD_TOKEN_TTL = 900
+_MAX_LOCAL_UPLOAD_BYTES = 25 * 1024 * 1024
+
+
+def _mint_upload_token(key: str, *, expires_at: int | None = None) -> str:
+    import hashlib
+    import hmac
+    import time
+
+    exp = expires_at if expires_at is not None else int(time.time()) + _UPLOAD_TOKEN_TTL
+    mac = hmac.new(settings.secret_key.encode(), f"media-upload:{key}:{exp}".encode(), hashlib.sha256).hexdigest()
+    return f"{exp}.{mac}"
+
+
+def _upload_token_valid(key: str, token: str | None) -> bool:
+    import hmac
+    import time
+
+    try:
+        exp_raw, _ = (token or "").split(".", 1)
+        exp = int(exp_raw)
+    except ValueError:
+        return False
+    if exp < int(time.time()):
+        return False
+    return hmac.compare_digest(_mint_upload_token(key, expires_at=exp), token or "")
+
+
+@router.put("/{file_path:path}")
+async def put_local_media(
+    request: Request,
+    file_path: str,
+    upload_token: str | None = Query(default=None),
+):
+    """Локальная загрузка байтов по ключу, выданному `/media/upload-url` (DOC-011).
+
+    Работает только без S3 и только для project-media ключей с валидным токеном.
+    """
+    key = file_path.lstrip("/")
+    if storage_svc.presigned_put(key) is not None:
+        raise HTTPException(404)
+    if parse_project_media_key(key) is None or not _upload_token_valid(key, upload_token):
+        raise HTTPException(403, "invalid_upload_token")
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > _MAX_LOCAL_UPLOAD_BYTES:
+        raise HTTPException(413, "file_too_large")
+    data = await request.body()
+    if not data:
+        raise HTTPException(400, "empty_file_payload")
+    if len(data) > _MAX_LOCAL_UPLOAD_BYTES:
+        raise HTTPException(413, "file_too_large")
+    await storage_svc.write_bytes_at_key(key, data, content_type=request.headers.get("content-type") or "application/octet-stream")
+    return Response(status_code=200)
+
+
 @router.post("/upload-url")
 async def upload_url(
     project_id: str = Query(...),
@@ -68,6 +124,11 @@ async def upload_url(
     extension = _UPLOAD_EXTENSIONS.get(normalized_content_type, "jpg")
     key = mint_project_media_key(project_id, extension)
     url = storage_svc.presigned_put(key, content_type=normalized_content_type or "image/jpeg")
+    if url is None:
+        # Локальный режим (DOC-011): S3 нет, но загрузка должна работать, а не
+        # молча оставлять ключ без файла. Ссылка ведёт на PUT этого же API с
+        # короткоживущим токеном, привязанным к ключу (клиент грузит без Bearer).
+        url = f"{settings.public_base_url.rstrip('/')}/api/v1/media/{key}?upload_token={_mint_upload_token(key)}"
     pub = f"{settings.public_base_url}/api/v1/media/{key}"
     return {"key": key, "upload_url": url, "public_url": pub}
 

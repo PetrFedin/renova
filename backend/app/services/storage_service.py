@@ -108,6 +108,34 @@ def _s3_client():
         raise StorageUnavailable("s3_client_unavailable") from exc
 
 
+def _s3_presign_client():
+    """Клиент только для подписи ссылок, отдаваемых наружу (DOC-012).
+
+    Внутри docker-сети S3 живёт на `minio:9000`, снаружи недоступном; ссылка,
+    подписанная от внутреннего endpoint, не открывается на телефоне. Если задан
+    `S3_PUBLIC_URL`, подписываем от него (SigV4 включает host в подпись, поэтому
+    подменой строки после подписи не обойтись). Сеть при подписи не нужна.
+    """
+    public = (settings.s3_public_url or "").strip().rstrip("/")
+    if not public:
+        return _s3_client()
+    try:
+        import boto3
+        from botocore.client import Config
+
+        return boto3.client(
+            "s3",
+            endpoint_url=public,
+            aws_access_key_id=settings.s3_access_key,
+            aws_secret_access_key=settings.s3_secret_key,
+            config=Config(signature_version="s3v4"),
+            region_name="us-east-1",
+        )
+    except Exception as exc:
+        logger.exception("S3 presign client initialization failed")
+        raise StorageUnavailable("s3_client_unavailable") from exc
+
+
 def _encoded_key(key: str) -> str:
     return quote(normalize_storage_key(key), safe="/")
 
@@ -324,9 +352,9 @@ def ensure_bucket() -> None:
 
 def presigned_url(key: str, expires: int = 3600) -> str | None:
     normalized = normalize_storage_key(key)
-    client = _s3_client()
-    if client is None:
+    if _s3_client() is None:
         return None
+    client = _s3_presign_client()
     cf = generate_cloudfront_signed_url(normalized, expires)
     if cf:
         return cf
@@ -343,9 +371,9 @@ def presigned_url(key: str, expires: int = 3600) -> str | None:
 
 def presigned_put(key: str, expires: int = 900, content_type: str = "image/jpeg") -> str | None:
     normalized = normalize_storage_key(key)
-    client = _s3_client()
-    if client is None:
+    if _s3_client() is None:
         return None
+    client = _s3_presign_client()
     try:
         return client.generate_presigned_url(
             "put_object",
