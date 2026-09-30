@@ -131,6 +131,23 @@ async def _dedupe_linked_expenses(
     return await _collapse_linked_candidates(db, rows)
 
 
+async def _receipt_expense_status(db: AsyncSession, rec: Receipt) -> str:
+    """Расход по чеку, приложенному к счёту, следует за счётом, а не за чеком.
+
+    Чек к счёту — доказательство оплаты, а не отдельная трата: пока счёт не
+    подтверждён (в том числе `paid_unverified`), в подтверждённый факт он не
+    попадает, а после подтверждения счёта расход подтверждён независимо от
+    статуса проверки самого чека.
+    """
+    payment_id = getattr(rec, "payment_id", None)
+    if not payment_id:
+        return _legacy.expense_status_for_receipt(rec)
+    payment = await db.get(Payment, payment_id)
+    if payment and payment.status == PaymentStatus.confirmed:
+        return "confirmed"
+    return "pending_receipt"
+
+
 async def expense_from_receipt(
     db: AsyncSession,
     rec: Receipt,
@@ -150,7 +167,7 @@ async def expense_from_receipt(
         existing.stage_id = rec.stage_id
         if getattr(rec, "payment_id", None):
             existing.payment_id = rec.payment_id
-        existing.status = _legacy.expense_status_for_receipt(rec)
+        existing.status = await _receipt_expense_status(db, rec)
         await db.flush()
         return existing
     expense = Expense(
@@ -162,7 +179,7 @@ async def expense_from_receipt(
         title=title or f"Чек {rec.amount:.0f} ₽",
         category=rec.expense_category,
         amount=rec.amount,
-        status=_legacy.expense_status_for_receipt(rec),
+        status=await _receipt_expense_status(db, rec),
         payment_method="card",
         expense_date=rec.created_at or _legacy.utc_now(),
     )
@@ -176,6 +193,17 @@ async def expense_from_payment(db: AsyncSession, pay: Payment) -> Expense | None
         return None
     existing = await _dedupe_linked_expenses(db, payment_id=pay.id)
     if existing:
+        # Чек, приложенный к счёту, создаёт расход в `pending_receipt`; когда счёт
+        # подтверждён, тот же расход становится подтверждённым фактом на сумму
+        # счёта (один счёт — один расход), а не остаётся «зависшим» вне бюджета.
+        if not is_source_protected_expense(existing) and (
+            existing.status != "confirmed" or existing.amount != pay.amount
+        ):
+            existing.status = "confirmed"
+            existing.amount = pay.amount
+            existing.stage_id = pay.stage_id or existing.stage_id
+            existing.expense_date = pay.confirmed_at or existing.expense_date
+            await db.flush()
         return existing
     expense = Expense(
         project_id=pay.project_id,

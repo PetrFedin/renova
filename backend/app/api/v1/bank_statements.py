@@ -9,7 +9,7 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import User, UserRole
 from app.services import bank_statement_integrity as integrity
-from app.services.integrations.bank_import import match_bank_rows_to_payments, parse_bank_statement_csv
+from app.services.integrations.bank_import import match_bank_rows_to_payments, parse_bank_statement
 
 router = APIRouter(prefix="/projects", tags=["bank-statements"])
 
@@ -46,8 +46,18 @@ async def import_bank_statement(
 ):
     """Parse and match a statement; optionally create unmatched expenses once."""
     project = await require_project(db, project_id, user, write=bool(body.create_expenses))
-    rows = integrity.annotate_statement_rows(parse_bank_statement_csv(body.csv_text))
+    parsed_rows, skipped_income = parse_bank_statement(body.csv_text)
+    rows = integrity.annotate_statement_rows(parsed_rows)
     if not rows:
+        if skipped_income:
+            raise HTTPException(
+                400,
+                detail={
+                    "code": "bank_statement_only_income",
+                    "message": "В выписке только поступления — списаний для учёта расходов нет",
+                    "skipped_income_rows": skipped_income,
+                },
+            )
         raise HTTPException(400, "Не удалось разобрать CSV (нужны сумма и опционально дата)")
 
     result = await match_bank_rows_to_payments(db, project, rows)
@@ -69,6 +79,7 @@ async def import_bank_statement(
     return {
         "ok": True,
         "parsed_rows": len(rows),
+        "skipped_income_rows": skipped_income,
         **result,
         **expenses_meta,
         "match_token": match_token,

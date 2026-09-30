@@ -12,6 +12,7 @@ _AMOUNT_RE = re.compile(r"-?\d+[.,]?\d*")
 
 def _parse_amount(raw: str) -> float | None:
     s = (raw or "").strip().replace(" ", "").replace("\u00a0", "")
+    s = s.replace("\u2212", "-").replace("\u2013", "-")
     if not s:
         return None
     if "," in s and "." in s:
@@ -22,7 +23,8 @@ def _parse_amount(raw: str) -> float | None:
     if not m:
         return None
     try:
-        return abs(float(m.group(0)))
+        # Знак сохраняем: минус — списание, остальное решает parse_bank_statement.
+        return float(m.group(0))
     except ValueError:
         return None
 
@@ -37,34 +39,52 @@ def _parse_date(raw: str) -> datetime | None:
     return None
 
 
-def parse_bank_statement_csv(text: str) -> list[dict]:
-    """Парсит CSV (; или ,). Ищет колонки дата/сумма/назначение по заголовку или позиции."""
+_CREDIT_HEADERS = ("приход", "кредит", "credit", "поступлен", "зачислен")
+_DEBIT_HEADERS = ("расход", "дебет", "debit", "списан")
+
+
+def parse_bank_statement(text: str) -> tuple[list[dict], int]:
+    """Парсит CSV (; или ,) -> (расходы, число пропущенных входящих строк).
+
+    В выписке нас интересуют списания заказчика. Знак суммы не теряется:
+    - есть отдельные колонки «Приход/Кредит» и «Расход/Дебет» — берём расходную;
+    - одна колонка суммы со знаком (есть минусы или явные «+») — расход это
+      отрицательная сумма, положительная — поступление и в расходы не попадает;
+    - одна колонка без знаков вообще — все строки считаются списаниями (как раньше).
+    """
     raw = text.lstrip("\ufeff").strip()
     if not raw:
-        return []
+        return [], 0
     sample = raw[:2048]
     delim = ";" if sample.count(";") >= sample.count(",") else ","
     reader = csv.reader(io.StringIO(raw), delimiter=delim)
     rows = list(reader)
     if not rows:
-        return []
+        return [], 0
 
     header = [c.strip().lower() for c in rows[0]]
-    date_i = amount_i = desc_i = None
+    date_i = amount_i = desc_i = credit_i = debit_i = None
     for i, h in enumerate(header):
         if date_i is None and any(k in h for k in ("дата", "date", "день")):
             date_i = i
+        if any(k in h for k in _CREDIT_HEADERS) and credit_i is None:
+            credit_i = i
+            continue
+        if any(k in h for k in _DEBIT_HEADERS) and debit_i is None:
+            debit_i = i
+            continue
         if amount_i is None and any(k in h for k in ("сумма", "amount", "sum", "оборот")):
             amount_i = i
         if desc_i is None and any(k in h for k in ("назнач", "описан", "desc", "purpose", "платеж")):
             desc_i = i
+    split_columns = debit_i is not None or credit_i is not None
 
     start = 1
-    if date_i is None and amount_i is None:
+    if date_i is None and amount_i is None and not split_columns:
         date_i, amount_i, desc_i = 0, 1, 2
         start = 0
 
-    out: list[dict] = []
+    parsed: list[tuple[str, str, float, bool]] = []  # (date, description, signed amount, explicit plus)
     for row in rows[start:]:
         if not row or all(not (c or "").strip() for c in row):
             continue
@@ -74,18 +94,43 @@ def parse_bank_statement_csv(text: str) -> list[dict]:
                 return ""
             return (row[i] or "").strip()
 
-        amount = _parse_amount(cell(amount_i))
-        if amount is None or amount <= 0:
+        if split_columns:
+            debit = _parse_amount(cell(debit_i)) or 0.0
+            credit = _parse_amount(cell(credit_i)) or 0.0
+            if debit > 0:
+                signed, plus = -debit, False
+            elif credit > 0:
+                signed, plus = credit, True
+            else:
+                continue
+        else:
+            signed = _parse_amount(cell(amount_i))
+            if signed is None or signed == 0:
+                continue
+            plus = cell(amount_i).lstrip().startswith("+")
+        parsed.append((cell(date_i), cell(desc_i)[:300], signed, plus))
+
+    signed_statement = split_columns or any(value < 0 or plus for _, _, value, plus in parsed)
+    out: list[dict] = []
+    skipped_income = 0
+    for date_raw, description, value, _plus in parsed:
+        if value > 0 and signed_statement:
+            skipped_income += 1
             continue
-        dt = _parse_date(cell(date_i))
+        dt = _parse_date(date_raw)
         out.append(
             {
                 "date": dt.date().isoformat() if dt else None,
-                "amount": round(amount, 2),
-                "description": cell(desc_i)[:300],
+                "amount": round(abs(value), 2),
+                "description": description,
             }
         )
-    return out
+    return out, skipped_income
+
+
+def parse_bank_statement_csv(text: str) -> list[dict]:
+    """Расходные строки выписки (см. parse_bank_statement)."""
+    return parse_bank_statement(text)[0]
 
 
 async def match_bank_rows_to_payments(

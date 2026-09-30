@@ -61,7 +61,19 @@ def _receipt_error(error: ValueError) -> HTTPException:
     return HTTPException(status, detail={"code": code, "message": messages.get(code, "Операция с чеком недоступна")})
 
 
-async def _resolve_payment_id(db: AsyncSession, project_id: str, payment_id: str | None) -> str | None:
+async def _resolve_payment_id(
+    db: AsyncSession,
+    project_id: str,
+    payment_id: str | None,
+    user: User | None = None,
+) -> str | None:
+    """Чек к счёту прикладывает только заказчик-плательщик.
+
+    Чек исполнителя (получателя денег) не доказывает, что заказчик заплатил:
+    иначе получатель мог бы сам «закрыть» счёт своим чеком. Приложить чек можно
+    к счёту в ожидании оплаты (`pending`) и к отмеченному без проверки
+    (`paid_unverified`) — именно так «оплачено без чека» получает выход.
+    """
     if not payment_id:
         return None
     payment = (
@@ -71,9 +83,47 @@ async def _resolve_payment_id(db: AsyncSession, project_id: str, payment_id: str
     ).scalar_one_or_none()
     if not payment:
         raise HTTPException(404, "Счёт не найден")
-    if payment.status != PaymentStatus.pending:
-        raise HTTPException(409, "К счёту уже нельзя прикрепить чек")
+    if user is not None:
+        from app.models.entities import Project
+        from app.services import project_role_policy as role_policy
+
+        project = await db.get(Project, project_id)
+        if not project or await role_policy.project_actor_role(db, user, project) != role_policy.ROLE_CUSTOMER:
+            raise HTTPException(
+                403,
+                detail={
+                    "code": "receipt_payment_customer_only",
+                    "message": "Чек к счёту прикладывает заказчик — тот, кто платит. "
+                    "Расход исполнителя добавляется без привязки к счёту.",
+                },
+            )
+    if payment.status not in (PaymentStatus.pending, PaymentStatus.paid_unverified):
+        raise HTTPException(
+            409,
+            detail={
+                "code": "payment_receipt_not_attachable",
+                "message": "К этому счёту уже нельзя прикрепить чек",
+            },
+        )
     return payment.id
+
+
+async def _promote_unverified_payment(db: AsyncSession, project_id: str, payment_id: str | None) -> None:
+    """Чек, покрывающий сумму, переводит `paid_unverified` в `confirmed` (расход попадает в факт)."""
+    if not payment_id:
+        return
+    from app.services import payment_service as pay_svc
+    from app.services.client_write_side_effects import clear_request_side_effect_context
+
+    payment = await db.get(Payment, payment_id)
+    if not payment or payment.status != PaymentStatus.paid_unverified:
+        return
+    if not await pay_svc.settlement_receipt_id(db, payment):
+        return
+    try:
+        await pay_svc.confirm_payment(db, payment_id, project_id=project_id)
+    finally:
+        clear_request_side_effect_context()
 
 
 async def _resolve_receipt_links(
@@ -180,7 +230,7 @@ async def scan_receipt(
 ):
     await require_project(db, project_id, user, write=True)
     category = body.expense_category if body.expense_category in VALID_CATEGORIES else "materials"
-    payment_id = await _resolve_payment_id(db, project_id, body.payment_id)
+    payment_id = await _resolve_payment_id(db, project_id, body.payment_id, user)
     room_id, stage_id = await _resolve_receipt_links(
         db,
         project_id=project_id,
@@ -253,6 +303,8 @@ async def scan_receipt(
             raise HTTPException(409, detail={"code": "idempotency_target_missing"})
         return _scan_response(existing, message="Чек уже сохранён", idempotent_replay=True)
 
+    await _promote_unverified_payment(db, project_id, payment_id)
+
     from app.services import activity_service as activity
     from app.services.client_write_side_effects import clear_request_side_effect_context
 
@@ -280,7 +332,7 @@ async def manual_receipt(
 ):
     await require_project(db, project_id, user, write=True)
     category = body.expense_category if body.expense_category in VALID_CATEGORIES else "materials"
-    payment_id = await _resolve_payment_id(db, project_id, body.payment_id)
+    payment_id = await _resolve_payment_id(db, project_id, body.payment_id, user)
     room_id, stage_id = await _resolve_receipt_links(
         db,
         project_id=project_id,
@@ -354,6 +406,8 @@ async def manual_receipt(
         if not existing:
             raise HTTPException(409, detail={"code": "idempotency_target_missing"})
         return _manual_response(existing, idempotent_replay=True)
+
+    await _promote_unverified_payment(db, project_id, payment_id)
 
     from app.services import activity_service as activity
     from app.services.client_write_side_effects import clear_request_side_effect_context

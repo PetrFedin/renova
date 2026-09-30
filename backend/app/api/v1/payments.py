@@ -3,7 +3,7 @@ from collections.abc import Awaitable, Callable
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project
@@ -73,15 +73,22 @@ async def stage_payment_progress(
         raise HTTPException(404, "Этап не найден")
     items = await pay_svc.list_payments(db, project_id)
     stage_pays = [payment for payment in items if payment.stage_id == stage_id]
-    confirmed = sum(payment.amount for payment in stage_pays if payment.status.value == "confirmed")
-    pending = sum(payment.amount for payment in stage_pays if payment.status.value == "pending")
+
+    def _sum(*statuses: str) -> float:
+        return sum(payment.amount for payment in stage_pays if payment.status.value in statuses)
+
+    confirmed = _sum("confirmed")
+    # Всё, что уже выставлено и ждёт денег или проверки, занимает сумму этапа.
+    pending = _sum("pending", "processing", "paid_unverified", "disputed")
     target = float(stage.payment_amount or 0)
+    remaining_raw = target - confirmed - pending
     return {
         "stage_id": stage_id,
         "target": target,
         "confirmed": round(confirmed, 2),
         "pending": round(pending, 2),
-        "remaining": round(max(0.0, target - confirmed - pending), 2),
+        "remaining": round(max(0.0, remaining_raw), 2),
+        "overbilled": round(max(0.0, -remaining_raw), 2),
         "percent_confirmed": round((confirmed / target * 100) if target else 0, 1),
     }
 
@@ -208,6 +215,11 @@ async def create_payment(
         if not payment or payment.project_id != project_id:
             raise HTTPException(409, detail={"code": "idempotency_target_missing"})
     else:
+        if stage is not None and body.payment_type == PaymentType.stage.value:
+            try:
+                await pay_svc.assert_stage_capacity(db, stage, float(amount))
+            except pay_svc.PaymentRuleError as error:
+                raise HTTPException(error.status_code, detail=error.detail()) from error
         payment = await pay_svc.prepare_payment(
             db,
             project_id,
@@ -298,6 +310,30 @@ async def confirm_payment(
     )
     if not payment:
         receipt_id = await pay_svc.receipt_id_for_payment(db, payment_id)
+        shortfall = await pay_svc.receipt_shortfall(db, existing)
+        stage_accepted = True
+        if existing.payment_type == PaymentType.stage and existing.stage_id:
+            gate_stage = await db.get(Stage, existing.stage_id)
+            stage_accepted = bool(gate_stage and gate_stage.customer_accepted_at)
+        if (
+            shortfall is not None
+            and stage_accepted
+            and shortfall < round(float(existing.amount), 2) - pay_svc.RECEIPT_COVERAGE_TOLERANCE
+            and not ack
+            and existing.status.value == "pending"
+        ):
+            raise HTTPException(
+                409,
+                detail={
+                    "code": "receipt_amount_below_invoice",
+                    "message": (
+                        f"Сумма чека ({shortfall:g} ₽) меньше суммы счёта ({float(existing.amount):g} ₽). "
+                        "Приложите чек на полную сумму или отметьте перевод без чека."
+                    ),
+                    "receipt_amount": shortfall,
+                    "invoice_amount": float(existing.amount),
+                },
+            )
         if not (receipt_id or ack) and existing.status.value == "pending":
             settlement_blocked = True
             if existing.payment_type == PaymentType.stage and existing.stage_id:
@@ -376,6 +412,165 @@ async def confirm_payment(
         raise HTTPException(500, detail={"code": "committed_payment_missing"})
     receipt_id = await pay_svc.receipt_id_for_payment(db, persisted_payment_id)
     return PaymentOut(**pay_svc.payment_dict(payment, receipt_id=receipt_id))
+
+
+class PaymentCancelIn(BaseModel):
+    reason: str | None = Field(default=None, max_length=255)
+
+
+class PaymentUpdateIn(BaseModel):
+    title: str | None = Field(default=None, max_length=255)
+    amount: float | None = Field(default=None, gt=0)
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class RecipientResponseIn(BaseModel):
+    received: bool
+    note: str | None = Field(default=None, max_length=255)
+
+
+async def _payment_out(db: AsyncSession, payment) -> PaymentOut:
+    receipt_id = await pay_svc.receipt_id_for_payment(db, payment.id)
+    return PaymentOut(**pay_svc.payment_dict(payment, receipt_id=receipt_id))
+
+
+async def _contractor_side_may_manage(db: AsyncSession, user: User, project, payment) -> bool:
+    """Исполнитель управляет счётом, который выставил сам, либо ведущий — счетами stage/material."""
+    from app.services import project_role_policy as role_policy
+
+    role = await role_policy.project_actor_role(db, user, project)
+    if role == role_policy.ROLE_LEAD:
+        return payment.created_by == user.id or payment.payment_type.value in ("stage", "material")
+    if role in (role_policy.ROLE_FOREMAN, role_policy.ROLE_MEMBER):
+        return payment.created_by == user.id
+    return False
+
+
+@router.post("/{project_id}/payments/{payment_id}/cancel", response_model=PaymentOut)
+async def cancel_payment(
+    project_id: str,
+    payment_id: str,
+    body: PaymentCancelIn | None = None,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Отмена счёта в ожидании оплаты: исполнитель отзывает свой счёт, заказчик отклоняет."""
+    from app.services import project_role_policy as role_policy
+
+    project = await require_project(db, project_id, user, write=True)
+    payment = await pay_svc.get_payment(db, payment_id)
+    if not payment or payment.project_id != project_id:
+        raise HTTPException(404, "Платёж не найден")
+    role = await role_policy.project_actor_role(db, user, project)
+    is_customer = role == role_policy.ROLE_CUSTOMER
+    if not is_customer and not await _contractor_side_may_manage(db, user, project, payment):
+        raise HTTPException(
+            403,
+            detail={
+                "code": "payment_cancel_forbidden",
+                "message": "Отменить счёт может заказчик или исполнитель, который его выставил",
+            },
+        )
+    try:
+        result = await pay_svc.cancel_pending_payment(
+            db,
+            payment_id,
+            project_id=project_id,
+            actor_id=user.id,
+            actor_is_customer=is_customer,
+            reason=body.reason if body else None,
+        )
+    except pay_svc.PaymentRuleError as error:
+        raise HTTPException(error.status_code, detail=error.detail()) from error
+    clear_request_side_effect_context()
+    if not result:
+        raise HTTPException(404, "Платёж не найден")
+    return await _payment_out(db, result)
+
+
+@router.patch("/{project_id}/payments/{payment_id}", response_model=PaymentOut)
+async def update_payment(
+    project_id: str,
+    payment_id: str,
+    body: PaymentUpdateIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Исправить счёт (название, сумма, заметка), пока он в ожидании оплаты. Только выставивший исполнитель."""
+    project = await require_project(db, project_id, user, write=True)
+    payment = await pay_svc.get_payment(db, payment_id)
+    if not payment or payment.project_id != project_id:
+        raise HTTPException(404, "Платёж не найден")
+    if not await _contractor_side_may_manage(db, user, project, payment):
+        raise HTTPException(
+            403,
+            detail={
+                "code": "payment_edit_forbidden",
+                "message": "Исправить счёт может исполнитель, который его выставил",
+            },
+        )
+    fields = body.model_fields_set
+    try:
+        result = await pay_svc.update_pending_payment(
+            db,
+            payment_id,
+            project_id=project_id,
+            actor_id=user.id,
+            title=body.title,
+            amount=body.amount,
+            notes=body.notes,
+            notes_supplied="notes" in fields,
+        )
+    except pay_svc.PaymentRuleError as error:
+        raise HTTPException(error.status_code, detail=error.detail()) from error
+    clear_request_side_effect_context()
+    if not result:
+        raise HTTPException(404, "Платёж не найден")
+    return await _payment_out(db, result)
+
+
+@router.post("/{project_id}/payments/{payment_id}/recipient-response", response_model=PaymentOut)
+async def recipient_response(
+    project_id: str,
+    payment_id: str,
+    body: RecipientResponseIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Исполнитель-получатель: «деньги получены» (-> confirmed, в факт) или «не получены» (-> pending).
+
+    Работает по счёту `paid_unverified` — отметке заказчика «перевёл» без чека.
+    Ведущий исполнитель проекта решает сам, без платформенного админа.
+    """
+    from app.services import project_role_policy as role_policy
+
+    project = await require_project(db, project_id, user, write=True)
+    if await role_policy.project_actor_role(db, user, project) != role_policy.ROLE_LEAD:
+        raise HTTPException(
+            403,
+            detail={
+                "code": "recipient_only",
+                "message": "Подтвердить получение денег может исполнитель проекта — получатель платежа",
+            },
+        )
+    payment = await pay_svc.get_payment(db, payment_id)
+    if not payment or payment.project_id != project_id:
+        raise HTTPException(404, "Платёж не найден")
+    try:
+        result = await pay_svc.resolve_by_recipient(
+            db,
+            payment_id,
+            project_id=project_id,
+            actor_id=user.id,
+            received=body.received,
+            note=body.note,
+        )
+    except pay_svc.PaymentRuleError as error:
+        raise HTTPException(error.status_code, detail=error.detail()) from error
+    clear_request_side_effect_context()
+    if not result:
+        raise HTTPException(404, "Платёж не найден")
+    return await _payment_out(db, result)
 
 
 @router.post("/{project_id}/payments/{payment_id}/yookassa-checkout", response_model=YookassaCheckoutOut)

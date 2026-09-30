@@ -547,9 +547,24 @@ async def budget_summary(db: AsyncSession, project_id: str) -> dict:
         2,
     )
 
+    # Fail-visible: «оплачено без проверки» в подтверждённый факт не входит, но и не
+    # исчезает — сводка показывает, сколько денег ждёт чека или подтверждения получателя.
+    unverified_rows = list(
+        (
+            await db.execute(
+                select(Payment.amount).where(
+                    Payment.project_id == project_id,
+                    Payment.status == PaymentStatus.paid_unverified,
+                )
+            )
+        ).scalars().all()
+    )
+
     return {
         "budget_planned": round(total_plan, 2),
         "budget_spent": round(actual, 2),
+        "paid_unverified_total": round(sum(float(a or 0) for a in unverified_rows), 2),
+        "paid_unverified_count": len(unverified_rows),
         "reserve": round(reserve, 2),
         "deviation": deviation,
         "deviation_pct": deviation_pct,

@@ -27,6 +27,7 @@ from app.models.entities import (
     WorkAcceptance,
 )
 from app.services import activity_service as act
+from app.services.payment_service import ACTIVE_INVOICE_STATUSES, INVOICE_TOTAL_TOLERANCE
 from app.services import notification_service as notif
 
 
@@ -59,26 +60,36 @@ async def ensure_stage_payment(
     # manufacture a payable from the customer to themselves when they accept own work.
     if is_self_managed_project(project):
         return None
-    existing = (
-        await db.execute(
-            select(Payment)
-            .where(Payment.project_id == project.id)
-            .where(Payment.stage_id == stage.id)
-            .where(Payment.payment_type == PaymentType.stage)
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-    if existing or not stage.payment_amount or stage.payment_amount <= 0:
-        return existing
+    stage_amount = round(float(stage.payment_amount or 0), 2)
+    stage_payments = list(
+        (
+            await db.execute(
+                select(Payment)
+                .where(Payment.project_id == project.id)
+                .where(Payment.stage_id == stage.id)
+                .where(Payment.payment_type == PaymentType.stage)
+                .order_by(Payment.created_at.asc(), Payment.id.asc())
+            )
+        ).scalars().all()
+    )
+    # Отменённые и возвращённые счета сумму этапа не занимают: отмена ЮKassa
+    # терминальна для счёта, а не для этапа — оплата создаётся заново.
+    active = [p for p in stage_payments if p.status in ACTIVE_INVOICE_STATUSES]
+    if stage_amount <= 0:
+        return active[0] if active else (stage_payments[0] if stage_payments else None)
+    invoiced = round(sum(float(p.amount or 0) for p in active), 2)
+    remainder = round(stage_amount - invoiced, 2)
+    if remainder <= INVOICE_TOTAL_TOLERANCE:
+        return active[0] if active else None
 
     payment = Payment(
         project_id=project.id,
         stage_id=stage.id,
         payment_type=PaymentType.stage,
-        title=f"Оплата этапа: {stage.name}",
-        amount=stage.payment_amount,
+        title=f"Оплата этапа: {stage.name}" if not active else f"Оплата этапа: {stage.name} (остаток)",
+        amount=remainder,
         created_by=created_by,
-        notes="Создано при приёмке этапа",
+        notes="Создано при приёмке этапа" if not active else "Остаток после частичных счетов, создано при приёмке этапа",
     )
     db.add(payment)
     return payment

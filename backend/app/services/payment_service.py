@@ -236,7 +236,7 @@ async def confirm_payment(
 
     receipt_id = None
     if not allow_without_settlement and not reviewed_evidence_id:
-        receipt_id = await receipt_id_for_payment(db, payment.id)
+        receipt_id = await settlement_receipt_id(db, payment)
 
     unverified_only = (
         not allow_without_settlement
@@ -394,10 +394,62 @@ async def get_payment(db: AsyncSession, payment_id: str) -> Payment | None:
 
 
 async def receipt_id_for_payment(db: AsyncSession, payment_id: str) -> str | None:
+    """Любой чек, приложенный к счёту (для показа в UI). Это ещё не доказательство оплаты."""
     from app.models.entities import Receipt
 
-    result = await db.execute(select(Receipt.id).where(Receipt.payment_id == payment_id).limit(1))
+    result = await db.execute(
+        select(Receipt.id)
+        .where(Receipt.payment_id == payment_id)
+        .order_by(Receipt.created_at.desc(), Receipt.id.desc())
+        .limit(1)
+    )
     return result.scalar_one_or_none()
+
+
+# Чек подтверждает счёт, только если покрывает его сумму (допуск на округление 1 ₽).
+RECEIPT_COVERAGE_TOLERANCE = 1.0
+_RECEIPT_REJECTED_STATUSES = ("invalid", "verification_failed")
+
+
+async def settlement_receipt_id(db: AsyncSession, payment: Payment) -> str | None:
+    """Чек, который вправе подтвердить счёт: приложен к счёту и покрывает его сумму.
+
+    Прикладывать чек к счёту может только заказчик-плательщик (проверяется в
+    `receipts.py`), поэтому чек исполнителя доказательством оплаты не бывает.
+    Чек на меньшую сумму (или забракованный проверкой) счёт не подтверждает —
+    остаются перевод «без чека» (`paid_unverified`) и подтверждение получателя.
+    """
+    from app.models.entities import Receipt
+
+    threshold = round(float(payment.amount or 0), 2) - RECEIPT_COVERAGE_TOLERANCE
+    result = await db.execute(
+        select(Receipt.id)
+        .where(
+            Receipt.payment_id == payment.id,
+            Receipt.amount >= threshold,
+            Receipt.verification_status.not_in(_RECEIPT_REJECTED_STATUSES),
+        )
+        .order_by(Receipt.fns_verified.desc(), Receipt.created_at.desc(), Receipt.id.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def receipt_shortfall(db: AsyncSession, payment: Payment) -> float | None:
+    """Сумма самого крупного приложенного чека, если он есть, но не покрывает счёт."""
+    from sqlalchemy import func
+
+    from app.models.entities import Receipt
+
+    best = (
+        await db.execute(
+            select(func.max(Receipt.amount)).where(
+                Receipt.payment_id == payment.id,
+                Receipt.verification_status.not_in(_RECEIPT_REJECTED_STATUSES),
+            )
+        )
+    ).scalar_one_or_none()
+    return None if best is None else round(float(best), 2)
 
 
 async def list_payments(db: AsyncSession, project_id: str) -> list[Payment]:
@@ -422,3 +474,379 @@ def payment_dict(payment: Payment, *, receipt_id: str | None = None) -> dict:
         "created_at": payment.created_at.isoformat(),
         "receipt_id": receipt_id,
     }
+
+
+# ---------------------------------------------------------------------------
+# Жизненный цикл счёта: отмена, правка, лимит по этапу, ответ получателя.
+# ---------------------------------------------------------------------------
+
+# Счёт «занимает» сумму этапа, пока он не отменён и не возвращён.
+ACTIVE_INVOICE_STATUSES = (
+    PaymentStatus.pending,
+    PaymentStatus.processing,
+    PaymentStatus.paid_unverified,
+    PaymentStatus.confirmed,
+    PaymentStatus.disputed,
+)
+INVOICE_TOTAL_TOLERANCE = 0.01
+
+
+class PaymentRuleError(Exception):
+    """Нарушение денежного правила: код и понятный текст для клиента."""
+
+    def __init__(self, code: str, message: str, *, status_code: int = 409, extra: dict | None = None):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.status_code = status_code
+        self.extra = extra or {}
+
+    def detail(self) -> dict:
+        return {"code": self.code, "message": self.message, **self.extra}
+
+
+def _rub(value: float) -> str:
+    text = f"{float(value):,.2f}".replace(",", " ").replace(".00", "")
+    return f"{text} ₽"
+
+
+async def stage_invoiced_total(
+    db: AsyncSession,
+    stage_id: str,
+    *,
+    exclude_payment_id: str | None = None,
+) -> float:
+    """Сумма всех активных (не отменённых, не возвращённых) stage-счетов этапа."""
+    from sqlalchemy import func
+
+    query = select(func.coalesce(func.sum(Payment.amount), 0.0)).where(
+        Payment.stage_id == stage_id,
+        Payment.payment_type == PaymentType.stage,
+        Payment.status.in_(ACTIVE_INVOICE_STATUSES),
+    )
+    if exclude_payment_id:
+        query = query.where(Payment.id != exclude_payment_id)
+    return round(float((await db.execute(query)).scalar_one() or 0.0), 2)
+
+
+async def assert_stage_capacity(
+    db: AsyncSession,
+    stage,
+    amount: float,
+    *,
+    exclude_payment_id: str | None = None,
+) -> None:
+    """Σ активных счетов по этапу не может превышать сумму этапа."""
+    limit = round(float(stage.payment_amount or 0), 2)
+    if limit <= 0:
+        return
+    invoiced = await stage_invoiced_total(db, stage.id, exclude_payment_id=exclude_payment_id)
+    remaining = round(limit - invoiced, 2)
+    if round(float(amount), 2) > remaining + INVOICE_TOTAL_TOLERANCE:
+        raise PaymentRuleError(
+            "stage_invoice_exceeds_stage_amount",
+            (
+                f"Сумма счетов по этапу не может быть больше суммы этапа ({_rub(limit)}). "
+                f"Уже выставлено {_rub(invoiced)}, можно выставить не более {_rub(max(remaining, 0.0))}."
+            ),
+            status_code=409,
+            extra={"stage_amount": limit, "invoiced": invoiced, "remaining": max(remaining, 0.0)},
+        )
+
+
+async def _has_open_evidence(db: AsyncSession, payment_id: str) -> bool:
+    from app.models.payment_evidence import PaymentEvidence
+
+    row = (
+        await db.execute(
+            select(PaymentEvidence.id)
+            .where(
+                PaymentEvidence.payment_id == payment_id,
+                PaymentEvidence.status.in_(("submitted", "approved")),
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return row is not None
+
+
+async def _enqueue_party_notice(
+    db: AsyncSession,
+    *,
+    payment: Payment,
+    user_id: str | None,
+    title: str,
+    notification_type: str = "other",
+) -> None:
+    """Уведомление стороне счёта через outbox (доставит воркер после коммита)."""
+    if not user_id:
+        return
+    from app.services import outbox_service as outbox
+
+    project = await db.get(Project, payment.project_id)
+    if not project:
+        return
+    customer_link = user_id == project.customer_id
+    await outbox.enqueue(
+        db,
+        aggregate_type="payment",
+        aggregate_id=payment.id,
+        event_type=outbox.PAYMENT_CREATED_EVENT,
+        payload={
+            "user_id": user_id,
+            "project_id": payment.project_id,
+            "notification_type": notification_type,
+            "title": title,
+            "body": str(payment.amount),
+            "link_path": "/(customer)/(tabs)/budget?tab=payments"
+            if customer_link
+            else "/(contractor)/(tabs)/budget?tab=payments",
+            "return_to": "/(customer)/(tabs)/" if customer_link else "/(contractor)/(tabs)/",
+        },
+    )
+
+
+async def cancel_pending_payment(
+    db: AsyncSession,
+    payment_id: str,
+    *,
+    project_id: str,
+    actor_id: str,
+    actor_is_customer: bool,
+    reason: str | None = None,
+    commit: bool = True,
+) -> Payment | None:
+    """Отмена счёта, пока он `pending`: исполнитель отзывает свой счёт, заказчик отклоняет.
+
+    Повтор на уже отменённом счёте возвращает его же (идемпотентно). После оплаты,
+    начала ЮKassa-платежа или загрузки подтверждения перевода — 409 с причиной.
+    """
+    payment = await db.get(Payment, payment_id)
+    if not payment or payment.project_id != project_id:
+        return None
+    if payment.status == PaymentStatus.cancelled:
+        return payment
+    if payment.status != PaymentStatus.pending:
+        raise PaymentRuleError(
+            "payment_not_cancellable",
+            "Отменить можно только счёт, по которому ещё нет оплаты. "
+            "Если деньги уже переведены, используйте подтверждение получения или спор.",
+        )
+    if await _has_open_evidence(db, payment.id):
+        raise PaymentRuleError(
+            "payment_has_evidence",
+            "К счёту уже приложено подтверждение перевода — отменить его нельзя.",
+        )
+    result = await db.execute(
+        update(Payment)
+        .where(
+            Payment.id == payment.id,
+            Payment.project_id == project_id,
+            Payment.status == PaymentStatus.pending,
+        )
+        .values(status=PaymentStatus.cancelled)
+    )
+    if result.rowcount != 1:
+        await db.rollback()
+        current = await db.get(Payment, payment_id)
+        if current and current.status == PaymentStatus.cancelled:
+            return current
+        raise PaymentRuleError("payment_not_cancellable", "Счёт уже обработан — отменить его нельзя.")
+
+    note = (reason or "").strip()[:255] or None
+    db.add(
+        PaymentEvent(
+            id=_uuid(),
+            payment_id=payment.id,
+            actor_user_id=actor_id,
+            source="manual",
+            old_status=PaymentStatus.pending.value,
+            new_status=PaymentStatus.cancelled.value,
+            evidence_type="invoice_rejected" if actor_is_customer else "invoice_cancelled",
+            note=note,
+        )
+    )
+    await db.refresh(payment)
+    project = await db.get(Project, payment.project_id)
+    if project:
+        if actor_is_customer:
+            await _enqueue_party_notice(
+                db,
+                payment=payment,
+                user_id=project.contractor_id,
+                title=f"Заказчик отклонил счёт: {payment.title}",
+            )
+        else:
+            await _enqueue_party_notice(
+                db,
+                payment=payment,
+                user_id=project.customer_id,
+                title=f"Счёт отозван исполнителем: {payment.title}",
+            )
+    await db.flush()
+    if commit:
+        await db.commit()
+        await db.refresh(payment)
+    return payment
+
+
+async def update_pending_payment(
+    db: AsyncSession,
+    payment_id: str,
+    *,
+    project_id: str,
+    actor_id: str,
+    title: str | None = None,
+    amount: float | None = None,
+    notes: str | None = None,
+    notes_supplied: bool = False,
+    commit: bool = True,
+) -> Payment | None:
+    """Исправление счёта исполнителем, пока он `pending`."""
+    payment = await db.get(Payment, payment_id)
+    if not payment or payment.project_id != project_id:
+        return None
+    if payment.status != PaymentStatus.pending:
+        raise PaymentRuleError(
+            "payment_not_editable",
+            "Править можно только счёт, по которому ещё нет оплаты.",
+        )
+    if await _has_open_evidence(db, payment.id):
+        raise PaymentRuleError(
+            "payment_has_evidence",
+            "К счёту уже приложено подтверждение перевода — править его нельзя.",
+        )
+    old_amount = round(float(payment.amount or 0), 2)
+    changed = []
+    if amount is not None and round(float(amount), 2) != old_amount:
+        if payment.payment_type == PaymentType.stage and payment.stage_id:
+            from app.models.entities import Stage
+
+            stage = await db.get(Stage, payment.stage_id)
+            if stage:
+                await assert_stage_capacity(db, stage, float(amount), exclude_payment_id=payment.id)
+        payment.amount = round(float(amount), 2)
+        changed.append("amount")
+    if title is not None and title.strip() and title.strip() != payment.title:
+        payment.title = title.strip()[:255]
+        changed.append("title")
+    if notes_supplied and (notes or None) != (payment.notes or None):
+        payment.notes = notes or None
+        changed.append("notes")
+    if not changed:
+        return payment
+    db.add(
+        PaymentEvent(
+            id=_uuid(),
+            payment_id=payment.id,
+            actor_user_id=actor_id,
+            source="manual",
+            old_status=PaymentStatus.pending.value,
+            new_status=PaymentStatus.pending.value,
+            evidence_type="invoice_edited",
+            note=(
+                f"changed={','.join(changed)}"
+                + (f"; amount {old_amount:g}->{payment.amount:g}" if "amount" in changed else "")
+            )[:255],
+        )
+    )
+    project = await db.get(Project, payment.project_id)
+    if project and "amount" in changed:
+        await _enqueue_party_notice(
+            db,
+            payment=payment,
+            user_id=project.customer_id,
+            title=f"Счёт изменён: {payment.title}",
+            notification_type="payment_pending",
+        )
+    await db.flush()
+    if commit:
+        await db.commit()
+        await db.refresh(payment)
+    return payment
+
+
+async def resolve_by_recipient(
+    db: AsyncSession,
+    payment_id: str,
+    *,
+    project_id: str,
+    actor_id: str,
+    received: bool,
+    note: str | None = None,
+    commit: bool = True,
+) -> Payment | None:
+    """Исполнитель-получатель отвечает по счёту `paid_unverified`.
+
+    `received=True`: деньги пришли -> `confirmed`, расход попадает в факт.
+    `received=False`: деньги не пришли -> счёт возвращается в `pending`
+    (заказчик видит причину и платит заново или прикладывает чек).
+    Повтор того же ответа безопасен.
+    """
+    payment = await db.get(Payment, payment_id)
+    if not payment or payment.project_id != project_id:
+        return None
+    target = PaymentStatus.confirmed if received else PaymentStatus.pending
+    if payment.status == target:
+        return payment
+    if payment.status != PaymentStatus.paid_unverified:
+        raise PaymentRuleError(
+            "payment_not_awaiting_recipient",
+            "Ответить можно только по счёту, который заказчик отметил как оплаченный без проверки.",
+        )
+    clean_note = (note or "").strip()[:255] or None
+    confirmed_at = utc_now() if received else None
+    result = await db.execute(
+        update(Payment)
+        .where(
+            Payment.id == payment.id,
+            Payment.project_id == project_id,
+            Payment.status == PaymentStatus.paid_unverified,
+        )
+        .values(status=target, confirmed_at=confirmed_at)
+    )
+    if result.rowcount != 1:
+        await db.rollback()
+        current = await db.get(Payment, payment_id)
+        if current and current.status == target:
+            return current
+        raise PaymentRuleError(
+            "payment_not_awaiting_recipient",
+            "Счёт уже обработан.",
+        )
+    db.add(
+        PaymentEvent(
+            id=_uuid(),
+            payment_id=payment.id,
+            actor_user_id=actor_id,
+            source="recipient",
+            old_status=PaymentStatus.paid_unverified.value,
+            new_status=target.value,
+            evidence_type="recipient_confirmed" if received else "recipient_denied",
+            note=clean_note,
+        )
+    )
+    await db.refresh(payment)
+    if received:
+        from app.services import budget_service as budget
+
+        await budget.expense_from_payment(db, payment)
+        await budget.refresh_budget_facts(db, payment.project_id)
+    project = await db.get(Project, payment.project_id)
+    if project:
+        await _enqueue_party_notice(
+            db,
+            payment=payment,
+            user_id=project.customer_id,
+            title=(
+                f"Исполнитель подтвердил получение денег: {payment.title}"
+                if received
+                else f"Исполнитель не получил перевод: {payment.title}"
+            ),
+            notification_type="payment_confirmed" if received else "payment_pending",
+        )
+    await db.flush()
+    if commit:
+        await db.commit()
+        await db.refresh(payment)
+    return payment
