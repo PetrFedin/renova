@@ -1,6 +1,15 @@
 /** API: projects */
 import { req, cachedGet, API_BASE } from './client';
 import type { Dashboard, ProjectDetail, ProjectSummary } from './types';
+export type PurgeBlockReason = { code: string; message: string; count: number };
+export type SkippedTrashProject = {
+  project_id: string;
+  name: string;
+  code: string;
+  reasons: PurgeBlockReason[];
+};
+export type EmptyTrashResult = { deleted: number; skipped?: SkippedTrashProject[] };
+
 export const projectsApi = {
   listProjects: (userId: string) => cachedGet<ProjectSummary[]>("/api/v1/projects", userId),
   listProjectsByBucket: (userId: string, bucket: 'active' | 'archived' | 'trashed') =>
@@ -16,7 +25,7 @@ export const projectsApi = {
   purgeProject: (userId: string, projectId: string) =>
     req<{ ok: boolean }>(`/api/v1/projects/${projectId}`, { method: 'DELETE' }, userId),
   emptyProjectTrash: (userId: string) =>
-    req<{ deleted: number }>(`/api/v1/projects/trash/empty`, { method: 'DELETE' }, userId),
+    req<EmptyTrashResult>(`/api/v1/projects/trash/empty`, { method: 'DELETE' }, userId),
   getProject: (userId: string, id: string) => req<ProjectDetail>(`/api/v1/projects/${id}`, {}, userId),
   listProjectTemplates: (userId: string) =>
     req<{ items: { id: string; label: string; renovation_type: string; property_type: string; rooms_count: number }[] }>(

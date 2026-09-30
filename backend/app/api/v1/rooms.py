@@ -84,7 +84,9 @@ async def update_room(
         raise _mutation_error(error) from error
     if result is None:
         raise HTTPException(404, "Комната не найдена")
-    return room_service.room_detail(result.room)
+    out = room_service.room_detail(result.room)
+    out["estimate_frozen"] = bool(result.estimate_frozen)
+    return out
 
 
 @router.get("/{project_id}/rooms/{room_id}/change-log")
@@ -150,4 +152,6 @@ async def create_room_route(
         )
     except ValueError as error:
         raise _mutation_error(error) from error
-    return room_service.room_detail(result.room)
+    out = room_service.room_detail(result.room)
+    out["estimate_frozen"] = room_service.estimate_is_locked(project)
+    return out

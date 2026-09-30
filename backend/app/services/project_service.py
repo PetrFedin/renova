@@ -482,10 +482,10 @@ async def unarchive_project(db: AsyncSession, project_id: str, user: User) -> Pr
 
 
 async def trash_project(db: AsyncSession, project_id: str, user: User) -> Project:
-    from datetime import datetime
+    # is_archived is intentionally preserved: restore must return the project
+    # to the state it was in (an archived/completed project stays archived).
     p = await _assert_customer_owner(db, project_id, user)
     p.trashed_at = utc_now()
-    p.is_archived = False
     await db.commit()
     await db.refresh(p)
     return p
@@ -497,6 +497,101 @@ async def restore_project(db: AsyncSession, project_id: str, user: User) -> Proj
     await db.commit()
     await db.refresh(p)
     return p
+
+
+class PurgeBlocked(ValueError):
+    """Purge refused because the project holds financial history or signed
+    documents. ``reasons`` is a list of {code, message, count}."""
+
+    def __init__(self, code: str, reasons: list[dict]):
+        super().__init__(code)
+        self.code = code
+        self.reasons = reasons
+
+
+_FINANCIAL_PAYMENT_STATUSES = ("confirmed", "paid_unverified", "processing", "disputed", "refunded")
+_ACCEPTED_ACT_STATUSES = ("accepted", "accepted_with_remarks")
+FINANCIAL_BLOCK_CODE = "financial_history_blocks_purge"
+LEGAL_HOLD_CODE = "legal_hold_blocks_purge"
+
+
+async def _purge_blockers(db: AsyncSession, project_ids: list[str]) -> dict[str, list[dict]]:
+    """Per-project reasons why a permanent delete is forbidden. Confirmed /
+    paid-unverified payments and signed documents / accepted acts are legal and
+    financial records: they may only be removed through a dedicated legal path
+    (not implemented — see TODO in the audit report)."""
+    from sqlalchemy import func
+
+    from app.models.entities import Payment, PaymentStatus, WorkAcceptance
+    from app.models.project_documents import DocumentSignature, ProjectDocument
+
+    out: dict[str, list[dict]] = {}
+    if not project_ids:
+        return out
+
+    def add(pid: str, code: str, message: str, count: int) -> None:
+        out.setdefault(pid, []).append({"code": code, "message": message, "count": int(count)})
+
+    statuses = [PaymentStatus(v) for v in _FINANCIAL_PAYMENT_STATUSES]
+    rows = (
+        await db.execute(
+            select(Payment.project_id, func.count())
+            .where(Payment.project_id.in_(project_ids), Payment.status.in_(statuses))
+            .group_by(Payment.project_id)
+        )
+    ).all()
+    for pid, n in rows:
+        add(pid, "payments", f"Есть платежи с финансовой историей: {n}", n)
+
+    rows = (
+        await db.execute(
+            select(ProjectDocument.project_id, func.count(func.distinct(ProjectDocument.id)))
+            .join(DocumentSignature, DocumentSignature.document_id == ProjectDocument.id)
+            .where(
+                ProjectDocument.project_id.in_(project_ids),
+                DocumentSignature.status == "signed",
+                DocumentSignature.revoked_at.is_(None),
+            )
+            .group_by(ProjectDocument.project_id)
+        )
+    ).all()
+    for pid, n in rows:
+        add(pid, "signed_documents", f"Есть подписанные документы: {n}", n)
+
+    rows = (
+        await db.execute(
+            select(WorkAcceptance.project_id, func.count())
+            .where(WorkAcceptance.project_id.in_(project_ids), WorkAcceptance.status.in_(_ACCEPTED_ACT_STATUSES))
+            .group_by(WorkAcceptance.project_id)
+        )
+    ).all()
+    for pid, n in rows:
+        add(pid, "accepted_acts", f"Есть принятые акты приёмки: {n}", n)
+    return out
+
+
+def purge_blocked_message(reasons: list[dict]) -> str:
+    parts = "; ".join(r["message"] for r in reasons)
+    return (
+        "Нельзя удалить объект навсегда: " + parts + ". Платежи и подписанные документы "
+        "хранятся как юридически значимые записи. Объект остаётся в корзине."
+    )
+
+
+async def _cleanup_project_storage(project_ids: list[str]) -> None:
+    """Best-effort removal of stored objects after the DB commit succeeded.
+    A storage failure must never undo the purge; it is logged instead."""
+    import logging
+
+    from app.services import storage_service
+
+    log = logging.getLogger(__name__)
+    for pid in project_ids:
+        for prefix in (f"project-media/{pid}", f"documents/{pid}"):
+            try:
+                await storage_service.delete_prefix(prefix)
+            except Exception:
+                log.exception("purge: storage cleanup failed", extra={"project_id": pid, "prefix": prefix})
 
 
 async def _legal_held_project_ids(db: AsyncSession, project_ids: list[str]) -> set[str]:
@@ -539,11 +634,14 @@ async def purge_project(db: AsyncSession, project_id: str, user: User) -> None:
     if not p.trashed_at:
         raise ValueError("not_trashed")
     if await _legal_held_project_ids(db, [project_id]):
-        raise ValueError("legal_hold_blocks_purge")
+        raise ValueError(LEGAL_HOLD_CODE)
+    blockers = (await _purge_blockers(db, [project_id])).get(project_id)
+    if blockers:
+        raise PurgeBlocked(FINANCIAL_BLOCK_CODE, blockers)
     await _delete_purgeable_project_documents(db, [project_id])
     await db.delete(p)
     await db.commit()
-
+    await _cleanup_project_storage([project_id])
 
 
 async def user_owns_any_project(db: AsyncSession, user_id: str) -> bool:
@@ -552,34 +650,51 @@ async def user_owns_any_project(db: AsyncSession, user_id: str) -> bool:
     return bool(n)
 
 
-async def empty_trash(db: AsyncSession, user: User) -> int:
+async def empty_trash_detailed(db: AsyncSession, user: User) -> tuple[list[str], list[dict]]:
+    """Purge every purgeable trashed project; returns (deleted_ids, skipped) where
+    skipped items are {project_id, name, code, reasons}. Never fails as a whole
+    because of blocked projects."""
     if user.role.value != "customer":
-        return 0
+        return [], []
     from sqlalchemy import delete
 
-    trashed_ids = list(
-        (
-            await db.execute(
-                select(Project.id).where(Project.customer_id == user.id, Project.trashed_at.isnot(None))
-            )
-        ).scalars().all()
-    )
-    if not trashed_ids:
-        return 0
+    trashed = (
+        await db.execute(
+            select(Project.id, Project.name).where(Project.customer_id == user.id, Project.trashed_at.isnot(None))
+        )
+    ).all()
+    if not trashed:
+        return [], []
+    names = {pid: name for pid, name in trashed}
+    trashed_ids = list(names)
 
-    # Issue #319 follow-up: projects with legal-held documents are silently
-    # skipped rather than purged — empty_trash is a best-effort bulk sweep
-    # with no per-project error channel back to the caller (see
-    # api/v1/projects.empty_trash, which only returns {"deleted": n}).
     held = await _legal_held_project_ids(db, trashed_ids)
-    purgeable_ids = [pid for pid in trashed_ids if pid not in held]
+    blockers = await _purge_blockers(db, [pid for pid in trashed_ids if pid not in held])
+    skipped: list[dict] = []
+    purgeable_ids: list[str] = []
+    for pid in trashed_ids:
+        if pid in held:
+            skipped.append({
+                "project_id": pid, "name": names[pid], "code": LEGAL_HOLD_CODE,
+                "reasons": [{"code": "legal_hold", "message": "Есть документы на юридическом удержании (legal hold)", "count": 1}],
+            })
+        elif pid in blockers:
+            skipped.append({"project_id": pid, "name": names[pid], "code": FINANCIAL_BLOCK_CODE, "reasons": blockers[pid]})
+        else:
+            purgeable_ids.append(pid)
     if not purgeable_ids:
-        return 0
+        return [], skipped
 
     await _delete_purgeable_project_documents(db, purgeable_ids)
-    r = await db.execute(delete(Project).where(Project.id.in_(purgeable_ids)))
+    await db.execute(delete(Project).where(Project.id.in_(purgeable_ids)))
     await db.commit()
-    return r.rowcount or 0
+    await _cleanup_project_storage(purgeable_ids)
+    return purgeable_ids, skipped
+
+
+async def empty_trash(db: AsyncSession, user: User) -> int:
+    deleted, _ = await empty_trash_detailed(db, user)
+    return len(deleted)
 
 
 # W69 #42: встроенные шаблоны объектов (комнаты)

@@ -166,7 +166,10 @@ async def _build_full_project_graph(db, *, legal_hold: bool = False):
     document_version = DocumentVersion(id=_uuid(), document_id=document.id, version_number=1)
     db.add(document_version)
     await db.flush()
-    document_signature = DocumentSignature(id=_uuid(), document_id=document.id, version_id=document_version.id, signer_user_id=owner.id)
+    document_signature = DocumentSignature(
+        id=_uuid(), document_id=document.id, version_id=document_version.id, signer_user_id=owner.id,
+        status="revoked",  # a live signature would (correctly) block purge; the cascade proof needs the FK rows present
+    )
     if legal_hold:
         document.legal_hold = True
 

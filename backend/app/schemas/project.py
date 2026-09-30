@@ -123,6 +123,8 @@ class RoomOut(BaseModel):
     wall_sq_m: float
     perimeter_m: float
     is_archived: bool = False
+    # EST-001: True when the estimate is locked and this edit did not recalc lines/budget.
+    estimate_frozen: bool = False
 
 
 class PaymentCreate(BaseModel):

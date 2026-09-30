@@ -269,6 +269,43 @@ async def read_image(key: str) -> bytes | None:
     return await asyncio.to_thread(path.read_bytes)
 
 
+def _delete_prefix_sync(prefix: str) -> int:
+    normalized = normalize_storage_key(prefix).rstrip("/") + "/"
+    client = _s3_client()
+    deleted = 0
+    if client is not None:
+        token = None
+        while True:
+            kwargs = {"Bucket": settings.s3_bucket, "Prefix": normalized}
+            if token:
+                kwargs["ContinuationToken"] = token
+            resp = client.list_objects_v2(**kwargs)
+            keys = [{"Key": o["Key"]} for o in resp.get("Contents", [])]
+            if keys:
+                client.delete_objects(Bucket=settings.s3_bucket, Delete={"Objects": keys, "Quiet": True})
+                deleted += len(keys)
+            if not resp.get("IsTruncated"):
+                break
+            token = resp.get("NextContinuationToken")
+        return deleted
+    import shutil
+
+    path = _local_path(normalized.rstrip("/"))
+    if path.is_dir():
+        deleted = sum(1 for f in path.rglob("*") if f.is_file())
+        shutil.rmtree(path, ignore_errors=True)
+    return deleted
+
+
+async def delete_prefix(prefix: str) -> int:
+    """Delete every object under ``prefix/`` (S3 or local). Returns objects removed.
+
+    Raises StorageError subclasses / provider errors; callers that must not fail
+    (e.g. post-commit purge cleanup) are expected to catch and log.
+    """
+    return await asyncio.to_thread(_delete_prefix_sync, prefix)
+
+
 def ensure_bucket() -> None:
     client = _s3_client()
     if client is None:

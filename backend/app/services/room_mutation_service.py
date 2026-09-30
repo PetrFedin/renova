@@ -20,6 +20,9 @@ class RoomMutationResult:
     room: Room
     replayed: bool
     changes: dict[str, dict[str, object]]
+    # True: the estimate is locked, room data was saved but estimate lines and
+    # budget were NOT recalculated (EST-001) - needs an extra-work (CO) flow.
+    estimate_frozen: bool = False
 
 
 async def _require_direct_editor(
@@ -301,7 +304,7 @@ async def update_room(
         if not changes:
             await db.commit()
             return RoomMutationResult(room, True, {})
-        await room_service.sync_room_estimate_lines(db, room, commit=False)
+        synced = await room_service.sync_room_estimate_lines(db, room, commit=False)
         await _prepare_effects(
             db,
             project=project,
@@ -317,4 +320,4 @@ async def update_room(
 
     await db.refresh(room)
     await _dispatch(db, "room.update")
-    return RoomMutationResult(room, False, changes)
+    return RoomMutationResult(room, False, changes, estimate_frozen=not synced)

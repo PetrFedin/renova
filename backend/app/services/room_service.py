@@ -337,16 +337,32 @@ async def _sync_generated_category(
     await db.flush()
 
 
+def estimate_is_locked(project: Project | None) -> bool:
+    """Single service-level predicate: the estimate is fixed in the contract."""
+    return bool(project is not None and getattr(project, "estimate_locked_at", None))
+
+
 async def sync_room_estimate_lines(
     db: AsyncSession,
     room: Room,
     *,
     commit: bool = True,
-) -> None:
-    """Synchronize every system-derived room line and the project plan."""
+) -> bool:
+    """Synchronize every system-derived room line and the project plan.
+
+    EST-001/QLT-001: once the estimate is locked (contract price fixed) room
+    edits must never rewrite lines or `budget_planned`. Room data is still
+    saved; the caller gets False (nothing recalculated) and should surface
+    `estimate_frozen` so the change is handled via an extra-work (CO) flow.
+    Returns True when lines were synchronized.
+    """
     project = await db.get(Project, room.project_id)
     if project is None:
         raise ValueError("room_project_not_found")
+    if estimate_is_locked(project):
+        if commit:
+            await db.commit()
+        return False
 
     await _sync_generated_category(
         db,
@@ -373,6 +389,7 @@ async def sync_room_estimate_lines(
     await sync_project_budget_planned(db, room.project_id)
     if commit:
         await db.commit()
+    return True
 
 
 async def prepare_room(

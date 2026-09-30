@@ -268,14 +268,20 @@ async def empty_trash(user: User = Depends(get_current_user), db: AsyncSession =
         raise HTTPException(403)
     if not await svc.user_owns_any_project(db, user.id):
         raise HTTPException(403, "Только владелец объекта может выполнить это действие")
-    n = await svc.empty_trash(db, user)
-    return {"deleted": n}
+    deleted, skipped = await svc.empty_trash_detailed(db, user)
+    return {"deleted": len(deleted), "skipped": skipped}
 
 
 @router.delete("/{project_id}")
 async def purge_project(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     try:
         await svc.purge_project(db, project_id, user)
+    except svc.PurgeBlocked as e:
+        raise HTTPException(409, {
+            "code": e.code,
+            "message": svc.purge_blocked_message(e.reasons),
+            "reasons": e.reasons,
+        })
     except ValueError as e:
         if str(e) == "not_trashed":
             raise HTTPException(400, "Сначала переместите объект в корзину")

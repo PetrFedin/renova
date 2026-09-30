@@ -12,6 +12,7 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import Project, RoomChangeRequest, User
 from app.services import room_change_service as request_svc
+from app.services import room_service
 
 router = APIRouter(prefix="/projects", tags=["room-requests"])
 
@@ -147,6 +148,8 @@ async def _decide(
         "room_id": room.id if room else request.room_id,
         "changes": changes,
         "replayed": replayed,
+        # EST-001: locked estimate => room data applied, lines/budget untouched.
+        "estimate_frozen": bool(changes) and room_service.estimate_is_locked(project),
     }
 
 

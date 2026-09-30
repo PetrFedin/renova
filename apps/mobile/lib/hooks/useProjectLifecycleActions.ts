@@ -116,10 +116,25 @@ export function useProjectLifecycleActions(reloadBuckets?: () => Promise<void>) 
 
   const emptyTrash = useCallback(
     () =>
-      confirmAction('Очистить корзину?', 'Все объекты в корзине будут удалены навсегда.', async () => {
-        if (!user) return;
-        await api.emptyProjectTrash(user.id);
-      }, () => refreshAfterMutation()),
+      confirmAction(
+        'Очистить корзину?',
+        'Пустые и черновые объекты будут удалены навсегда. Объекты с платежами и подписанными документами останутся в корзине.',
+        async () => {
+          if (!user) return;
+          const res = await api.emptyProjectTrash(user.id);
+          const skipped = res.skipped ?? [];
+          if (skipped.length > 0) {
+            const lines = skipped
+              .map((sk) => `• ${sk.name || 'Объект'}: ${sk.reasons.map((r) => r.message).join('; ')}`)
+              .join('\n');
+            alertMessage(
+              'Часть объектов не удалена',
+              `Удалено: ${res.deleted}. Не удалены (${skipped.length}):\n${lines}\n\nПлатежи и подписанные документы хранятся как юридически значимые записи.`,
+            );
+          }
+        },
+        () => refreshAfterMutation(),
+      ),
     [user, confirmAction, refreshAfterMutation],
   );
 
