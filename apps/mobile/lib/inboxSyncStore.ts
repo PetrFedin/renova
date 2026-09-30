@@ -13,6 +13,7 @@ import type { OsRole } from '@/constants/osSections';
 import { buildWsAuthQuery } from '@/lib/wsAuthQuery';
 import { createTrailingReloadScheduler } from '@/lib/trailingReloadScheduler';
 import { reportError } from '@/lib/reportError';
+import { isPollingPaused } from '@/lib/api/client';
 
 type Listener = () => void;
 type InboxWsPayload = { type?: string; event?: string; thread_id?: string; project_id?: string };
@@ -482,7 +483,15 @@ function stopPoll() {
 function ensurePoll(reload: () => void) {
   stopPoll();
   const intervalMs = inboxWsConnected ? POLL_CONNECTED_MS : POLL_DISCONNECTED_MS;
-  pollTimer = setInterval(reload, intervalMs);
+  pollTimer = setInterval(() => {
+    // #432: тик планового опроса пропускаем, пока действует общий 429-gate —
+    // иначе таймер продолжает бить по тем же ручкам, пока клиент ещё не
+    // восстановился после предыдущего rate limit, и баннер «устарело» висит
+    // вечно. Следующий тик (через intervalMs) проверит снова, а не долбит
+    // короче запланированного расписания.
+    if (isPollingPaused()) return;
+    reload();
+  }, intervalMs);
 }
 
 function stopInboxWebSocket() {

@@ -1,5 +1,5 @@
 /** API: issues */
-import { req, ApiError } from './client';
+import { req, cachedGet, invalidateCachedGet, ApiError } from './client';
 import { createClientRequestId } from '@/lib/clientRequestId';
 import type { ProjectIssue } from './types';
 
@@ -10,7 +10,8 @@ async function enqueueOffline(path: string, method: string, body: string | undef
 }
 
 export const issuesApi = {
-  listIssues: (userId: string, projectId: string, status?: string) => req<ProjectIssue[]>(`/api/v1/projects/${projectId}/issues${status ? `?status=${status}` : ''}`, {}, userId),
+  /** Общий TTL-кэш: несколько экранов опрашивают issues по фильтру статуса независимо (#432). */
+  listIssues: (userId: string, projectId: string, status?: string) => cachedGet<ProjectIssue[]>(`/api/v1/projects/${projectId}/issues${status ? `?status=${status}` : ''}`, userId),
   createIssue: async (userId: string, projectId: string, body: object) => {
     // Same client_request_id and exact serialized body are sent on the
     // immediate attempt and on every offline-queue replay so a lost response
@@ -19,7 +20,9 @@ export const issuesApi = {
     // 0/429/ambiguous 5xx) before this enqueue remains out of scope — #317.
     const requestBody = JSON.stringify({ ...body, client_request_id: createClientRequestId('issue-create') });
     try {
-      return await req<ProjectIssue>(`/api/v1/projects/${projectId}/issues`, { method: 'POST', body: requestBody }, userId);
+      const created = await req<ProjectIssue>(`/api/v1/projects/${projectId}/issues`, { method: 'POST', body: requestBody }, userId);
+      await invalidateCachedGet(`/api/v1/projects/${projectId}/issues`, userId);
+      return created;
     } catch (e) {
       if (e instanceof ApiError) throw e;
       await enqueueOffline(`/api/v1/projects/${projectId}/issues`, 'POST', requestBody, userId);
@@ -27,7 +30,9 @@ export const issuesApi = {
   },
   escalateIssue: async (userId: string, projectId: string, issueId: string) => {
     try {
-      return await req(`/api/v1/projects/${projectId}/issues/${issueId}/escalate`, { method: 'POST' }, userId);
+      const result = await req(`/api/v1/projects/${projectId}/issues/${issueId}/escalate`, { method: 'POST' }, userId);
+      await invalidateCachedGet(`/api/v1/projects/${projectId}/issues`, userId);
+      return result;
     } catch (e) {
       if (e instanceof ApiError) throw e;
       await enqueueOffline(`/api/v1/projects/${projectId}/issues/${issueId}/escalate`, 'POST', undefined, userId);
@@ -37,7 +42,9 @@ export const issuesApi = {
     const path = `/api/v1/projects/${projectId}/issues/${issueId}/transition`;
     const body = JSON.stringify({ status });
     try {
-      return await req<ProjectIssue>(path, { method: 'POST', body }, userId);
+      const updated = await req<ProjectIssue>(path, { method: 'POST', body }, userId);
+      await invalidateCachedGet(`/api/v1/projects/${projectId}/issues`, userId);
+      return updated;
     } catch (e) {
       if (e instanceof ApiError) throw e;
       await enqueueOffline(path, 'POST', body, userId);
@@ -46,7 +53,9 @@ export const issuesApi = {
   /** @deprecated use transitionIssue for QC lifecycle; kept for legacy warranty/old clients. */
   closeIssue: async (userId: string, projectId: string, issueId: string) => {
     try {
-      return await req<ProjectIssue>(`/api/v1/projects/${projectId}/issues/${issueId}/close`, { method: 'POST' }, userId);
+      const result = await req<ProjectIssue>(`/api/v1/projects/${projectId}/issues/${issueId}/close`, { method: 'POST' }, userId);
+      await invalidateCachedGet(`/api/v1/projects/${projectId}/issues`, userId);
+      return result;
     } catch (e) {
       if (e instanceof ApiError) throw e;
       await enqueueOffline(`/api/v1/projects/${projectId}/issues/${issueId}/close`, 'POST', undefined, userId);

@@ -1,5 +1,5 @@
 /** API: workOrders — W111 offline queue for field transitions */
-import { req, ApiError } from './client';
+import { req, cachedGet, invalidateCachedGet, ApiError } from './client';
 import type { WorkOrder } from './types';
 
 export type WorkOrderPatchBody = {
@@ -15,8 +15,9 @@ function newWorkOrderClientRequestId(): string {
 }
 
 export const workOrdersApi = {
+  /** Общий TTL-кэш: несколько виджетов опрашивают список независимо (#432). Явно свежий вариант — listWorkOrdersFresh. */
   listWorkOrders: (userId: string, projectId: string) =>
-    req<WorkOrder[]>(`/api/v1/projects/${projectId}/work-orders`, {}, userId),
+    cachedGet<WorkOrder[]>(`/api/v1/projects/${projectId}/work-orders`, userId),
   listWorkOrdersFresh: (
     userId: string,
     projectId: string,
@@ -33,11 +34,13 @@ export const workOrdersApi = {
     // replay so a lost response cannot create a second WorkOrder (#316).
     const requestBody = JSON.stringify({ ...body, client_request_id: newWorkOrderClientRequestId() });
     try {
-      return await req<WorkOrder>(
+      const created = await req<WorkOrder>(
         `/api/v1/projects/${projectId}/work-orders`,
         { method: 'POST', body: requestBody },
         userId,
       );
+      await invalidateCachedGet(`/api/v1/projects/${projectId}/work-orders`, userId);
+      return created;
     } catch (e) {
       if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
@@ -58,11 +61,13 @@ export const workOrdersApi = {
   ) => {
     if (!body.expected_updated_at) throw new Error('work_order_version_missing');
     try {
-      return await req<WorkOrder>(
+      const updated = await req<WorkOrder>(
         `/api/v1/projects/${projectId}/work-orders/${workOrderId}`,
         { method: 'PATCH', body: JSON.stringify(body) },
         userId,
       );
+      await invalidateCachedGet(`/api/v1/projects/${projectId}/work-orders`, userId);
+      return updated;
     } catch (e) {
       if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
@@ -79,11 +84,13 @@ export const workOrdersApi = {
   },
   transitionWorkOrder: async (userId: string, projectId: string, workOrderId: string, status: string) => {
     try {
-      return await req<WorkOrder>(
+      const updated = await req<WorkOrder>(
         `/api/v1/projects/${projectId}/work-orders/${workOrderId}/transition`,
         { method: 'POST', body: JSON.stringify({ status }) },
         userId,
       );
+      await invalidateCachedGet(`/api/v1/projects/${projectId}/work-orders`, userId);
+      return updated;
     } catch (e) {
       if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');

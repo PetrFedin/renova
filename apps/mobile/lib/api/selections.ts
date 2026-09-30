@@ -1,5 +1,5 @@
 /** P2.2: selections tracker API — W109 offline queue for field propose/approve */
-import { req, ApiError } from './client';
+import { req, cachedGet, invalidateCachedGet, ApiError } from './client';
 import { createClientRequestId } from '@/lib/clientRequestId';
 
 export type SelectionItem = {
@@ -47,8 +47,9 @@ export const selectionsApi = {
     const qs = q.toString();
     return req<SelectionItem[]>(`/api/v1/projects/${projectId}/selections${qs ? `?${qs}` : ''}`, {}, userId);
   },
+  /** Опрашивается из нескольких независимых счётчиков одновременно — общий TTL-кэш (#432). */
   selectionsPendingCount: (userId: string, projectId: string) =>
-    req<{ count: number }>(`/api/v1/projects/${projectId}/selections/pending-count`, {}, userId),
+    cachedGet<{ count: number }>(`/api/v1/projects/${projectId}/selections/pending-count`, userId),
   createSelection: (userId: string, projectId: string, body: {
     title: string;
     room_id?: string | null;
@@ -65,7 +66,11 @@ export const selectionsApi = {
     // duplicate SelectionItem (#415, following the #316/#398 pattern).
     const requestBody = JSON.stringify({ ...body, client_request_id: createClientRequestId('selection-create') });
     return withOffline(
-      () => req<SelectionItem>(`/api/v1/projects/${projectId}/selections`, { method: 'POST', body: requestBody }, userId),
+      async () => {
+        const created = await req<SelectionItem>(`/api/v1/projects/${projectId}/selections`, { method: 'POST', body: requestBody }, userId);
+        await invalidateCachedGet(`/api/v1/projects/${projectId}/selections/pending-count`, userId);
+        return created;
+      },
       `/api/v1/projects/${projectId}/selections`,
       'POST',
       requestBody,
@@ -74,7 +79,11 @@ export const selectionsApi = {
   },
   proposeSelection: (userId: string, projectId: string, id: string) =>
     withOffline(
-      () => req<SelectionItem>(`/api/v1/projects/${projectId}/selections/${id}/propose`, { method: 'POST', body: '{}' }, userId),
+      async () => {
+        const updated = await req<SelectionItem>(`/api/v1/projects/${projectId}/selections/${id}/propose`, { method: 'POST', body: '{}' }, userId);
+        await invalidateCachedGet(`/api/v1/projects/${projectId}/selections/pending-count`, userId);
+        return updated;
+      },
       `/api/v1/projects/${projectId}/selections/${id}/propose`,
       'POST',
       '{}',
@@ -82,7 +91,11 @@ export const selectionsApi = {
     ),
   approveSelection: (userId: string, projectId: string, id: string) =>
     withOffline(
-      () => req<SelectionItem>(`/api/v1/projects/${projectId}/selections/${id}/approve`, { method: 'POST', body: '{}' }, userId),
+      async () => {
+        const updated = await req<SelectionItem>(`/api/v1/projects/${projectId}/selections/${id}/approve`, { method: 'POST', body: '{}' }, userId);
+        await invalidateCachedGet(`/api/v1/projects/${projectId}/selections/pending-count`, userId);
+        return updated;
+      },
       `/api/v1/projects/${projectId}/selections/${id}/approve`,
       'POST',
       '{}',
@@ -91,7 +104,11 @@ export const selectionsApi = {
   rejectSelection: (userId: string, projectId: string, id: string, reason?: string) => {
     const body = JSON.stringify({ reason: reason || null });
     return withOffline(
-      () => req<SelectionItem>(`/api/v1/projects/${projectId}/selections/${id}/reject`, { method: 'POST', body }, userId),
+      async () => {
+        const updated = await req<SelectionItem>(`/api/v1/projects/${projectId}/selections/${id}/reject`, { method: 'POST', body }, userId);
+        await invalidateCachedGet(`/api/v1/projects/${projectId}/selections/pending-count`, userId);
+        return updated;
+      },
       `/api/v1/projects/${projectId}/selections/${id}/reject`,
       'POST',
       body,

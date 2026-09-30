@@ -1,5 +1,5 @@
 /** API: estimate */
-import { req, cachedGet, API_BASE, ApiError } from './client';
+import { req, cachedGet, invalidateCachedGet, API_BASE, ApiError } from './client';
 import type { ChangeOrder, MaterialStats, User } from './types';
 import { createClientRequestId } from '@/lib/clientRequestId';
 export const estimateApi = {
@@ -95,7 +95,8 @@ export const estimateApi = {
       throw new Error('offline_queued');
     }
   },
-  listChangeOrders: (userId: string, projectId: string) => req<ChangeOrder[]>(`/api/v1/projects/${projectId}/change-orders`, {}, userId),
+  /** Polled from several independent widgets (estimate, home digest, inbox) — TTL cache коллапсирует повторные опросы в один сетевой вызов (#432). */
+  listChangeOrders: (userId: string, projectId: string) => cachedGet<ChangeOrder[]>(`/api/v1/projects/${projectId}/change-orders`, userId),
   /** W107: допсоглашение — очередь офлайн */
   createChangeOrder: async (userId: string, projectId: string, body: object) => {
     const input = body as Record<string, unknown> & { client_request_id?: string };
@@ -105,11 +106,13 @@ export const estimateApi = {
     };
     const serialized = JSON.stringify(requestBody);
     try {
-      return await req(
+      const created = await req(
         `/api/v1/projects/${projectId}/change-orders`,
         { method: 'POST', body: serialized },
         userId,
       );
+      await invalidateCachedGet(`/api/v1/projects/${projectId}/change-orders`, userId);
+      return created;
     } catch (e) {
       if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
@@ -124,11 +127,13 @@ export const estimateApi = {
   },
   approveChangeOrder: async (userId: string, projectId: string, orderId: string) => {
     try {
-      return await req<{ ok: boolean; status: string; document_id?: string; amount?: number; title?: string }>(
+      const result = await req<{ ok: boolean; status: string; document_id?: string; amount?: number; title?: string }>(
         `/api/v1/projects/${projectId}/change-orders/${orderId}/approve`,
         { method: 'POST' },
         userId,
       );
+      await invalidateCachedGet(`/api/v1/projects/${projectId}/change-orders`, userId);
+      return result;
     } catch (e) {
       if (e instanceof ApiError) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
@@ -138,7 +143,9 @@ export const estimateApi = {
   },
   rejectChangeOrder: async (userId: string, projectId: string, orderId: string) => {
     try {
-      return await req(`/api/v1/projects/${projectId}/change-orders/${orderId}/reject`, { method: 'POST' }, userId);
+      const result = await req(`/api/v1/projects/${projectId}/change-orders/${orderId}/reject`, { method: 'POST' }, userId);
+      await invalidateCachedGet(`/api/v1/projects/${projectId}/change-orders`, userId);
+      return result;
     } catch (e) {
       if (e instanceof ApiError) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');

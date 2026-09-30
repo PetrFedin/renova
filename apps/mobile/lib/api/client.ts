@@ -101,6 +101,48 @@ function retryAfterMs(res: Response): number {
   return 1200;
 }
 
+/**
+ * Общий gate для периодического опроса (#432): раньше 429 останавливал только
+ * тот запрос, который его получил — независимые таймеры (inbox poll, WS
+ * reconnect-triggered reload и т.п.) продолжали тикать по своему расписанию,
+ * так что состояние «rate limited» никогда не проходило и баннер «данные
+ * устарели» не сходил с экрана. Теперь любой 429 от любого запроса поднимает
+ * общую паузу с экспоненциальным ростом при повторных попаданиях подряд;
+ * периодические опросчики обязаны проверять `isPollingPaused()` перед тем,
+ * как выполнить очередной тик.
+ */
+const RATE_LIMIT_BASE_PAUSE_MS = 3_000;
+const RATE_LIMIT_MAX_PAUSE_MS = 60_000;
+/** Повторное попадание позже этого окна после конца паузы считается новой серией, а не продолжением старой. */
+const RATE_LIMIT_STREAK_WINDOW_MS = 5_000;
+let _rateLimitPauseMs = 0;
+let _rateLimitPausedUntil = 0;
+
+function registerRateLimitHit(hintMs?: number): void {
+  const now = Date.now();
+  const withinStreak = now < _rateLimitPausedUntil + RATE_LIMIT_STREAK_WINDOW_MS;
+  _rateLimitPauseMs = withinStreak && _rateLimitPauseMs > 0
+    ? Math.min(RATE_LIMIT_MAX_PAUSE_MS, _rateLimitPauseMs * 2)
+    : RATE_LIMIT_BASE_PAUSE_MS;
+  const wait = Math.max(_rateLimitPauseMs, hintMs || 0);
+  _rateLimitPausedUntil = Math.max(_rateLimitPausedUntil, now + wait);
+}
+
+function registerRateLimitRecovered(): void {
+  _rateLimitPauseMs = 0;
+  _rateLimitPausedUntil = 0;
+}
+
+/** Приостановлен ли сейчас периодический опрос общим 429-gate. */
+export function isPollingPaused(): boolean {
+  return Date.now() < _rateLimitPausedUntil;
+}
+
+/** Сколько ещё ждать до конца текущей паузы (0, если пауза не активна). */
+export function pollingResumesInMs(): number {
+  return Math.max(0, _rateLimitPausedUntil - Date.now());
+}
+
 async function saveDurableCache<T>(path: string, userId: string | undefined, value: T) {
   try {
     await AsyncStorage.setItem(storageKey(path, userId), JSON.stringify({ t: Date.now(), v: value }));
@@ -138,6 +180,22 @@ export async function invalidateProjectsCache(userId: string): Promise<void> {
     } catch {
       /* silent-catch-ok: invalidation is best-effort; in-memory cache is already cleared */
     }
+  }
+}
+
+/**
+ * Общий сброс TTL-кэша одного `cachedGet`-пути (#432). Нужен там, где список
+ * теперь читается через `cachedGet` (change-orders, material-picks,
+ * work-orders, warranty-claims, documents, issues, selections/pending-count):
+ * без сброса мутация (create/approve/reject/...) могла бы до 30с показывать
+ * список без только что созданной/изменённой записи.
+ */
+export async function invalidateCachedGet(path: string, userId?: string): Promise<void> {
+  _cache.delete(cacheKey(path, userId));
+  try {
+    await AsyncStorage.removeItem(storageKey(path, userId));
+  } catch {
+    /* silent-catch-ok: invalidation is best-effort; in-memory cache is already cleared */
   }
 }
 
@@ -443,16 +501,23 @@ async function performReq<T>(path: string, opts: ReqOptions = {}, userId?: strin
               continue;
             }
           }
-          if (isGet && isRateLimitError(err) && attempt < 3) {
-            lastError = err;
-            await sleep(retryAfterMs(res));
-            continue;
+          if (isRateLimitError(err)) {
+            // Общий gate (#432): пауза поднимается для ЛЮБОГО 429, не только GET —
+            // иначе независимые поллеры продолжают тикать, пока этот конкретный
+            // запрос сам восстанавливается через retry.
+            registerRateLimitHit(retryAfterMs(res));
+            if (isGet && attempt < 3) {
+              lastError = err;
+              await sleep(retryAfterMs(res));
+              continue;
+            }
           }
           throw err;
         }
         const text = await res.text();
         const data = text ? JSON.parse(text) : undefined;
         if (isGet && data !== undefined) await saveDurableCache(path, userId, data);
+        registerRateLimitRecovered();
         return data as T;
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {

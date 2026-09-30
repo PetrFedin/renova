@@ -1,9 +1,10 @@
 /** API: materials */
-import { req, ApiError } from './client';
+import { req, cachedGet, invalidateCachedGet, ApiError } from './client';
 import type { MaterialPick, MaterialSupplySource, Purchase } from './types';
 import { createClientRequestId } from '@/lib/clientRequestId';
 export const materialsApi = {
-  listMaterialPicks: (userId: string, projectId: string, workType?: string) => req<MaterialPick[]>(`/api/v1/projects/${projectId}/material-picks${workType ? `?work_type=${workType}` : ''}`, {}, userId),
+  /** Polled from home digest, budget, room detail, estimate — общий TTL-кэш вместо N независимых опросов (#432). */
+  listMaterialPicks: (userId: string, projectId: string, workType?: string) => cachedGet<MaterialPick[]>(`/api/v1/projects/${projectId}/material-picks${workType ? `?work_type=${workType}` : ''}`, userId),
   createMaterialPick: async (userId: string, projectId: string, body: object) => {
     const input = body as Record<string, unknown> & { client_request_id?: string };
     const requestBody = {
@@ -12,7 +13,9 @@ export const materialsApi = {
     };
     const serialized = JSON.stringify(requestBody);
     try {
-      return await req<MaterialPick>(`/api/v1/projects/${projectId}/material-picks`, { method: 'POST', body: serialized }, userId);
+      const created = await req<MaterialPick>(`/api/v1/projects/${projectId}/material-picks`, { method: 'POST', body: serialized }, userId);
+      await invalidateCachedGet(`/api/v1/projects/${projectId}/material-picks`, userId);
+      return created;
     } catch (e) {
       if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
@@ -22,7 +25,9 @@ export const materialsApi = {
   },
   submitMaterialPick: async (userId: string, projectId: string, id: string) => {
     try {
-      return await req(`/api/v1/projects/${projectId}/material-picks/${id}/submit`, { method: 'POST' }, userId);
+      const result = await req(`/api/v1/projects/${projectId}/material-picks/${id}/submit`, { method: 'POST' }, userId);
+      await invalidateCachedGet(`/api/v1/projects/${projectId}/material-picks`, userId);
+      return result;
     } catch (e) {
       if (e instanceof ApiError) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
@@ -32,7 +37,9 @@ export const materialsApi = {
   },
   approveMaterialPick: async (userId: string, projectId: string, id: string) => {
     try {
-      return await req(`/api/v1/projects/${projectId}/material-picks/${id}/approve`, { method: 'POST' }, userId);
+      const result = await req(`/api/v1/projects/${projectId}/material-picks/${id}/approve`, { method: 'POST' }, userId);
+      await invalidateCachedGet(`/api/v1/projects/${projectId}/material-picks`, userId);
+      return result;
     } catch (e) {
       if (e instanceof ApiError) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
@@ -43,7 +50,9 @@ export const materialsApi = {
   rejectMaterialPick: async (userId: string, projectId: string, id: string, reason?: string) => {
     const body = JSON.stringify({ reason: reason || null });
     try {
-      return await req(`/api/v1/projects/${projectId}/material-picks/${id}/reject`, { method: 'POST', body }, userId);
+      const result = await req(`/api/v1/projects/${projectId}/material-picks/${id}/reject`, { method: 'POST', body }, userId);
+      await invalidateCachedGet(`/api/v1/projects/${projectId}/material-picks`, userId);
+      return result;
     } catch (e) {
       if (e instanceof ApiError) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');

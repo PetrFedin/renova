@@ -1,5 +1,5 @@
 /** API: Document Center (+ OCR / e-sign Wave 3d) */
-import { req, ApiError } from './client';
+import { req, cachedGet, invalidateCachedGet, ApiError } from './client';
 import { OFFLINE_UPLOAD_BLOCKED } from '@/lib/offlineErrors';
 import type { ProjectDocumentsResponse } from './types';
 
@@ -10,8 +10,9 @@ export type EsignProvider = {
 };
 
 export const documentsApi = {
+  /** Общий TTL-кэш вместо параллельного опроса каждым виджетом документов (#432). */
   listProjectDocuments: (userId: string, projectId: string) =>
-    req<ProjectDocumentsResponse>(`/api/v1/projects/${projectId}/documents`, {}, userId),
+    cachedGet<ProjectDocumentsResponse>(`/api/v1/projects/${projectId}/documents`, userId),
 
   listEsignProviders: (userId: string) =>
     req<{ providers: EsignProvider[] }>('/api/v1/esign/providers', {}, userId),
@@ -32,10 +33,12 @@ export const documentsApi = {
   ) => {
     // W108: метаданные документа в офлайн-очередь (файлы — отдельно, OFFLINE_UPLOAD_BLOCKED)
     try {
-      return await req(`/api/v1/projects/${projectId}/documents`, {
+      const created = await req(`/api/v1/projects/${projectId}/documents`, {
         method: 'POST',
         body: JSON.stringify(body),
       }, userId);
+      await invalidateCachedGet(`/api/v1/projects/${projectId}/documents`, userId);
+      return created;
     } catch (e) {
       if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
       if (body.storage_key || body.href?.startsWith('data:')) {
@@ -112,10 +115,12 @@ export const documentsApi = {
 
   archiveProjectDocument: async (userId: string, projectId: string, documentId: string) => {
     try {
-      return await req(`/api/v1/projects/${projectId}/documents/${documentId}/archive`, {
+      const result = await req(`/api/v1/projects/${projectId}/documents/${documentId}/archive`, {
         method: 'POST',
         body: '{}',
       }, userId);
+      await invalidateCachedGet(`/api/v1/projects/${projectId}/documents`, userId);
+      return result;
     } catch (e) {
       if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
@@ -141,10 +146,12 @@ export const documentsApi = {
     if (fields?.document_type) form.append('document_type', fields.document_type);
     if (fields?.notes) form.append('notes', fields.notes);
     try {
-      return await req(`/api/v1/projects/${projectId}/documents/upload`, {
+      const uploaded = await req(`/api/v1/projects/${projectId}/documents/upload`, {
         method: 'POST',
         body: form as unknown as BodyInit,
       } as RequestInit, userId);
+      await invalidateCachedGet(`/api/v1/projects/${projectId}/documents`, userId);
+      return uploaded;
     } catch (e) {
       // Upload cannot be queued offline — explicit user-facing block
       if (!(e instanceof ApiError) || e.status >= 500) {
@@ -154,16 +161,22 @@ export const documentsApi = {
     }
   },
 
-  restoreProjectDocument: (userId: string, projectId: string, documentId: string) =>
-    req(`/api/v1/projects/${projectId}/documents/${documentId}/restore`, {
+  restoreProjectDocument: async (userId: string, projectId: string, documentId: string) => {
+    const result = await req(`/api/v1/projects/${projectId}/documents/${documentId}/restore`, {
       method: 'POST',
       body: '{}',
-    }, userId),
+    }, userId);
+    await invalidateCachedGet(`/api/v1/projects/${projectId}/documents`, userId);
+    return result;
+  },
 
-  deleteProjectDocument: (userId: string, projectId: string, documentId: string) =>
-    req(`/api/v1/projects/${projectId}/documents/${documentId}`, {
+  deleteProjectDocument: async (userId: string, projectId: string, documentId: string) => {
+    const result = await req(`/api/v1/projects/${projectId}/documents/${documentId}`, {
       method: 'DELETE',
-    }, userId),
+    }, userId);
+    await invalidateCachedGet(`/api/v1/projects/${projectId}/documents`, userId);
+    return result;
+  },
 
   tickOcrWorker: (userId: string) =>
     req('/api/v1/ocr/worker/tick', { method: 'POST', body: '{}' }, userId),
