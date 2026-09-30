@@ -34,7 +34,8 @@ export async function syncCustomerBudgetOnLoad(
     return project;
   }
 
-  if (!local) return project;
+  // Лимит приватный: сервер принимает его только от заказчика-владельца.
+  if (!local || user.role !== 'customer') return project;
 
   let committed: ProjectDetail;
   try {

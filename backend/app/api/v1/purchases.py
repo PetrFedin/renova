@@ -9,6 +9,7 @@ from app.models.entities import Project, PurchaseStatus, User
 from app.services import activity_service as act
 from app.services import notification_service as notif
 from app.services import purchase_service as pur
+from app.services.project_role_policy import project_actor_role
 
 router = APIRouter(prefix="/projects", tags=["purchases"])
 PURCHASE_CREATE_SCOPE = "purchase.create"
@@ -272,10 +273,20 @@ async def update_purchase_status(
             purchase_id=purchase_id,
             status=status,
             actor_id=user.id,
+            actor_role=await project_actor_role(db, user, project),
         )
+    except PermissionError as error:
+        raise HTTPException(
+            403,
+            detail={
+                "code": "purchase_transition_forbidden",
+                "message": "Этот переход статуса закупки вам недоступен: оплату и откат факта подтверждает заказчик",
+            },
+        ) from error
     except ValueError as error:
         code = str(error)
         messages = {
+            "purchase_transition_skipped": "Нельзя перескочить этап закупки: сначала заказ, затем оплата, затем доставка",
             "purchase_transition_terminal": "Завершённую закупку нельзя перевести в другой статус",
             "purchase_return_requires_delivery": "Вернуть можно только доставленные материалы",
             "purchase_transition_invalid": "Недопустимый обратный переход статуса закупки",

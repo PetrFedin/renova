@@ -5,7 +5,7 @@ import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import type { Purchase } from '@/lib/api';
 import { PURCHASE_STATUS_LABEL } from '@/constants/labels';
-import { PURCHASE_NEXT_STATUS, purchaseAdvanceLabel, purchaseCancelStatus } from '@/lib/domain/purchaseLifecycle';
+import { PURCHASE_NEXT_STATUS, purchaseAdvanceLabel, purchaseCancelStatus, purchaseRoleMayMove } from '@/lib/domain/purchaseLifecycle';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { useRenova } from '@/lib/context/RenovaContext';
 import type { OsRole } from '@/constants/osSections';
@@ -29,8 +29,10 @@ export function PurchaseList({ purchases, readOnly, returnTo, mutationKey, onAdv
       <Text style={s.h}>Закупки</Text>
       <Text style={s.pipe}>Черновик → Заказано → Оплачено → Доставлено (факт)</Text>
       {purchases.map((purchase) => {
-        const next = PURCHASE_NEXT_STATUS[purchase.status];
-        const cancel = purchaseCancelStatus(purchase.status);
+        const rawNext = PURCHASE_NEXT_STATUS[purchase.status];
+        const next = rawNext && purchaseRoleMayMove(role, rawNext) ? rawNext : null;
+        const rawCancel = purchaseCancelStatus(purchase.status);
+        const cancel = rawCancel && purchaseRoleMayMove(role, rawCancel) ? rawCancel : null;
         const nextKey = next ? `purchase:${purchase.id}:${next}` : null;
         const cancelKey = cancel ? `purchase:${purchase.id}:${cancel}` : null;
         return (

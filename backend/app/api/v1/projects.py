@@ -9,6 +9,7 @@ from app.models.entities import PaymentStatus
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectDetail, ProjectOut, EstimateLineOut, StageOut, RoomOut
 from app.services import project_service as svc
 from app.services import project_profile_service as profile_svc
+from app.services.project_role_policy import require_project_owner
 from app.services.stage_service import parse_room_ids
 from app.services import room_service as room_svc
 from app.services import project_document_service as docs_svc
@@ -39,7 +40,9 @@ def _project_out(
 ) -> ProjectOut:
     payments = getattr(p, "payments", None) or []
     pending = sum(1 for pay in payments if pay.status == PaymentStatus.pending)
-    customer_budget = getattr(p, "customer_budget", None)
+    # customer_budget — приватный лимит заказчика: исполнителю, команде, гостю
+    # и технадзору он не отдаётся (ROLE-001); mobile трактует null как «не задан».
+    customer_budget = getattr(p, "customer_budget", None) if access_mode == "owner" else None
     return ProjectOut(
         id=p.id,
         name=p.name,
@@ -294,6 +297,10 @@ async def purge_project(project_id: str, user: User = Depends(get_current_user),
 @router.patch("/{project_id}", response_model=ProjectDetail)
 async def patch_project(project_id: str, body: ProjectUpdate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     project = await require_project(db, project_id, user, write=True)
+    # Название/адрес/даты/НДС/тип и лимит — параметры и деньги заказчика.
+    # Исполнитель (лид, прораб, участник бригады) правит объект через
+    # специализированные ручки (этапы, смета, закупки), а не профиль. ROLE-004.
+    await require_project_owner(db, user, project, action="Изменить параметры и бюджет объекта")
     data = body.model_dump(exclude_unset=True)
     p = await profile_svc.update_project_profile(db, project, data)
     return await _detail(db, p, user)

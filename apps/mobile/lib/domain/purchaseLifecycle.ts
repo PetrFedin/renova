@@ -19,3 +19,12 @@ export function purchaseAdvanceLabel(nextStatus: string): string {
 export function purchaseCancelStatus(current: string): string | null {
   return current === 'delivered' ? 'cancelled' : null;
 }
+
+/**
+ * Кто вправе сделать переход (зеркало backend PURCHASE_TRANSITION_ROLES):
+ * оплату и откат факта подтверждает заказчик, исполнитель — заказ и доставку.
+ */
+export function purchaseRoleMayMove(role: string | null | undefined, target: string): boolean {
+  if (role === 'customer') return true;
+  return target === 'ordered' || target === 'delivered';
+}

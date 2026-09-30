@@ -22,6 +22,13 @@ PROFILE_FIELDS = frozenset(
     }
 )
 
+# Кто что правит в профиле (роль проверяет `PATCH /projects/{id}`):
+#   заказчик-владелец — все PROFILE_FIELDS;
+#   исполнитель (лид/прораб/участник бригады), гость, технадзор — ничего:
+#   законных полей профиля у исполнителя нет, его правки идут через этапы,
+#   смету и закупки.
+CONTRACTOR_PROFILE_FIELDS: frozenset[str] = frozenset()
+
 
 async def update_project_profile(
     db: AsyncSession,

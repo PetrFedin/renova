@@ -13,6 +13,7 @@ from app.models.entities import User
 from app.services import stage_mutation_service as mutations
 from app.services import stage_review_service
 from app.services import stage_service
+from app.services.project_role_policy import require_project_owner
 
 router = APIRouter(prefix="/projects", tags=["stages"])
 
@@ -225,15 +226,21 @@ async def update_payment_plan(
 ):
     """Поправить суммы по этапам вручную.
 
-    Разнесение по весам — умолчание, а не приговор: человек вправе
-    распределить иначе. Проверяем только то, что проверить обязаны:
-    отрицательных сумм не бывает, и этап должен принадлежать этому объекту.
+    Разнесение по весам — умолчание, а не приговор: заказчик вправе
+    распределить иначе. Суммы становятся счетами заказчику при приёмке, поэтому
+    (STG-001, MNY-001, APIB-008):
+      * правит только заказчик-владелец; исполнитель и бригада план видят,
+        но не устанавливают (предложить сумму можно через чат/комментарий);
+      * отрицательных сумм не бывает, этап должен принадлежать объекту;
+      * итог по всем этапам не может превышать цену договора (422);
+      * сумму этапа на проверке/после приёмки не меняют (409).
     """
     from sqlalchemy import select
 
     from app.models.entities import Stage
 
-    await require_project(db, project_id, user, write=True)
+    project = await require_project(db, project_id, user, write=True)
+    await require_project_owner(db, user, project, action="Менять порядок оплаты по этапам")
     stages = {
         stage.id: stage
         for stage in (
@@ -251,6 +258,42 @@ async def update_payment_plan(
         raise HTTPException(
             422,
             detail={"code": "negative_amount", "message": "Сумма по этапу не может быть отрицательной", "ids": negative},
+        )
+    from app.models.entities import StageStatus
+
+    locked = sorted(
+        sid
+        for sid, amount in body.amounts.items()
+        if stages[sid].status in (StageStatus.review, StageStatus.done)
+        and round(float(amount), 2) != round(float(stages[sid].payment_amount or 0), 2)
+    )
+    if locked:
+        raise HTTPException(
+            409,
+            detail={
+                "code": "stage_payment_locked",
+                "message": "Сумму этапа на проверке или после приёмки менять нельзя",
+                "ids": locked,
+            },
+        )
+    resulting = {
+        sid: round(float(body.amounts[sid]), 2) if sid in body.amounts else float(stage.payment_amount or 0)
+        for sid, stage in stages.items()
+    }
+    total = round(float(project.budget_planned or 0), 2)
+    distributed = round(sum(resulting.values()), 2)
+    if distributed > total + 0.005:
+        raise HTTPException(
+            422,
+            detail={
+                "code": "payment_plan_exceeds_total",
+                "message": (
+                    f"Сумма по этапам ({distributed:.2f} ₽) больше цены договора ({total:.2f} ₽) "
+                    f"на {distributed - total:.2f} ₽"
+                ),
+                "total": total,
+                "distributed": distributed,
+            },
         )
     for stage_id, amount in body.amounts.items():
         stages[stage_id].payment_amount = round(float(amount), 2)

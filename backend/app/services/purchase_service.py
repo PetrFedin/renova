@@ -54,6 +54,56 @@ def validate_purchase_transition(current: PurchaseStatus, target: PurchaseStatus
         raise ValueError("purchase_transition_invalid")
 
 
+# Явная карта «статус → следующий статус → кто вправе перевести» (EST-012,
+# REP-09, APIB-010). Роли — из project_role_policy: customer, lead, foreman,
+# member. Принцип: деньги подтверждает заказчик, исполнитель исполняет.
+#   * `paid` и `partial` создают подтверждённый расход в budget_spent, поэтому
+#     только заказчик; `delivered` исполнитель ставит только после `paid`
+#     (расход уже подтверждён заказчиком), с `ordered` минуя оплату — никто;
+#   * откат факта (`cancelled` после оплаты/поставки, `returned`) — заказчик;
+#   * `member` бригады двигает только физическую поставку (`delivered`).
+_C, _L, _F, _M = "customer", "lead", "foreman", "member"
+PURCHASE_TRANSITION_ROLES: dict[PurchaseStatus, dict[PurchaseStatus, frozenset[str]]] = {
+    PurchaseStatus.draft: {
+        PurchaseStatus.approved: frozenset({_C, _L}),
+        PurchaseStatus.ordered: frozenset({_C, _L, _F}),
+        PurchaseStatus.cancelled: frozenset({_C, _L}),
+    },
+    PurchaseStatus.approved: {
+        PurchaseStatus.ordered: frozenset({_C, _L, _F}),
+        PurchaseStatus.cancelled: frozenset({_C, _L}),
+    },
+    PurchaseStatus.ordered: {
+        PurchaseStatus.partial: frozenset({_C}),
+        PurchaseStatus.paid: frozenset({_C}),
+        PurchaseStatus.cancelled: frozenset({_C, _L}),
+    },
+    PurchaseStatus.partial: {
+        PurchaseStatus.paid: frozenset({_C}),
+        PurchaseStatus.cancelled: frozenset({_C}),
+    },
+    PurchaseStatus.paid: {
+        PurchaseStatus.delivered: frozenset({_C, _L, _F, _M}),
+        PurchaseStatus.cancelled: frozenset({_C}),
+    },
+    PurchaseStatus.delivered: {
+        PurchaseStatus.returned: frozenset({_C}),
+        PurchaseStatus.cancelled: frozenset({_C}),
+    },
+}
+
+
+def authorize_purchase_transition(role: str, current: PurchaseStatus, target: PurchaseStatus) -> None:
+    """409 `purchase_transition_skipped` — перескок; 403 `purchase_transition_forbidden` — роль."""
+    if current == target:
+        return
+    allowed = PURCHASE_TRANSITION_ROLES.get(current, {}).get(target)
+    if allowed is None:
+        raise ValueError("purchase_transition_skipped")
+    if role not in allowed:
+        raise PermissionError("purchase_transition_forbidden")
+
+
 def purchase_status_event(
     status: PurchaseStatus,
     items_count: int,
@@ -270,8 +320,13 @@ async def transition_status(
     purchase_id: str,
     status: PurchaseStatus,
     actor_id: str,
+    actor_role: str | None = None,
 ) -> tuple[Purchase | None, bool]:
-    """Project-scoped, row-locked and replay-safe purchase transition."""
+    """Project-scoped, row-locked and replay-safe purchase transition.
+
+    `actor_role` (API-вызовы) включает ролевую карту PURCHASE_TRANSITION_ROLES;
+    без роли (внутренние вызовы, set_status) действует только validate_*.
+    """
     query = (
         select(Purchase)
         .where(Purchase.id == purchase_id, Purchase.project_id == project_id)
@@ -290,6 +345,8 @@ async def transition_status(
     if current == status:
         await db.commit()
         return purchase, False
+    if actor_role is not None:
+        authorize_purchase_transition(actor_role, current, status)
 
     now = utc_now()
     purchase.status = status

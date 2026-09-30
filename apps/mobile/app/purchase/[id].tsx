@@ -12,7 +12,7 @@ import { api, Purchase } from '@/lib/api';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { budgetTabRoute, calendarTabRoute, repairTabRoute } from '@/constants/osSections';
 import { pushOsNav, replaceOsNav } from '@/lib/pushOsNav';
-import { PURCHASE_NEXT_STATUS, purchaseAdvanceLabel } from '@/lib/domain/purchaseLifecycle';
+import { PURCHASE_NEXT_STATUS, purchaseAdvanceLabel, purchaseRoleMayMove } from '@/lib/domain/purchaseLifecycle';
 import { alertPurchaseAdvanced } from '@/lib/procurementNav';
 import { reportError } from '@/lib/reportError';
 
@@ -40,7 +40,8 @@ export default function PurchaseDetailScreen() {
 
   if (!purchase) return <View style={s.center}><Text>Загрузка…</Text></View>;
 
-  const next = PURCHASE_NEXT_STATUS[purchase.status];
+  const rawNext = PURCHASE_NEXT_STATUS[purchase.status];
+  const next = rawNext && purchaseRoleMayMove(role, rawNext) ? rawNext : null;
 
   return (
     <>
