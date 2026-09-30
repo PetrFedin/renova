@@ -4,9 +4,21 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import pytest
+
 # Настройки читают ENVIRONMENT при импорте app.*. Без явного значения приложение
 # fail-closed (production), поэтому тестовый прогон задаёт профиль явно, до импортов.
 os.environ.setdefault("ENVIRONMENT", "test")
+
+
+@pytest.fixture(autouse=True)
+def _reset_local_rate_limiter():
+    """Тесты делят один процесс; счётчик лимитера не должен копиться между ними."""
+    from app.core.rate_limit import rate_limiter
+
+    with rate_limiter._local_lock:
+        rate_limiter._local_windows.clear()
+    yield
 
 
 def pytest_sessionstart(session):
