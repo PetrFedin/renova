@@ -22,6 +22,8 @@ from app.models.entities import (
     ChatThreadRead,
     DomainOutbox,
     Project,
+    Team,
+    TeamMember,
     User,
 )
 from app.services import notification_service as notif_svc
@@ -628,18 +630,82 @@ async def pin_message(db: AsyncSession, message_id: str, pin: bool = True) -> Ch
     return msg
 
 
-async def list_participants(db: AsyncSession, thread_id: str) -> list[dict]:
-    r = await db.execute(select(ChatThreadParticipant).where(ChatThreadParticipant.thread_id == thread_id))
-    out = []
+async def list_participants(
+    db: AsyncSession,
+    thread_id: str,
+    viewer: User | None = None,
+) -> list[dict]:
+    """Real members of the thread: project members plus explicitly invited people.
+
+    Chat access is project-wide for the customer, the assigned contractor and that
+    contractor's team, so they are participants of every thread even without a
+    ``ChatThreadParticipant`` row; reading only invitations left the list empty for
+    them. Invited rows are merged in (deduplicated by user).
+
+    ACL: phone and profile_code are contact data, shown only when ``viewer`` holds
+    owner/contractor project authority. A thread-only invitee, a read-only guest or
+    an unknown viewer (``None``, fail-closed) sees names and roles only.
+    """
+    from app.services import team_service
+
+    thread = await db.get(ChatThread, thread_id)
+    project = await db.get(Project, thread.project_id) if thread else None
+    show_contacts = False
+    if viewer is not None and project is not None:
+        mode, _ro = await team_service.project_access_mode(db, viewer, project)
+        show_contacts = mode in ("owner", "contractor")
+
+    def _contacts(phone: str | None, code: str | None) -> dict:
+        return {"phone": phone, "profile_code": code} if show_contacts else {"phone": None, "profile_code": None}
+
+    out: list[dict] = []
+    seen: set[str] = set()
+
+    def _add_member(u: User | None, role: str) -> None:
+        if u is None or u.id in seen or getattr(u, "deleted_at", None):
+            return
+        seen.add(u.id)
+        out.append({
+            "id": f"project:{thread_id}:{u.id}",
+            "user_id": u.id,
+            **_contacts(u.phone, u.profile_code),
+            "full_name": u.full_name,
+            "status": "active",
+            "role": role,
+        })
+
+    if project is not None:
+        _add_member(await db.get(User, project.customer_id) if project.customer_id else None, "customer")
+        _add_member(await db.get(User, project.contractor_id) if project.contractor_id else None, "contractor")
+        if project.contractor_id:
+            team_rows = await db.execute(
+                select(TeamMember, User)
+                .join(Team, Team.id == TeamMember.team_id)
+                .join(User, User.id == TeamMember.user_id)
+                .where(Team.owner_id == project.contractor_id)
+                .order_by(TeamMember.created_at.asc(), TeamMember.id.asc())
+            )
+            for member, u in team_rows.all():
+                _add_member(u, f"team_{member.role}")
+
+    r = await db.execute(
+        select(ChatThreadParticipant)
+        .where(ChatThreadParticipant.thread_id == thread_id)
+        .order_by(ChatThreadParticipant.created_at.asc(), ChatThreadParticipant.id.asc())
+    )
     for p in r.scalars().all():
+        if p.user_id and p.user_id in seen:
+            continue  # already listed as a project member
         u = await db.get(User, p.user_id) if p.user_id else None
+        if p.user_id:
+            seen.add(p.user_id)
         out.append({
             "id": p.id,
             "user_id": p.user_id,
-            "phone": p.phone or (u.phone if u else None),
-            "profile_code": p.profile_code or (u.profile_code if u else None),
+            **_contacts(p.phone or (u.phone if u else None), p.profile_code or (u.profile_code if u else None)),
             "full_name": u.full_name if u else None,
             "status": p.status,
+            "role": "invited",
         })
     return out
 

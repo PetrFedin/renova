@@ -257,7 +257,7 @@ async def get_chat(project_id: str, thread_id: str, user: User = Depends(get_cur
         ),
         "messages": msgs,
         "pinned_messages": [m for m in msgs if m.get("is_pinned")],
-        "participants": await chat_svc.list_participants(db, thread_id),
+        "participants": await chat_svc.list_participants(db, thread_id, user),
         "capabilities": await _chat_capabilities(db, project_id=project_id, user=user),
     }
 
@@ -267,7 +267,7 @@ async def get_participants(project_id: str, thread_id: str, user: User = Depends
     await require_chat_access(
         db, project_id, thread_id, user, write=False, allow_participant=True,
     )
-    return await chat_svc.list_participants(db, thread_id)
+    return await chat_svc.list_participants(db, thread_id, user)
 
 
 @router.post("/{project_id}/chats/{thread_id}/invite")
