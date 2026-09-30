@@ -198,6 +198,40 @@ async def sync_current_lead_in_transaction(
     return participant
 
 
+async def release_current_lead_in_transaction(
+    db: AsyncSession, *, project: Project, actor_id: str | None, reason: str = "lead_released",
+) -> str | None:
+    """Detach the current lead from a locked project without committing.
+
+    Only the link changes: the participant row is kept (status ``removed``, with
+    an audit event) and nothing the lead created is touched. Returns the former
+    lead's user id, or None when the project had no lead.
+    """
+    former = project.contractor_id
+    now = utc_now()
+    leads = list((await db.scalars(
+        select(ProjectParticipant).where(
+            ProjectParticipant.project_id == project.id,
+            ProjectParticipant.participant_role == "lead_contractor",
+            ProjectParticipant.status == "active",
+        ).with_for_update().execution_options(populate_existing=True)
+    )).all())
+    for lead in leads:
+        lead.status = "removed"
+        lead.all_scope = False
+        lead.can_manage_schedule = False
+        lead.can_manage_commercial = False
+        lead.can_manage_documents = False
+        lead.removed_by, lead.removed_at = actor_id, now
+        await _record_event(
+            db, participant=lead, event_type="removed", actor_id=actor_id,
+            snapshot_json=_event_snapshot(reason=reason),
+        )
+    project.contractor_id = None
+    await db.flush()
+    return former
+
+
 async def _locked_customer_project(
     db: AsyncSession, *, project_id: str, actor_id: str,
 ) -> Project:

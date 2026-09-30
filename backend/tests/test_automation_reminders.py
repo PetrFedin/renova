@@ -1,4 +1,5 @@
 """Integration: automation reminder tick — overdue stages + waste pickup."""
+from tests.helpers_flow import self_assign
 from datetime import date, timedelta
 
 import pytest
@@ -45,7 +46,7 @@ async def _demo_project(client: AsyncClient):
     h_cust = {"X-User-Id": cust["id"]}
     h_cont = {"X-User-Id": cont["id"]}
     pid = (await client.get("/api/v1/projects", headers=h_cust)).json()[0]["id"]
-    await client.post(f"/api/v1/projects/{pid}/assign", headers=h_cont)
+    await self_assign(client, pid, h_cont)
     return pid, cust["id"], h_cust, h_cont
 
 

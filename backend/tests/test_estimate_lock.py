@@ -8,7 +8,7 @@ from app.main import app
 from app.models.project_documents import DocumentStatus, DocumentType, ProjectDocument
 from app.services.seed_articles import seed_articles
 from app.services.seed_demo import ensure_demo_users
-from tests.helpers_flow import lock_estimate_w57
+from tests.helpers_flow import lock_estimate_w57, self_assign
 
 pytestmark = pytest.mark.asyncio
 
@@ -38,7 +38,7 @@ async def test_lock_estimate_creates_contract_draft():
         h_cont = {"X-User-Id": cont["id"]}
         h_cust = {"X-User-Id": cust["id"]}
         pid = (await client.get("/api/v1/projects", headers=h_cust)).json()[0]["id"]
-        await client.post(f"/api/v1/projects/{pid}/assign", headers=h_cont)
+        await self_assign(client, pid, h_cont)
         locked = await lock_estimate_w57(client, pid, h_cont, h_cust)
         body = locked.json()
         assert body.get("estimate_locked_at")
@@ -66,7 +66,7 @@ async def test_lock_blocks_estimate_patch():
         h_cont = {"X-User-Id": cont["id"]}
         h_cust = {"X-User-Id": cust["id"]}
         pid = (await client.get("/api/v1/projects", headers=h_cust)).json()[0]["id"]
-        await client.post(f"/api/v1/projects/{pid}/assign", headers=h_cont)
+        await self_assign(client, pid, h_cont)
         detail = (await client.get(f"/api/v1/projects/{pid}", headers=h_cont)).json()
         line_id = detail["estimate_lines"][0]["id"]
         await lock_estimate_w57(client, pid, h_cont, h_cust)
@@ -88,6 +88,6 @@ async def test_customer_can_lock_estimate():
         h_cont = {"X-User-Id": cont["id"]}
         h_cust = {"X-User-Id": cust["id"]}
         pid = (await client.get("/api/v1/projects", headers=h_cust)).json()[0]["id"]
-        await client.post(f"/api/v1/projects/{pid}/assign", headers=h_cont)
+        await self_assign(client, pid, h_cont)
         locked = await lock_estimate_w57(client, pid, h_cont, h_cust)
         assert locked.json().get("estimate_locked_at")

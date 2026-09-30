@@ -3,7 +3,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from app.db.session import init_db, SessionLocal
 from app.services.seed_demo import ensure_demo_users
-from tests.helpers_flow import complete_stage_checklist
+from tests.helpers_flow import complete_stage_checklist, self_assign
 from app.services.seed_articles import seed_articles
 from app.main import app
 
@@ -33,7 +33,7 @@ async def test_demo_flow():
         assert cust.get("id")
         h = {"X-User-Id": cust["id"]}
         pid = (await client.get("/api/v1/projects", headers=h)).json()[0]["id"]
-        await client.post(f"/api/v1/projects/{pid}/assign", headers={"X-User-Id": cont["id"]})
+        await self_assign(client, pid, {"X-User-Id": cont["id"]})
         stages = (await client.get(f"/api/v1/projects/{pid}", headers=h)).json()["stages"]
         active = next(s for s in stages if s["status"] in ("active", "review"))
         h_cont = {"X-User-Id": cont["id"]}

@@ -8,6 +8,7 @@ Covers:
 - /projects/{id}/analytics end-to-end (materials_fact).
 """
 import pytest
+from tests.helpers_flow import self_assign
 from httpx import ASGITransport, AsyncClient
 
 from app.db.session import init_db
@@ -81,7 +82,7 @@ async def test_materials_stats_endpoint_preserves_explicit_zero():
         h_cont = {"X-User-Id": cont["id"]}
         h_cust = {"X-User-Id": cust["id"]}
         pid = (await client.get("/api/v1/projects", headers=h_cust)).json()[0]["id"]
-        await client.post(f"/api/v1/projects/{pid}/assign", headers=h_cont)
+        await self_assign(client, pid, h_cont)
         before = (await client.get(f"/api/v1/projects/{pid}/estimate/materials-stats", headers=h_cont)).json()
 
         created = await client.post(
@@ -113,7 +114,7 @@ async def test_analytics_endpoint_materials_fact_preserves_explicit_zero():
         h_cont = {"X-User-Id": cont["id"]}
         h_cust = {"X-User-Id": cust["id"]}
         pid = (await client.get("/api/v1/projects", headers=h_cust)).json()[0]["id"]
-        await client.post(f"/api/v1/projects/{pid}/assign", headers=h_cont)
+        await self_assign(client, pid, h_cont)
         before = (await client.get(f"/api/v1/projects/{pid}/analytics", headers=h_cust)).json()
 
         created = await client.post(
@@ -143,7 +144,7 @@ async def test_analytics_endpoint_materials_fact_positive_actual_unaffected():
         h_cont = {"X-User-Id": cont["id"]}
         h_cust = {"X-User-Id": cust["id"]}
         pid = (await client.get("/api/v1/projects", headers=h_cust)).json()[0]["id"]
-        await client.post(f"/api/v1/projects/{pid}/assign", headers=h_cont)
+        await self_assign(client, pid, h_cont)
         before = (await client.get(f"/api/v1/projects/{pid}/analytics", headers=h_cust)).json()
 
         created = await client.post(

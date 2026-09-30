@@ -7,6 +7,7 @@ import app.models.entities  # noqa: F401
 import app.models.work_schedule  # noqa: F401
 import app.models.project_documents  # noqa: F401
 import app.models.outbox_runtime  # noqa: F401
+import app.models.project_assignment_requests  # noqa: F401
 
 
 @pytest.fixture

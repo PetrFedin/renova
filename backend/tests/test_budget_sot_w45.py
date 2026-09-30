@@ -1,5 +1,6 @@
 """W45: единый writer budget_planned = estimate + approved CO."""
 import pytest
+from tests.helpers_flow import self_assign
 from httpx import ASGITransport, AsyncClient
 
 from app.db.session import init_db
@@ -38,7 +39,7 @@ async def test_co_approve_does_not_double_count_planned():
         h_cust = {"X-User-Id": cust["id"]}
         h_cont = {"X-User-Id": cont["id"]}
         pid = (await client.get("/api/v1/projects", headers=h_cust)).json()[0]["id"]
-        await client.post(f"/api/v1/projects/{pid}/assign", headers=h_cont)
+        await self_assign(client, pid, h_cont)
 
         # sync SoT before measuring base
         summary_before = await client.get(f"/api/v1/projects/{pid}/os/budget", headers=h_cust)

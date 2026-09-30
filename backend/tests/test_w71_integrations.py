@@ -1,5 +1,6 @@
 """W71: hub CO → budget + sign draft; estimate CSV import."""
 import pytest
+from tests.helpers_flow import self_assign
 from httpx import ASGITransport, AsyncClient
 
 from app.core import config as cfg
@@ -41,7 +42,7 @@ async def test_hub_approve_change_order_updates_budget_and_doc():
         h_cust = {"X-User-Id": cust["id"]}
         h_cont = {"X-User-Id": cont["id"]}
         pid = (await client.get("/api/v1/projects", headers=h_cust)).json()[0]["id"]
-        await client.post(f"/api/v1/projects/{pid}/assign", headers=h_cont)
+        await self_assign(client, pid, h_cont)
 
         before = (await client.get(f"/api/v1/projects/{pid}/os/budget", headers=h_cust)).json()
         planned0 = float(before.get("budget_planned") or 0)
@@ -79,7 +80,7 @@ async def test_estimate_csv_import():
         h_cust = {"X-User-Id": cust["id"]}
         h_cont = {"X-User-Id": cont["id"]}
         pid = (await client.get("/api/v1/projects", headers=h_cust)).json()[0]["id"]
-        await client.post(f"/api/v1/projects/{pid}/assign", headers=h_cont)
+        await self_assign(client, pid, h_cont)
 
         csv_text = (
             "name,line_type,unit,quantity_planned,unit_price,room_name\n"

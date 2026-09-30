@@ -7,7 +7,7 @@ from app.db.session import init_db
 from app.main import app
 from app.services.seed_articles import seed_articles
 from app.services.seed_demo import ensure_demo_users
-from tests.helpers_flow import complete_stage_checklist
+from tests.helpers_flow import complete_stage_checklist, self_assign
 
 pytestmark = pytest.mark.asyncio
 
@@ -42,7 +42,7 @@ async def test_acceptance_marks_floor_pin_label():
         h_c = {"X-User-Id": cust["id"]}
         h_k = {"X-User-Id": cont["id"]}
         pid = (await client.get("/api/v1/projects", headers=h_c)).json()[0]["id"]
-        await client.post(f"/api/v1/projects/{pid}/assign", headers=h_k)
+        await self_assign(client, pid, h_k)
         detail = (await client.get(f"/api/v1/projects/{pid}", headers=h_c)).json()
         rooms = detail.get("rooms") or []
         stages = detail.get("stages") or []

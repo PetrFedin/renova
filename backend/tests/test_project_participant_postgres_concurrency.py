@@ -190,8 +190,8 @@ async def test_concurrent_different_contractors_collapse_to_one_current_lead(mon
             result = await assignment_service.assign_contractor(
                 db,
                 project_id=project_id,
-                contractor_id=contractor_id,
-                actor_id=contractor_id,
+                contractor_id=customer_id,
+                actor_id=customer_id,
             )
             return result.status, result.current_contractor_id
 

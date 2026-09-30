@@ -1,4 +1,5 @@
 """W66: portal return, hub approve, schedule role-gate, propose TTL."""
+from tests.helpers_flow import self_assign
 from datetime import datetime, timedelta
 
 import pytest
@@ -52,7 +53,7 @@ async def _seed_acceptance(client: AsyncClient):
     h_cust = {"X-User-Id": cust["id"]}
     h_cont = {"X-User-Id": cont["id"]}
     pid = (await client.get("/api/v1/projects", headers=h_cust)).json()[0]["id"]
-    await client.post(f"/api/v1/projects/{pid}/assign", headers=h_cont)
+    await self_assign(client, pid, h_cont)
     # W66: demo ставит первый этап в review + pending acceptance
     pending = (await client.get(f"/api/v1/projects/{pid}/work-acceptances", headers=h_cust)).json()
     open_acc = next(

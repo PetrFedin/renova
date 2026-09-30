@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.models.entities import Project, User, UserRole
+from app.models.entities import ContractorProfile, Project, User, UserRole
 from app.services import project_participant_service as participant_service
 from app.services.subscription_service import is_pro
 
@@ -40,6 +40,53 @@ async def _project_count(db: AsyncSession, contractor_id: str) -> int:
     )
 
 
+async def resolve_contractor_user_id(db: AsyncSession, contractor_ref: str) -> str:
+    """Accept a user id or a ContractorProfile id (directory rows carry both).
+
+    ROLE-006: the directory used to hand out ``profile.id`` and the client sent
+    it straight to ``/contractor``, which only understood ``users.id``. A profile
+    id is unambiguous (uuid), so the server maps it to the owning user instead of
+    depending on every client passing the right one.
+    """
+    if await db.get(User, contractor_ref) is not None:
+        return contractor_ref
+    owner = await db.scalar(
+        select(ContractorProfile.user_id).where(ContractorProfile.id == contractor_ref)
+    )
+    return owner or contractor_ref
+
+
+async def assign_locked(
+    db: AsyncSession,
+    *,
+    project: Project,
+    contractor_id: str,
+    actor_id: str | None,
+) -> AssignmentStatus | None:
+    """Validate and apply a lead assignment on an already locked project.
+
+    Returns an error status, or ``None`` after the lead was synchronized. The
+    caller owns the transaction (commit/rollback); this never commits.
+    """
+    current = project.contractor_id
+    if current and current != contractor_id:
+        return "already_assigned"
+
+    target = await db.get(User, contractor_id, populate_existing=True)
+    if target is None or target.role != UserRole.contractor or target.deleted_at is not None:
+        return "contractor_invalid"
+
+    if current != contractor_id:
+        count = await _project_count(db, contractor_id)
+        if count >= settings.contractor_free_project_limit and not await is_pro(db, contractor_id):
+            return "subscription_required"
+
+    await participant_service.sync_current_lead_in_transaction(
+        db, project=project, contractor_id=contractor_id, actor_id=actor_id,
+    )
+    return None
+
+
 async def assign_contractor(
     db: AsyncSession,
     *,
@@ -54,6 +101,10 @@ async def assign_contractor(
     does not replace stale attributes in SQLAlchemy's identity map. Actor/target
     validation and lifecycle checks also happen inside this transaction.
     actor_id=None is reserved for trusted internal compatibility callers.
+
+    Only the project's customer (or a trusted internal caller) may assign. A
+    contractor's own wish to lead a project is a *request* the customer must
+    confirm (see project_assignment_request_service), never an assignment.
     """
     try:
         project = await db.scalar(
@@ -73,33 +124,21 @@ async def assign_contractor(
                 actor is not None and actor.deleted_at is None
                 and actor.role == UserRole.customer and actor.id == project.customer_id
             )
-            is_self_claim = bool(
-                actor is not None and actor.deleted_at is None
-                and actor.role == UserRole.contractor and actor.id == contractor_id
-            )
-            if not (is_owner or is_self_claim):
+            if not is_owner:
                 await db.rollback()
                 return AssignmentResult(status="forbidden")
+            contractor_id = await resolve_contractor_user_id(db, contractor_id)
 
-        current = project.contractor_id
-        if current and current != contractor_id:
-            await db.rollback()
-            return AssignmentResult(status="already_assigned", current_contractor_id=current)
-
-        target = await db.get(User, contractor_id, populate_existing=True)
-        if target is None or target.role != UserRole.contractor or target.deleted_at is not None:
-            await db.rollback()
-            return AssignmentResult(status="contractor_invalid")
-
-        if current != contractor_id:
-            count = await _project_count(db, contractor_id)
-            if count >= settings.contractor_free_project_limit and not await is_pro(db, contractor_id):
-                await db.rollback()
-                return AssignmentResult(status="subscription_required")
-
-        await participant_service.sync_current_lead_in_transaction(
+        error = await assign_locked(
             db, project=project, contractor_id=contractor_id, actor_id=actor_id,
         )
+        if error is not None:
+            current = project.contractor_id
+            await db.rollback()
+            return AssignmentResult(
+                status=error,
+                current_contractor_id=current if error == "already_assigned" else None,
+            )
         await db.commit()
     except BaseException:
         await db.rollback()

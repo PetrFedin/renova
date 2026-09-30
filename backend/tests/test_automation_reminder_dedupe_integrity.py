@@ -1,4 +1,5 @@
 """Regression coverage for persistent periodic-reminder deduplication."""
+from tests.helpers_flow import self_assign
 from datetime import date, timedelta
 
 import pytest
@@ -45,7 +46,7 @@ async def _project_with_assignment(client: AsyncClient):
     customer_headers = {"X-User-Id": customer["id"]}
     contractor_headers = {"X-User-Id": contractor["id"]}
     project_id = (await client.get("/api/v1/projects", headers=customer_headers)).json()[0]["id"]
-    await client.post(f"/api/v1/projects/{project_id}/assign", headers=contractor_headers)
+    await self_assign(client, project_id, contractor_headers)
     return project_id, customer["id"], contractor["id"]
 
 

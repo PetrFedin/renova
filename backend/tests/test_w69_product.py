@@ -1,5 +1,6 @@
 """W69: partial payment %, templates, escalate."""
 import pytest
+from tests.helpers_flow import self_assign
 from httpx import ASGITransport, AsyncClient
 
 from app.core import config as cfg
@@ -62,7 +63,7 @@ async def test_partial_stage_payment_percent():
         h_cust = {"X-User-Id": cust["id"]}
         h_cont = {"X-User-Id": cont["id"]}
         pid = (await client.get("/api/v1/projects", headers=h_cust)).json()[0]["id"]
-        await client.post(f"/api/v1/projects/{pid}/assign", headers=h_cont)
+        await self_assign(client, pid, h_cont)
         detail = (await client.get(f"/api/v1/projects/{pid}", headers=h_cust)).json()
         stage = detail["stages"][0]
         # set payment_amount via patch if needed - stages may have amount from seed
@@ -102,7 +103,7 @@ async def test_escalate_issue():
         h_cust = {"X-User-Id": cust["id"]}
         h_cont = {"X-User-Id": cont["id"]}
         pid = (await client.get("/api/v1/projects", headers=h_cust)).json()[0]["id"]
-        await client.post(f"/api/v1/projects/{pid}/assign", headers=h_cont)
+        await self_assign(client, pid, h_cont)
         issue = await client.post(
             f"/api/v1/projects/{pid}/issues",
             headers=h_cust,

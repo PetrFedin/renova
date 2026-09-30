@@ -1,5 +1,6 @@
 """W74: 1C archive, bank→expense, commerceml catalog, digest."""
 import pytest
+from tests.helpers_flow import self_assign
 from httpx import ASGITransport, AsyncClient
 
 from app.core import config as cfg
@@ -73,7 +74,7 @@ async def test_commerceml_includes_catalog_when_estimate_exists():
         h_c = {"X-User-Id": cust["id"]}
         h_k = {"X-User-Id": cont["id"]}
         pid = (await client.get("/api/v1/projects", headers=h_c)).json()[0]["id"]
-        await client.post(f"/api/v1/projects/{pid}/assign", headers=h_k)
+        await self_assign(client, pid, h_k)
         # add estimate line via import
         await client.post(
             f"/api/v1/projects/{pid}/estimate/import-csv",

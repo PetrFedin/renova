@@ -1,5 +1,6 @@
 """W73: warranty post-closeout SLA, Grand-Smeta CSV, escalate ACL."""
 import pytest
+from tests.helpers_flow import self_assign
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
@@ -84,7 +85,7 @@ async def test_estimate_import_grandsmeta_semicolon():
         h_c = {"X-User-Id": cust["id"]}
         h_k = {"X-User-Id": cont["id"]}
         pid = (await client.get("/api/v1/projects", headers=h_c)).json()[0]["id"]
-        await client.post(f"/api/v1/projects/{pid}/assign", headers=h_k)
+        await self_assign(client, pid, h_k)
 
         csv_text = (
             "№;Наименование;Ед. изм.;Количество;Цена;Сумма\n"

@@ -5,6 +5,7 @@ Stage or Payment from Project B to a document created under Project A's path,
 via either the JSON create endpoint or the multipart upload endpoint.
 """
 import pytest
+from tests.helpers_flow import self_assign
 from httpx import ASGITransport, AsyncClient
 
 from app.db.session import init_db
@@ -65,8 +66,8 @@ async def _setup_two_projects(client: AsyncClient):
     pid_b = created_b.json()["id"]
     assert pid_a != pid_b
 
-    assert (await client.post(f"/api/v1/projects/{pid_a}/assign", headers=h_cont)).status_code == 200
-    assert (await client.post(f"/api/v1/projects/{pid_b}/assign", headers=h_cont)).status_code == 200
+    await self_assign(client, pid_a, h_cont)
+    await self_assign(client, pid_b, h_cont)
 
     stage_a = (
         await client.post(

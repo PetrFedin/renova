@@ -6,7 +6,7 @@ from app.db.session import init_db
 from app.main import app
 from app.services.seed_articles import seed_articles
 from app.services.seed_demo import ensure_demo_users
-from tests.helpers_flow import complete_stage_checklist
+from tests.helpers_flow import complete_stage_checklist, self_assign
 
 pytestmark = pytest.mark.asyncio
 
@@ -39,7 +39,7 @@ async def test_bank_confirm_pending_after_acceptance():
         h_cust = {"X-User-Id": cust["id"]}
         h_cont = {"X-User-Id": cont["id"]}
         pid = (await client.get("/api/v1/projects", headers=h_cust)).json()[0]["id"]
-        await client.post(f"/api/v1/projects/{pid}/assign", headers=h_cont)
+        await self_assign(client, pid, h_cont)
 
         stages = (await client.get(f"/api/v1/projects/{pid}", headers=h_cust)).json()["stages"]
         # После assign demo часто в review (очередь приёмки), не active
