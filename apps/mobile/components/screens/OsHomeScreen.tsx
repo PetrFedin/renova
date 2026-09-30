@@ -327,7 +327,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
     return (
       <ScrollView style={s.container} contentContainerStyle={s.content}>
         <Text style={s.emptyTitle}>Нет объектов</Text>
-        <PrimaryButton title="Заявки и новые объекты" onPress={() => pushOsNav('/job-leads', undefined, role)} />
+        <PrimaryButton title="Заявки и новые объекты" variant="accent" onPress={() => pushOsNav('/job-leads', undefined, role)} />
       </ScrollView>
     );
   }

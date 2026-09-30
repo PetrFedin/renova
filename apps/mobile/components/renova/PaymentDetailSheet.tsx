@@ -564,10 +564,10 @@ export function PaymentDetailSheet({
     <>
       {step === 'info' ? (
         stageNeedsAcceptance ? (
-          <PrimaryButton title="Перейти к приёмке" onPress={goToAcceptance} disabled={busy} fullWidth />
+          <PrimaryButton title="Перейти к приёмке" variant="accent" onPress={goToAcceptance} disabled={busy} fullWidth />
         ) : (
           <>
-            <PrimaryButton title="Оплатить картой (ЮKassa)" onPress={() => { void payWithCard(); }} loading={mutation === 'card'} disabled={busy && mutation !== 'card'} fullWidth />
+            <PrimaryButton title="Оплатить картой (ЮKassa)" variant="accent" onPress={() => { void payWithCard(); }} loading={mutation === 'card'} disabled={busy && mutation !== 'card'} fullWidth />
             <PrimaryButton title="Перевести (СБП / реквизиты)" variant="outline" onPress={() => setStep('transfer')} disabled={busy} fullWidth />
             <PrimaryButton title="Прикрепить чек" variant="outline" onPress={openReceipt} disabled={busy} fullWidth />
           </>

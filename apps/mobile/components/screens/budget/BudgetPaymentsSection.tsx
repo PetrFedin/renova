@@ -81,7 +81,7 @@ export function BudgetPaymentsSection({
           {canCreate ? (
             <PrimaryButton
               title={createOpen ? 'Скрыть форму' : 'Выставить счёт'}
-              variant={createOpen ? 'outline' : 'primary'}
+              variant={createOpen ? 'outline' : 'accent'}
               onPress={() => setCreateOpen((value) => !value)}
             />
           ) : null}

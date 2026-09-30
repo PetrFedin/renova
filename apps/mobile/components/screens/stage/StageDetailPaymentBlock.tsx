@@ -100,7 +100,7 @@ export function StageDetailPaymentBlock({
         <Text style={s.head}>Оплата этапа</Text>
         <Text style={s.amount}>{formatRub(pending.amount)}</Text>
         <Text style={s.sub}>{pending.title}</Text>
-        <PrimaryButton title="Оплатить" onPress={() => setSelected(pending)} disabled={readOnly} />
+        <PrimaryButton title="Оплатить" variant="accent" onPress={() => setSelected(pending)} disabled={readOnly} />
       </View>
       <PaymentDetailSheet
         payment={selected}

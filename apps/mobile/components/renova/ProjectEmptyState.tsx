@@ -382,7 +382,7 @@ export function ProjectEmptyState({
       {showCreate && bucket === 'active' && role === 'customer' ? (
         <PrimaryButton
           title="Создать объект"
-          variant={projects.length ? 'outline' : 'primary'}
+          variant={projects.length ? 'outline' : 'accent'}
           disabled={Boolean(templateCreatingId) || refreshingProjects}
           onPress={() => pushOsNav('/wizard/type', pathname, 'customer')}
         />

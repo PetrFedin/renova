@@ -278,7 +278,7 @@ export function CreateChatSheet({
               </View>
             ))}
 
-            <PrimaryButton title="Создать и открыть" onPress={() => { void submit(); }} loading={busy} fullWidth />
+            <PrimaryButton title="Создать и открыть" variant="accent" onPress={() => { void submit(); }} loading={busy} fullWidth />
             <PrimaryButton title="Отмена" variant="ghost" onPress={closeSafely} disabled={busy} fullWidth />
           </ScrollView>
         </Pressable>

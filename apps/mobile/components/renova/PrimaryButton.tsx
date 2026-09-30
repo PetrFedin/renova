@@ -3,7 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { RenovaTheme } from '@/constants/Theme';
 import { reportCatch } from '@/lib/reportError';
 
-type Variant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'dangerOutline';
+type Variant = 'primary' | 'accent' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'dangerOutline';
 type Size = 'sm' | 'md' | 'lg';
 type PressState = { pressed: boolean };
 
@@ -56,6 +56,7 @@ export function PrimaryButton({
   const isOutline = variant === 'outline' || variant === 'dangerOutline';
   const isGhost = variant === 'ghost';
   const isSecondary = variant === 'secondary';
+  const isAccent = variant === 'accent';
   const unavailable = Boolean(disabled || loading);
 
   return (
@@ -70,6 +71,7 @@ export function PrimaryButton({
         { paddingVertical: pad.v, paddingHorizontal: pad.h },
         fullWidth && styles.fullWidth,
         isSecondary && styles.secondary,
+        isAccent && styles.accent,
         isOutline && !isDanger && styles.outline,
         isOutline && isDanger && styles.dangerOutline,
         variant === 'danger' && styles.danger,
@@ -115,6 +117,8 @@ const styles = StyleSheet.create({
   },
   fullWidth: { alignSelf: 'stretch', width: '100%' },
   secondary: { backgroundColor: RenovaTheme.colors.surfaceMuted },
+  /** Единственный акцентный CTA на экран — самое важное действие. */
+  accent: { backgroundColor: RenovaTheme.colors.accent },
   outline: { backgroundColor: 'transparent', borderWidth: 1, borderColor: RenovaTheme.colors.border },
   dangerOutline: { backgroundColor: 'transparent', borderWidth: 1, borderColor: RenovaTheme.colors.dangerBorder },
   danger: { backgroundColor: RenovaTheme.colors.danger },

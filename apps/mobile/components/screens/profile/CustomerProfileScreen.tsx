@@ -125,7 +125,7 @@ export function CustomerProfileScreen() {
       <ProfileSection title="Проект">
         <View style={ps.actionGap}>
           <PrimaryButton title="Документы проекта" variant="outline" onPress={() => pushOsNav('/documents', pathname, 'customer')} />
-          <PrimaryButton title="Новый проект" onPress={() => pushOsNav('/wizard/type', pathname, 'customer')} />
+          <PrimaryButton title="Новый проект" variant="accent" onPress={() => pushOsNav('/wizard/type', pathname, 'customer')} />
         </View>
       </ProfileSection>
 
