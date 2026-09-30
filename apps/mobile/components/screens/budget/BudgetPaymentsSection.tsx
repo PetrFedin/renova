@@ -4,6 +4,7 @@ import { View, Text, Pressable } from 'react-native';
 import { formatRub, RenovaTheme } from '@/constants/Theme';
 import { filterChipStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { EmptyActionState } from '@/components/ui/EmptyActionState';
 import { CreatePaymentForm } from '@/components/renova/CreatePaymentForm';
 import { BankStatementImportSheet } from '@/components/renova/BankStatementImportSheet';
 import { PaymentEvidenceSheet } from '@/components/renova/PaymentEvidenceSheet';
@@ -129,14 +130,18 @@ export function BudgetPaymentsSection({
 
       {!filteredPayments.length ? (
         <View style={{ paddingVertical: RenovaTheme.spacing.lg }}>
-          <Text style={s.empty}>{emptyLabel(payFilter)}</Text>
-          {payFilter !== 'all' ? (
-            <PrimaryButton
-              title="Показать все счета"
-              variant="ghost"
-              onPress={() => setPayFilter('all')}
-            />
-          ) : null}
+        <EmptyActionState
+          title={emptyLabel(payFilter)}
+          hint={payFilter === 'all'
+            ? 'Счёт — это оплата работ или материалов. Здесь появится история платежей и их подтверждение.'
+            : undefined}
+          icon="wallet-outline"
+          actionLabel={payFilter === 'all' && canCreate && !createOpen ? 'Выставить счёт' : undefined}
+          actionVariant="accent"
+          onAction={payFilter === 'all' && canCreate && !createOpen ? () => setCreateOpen(true) : undefined}
+          secondaryLabel={payFilter !== 'all' ? 'Показать все счета' : undefined}
+          onSecondary={payFilter !== 'all' ? () => setPayFilter('all') : undefined}
+        />
         </View>
       ) : null}
 

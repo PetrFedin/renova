@@ -313,8 +313,9 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
                   ? 'Этапы появятся после планирования ремонта. Можно написать исполнителю.'
                   : 'Создание этапов доступно владельцу или прорабу бригады.'
             }
+            icon="construct-outline"
             actionLabel={canScheduleStages ? 'Создать этап' : isCustomer ? 'Сообщения' : 'Обновить'}
-            actionVariant="primary"
+            actionVariant="accent"
             onAction={() => {
               if (canScheduleStages) setShowCreate(true);
               else if (isCustomer) pushOsNav(tabsRoute(role, 'chat'), undefined, role);

@@ -5,6 +5,7 @@ import { usePathname } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { EmptyActionState } from '@/components/ui/EmptyActionState';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
@@ -184,7 +185,15 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
           <Text style={styles.loading}>Загружаем комнаты…</Text>
         ) : null}
         {roomsState.status === 'loaded' && !filtered.length ? (
-          <Text style={styles.empty}>Комнат пока нет. Список появится после создания объекта.</Text>
+          <EmptyActionState
+            title={roomFilter === 'archive' ? 'Архив комнат пуст' : 'Комнат пока нет'}
+            hint={roomFilter === 'archive'
+              ? 'Сюда попадают комнаты, убранные из активного списка.'
+              : 'Комнаты нужны, чтобы привязывать к ним расходы, материалы и замечания. Список появится после создания объекта.'}
+            icon="grid-outline"
+            secondaryLabel={roomFilter === 'archive' ? 'К активным комнатам' : 'Показать архив'}
+            onSecondary={() => setRoomFilter(roomFilter === 'archive' ? 'active' : 'archive')}
+          />
         ) : null}
         {groupRoomsByFloor(filtered, activeProject.property_type).map(({ floor, rooms: floorRooms }) => (
           <View key={`f-${floor}`}>
@@ -247,6 +256,8 @@ function ContractorRoomsBody() {
   const canWrite = useWriteAllowed();
   const { user, activeProject, loadProject } = useRenova();
   const [rooms, setRooms] = useState<Room[]>([]);
+  /** Ключ последней успешной загрузки: пустой список показываем только после подтверждения, не при сбое/429 */
+  const [confirmedKey, setConfirmedKey] = useState<string | null>(null);
   const [requests, setRequests] = useState<RoomChangeRequest[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [roomFilter, setRoomFilter] = useState('active');
@@ -282,6 +293,7 @@ function ContractorRoomsBody() {
     try {
       const list = await api.listRooms(user.id, activeProject.id, { archived: roomFilter === 'archive' });
       setRooms(filterRoomsByArchive(list, roomFilter === 'archive'));
+      setConfirmedKey(`${activeProject.id}:${roomFilter}`);
     } catch (e) {
       reportError('rooms.contractor.listRooms', e, { userId: user.id, projectId: activeProject.id, roomFilter });
       if (isRateLimitError(e)) {
@@ -305,6 +317,7 @@ function ContractorRoomsBody() {
 
   if (!activeProject || !user) return <ProjectEmptyState role="contractor" />;
 
+  const roomsConfirmedEmpty = !rooms.length && confirmedKey === `${activeProject.id}:${roomFilter}`;
   const activeRooms = (activeProject.rooms || []).filter((r) => !r.is_archived);
 
   const approveRequest = (request: RoomChangeRequest) => {
@@ -421,7 +434,7 @@ function ContractorRoomsBody() {
             });
           }}
         />
-        {canWrite && roomFilter === 'active' && (
+        {canWrite && roomFilter === 'active' && !roomsConfirmedEmpty && (
           <PrimaryButton title="+ Комната" onPress={() => setShowCreate(true)} disabled={busy} />
         )}
         <SearchFilter query={query} onQuery={setQuery} filters={ROOM_FILTERS} active={roomFilter} onFilter={setRoomFilter} />
@@ -465,6 +478,20 @@ function ContractorRoomsBody() {
             ))}
           </View>
         ))}
+        {roomsConfirmedEmpty ? (
+          <EmptyActionState
+            title={roomFilter === 'archive' ? 'Архив комнат пуст' : 'Комнат пока нет'}
+            hint={roomFilter === 'archive'
+              ? 'Сюда попадают комнаты, убранные из активного списка.'
+              : 'Комнаты нужны, чтобы привязывать к ним смету, расходы и замечания. Добавьте первую — остальное подтянется.'}
+            icon="grid-outline"
+            actionLabel={canWrite && roomFilter === 'active' ? 'Добавить комнату' : undefined}
+            actionVariant="accent"
+            onAction={canWrite && roomFilter === 'active' ? () => setShowCreate(true) : undefined}
+            secondaryLabel={roomFilter === 'archive' ? 'К активным комнатам' : 'Показать архив'}
+            onSecondary={() => setRoomFilter(roomFilter === 'archive' ? 'active' : 'archive')}
+          />
+        ) : null}
       </ScrollView>
       {user && activeProject && (
         <CreateRoomSheet

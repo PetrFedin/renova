@@ -111,7 +111,9 @@ export function UnifiedAcceptanceList({
       <EmptyActionState
         title={isContractor ? 'Нет этапов на приёмке' : 'Сейчас ничего не ждёт решения'}
         hint={isContractor ? 'Когда сдадите этап — статус появится здесь.' : 'Когда исполнитель сдаст этап — решите здесь.'}
+        icon="checkmark-done-outline"
         actionLabel="Открыть этапы"
+        actionVariant="accent"
         onAction={() => pushOsNav(repairTabRoute(role, 'works', 'review'), returnTo)}
       />
     );

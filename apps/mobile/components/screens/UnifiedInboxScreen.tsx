@@ -139,7 +139,8 @@ export function UnifiedInboxScreen({ role, returnTo, heroKind: heroKindProp }: {
             title="Нет активных задач"
             hint="Всё под контролем — можно открыть сообщения или документы."
             actionLabel="Сообщения"
-            actionVariant="primary"
+            actionVariant="accent"
+            icon="checkmark-circle-outline"
             onAction={() => pushOsNav(tabsRoute(role, 'chat'), returnTo, role)}
           />
         ) : null}

@@ -7,6 +7,7 @@ import { parseBudgetPeriod, BUDGET_PERIOD_LABEL } from '@/constants/budgetPeriod
 import { filterRowsByPeriod, sumRows } from '@/lib/domain/aggregateBudgetByPeriod';
 import { formatRub } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { EmptyActionState } from '@/components/ui/EmptyActionState';
 import { ManualExpenseForm } from '@/components/renova/ManualExpenseForm';
 import { ReceiptBulkLinkPanel } from '@/components/renova/ReceiptBulkLinkPanel';
 import { ReceiptBulkCategoryPanel } from '@/components/renova/ReceiptBulkCategoryPanel';
@@ -157,12 +158,15 @@ export function BudgetExpensesSection({
           />
 
           {!filtered.length ? (
-            <>
-              <Text style={s.empty}>{emptyLabel(filter)}</Text>
-              {filter !== 'all' ? (
-                <PrimaryButton title="Показать все траты" variant="ghost" onPress={() => setFilter('all')} />
-              ) : null}
-            </>
+            <EmptyActionState
+              title={emptyLabel(filter)}
+              hint={filter === 'all'
+                ? 'Здесь собираются чеки и расходы по объекту. Добавьте трату ниже — она попадёт в бюджет.'
+                : undefined}
+              icon="receipt-outline"
+              secondaryLabel={filter !== 'all' ? 'Показать все траты' : undefined}
+              onSecondary={filter !== 'all' ? () => setFilter('all') : undefined}
+            />
           ) : null}
 
           {canOperate && filter === 'no-stage' ? (

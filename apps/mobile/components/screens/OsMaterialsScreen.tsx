@@ -5,6 +5,7 @@ import { router, useFocusEffect, useLocalSearchParams, usePathname } from 'expo-
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography, listRowStyles, filterChipStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { EmptyActionState } from '@/components/ui/EmptyActionState';
 import { MaterialPickList } from '@/components/renova/MaterialPickList';
 import { MaterialReceiptReconcile } from '@/components/renova/MaterialReceiptReconcile';
 import { PurchaseList } from '@/components/renova/PurchaseList';
@@ -270,10 +271,11 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
         {subtab === 'picks' ? (
           <>
             {!picks.length ? (
-              <View style={s.empty}>
-                <Text style={s.emptyT}>Материалы ещё не рассчитаны</Text>
-                <Text style={s.emptyM}>Следующий шаг выше сформирует потребности из сметы.</Text>
-              </View>
+              <EmptyActionState
+                title="Материалы ещё не рассчитаны"
+                hint="Потребности считаются из сметы. Следующий шаг выше сформирует их."
+                icon="cube-outline"
+              />
             ) : null}
             {picks.length ? (
               <View style={filterChipStyles.row}>
@@ -311,16 +313,15 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
         {subtab === 'purchases' ? (
           <>
             {!purchases.length ? (
-              <View style={s.empty}>
-                <Text style={s.emptyT}>Закупок пока нет</Text>
-                <Text style={s.emptyM}>
-                  {readyCount > 0
-                    ? `Следующий шаг выше создаст закупку из ${readyCount} согласованных позиций.`
-                    : needBuy > 0
-                      ? 'Для вашей роли пока нет согласованных позиций, готовых к закупке.'
-                      : 'По текущим источникам закупка через Renova не требуется.'}
-                </Text>
-              </View>
+              <EmptyActionState
+                title="Закупок пока нет"
+                hint={readyCount > 0
+                  ? `Следующий шаг выше создаст закупку из ${readyCount} согласованных позиций.`
+                  : needBuy > 0
+                    ? 'Для вашей роли пока нет согласованных позиций, готовых к закупке.'
+                    : 'По текущим источникам закупка через Renova не требуется.'}
+                icon="cart-outline"
+              />
             ) : null}
             <PurchaseList
               purchases={purchases}
