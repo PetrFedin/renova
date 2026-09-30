@@ -64,11 +64,20 @@ async def update_line(
     db: AsyncSession,
     line_id: str,
     *,
+    project_id: str,
     quantity_planned: float | None = None,
     unit_price: float | None = None,
     quantity_actual: float | None = None,
 ) -> EstimateLine | None:
-    line = await db.get(EstimateLine, line_id)
+    """#375: line_id и project_id резолвятся одним запросом — чужой project_id
+    в пути не должен позволять мутировать строку сметы другого проекта."""
+    result = await db.execute(
+        select(EstimateLine).where(
+            EstimateLine.id == line_id,
+            EstimateLine.project_id == project_id,
+        )
+    )
+    line = result.scalar_one_or_none()
     if not line:
         return None
     if quantity_planned is not None:
@@ -113,7 +122,10 @@ async def add_line(db: AsyncSession, project_id: str, data: dict) -> EstimateLin
 def material_stats(lines: list[EstimateLine]) -> dict:
     materials = [l for l in lines if l.line_type == LineType.material]
     planned = sum(l.quantity_planned * l.unit_price for l in materials)
-    actual = sum((l.quantity_actual or l.quantity_planned) * l.unit_price for l in materials)
+    # quantity_actual is a non-null numeric column with default 0: an explicit 0 is a
+    # measured actual, not "unset". `or quantity_planned` treated 0 as falsy and
+    # substituted planned quantity as if it were the measured actual (issue #379).
+    actual = sum(l.quantity_actual * l.unit_price for l in materials)
     overrun = ((actual - planned) / planned * 100) if planned else 0
     return {"planned": round(planned, 2), "actual": round(actual, 2), "overrun_percent": round(overrun, 1)}
 
