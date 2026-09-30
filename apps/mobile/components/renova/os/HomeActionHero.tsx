@@ -66,7 +66,7 @@ export function HomeActionHero({ role, snap, insights, showHero, showInbox, show
 
       {showHero && (
         <View style={s.hero}>
-          <Text style={homeTypography.heroTitle} numberOfLines={2}>{hero.title}</Text>
+          <Text style={s.heroTitle} numberOfLines={2}>{hero.title}</Text>
           {hero.subtitle ? (
             <Text style={[homeTypography.heroSub, s.heroSubSpaced]} numberOfLines={2}>{hero.subtitle}</Text>
           ) : null}
@@ -129,10 +129,16 @@ const s = StyleSheet.create({
     // Clarity W: interactive CTA surface — единственная card на first viewport
     ...card,
     marginBottom: homeLayout.innerGap,
-    padding: homeLayout.heroCardPadding,
+    padding: homeLayout.heroCardPadding + 2,
     borderRadius: homeLayout.heroCardRadius,
     gap: 4,
+    // «Главное»: тонкий акцент слева и мягкая заливка — заметнее сводных плиток
+    borderLeftWidth: 4,
+    borderLeftColor: RenovaTheme.colors.accent,
+    borderColor: RenovaTheme.colors.infoBorder,
+    backgroundColor: RenovaTheme.colors.infoBg,
   },
+  heroTitle: { ...homeTypography.heroTitle, fontSize: 18, lineHeight: 24, fontWeight: '700' },
   heroSubSpaced: { marginBottom: 8 },
   viewOnlyHero: {
     flexDirection: 'row',

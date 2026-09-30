@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { pushOsHrefWithReturn } from '@/lib/osTabNav';
 import { pushOsNav } from '@/lib/pushOsNav';
+import { RenovaTheme } from '@/constants/Theme';
 import { homeLayout, homeTypography } from '@/constants/homeTypography';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import type { OsRole, OsTabRoute } from '@/constants/osSections';
@@ -150,13 +151,17 @@ const s = StyleSheet.create({
   cell: { flex: 1, minWidth: 0 },
   cellGhost: { opacity: 0 },
   // Clarity U: KPI как metricCell, не тяжёлый Theme.card
+  // «Второстепенное»: без рамки, мягкая заливка, ниже и тише, чем hero
   chip: {
     ...listRowStyles.metricCell,
-    minHeight: 68,
+    minHeight: 56,
+    paddingVertical: 8,
     paddingHorizontal: 10,
+    borderWidth: 0,
+    backgroundColor: RenovaTheme.colors.surfaceMuted,
   },
   label: { ...screenTypography.metricLabel, textTransform: 'none', letterSpacing: 0 },
-  value: { ...screenTypography.metric, marginTop: 2, fontSize: 18 },
+  value: { ...screenTypography.metric, marginTop: 1, fontSize: 16 },
   hint: { ...homeTypography.kpiHint, marginTop: 2 },
   twin: { flexDirection: 'row', gap: 8, marginBottom: 10 },
   twinCell: { flex: 1, minWidth: 0 },
