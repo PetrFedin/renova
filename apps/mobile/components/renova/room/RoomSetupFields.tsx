@@ -7,6 +7,7 @@ import { ROOM_PRESETS } from '@/constants/roomTypes';
 import { ROOM_FORM_GUIDE, ROOM_FORM_HINTS, propertyTypeLabel } from '@/constants/roomFormHints';
 import { RoomTypePicker, FloorLevelPicker } from '@/components/renova/RoomTypePicker';
 import { calcRoomMetrics } from '@/lib/roomMetrics';
+import { parsePositiveNumber } from '@/lib/parseLocaleNumber';
 
 type DimValues = {
   length: string;
@@ -128,10 +129,14 @@ export function RoomDimensionsSection({
   values: DimValues;
   setters: DimSetters;
 }) {
-  const len = parseFloat(values.length);
-  const wid = parseFloat(values.width);
-  const hei = parseFloat(values.height) || 2.7;
-  const preview = len > 0 && wid > 0 ? calcRoomMetrics(len, wid, hei) : null;
+  const len = parsePositiveNumber(values.length);
+  const wid = parsePositiveNumber(values.width);
+  const hei = values.height.trim() ? parsePositiveNumber(values.height) : 2.7;
+  const preview = len !== null && wid !== null && hei !== null ? calcRoomMetrics(len, wid, hei) : null;
+  const dimError =
+    (values.length.trim() && len === null) || (values.width.trim() && wid === null) || (values.height.trim() && hei === null)
+      ? 'Введите положительное число, например 4,2'
+      : null;
 
   return (
     <View style={s.section}>
@@ -167,6 +172,7 @@ export function RoomDimensionsSection({
         keyboardType="decimal-pad"
         hint={ROOM_FORM_HINTS.height}
       />
+      {dimError ? <Text style={s.dimError}>{dimError}</Text> : null}
       {preview ? (
         <View style={s.preview}>
           <Text style={s.previewTitle}>{ROOM_FORM_HINTS.preview}</Text>
@@ -266,6 +272,7 @@ function LabeledInput({
 }
 
 const s = StyleSheet.create({
+  dimError: { color: RenovaTheme.colors.danger ?? '#C0392B', fontSize: 13, marginTop: 4 },
   guide: {
     ...card,
     marginBottom: 12,

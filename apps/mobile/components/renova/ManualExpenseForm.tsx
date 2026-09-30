@@ -12,6 +12,7 @@ import { alertManualExpenseSaved } from '@/lib/receiptNav';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import type { OsRole } from '@/constants/osSections';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { parseLocaleNumber } from '@/lib/parseLocaleNumber';
 import { reportCatch, reportError } from '@/lib/reportError';
 import { createClientRequestId } from '@/lib/clientRequestId';
 
@@ -59,9 +60,9 @@ export function ManualExpenseForm({
 
   const submit = async () => {
     if (busyRef.current || readOnly) return;
-    const normalizedAmount = Number.parseFloat(amount.replace(',', '.'));
+    const normalizedAmount = parseLocaleNumber(amount) ?? Number.NaN;
     if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
-      showActionConfirm({ title: 'Сумма расхода', message: 'Укажите сумму больше 0.' });
+      showActionConfirm({ title: 'Сумма расхода', message: 'Укажите сумму больше 0, например 1 250,50.' });
       return;
     }
 

@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { Modal, View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
 import { isRateLimitError } from '@/lib/api';
+import { parseNonNegativeInt, parsePositiveNumber } from '@/lib/parseLocaleNumber';
 import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import type { RoomTypeId } from '@/constants/roomTypes';
@@ -100,9 +101,21 @@ export function CreateRoomSheet({
   }, [visible]);
 
   async function submit() {
-    const len = parseFloat(length);
-    const wid = parseFloat(width);
-    if (!name.trim() || !(len > 0) || !(wid > 0)) return;
+    const len = parsePositiveNumber(length);
+    const wid = parsePositiveNumber(width);
+    const hei = height.trim() ? parsePositiveNumber(height) : 2.7;
+    const outletsN = outlets.trim() ? parseNonNegativeInt(outlets) : 0;
+    const switchesN = switches.trim() ? parseNonNegativeInt(switches) : 0;
+    const plumbingN = plumbing.trim() ? parseNonNegativeInt(plumbing) : 0;
+    if (!name.trim()) return;
+    if (len === null || wid === null || hei === null) {
+      Alert.alert('Размеры комнаты', 'Длина, ширина и высота — положительные числа в метрах, например 4,2.');
+      return;
+    }
+    if (outletsN === null || switchesN === null || plumbingN === null) {
+      Alert.alert('Количество точек', 'Розетки, выключатели и точки воды — целые числа от 0.');
+      return;
+    }
     setBusy(true);
     try {
       await onCreate({
@@ -111,10 +124,10 @@ export function CreateRoomSheet({
         floor_level: propertyType === 'house' ? floor : 1,
         length_m: len,
         width_m: wid,
-        height_m: parseFloat(height) || 2.7,
-        outlets_count: parseInt(outlets, 10) || 0,
-        switches_count: parseInt(switches, 10) || 0,
-        plumbing_points: parseInt(plumbing, 10) || 0,
+        height_m: hei,
+        outlets_count: outletsN,
+        switches_count: switchesN,
+        plumbing_points: plumbingN,
       });
       resetForm();
       onClose();
@@ -131,7 +144,7 @@ export function CreateRoomSheet({
     }
   }
 
-  const canSubmit = name.trim().length > 0 && parseFloat(length) > 0 && parseFloat(width) > 0;
+  const canSubmit = name.trim().length > 0 && parsePositiveNumber(length) !== null && parsePositiveNumber(width) !== null;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>

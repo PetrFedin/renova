@@ -21,6 +21,7 @@ import { DOCUMENTS_MENU_HINT } from '@/lib/documentsNav';
 import { alertChangeOrderSubmitted } from '@/lib/procurementNav';
 import { alertEstimateProposed, alertEstimateProposalRevoked } from '@/lib/estimatePayNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { parsePositiveNumber } from '@/lib/parseLocaleNumber';
 import { screenLayout } from '@/constants/screenLayout';
 import {
   estimateTotals,
@@ -68,8 +69,17 @@ export function ContractorEstimateView() {
 
   async function addChangeOrder() {
     if (!user) return;
+    const amount = parsePositiveNumber(coAmount);
+    if (!coTitle.trim()) {
+      showActionConfirm({ title: 'Допсоглашение', message: 'Укажите название допсоглашения.' });
+      return;
+    }
+    if (amount === null) {
+      showActionConfirm({ title: 'Сумма допсоглашения', message: 'Укажите сумму больше 0, например 8 500 или 8500,50.' });
+      return;
+    }
     try {
-      await api.createChangeOrder(user.id, project.id, { title: coTitle, amount: parseFloat(coAmount) || 0 });
+      await api.createChangeOrder(user.id, project.id, { title: coTitle, amount });
       await loadProject(project.id);
       // W127: ДО → слой изменений / бюджет после approve (см. EstimateChangesLayer)
       alertChangeOrderSubmitted('contractor');

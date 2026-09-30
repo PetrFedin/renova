@@ -12,6 +12,7 @@ import { CustomerBudgetField } from '@/components/renova/CustomerBudgetField';
 import { PostCreateSheet } from '@/components/renova/os/home/PostCreateSheet';
 import { ContractorInviteSheet } from '@/components/renova/os/home/ContractorInviteSheet';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { parseLocaleNumber, parsePositiveNumber } from '@/lib/parseLocaleNumber';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { api } from '@/lib/api';
 import type { MarketEstimate } from '@/constants/regions';
@@ -58,7 +59,7 @@ export default function WizardConfirm() {
   // Быстрый wizard: комнаты из param, иначе setWizard в type.tsx может не успеть до первого рендера
   useEffect(() => {
     if (wizard.wizard_mode !== 'quick' || !quickSqm) return;
-    const sqm = parseFloat(String(quickSqm).replace(',', '.')) || DEFAULT_QUICK_AREA[wizard.property_type];
+    const sqm = parsePositiveNumber(String(quickSqm)) ?? DEFAULT_QUICK_AREA[wizard.property_type];
     const rooms = buildQuickWizardRooms(wizard.property_type, sqm);
     if (rooms.length !== wizard.rooms.length || quickWizardFloorSqM(wizard.rooms) !== quickWizardFloorSqM(rooms)) {
       setWizard({ wizard_mode: 'quick', rooms });
@@ -67,7 +68,7 @@ export default function WizardConfirm() {
 
   const estimateRooms = useMemo(() => {
     if (wizard.wizard_mode === 'quick' && quickSqm) {
-      const sqm = parseFloat(String(quickSqm).replace(',', '.')) || DEFAULT_QUICK_AREA[wizard.property_type];
+      const sqm = parsePositiveNumber(String(quickSqm)) ?? DEFAULT_QUICK_AREA[wizard.property_type];
       return buildQuickWizardRooms(wizard.property_type, sqm);
     }
     return wizard.rooms;
@@ -105,7 +106,7 @@ export default function WizardConfirm() {
       showActionConfirm({ title: 'Название', message: 'Укажите название проекта' });
       return;
     }
-    const budgetNum = parseInt(budgetInput.replace(/\s/g, ''), 10);
+    const budgetNum = Math.round(parseLocaleNumber(budgetInput) ?? 0);
     setBusy(true);
     try {
       const draftExtra = wizard.wizard_mode === 'quick' && quickSqm

@@ -16,6 +16,7 @@ import { alertEstimateLineAdded } from '@/lib/fieldCommsNav';
 import type { OsRole } from '@/constants/osSections';
 import { reportCatch } from '@/lib/reportError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { parseLocaleNumber } from '@/lib/parseLocaleNumber';
 import { createClientRequestId } from '@/lib/clientRequestId';
 
 const UNITS = ['pcs', 'm2', 'm', 'kg', 'l', 'компл'] as const;
@@ -69,9 +70,13 @@ export function AddEstimateLineForm({
 
   async function submit() {
     if (busyRef.current) return;
-    const quantityPlanned = Number.parseFloat(qty.replace(',', '.'));
-    const parsedPrice = Number.parseFloat(price.replace(',', '.'));
-    const unitPrice = Number.isFinite(parsedPrice) ? parsedPrice : 0;
+    const quantityPlanned = parseLocaleNumber(qty) ?? Number.NaN;
+    const parsedPrice = price.trim() ? parseLocaleNumber(price) : 0;
+    if (parsedPrice === null) {
+      showActionConfirm({ title: 'Цена', message: 'Введите цену числом, например 1 250,50.' });
+      return;
+    }
+    const unitPrice = parsedPrice;
 
     if (!name.trim()) {
       showActionConfirm({ title: 'Название строки', message: 'Укажите работу или материал.' });

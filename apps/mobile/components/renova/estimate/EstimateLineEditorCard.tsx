@@ -5,6 +5,8 @@ import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';
 import type { EstimateLine } from '@/lib/api';
 import { estimateLineSourceLabel } from '@/lib/domain/estimateFilters';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { parseNonNegativeNumber, parsePositiveNumber } from '@/lib/parseLocaleNumber';
 
 type Props = {
   line: EstimateLine;
@@ -38,9 +40,9 @@ export function EstimateLineEditorCard({ line, canWrite, onPatch }: Props) {
         <View style={s.body}>
           {line.calc_detail ? <Text style={s.calc}>{line.calc_detail}</Text> : null}
           <FieldRow label="Кол-во план" value={String(line.quantity_planned)} editable={canWrite}
-            onCommit={(v) => onPatch(line.id, { quantity_planned: parseFloat(v) || line.quantity_planned })} />
+            onCommit={(v) => commitNumber(v, 'Кол-во план', 'positive', (n) => onPatch(line.id, { quantity_planned: n }))} />
           <FieldRow label="Цена, ₽" value={String(line.unit_price)} editable={canWrite}
-            onCommit={(v) => onPatch(line.id, { unit_price: parseFloat(v) || line.unit_price })} />
+            onCommit={(v) => commitNumber(v, 'Цена', 'nonNegative', (n) => onPatch(line.id, { unit_price: n }))} />
           {!isWork && (
             <FieldRow
               label="Факт расход"
@@ -49,7 +51,7 @@ export function EstimateLineEditorCard({ line, canWrite, onPatch }: Props) {
               // `|| quantity_planned` показывал план вместо явного нуля (issue #379).
               value={String(line.quantity_actual)}
               editable={canWrite}
-              onCommit={(v) => onPatch(line.id, { quantity_actual: parseFloat(v) || 0 })}
+              onCommit={(v) => commitNumber(v, 'Факт расход', 'nonNegative', (n) => onPatch(line.id, { quantity_actual: n }))}
             />
           )}
           <Text style={s.notesLabel}>Заметка / доп. информация</Text>
@@ -68,6 +70,19 @@ export function EstimateLineEditorCard({ line, canWrite, onPatch }: Props) {
       )}
     </View>
   );
+}
+
+/** Разбор поля через parseLocaleNumber; невалидный ввод — явная ошибка, не молчаливая подмена. */
+function commitNumber(raw: string, label: string, rule: 'positive' | 'nonNegative', apply: (n: number) => void) {
+  const n = rule === 'positive' ? parsePositiveNumber(raw) : parseNonNegativeNumber(raw);
+  if (n === null) {
+    showActionConfirm({
+      title: label,
+      message: rule === 'positive' ? 'Введите число больше 0, например 12,5.' : 'Введите число от 0, например 1 250,50.',
+    });
+    return;
+  }
+  apply(n);
 }
 
 function FieldRow({

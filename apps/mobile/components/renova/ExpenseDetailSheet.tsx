@@ -18,6 +18,7 @@ import { EXPENSE_CATEGORY_LABEL } from '@/constants/labels';
 import type { ExpenseCategoryId } from '@/constants/expenseCategories';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { parseLocaleNumber } from '@/lib/parseLocaleNumber';
 
 export type ExpenseDetailTarget =
   | { kind: 'expense'; item: OsExpense }
@@ -96,7 +97,7 @@ export function ExpenseDetailSheet({
 
   async function saveChanges() {
     if (!userId || !projectId || !target || !canEdit || mutationRef.current) return;
-    const amount = Number(amountText.replace(',', '.'));
+    const amount = parseLocaleNumber(amountText) ?? Number.NaN;
     if (!Number.isFinite(amount) || amount <= 0) {
       showActionConfirm({ title: 'Сумма расхода', message: 'Укажите сумму больше 0.' });
       return;
@@ -194,7 +195,7 @@ export function ExpenseDetailSheet({
   return (
     <SheetSurface
       visible
-      value={formatRub(Number(amountText) || item.amount)}
+      value={formatRub(parseLocaleNumber(amountText) ?? item.amount)}
       title={currentTitle}
       subtitle={`${categoryLabel} · ${status}`}
       busy={busy}

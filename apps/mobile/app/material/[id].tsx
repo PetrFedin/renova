@@ -8,6 +8,7 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { parseNonNegativeNumber } from '@/lib/parseLocaleNumber';
 import { alertMaterialPickApproved, alertMaterialPickSubmitted } from '@/lib/procurementNav';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { reportError } from '@/lib/reportError';
@@ -115,8 +116,8 @@ export default function MaterialDetailScreen() {
 
   const saveManualPrice = async () => {
     if (!user || !activeProject || priceBusy) return;
-    const value = Number(manualPrice.replace(',', '.'));
-    if (!Number.isFinite(value) || value < 0) {
+    const value = parseNonNegativeNumber(manualPrice);
+    if (value === null) {
       showActionConfirm({ title: 'Проверьте цену', message: 'Укажите корректную сумму в рублях.' });
       return;
     }

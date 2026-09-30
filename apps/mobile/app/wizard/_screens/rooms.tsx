@@ -1,10 +1,11 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, Alert } from 'react-native';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ROOM_PRESETS, type RoomTypeId } from '@/constants/roomTypes';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { parseNonNegativeInt, parsePositiveNumber } from '@/lib/parseLocaleNumber';
 import {
   RoomFormGuideBox,
   PropertyTypeBanner,
@@ -41,6 +42,10 @@ function roomValidationError(room: {
 
 export default function WizardRooms() {
   const { wizard, setWizard } = useRenova();
+  // Сырой текст полей: иначе «4,» → 4 и запятую/точку в конце нельзя ввести.
+  const [rawDims, setRawDims] = useState<Record<string, string>>({});
+  const setRaw = (i: number, field: string, v: string) => setRawDims((prev) => ({ ...prev, [`${i}.${field}`]: v }));
+  const rawOr = (i: number, field: string, fallback: string) => rawDims[`${i}.${field}`] ?? fallback;
 
   const validationError = useMemo(() => {
     if (!wizard.rooms.length) return 'Добавьте хотя бы одну комнату.';
@@ -65,12 +70,12 @@ export default function WizardRooms() {
     updateRoom(i, {
       room_type: type,
       ...(preset.name ? { name: preset.name } : {}),
-      length_m: parseFloat(preset.length || '0') || wizard.rooms[i].length_m,
-      width_m: parseFloat(preset.width || '0') || wizard.rooms[i].width_m,
-      height_m: parseFloat(preset.height || '0') || wizard.rooms[i].height_m,
-      outlets_count: parseInt(preset.outlets || '0', 10),
-      switches_count: parseInt(preset.switches || '0', 10),
-      plumbing_points: parseInt(preset.plumbing || '0', 10),
+      length_m: parsePositiveNumber(preset.length) ?? wizard.rooms[i].length_m,
+      width_m: parsePositiveNumber(preset.width) ?? wizard.rooms[i].width_m,
+      height_m: parsePositiveNumber(preset.height) ?? wizard.rooms[i].height_m,
+      outlets_count: parseNonNegativeInt(preset.outlets) ?? 0,
+      switches_count: parseNonNegativeInt(preset.switches) ?? 0,
+      plumbing_points: parseNonNegativeInt(preset.plumbing) ?? 0,
       floor_level: preset.floor ?? wizard.rooms[i].floor_level ?? 1,
     });
   }
@@ -101,7 +106,7 @@ export default function WizardRooms() {
           <RoomTypeSection
             value={(r.room_type as RoomTypeId) || 'living'}
             onChange={(room_type) => updateRoom(i, { room_type })}
-            onPreset={(type) => applyPresetToRoom(i, type)}
+            onPreset={(type) => { setRawDims({}); applyPresetToRoom(i, type); }}
           />
           <RoomFloorSection
             propertyType={wizard.property_type}
@@ -111,24 +116,25 @@ export default function WizardRooms() {
           />
           <RoomDimensionsSection
             values={{
-              length: String(r.length_m || ''),
-              width: String(r.width_m || ''),
-              height: String(r.height_m || '2.7'),
-              outlets: String(r.outlets_count ?? 0),
-              switches: String(r.switches_count ?? 0),
-              plumbing: String(r.plumbing_points ?? 0),
+              length: rawOr(i, 'length', String(r.length_m || '')),
+              width: rawOr(i, 'width', String(r.width_m || '')),
+              height: rawOr(i, 'height', String(r.height_m || '2.7')),
+              outlets: rawOr(i, 'outlets', String(r.outlets_count ?? 0)),
+              switches: rawOr(i, 'switches', String(r.switches_count ?? 0)),
+              plumbing: rawOr(i, 'plumbing', String(r.plumbing_points ?? 0)),
             }}
             setters={{
-              setLength: (v) => updateRoom(i, { length_m: parseFloat(v) || 0 }),
-              setWidth: (v) => updateRoom(i, { width_m: parseFloat(v) || 0 }),
-              setHeight: (v) => updateRoom(i, { height_m: parseFloat(v) || 0 }),
-              setOutlets: (v) => updateRoom(i, { outlets_count: parseInt(v, 10) || 0 }),
-              setSwitches: (v) => updateRoom(i, { switches_count: parseInt(v, 10) || 0 }),
-              setPlumbing: (v) => updateRoom(i, { plumbing_points: parseInt(v, 10) || 0 }),
+              // невалидный ввод → 0: roomValidationError блокирует переход и показывает ошибку
+              setLength: (v) => { setRaw(i, 'length', v); updateRoom(i, { length_m: parsePositiveNumber(v) ?? 0 }); },
+              setWidth: (v) => { setRaw(i, 'width', v); updateRoom(i, { width_m: parsePositiveNumber(v) ?? 0 }); },
+              setHeight: (v) => { setRaw(i, 'height', v); updateRoom(i, { height_m: parsePositiveNumber(v) ?? 0 }); },
+              setOutlets: (v) => { setRaw(i, 'outlets', v); updateRoom(i, { outlets_count: parseNonNegativeInt(v) ?? 0 }); },
+              setSwitches: (v) => { setRaw(i, 'switches', v); updateRoom(i, { switches_count: parseNonNegativeInt(v) ?? 0 }); },
+              setPlumbing: (v) => { setRaw(i, 'plumbing', v); updateRoom(i, { plumbing_points: parseNonNegativeInt(v) ?? 0 }); },
             }}
           />
           {wizard.rooms.length > 1 && (
-            <Pressable onPress={() => setWizard({ rooms: wizard.rooms.filter((_, j) => j !== i) })}>
+            <Pressable onPress={() => { setRawDims({}); setWizard({ rooms: wizard.rooms.filter((_, j) => j !== i) }); }}>
               <Text style={styles.del}>Удалить комнату</Text>
             </Pressable>
           )}

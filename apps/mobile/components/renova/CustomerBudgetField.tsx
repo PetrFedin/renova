@@ -2,6 +2,7 @@
 import { View, Text, TextInput, StyleSheet } from 'react-native';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { formMetaText } from '@/constants/formTypography';
+import { parseLocaleNumber } from '@/lib/parseLocaleNumber';
 
 type Props = {
   value: string;
@@ -14,7 +15,7 @@ type Props = {
 };
 
 export function CustomerBudgetField({ value, onChange, estimateTotal, hint, error, embedded }: Props) {
-  const num = parseInt(value.replace(/\s/g, ''), 10);
+  const num = parseLocaleNumber(value) ?? 0;
   const overEstimate = !error && estimateTotal && num > 0 && num < estimateTotal;
 
   return (

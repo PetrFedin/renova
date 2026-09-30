@@ -20,6 +20,7 @@ import { pushOsNav } from '@/lib/pushOsNav';
 import { alertSelectionApproved, alertSelectionProposed } from '@/lib/procurementNav';
 import { reportError } from '@/lib/reportError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { parseNonNegativeNumber } from '@/lib/parseLocaleNumber';
 
 const CATEGORIES: { key: string; label: string }[] = [
   { key: 'all', label: 'Все' },
@@ -97,8 +98,12 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
       showActionConfirm({ title: 'Подбор', message: 'Укажите название' });
       return;
     }
-    const priceNum = Number(price) || 0;
-    const allowanceNum = allowance ? Number(allowance) : null;
+    const priceNum = price.trim() ? parseNonNegativeNumber(price) : 0;
+    const allowanceNum = allowance.trim() ? parseNonNegativeNumber(allowance) : null;
+    if (priceNum === null || (allowance.trim() && allowanceNum === null)) {
+      showActionConfirm({ title: 'Подбор', message: 'Цена и лимит — числа от 0, например 1 250,50' });
+      return;
+    }
     // Цена/лимит — деньги, не могут быть отрицательными или абсурдно большими.
     // Зеркалит server-side ge=0, le=10_000_000 в SelectionIn (selections.py).
     if (priceNum < 0 || priceNum > 10_000_000 || (allowanceNum != null && (allowanceNum < 0 || allowanceNum > 10_000_000))) {

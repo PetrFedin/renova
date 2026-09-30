@@ -11,6 +11,7 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { alertPaymentCreated } from '@/lib/estimatePayNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { parseLocaleNumber } from '@/lib/parseLocaleNumber';
 import { apiErrorMessage } from '@/lib/formatPhone';
 import type { OsRole } from '@/constants/osSections';
 import { OFFLINE_MESSAGES, OFFLINE_PAYMENT_CREATE_BLOCKED } from '@/lib/offlineErrors';
@@ -59,7 +60,7 @@ export function CreatePaymentForm({
 
   const submit = async () => {
     if (busyRef.current) return;
-    const normalizedAmount = Number.parseFloat(amount.replace(',', '.'));
+    const normalizedAmount = parseLocaleNumber(amount) ?? Number.NaN;
     if (!title.trim() && !(paymentType === 'stage' && percent)) {
       showActionConfirm({ title: 'Название счёта', message: 'Укажите, за что выставлен счёт.' });
       return;

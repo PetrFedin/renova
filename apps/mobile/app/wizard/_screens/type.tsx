@@ -6,16 +6,13 @@ import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ProjectProfileFields } from '@/components/renova/ProjectProfileFields';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { parsePositiveNumber } from '@/lib/parseLocaleNumber';
 import { DEFAULT_QUICK_AREA, WIZARD_MODE_LABEL, type WizardMode } from '@/lib/wizard/wizardMode';
 import { buildQuickWizardRooms, quickWizardFloorSqM } from '@/lib/wizard/buildQuickWizardRooms';
 import { WizardHint } from '@/components/renova/wizard/WizardHint';
 
 function parsePositiveArea(value: string): number | null {
-  const normalized = value.trim().replace(',', '.');
-  if (!normalized) return null;
-
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  return parsePositiveNumber(value);
 }
 
 export default function WizardType() {

@@ -11,6 +11,7 @@ import { WorkFormSection } from '@/components/renova/work/WorkFormSection';
 import type { MarketEstimate } from '@/constants/regions';
 import { calcRoomMetrics } from '@/lib/calc-engine';
 import { api, Room, isRateLimitError } from '@/lib/api';
+import { parseNonNegativeNumber } from '@/lib/parseLocaleNumber';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { alertWorkCreated } from '@/lib/fieldCreateNav';
@@ -151,6 +152,11 @@ export function CreateWorkSheet({
       Alert.alert('Работа', 'Укажите тип или название');
       return;
     }
+    const budgetNum = budget.trim() ? parseNonNegativeNumber(budget) : 0;
+    if (budgetNum === null) {
+      Alert.alert('Бюджет работы', 'Введите бюджет числом, например 25 000 или 25000,50.');
+      return;
+    }
     setBusy(true);
     try {
       let wo: import('@/lib/api').WorkOrder;
@@ -161,7 +167,7 @@ export function CreateWorkSheet({
           room_id: roomId || null,
           planned_start: plannedStart || null,
           planned_end: plannedEnd || plannedStart || null,
-          budget_planned: budget ? +budget : 0,
+          budget_planned: budgetNum,
           notes: notes || null,
           publish,
         });

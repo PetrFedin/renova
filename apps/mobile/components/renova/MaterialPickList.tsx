@@ -26,6 +26,7 @@ import {
   alertMaterialPickSubmitted,
 } from '@/lib/procurementNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { parseNonNegativeNumber } from '@/lib/parseLocaleNumber';
 
 const fmtQty = (value: number) => Number(value.toFixed(3)).toLocaleString('ru-RU');
 
@@ -101,8 +102,8 @@ export function MaterialPickList({
   const saveSupply = async (pick: MaterialPick) => {
     if (supplyBusyId) return;
     const required = requiredQty(pick);
-    const available = editSource === 'customer_on_hand' ? required : Number(editAvailable.replace(',', '.'));
-    if (!Number.isFinite(available) || available < 0 || available > required) {
+    const available = editSource === 'customer_on_hand' ? required : parseNonNegativeNumber(editAvailable);
+    if (available === null || available > required) {
       showActionConfirm({
         title: 'Проверьте количество',
         message: `Доступно должно быть от 0 до ${fmtQty(required)} ${pick.unit}.`,
@@ -313,10 +314,19 @@ export function MaterialPickList({
             />
           ) : null}
           <PrimaryButton title="Сохранить" onPress={async () => {
-            const available = createSource === 'customer_on_hand' ? 1 : Number(createAvailable.replace(',', '.')) || 0;
+            const available = createSource === 'customer_on_hand' ? 1 : (createAvailable.trim() ? parseNonNegativeNumber(createAvailable) : 0);
+            const priceNum = price.trim() ? parseNonNegativeNumber(price) : 0;
+            if (priceNum === null) {
+              showActionConfirm({ title: 'Цена материала', message: 'Введите цену числом от 0, например 1 250,50.' });
+              return;
+            }
+            if (available === null || available > 1) {
+              showActionConfirm({ title: 'Доступное количество', message: 'Введите число от 0 до 1 (количество нового материала — 1 шт).' });
+              return;
+            }
             await api.createMaterialPick(userId, projectId, {
               name: name || 'Материал',
-              price: Number(price) || 0,
+              price: priceNum,
               qty: 1,
               unit: 'шт',
               work_type: wt,
