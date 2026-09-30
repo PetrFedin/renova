@@ -195,7 +195,7 @@ Current row semantics: works→(works, `works_fact` от backend `quantity_actua
 
 ## 16. Материалы — актуальная количественная семантика
 
-Source `apps/mobile/components/screens/OsMaterialsScreen.tsx`, blob `ee8ef690f9f52830feb0f07ebef77e70cfb42817`; helpers `lib/domain/materialSupply.ts` и `procurementNextAction.ts`.
+Source `apps/mobile/components/screens/OsMaterialsScreen.tsx`, blob `f39ac1fc3a6b06fa027b0e32d8cd55d2f8031b04`; helpers `lib/domain/materialSupply.ts` и `procurementNextAction.ts`.
 
 ```text
 needBuy = count(quantityToBuy(pick) > 0)

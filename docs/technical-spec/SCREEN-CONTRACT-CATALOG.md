@@ -36,7 +36,7 @@ base card marginBottom     = 8
 
 ## 1.3. PrimaryButton
 
-**VERIFIED. Source:** `apps/mobile/components/renova/PrimaryButton.tsx` blob `b1dab4b50ae2b5e078024e16a3b0c37120c996a1`.
+**VERIFIED. Source:** `apps/mobile/components/renova/PrimaryButton.tsx` blob `36a04974f20a8218e56c11cf11d5014fa7c2cb04`.
 
 Variants:
 
