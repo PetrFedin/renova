@@ -21,6 +21,9 @@ function routeSegment(pathname: string): string {
   return last;
 }
 
+/** Разделы, уже подсвеченные активной кнопкой в нижнем таб-баре (OsDockBar). */
+const DOCK_HIGHLIGHTED_ROUTES = new Set(['object', 'repair', 'budget']);
+
 function useOsCrumbs(role: OsRole) {
   const pathname = usePathname();
   // Та же причина, что у дока: крошки рисует макет, а `tab`/`sub`/`filter`
@@ -80,6 +83,12 @@ export function OsPathBar({ role }: { role: OsRole }) {
   if (onHome && !rt) return null;
   // Нечего показать
   if (!rt && (crumbs.length === 0 || (crumbs.length === 1 && crumbs[0].routeName === 'index'))) {
+    return null;
+  }
+  // Чистое дублирование первого уровня: «Главная · Объект/Ремонт/Бюджет» без
+  // returnTo и без вкладки hub уже показано подсветкой кнопки в OsDockBar —
+  // второй раз это не несёт новой информации.
+  if (!rt && crumbs.length === 2 && DOCK_HIGHLIGHTED_ROUTES.has(seg)) {
     return null;
   }
 
@@ -158,21 +167,13 @@ export function OsHeaderBreadcrumb({ role }: { role: OsRole }) {
 
 const s = StyleSheet.create({
   logoRow: { flexDirection: 'row', alignItems: 'center', flexShrink: 0 },
+  // Встроено в шапку: без отдельного фона/рамки — тонкая строка пути, а не бокс.
   pathWrap: {
-    marginHorizontal: 12,
-    marginTop: 6,
-    marginBottom: 4,
-    paddingVertical: 7,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    backgroundColor: RenovaTheme.colors.surface,
-    borderWidth: 1,
-    borderColor: RenovaTheme.colors.border,
+    paddingHorizontal: 12,
+    paddingTop: 2,
+    paddingBottom: 6,
   },
-  pathWrapBack: {
-    backgroundColor: RenovaTheme.colors.infoBg,
-    borderColor: '#BFDBFE',
-  },
+  pathWrapBack: {},
   pathIn: { flexDirection: 'row', alignItems: 'center', paddingRight: 4 },
   segWrap: { flexDirection: 'row', alignItems: 'center', maxWidth: 160 },
   sep: {
