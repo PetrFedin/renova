@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -74,7 +74,7 @@ async def test_close_and_reopen_manage_closed_timestamp():
     closed = await service.transition_issue(FakeDb(), issue, "closed", UserRole.customer)
     assert closed.status == "closed"
     assert isinstance(closed.closed_at, datetime)
-    assert closed.closed_at.tzinfo == timezone.utc
+    assert closed.closed_at.tzinfo is None  # naive UTC column convention
 
     reopened = await service.transition_issue(FakeDb(), closed, "open", UserRole.customer)
     assert reopened.status == "open"
