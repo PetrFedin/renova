@@ -45,4 +45,11 @@ export const projectsApi = {
       {},
       userId,
     ),
+  /** «Создать договор» при reason=no_contract: идемпотентно, только стороны договора. */
+  createProjectContract: (userId: string, projectId: string) =>
+    req<{ created: boolean; document_id: string }>(
+      `/api/v1/projects/${projectId}/contract`,
+      { method: 'POST' },
+      userId,
+    ),
 };

@@ -20,6 +20,7 @@ import {
 } from '@/lib/documentCenterMeta';
 import { pickDocumentForUpload, pickImageForDocumentUpload } from '@/lib/documentUploadPick';
 import { isOfflineQueued, notifyOfflineBlocked, notifyOfflineQueued } from '@/lib/offlineUi';
+import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { OfflineSyncStatus } from '@/components/renova/OfflineSyncStatus';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
@@ -103,6 +104,8 @@ export function DocumentsHub({
 
   const [docIndex, setDocIndex] = useState<ProjectDocumentsResponse | null>(null);
   const [indexLoading, setIndexLoading] = useState(true);
+  const [contractGate, setContractGate] = useState<{ ok: boolean; reason?: string; message?: string } | null>(null);
+  const [contractCreating, setContractCreating] = useState(false);
   const [konturAvailable, setKonturAvailable] = useState(false);
   const [konturMode, setKonturMode] = useState<'off' | 'sandbox' | 'live' | string>('off');
   // OCR в Document Center — локальная heuristic-классификация, не remote ML demo.
@@ -139,6 +142,9 @@ export function DocumentsHub({
         if (alive) setDocIndex(null);
       })
       .finally(() => { if (alive) setIndexLoading(false); });
+    api.getContractGate(userId, projectId)
+      .then((g) => { if (alive) setContractGate(g); })
+      .catch((e) => { reportError('docs.contractGate', e, { projectId }); if (alive) setContractGate(null); });
     api.listEsignProviders(userId)
       .then(({ providers }) => {
         if (!alive) return;
@@ -161,6 +167,25 @@ export function DocumentsHub({
     return () => { alive = false; };
   }, [userId, projectId]);
 
+  const createContract = useCallback(async () => {
+    setContractCreating(true);
+    try {
+      await api.createProjectContract(userId, projectId);
+      setContractGate(await api.getContractGate(userId, projectId));
+      await reloadIndexRef.current?.();
+    } catch (e) {
+      reportError('docs.createContract', e, { projectId });
+      showActionConfirm({
+        title: 'Договор не создан',
+        message: apiErrorMessage(e, 'Сначала заполните и зафиксируйте смету'),
+        primaryLabel: 'Понятно',
+        onPrimary: () => undefined,
+      });
+    } finally {
+      setContractCreating(false);
+    }
+  }, [userId, projectId]);
+
   const reloadIndex = useCallback(() => {
     setIndexLoading(true);
     return api.listProjectDocuments(userId, projectId)
@@ -168,6 +193,9 @@ export function DocumentsHub({
       .catch((e) => { reportError('components.renova.DocumentsHub.DocIndex', e); setDocIndex(null); })
       .finally(() => setIndexLoading(false));
   }, [userId, projectId]);
+
+  const reloadIndexRef = useRef<typeof reloadIndex | null>(null);
+  reloadIndexRef.current = reloadIndex;
 
   // W94: после приёмки/подписи/оплаты — индекс документов без remount
   useProjectDataReload(reloadIndex);
@@ -830,6 +858,21 @@ export function DocumentsHub({
     <View style={s.wrap}>
       <Text style={s.sub}>Сначала подпишите черновики — остальные разделы ниже по запросу</Text>
       <OfflineSyncStatus compact />
+
+      {contractGate && !contractGate.ok && contractGate.reason === 'no_contract' ? (
+        <View style={s.signPin} accessibilityLabel="Договор ещё не создан">
+          <Text style={s.signPinTitle}>Договор ещё не создан</Text>
+          <Text style={s.signPinHint}>{contractGate.message || 'Без подписанного договора этапы не стартуют'}</Text>
+          <PrimaryButton
+            title="Создать договор"
+            variant="accent"
+            compact
+            loading={contractCreating}
+            disabled={isArchived}
+            onPress={() => { void createContract(); }}
+          />
+        </View>
+      ) : null}
 
       {needsSignDocs.length > 0 ? (
         <View style={s.signPin} accessibilityLabel={`Нужно подписать ${needsSignDocs.length}`}>

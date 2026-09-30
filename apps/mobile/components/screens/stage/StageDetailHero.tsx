@@ -11,6 +11,7 @@ import type { OsRole } from '@/constants/osSections';
 import { alertStageStarted } from '@/lib/jobLeadNav';
 import { alertStageSubmittedForAcceptance } from '@/lib/fieldCreateNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { apiErrorMessage } from '@/lib/formatPhone';
 import { StageContextSummary } from '@/components/screens/stage/StageContextSummary';
 
 type Props = {
@@ -19,7 +20,9 @@ type Props = {
   isContractor: boolean;
   canWrite: boolean;
   blocked: { blocked: boolean; depends_on?: string } | null;
-  contractGate?: { ok: boolean; message?: string; pending_titles?: string[] } | null;
+  contractGate?: { ok: boolean; reason?: string; message?: string; pending_titles?: string[] } | null;
+  /** После создания договора экран перечитывает гейт. */
+  onContractCreated?: () => void;
   userId: string;
   projectId: string;
   onReload: () => Promise<void>;
@@ -34,6 +37,7 @@ export function StageDetailHero({
   canWrite,
   blocked,
   contractGate,
+  onContractCreated,
   userId,
   projectId,
   onReload,
@@ -89,12 +93,35 @@ export function StageDetailHero({
           {(contractGate.pending_titles || []).slice(0, 2).map((title) => (
             <Text key={title} style={s.warnItem}>• {title}</Text>
           ))}
-          <PrimaryButton
-            title="К документам"
-            variant="outline"
-            compact
-            onPress={openDocs}
-          />
+          {contractGate.reason === 'no_contract' ? (
+            <PrimaryButton
+              title="Создать договор"
+              variant="accent"
+              compact
+              disabled={!canWrite}
+              onPress={async () => {
+                try {
+                  await api.createProjectContract(userId, projectId);
+                  onContractCreated?.();
+                  openDocs();
+                } catch (e: unknown) {
+                  showActionConfirm({
+                    title: 'Договор не создан',
+                    message: apiErrorMessage(e, 'Сначала заполните и зафиксируйте смету'),
+                    primaryLabel: 'Понятно',
+                    onPrimary: () => undefined,
+                  });
+                }
+              }}
+            />
+          ) : (
+            <PrimaryButton
+              title="К документам"
+              variant="outline"
+              compact
+              onPress={openDocs}
+            />
+          )}
         </View>
       ) : null}
 
