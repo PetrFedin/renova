@@ -2,6 +2,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { evaluateApiBaseGuard } from '@/lib/apiBaseGuard';
 import { isAuthoritativeRefreshRejection, shouldFallbackToDurableCache } from './failurePolicy';
+import { validationMessage, isHumanMessage } from './validationMessage';
 import { currentSessionUserId, getSessionStamp } from '@/lib/domain/sessionAuthority';
 
 export class ApiError extends Error {
@@ -29,7 +30,7 @@ export function isRateLimitError(e: unknown): boolean {
   return e instanceof ApiError && (e.code === 'rate_limit' || e.status === 429);
 }
 
-function parseApiErrorBody(txt: string, status: number): { message: string; code?: string; detail?: unknown } {
+export function parseApiErrorBody(txt: string, status: number): { message: string; code?: string; detail?: unknown } {
   let code: string | undefined;
   let detail: unknown;
   try {
@@ -48,7 +49,11 @@ function parseApiErrorBody(txt: string, status: number): { message: string; code
     if (typeof j.message === 'string' && j.message) {
       return { message: j.message, code: j.code, detail };
     }
-    if (typeof j.detail === 'object' && j.detail) {
+    if (Array.isArray(j.detail)) {
+      // FastAPI 422: detail — массив ошибок полей, а не строка.
+      const human = validationMessage(j.detail);
+      if (human) return { message: human, code: 'validation_error', detail };
+    } else if (typeof j.detail === 'object' && j.detail) {
       const d = j.detail as { code?: string; message?: string };
       if (typeof d.message === 'string' && d.message) {
         return { message: d.message, code: d.code || j.code, detail };
@@ -63,7 +68,8 @@ function parseApiErrorBody(txt: string, status: number): { message: string; code
   if (code === 'rate_limit' || status === 429) {
     return { message: 'Слишком много запросов. Подождите несколько секунд и повторите.', code: 'rate_limit', detail };
   }
-  return { message: txt || `HTTP ${status}`, code, detail };
+  const fallback = isHumanMessage(txt) ? txt.trim() : `Ошибка сервера (HTTP ${status}). Попробуйте позже.`;
+  return { message: fallback, code, detail };
 }
 
 const OFFLINE_ROOMS = 'renova_cache_rooms';
