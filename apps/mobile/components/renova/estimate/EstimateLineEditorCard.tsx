@@ -44,7 +44,10 @@ export function EstimateLineEditorCard({ line, canWrite, onPatch }: Props) {
           {!isWork && (
             <FieldRow
               label="Факт расход"
-              value={String(line.quantity_actual || line.quantity_planned)}
+              // quantity_actual — non-null числовое поле бэкенда с default 0: явный ноль
+              // означает измеренный факт "израсходовано ровно ноль", а не "не введено".
+              // `|| quantity_planned` показывал план вместо явного нуля (issue #379).
+              value={String(line.quantity_actual)}
               editable={canWrite}
               onCommit={(v) => onPatch(line.id, { quantity_actual: parseFloat(v) || 0 })}
             />

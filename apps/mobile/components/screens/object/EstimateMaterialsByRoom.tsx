@@ -7,12 +7,7 @@ import { EstimateLineRow } from '@/components/screens/object/ObjectSection';
 import type { EstimateLine } from '@/lib/api';
 import { groupEstimateLinesByRoom } from '@/lib/domain/groupEstimateByRoom';
 import { estimateLineSourceLabel } from '@/lib/domain/estimateFilters';
-
-function materialMeta(l: EstimateLine): string {
-  const fact = l.quantity_actual || l.quantity_planned;
-  const overrun = l.quantity_planned ? ((fact - l.quantity_planned) / l.quantity_planned) * 100 : 0;
-  return `план ${l.quantity_planned} → факт ${fact} ${l.unit}${overrun > 5 ? ` · +${overrun.toFixed(0)}%` : ''}`;
-}
+import { materialActualMeta as materialMeta } from '@/lib/domain/materialActualMeta';
 
 export function EstimateMaterialsByRoom({ lines }: { lines: EstimateLine[] }) {
   const groups = useMemo(() => groupEstimateLinesByRoom(lines), [lines]);

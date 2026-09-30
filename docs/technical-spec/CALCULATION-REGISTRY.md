@@ -221,7 +221,17 @@ pending = count(SelectionItem.status == proposed)
 
 Используется attention/badge. `over_allowance` определяется producer API; одна подпись UI не доказательство его формулы. До полной сверки producer/test — TBD / UNVERIFIED.
 
-## 18. Непокрытые расчёты и их приёмка
+## 18. Material actuals — explicit zero preserved (исправлено #379)
+
+Source `backend/app/api/v1/analytics.py` (`analytics` endpoint, `materials_fact`) and `backend/app/services/estimate_service.py` (`material_stats`).
+
+```text
+materials_fact = Σ quantity_actual × unit_price   (materials только)
+```
+
+`EstimateLine.quantity_actual` — non-null numeric column, default `0`; `0` здесь означает измеренный факт "израсходовано/остаток ровно ноль", а не "не введено". Раньше обе точки считали `(quantity_actual or quantity_planned) * unit_price`: в Python `0` — falsy, поэтому явный ноль подменялся plan-количеством и `materials_fact`/`material_stats.actual` показывали план вместо факта. Ноль подстановки не имеет — это тот же класс дефекта, что #318 (works_fact) и mobile `resolveConfirmedPendingPayments`/`bucketCountRead` (не путать null/unknown с 0), только здесь unknown-состояния в схеме нет вовсе: поле non-nullable, значит "не введено" не существует как отдельное состояние и не должно быть выдумано через falsiness. Regression: `backend/tests/test_material_actuals_zero.py` — explicit zero, positive actual, смешанные material/work строки, `material_stats` reconciliation.
+
+## 19. Непокрытые расчёты и их приёмка
 
 Сохраняется обязательный backlog: acceptance pending/age/SLA; home KPI; project phase/lifecycle; estimate layers/margin; category/floor/room analytics; procurement priority/readiness; notification/attention/unread counts; rework/quality SLA; contractor/manager portfolio metrics; schedule/version delay; warranty после уже merged #295; chat после уже merged #292; external observability/SLO #235/#283.
 
