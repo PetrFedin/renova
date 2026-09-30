@@ -16,7 +16,7 @@ function signalPreviewReady() {
 }
 
 import { ApiError, api, isRateLimitError, ProjectDetail, ProjectSummary, User, UserRole } from '@/lib/api';
-import { setAccessToken, setRefreshToken } from '@/lib/api/client';
+import { getRefreshToken, setAccessToken, setRefreshToken } from '@/lib/api/client';
 import { isAuthoritativeSessionFailure } from '@/lib/api/failurePolicy';
 import { secureGet, secureSet, secureMultiRemove } from '@/lib/secureTokenStore';
 import {
@@ -729,6 +729,20 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
   }, [loading, user?.id, activeProject?.id, projects.length, ensureActiveProject]);
 
   const logout = useCallback(async () => {
+    // Серверный отзыв — ДО очистки локальных токенов (после неё refresh уже не достать).
+    // Токен и поколение берём синхронно: если за время запроса вошёл другой аккаунт,
+    // локальную очистку пропускаем — иначе снесём чужую новую сессию (#315).
+    const refresh = getRefreshToken();
+    const stamp = getSessionStamp();
+    if (refresh) {
+      try {
+        await api.logout(refresh);
+      } catch (error) {
+        // Сбой отзыва не блокирует локальный выход, но не теряется молча.
+        reportError('renovaContext.logoutRevoke', error, { userId: stamp.userId });
+      }
+    }
+    if (getSessionStamp().generation !== stamp.generation) return;
     await AsyncStorage.multiRemove([
       KEYS.userId,
       KEYS.userRole,
