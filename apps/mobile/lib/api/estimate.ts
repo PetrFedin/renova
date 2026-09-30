@@ -23,21 +23,29 @@ export const estimateApi = {
       throw new Error('offline_queued');
     }
   },
-  /** W107: новая строка сметы — очередь офлайн */
+  /** W107/#406: новая строка сметы — очередь офлайн, replay-safe.
+   * The caller (AddEstimateLineForm) mints a stable client_request_id and
+   * keeps it in `body` across the first attempt and every offline-queue
+   * retry, so a response lost after the server already committed the line
+   * replays into the original row instead of creating a second one and
+   * double-counting budget_planned. The body is serialized exactly once and
+   * that same string is sent on the live attempt and queued for replay;
+   * deterministic 4xx (other than 429) is authoritative and must not queue. */
   addEstimateLine: async (userId: string, projectId: string, body: object) => {
+    const requestBody = JSON.stringify(body);
     try {
       return await req(
         `/api/v1/projects/${projectId}/estimate/lines`,
-        { method: 'POST', body: JSON.stringify(body) },
+        { method: 'POST', body: requestBody },
         userId,
       );
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 429) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/estimate/lines`,
         method: 'POST',
-        body: JSON.stringify(body),
+        body: requestBody,
         userId,
       });
       throw new Error('offline_queued');

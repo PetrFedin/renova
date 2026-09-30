@@ -3,6 +3,8 @@ from app.core.timeutil import utc_now
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.entities import EstimateLine, LineType, Project
+from app.services.budget_service import sync_project_budget_planned
+from app.services.client_write_idempotency import commit_client_write, replay_entity_id
 
 
 def serialize_estimate_lines(lines) -> list[dict]:
@@ -117,6 +119,67 @@ async def add_line(db: AsyncSession, project_id: str, data: dict) -> EstimateLin
     await recalc_budget(db, project_id)
     await db.refresh(line)
     return line
+
+
+ESTIMATE_LINE_CREATE_SCOPE = "estimate_line.create"
+
+
+async def create_or_replay_estimate_line(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    user_id: str,
+    payload: dict,
+    client_request_id: str | None,
+) -> tuple[EstimateLine, bool]:
+    """Create exactly one EstimateLine per client_request_id (#406).
+
+    A queued mobile retry after a lost create response must not mint a
+    second line or double-count `budget_planned`. The line, the project's
+    synced `budget_planned` and the ClientWriteRequest ledger entry commit
+    in a single transaction: same key + same canonical payload replays the
+    original line, same key + a different payload is a 409, and distinct
+    keys with identical visible values remain distinct lines (mirrors
+    create_or_replay_floor_plan in floor_plan_service.py).
+    """
+    try:
+        replay_id = await replay_entity_id(
+            db,
+            scope=ESTIMATE_LINE_CREATE_SCOPE,
+            project_id=project_id,
+            user_id=user_id,
+            request_id=client_request_id,
+            payload=payload,
+        )
+        if replay_id:
+            existing = await db.get(EstimateLine, replay_id)
+            if not existing or existing.project_id != project_id:
+                raise ValueError("estimate_line_idempotency_target_missing")
+            return existing, True
+
+        line = await prepare_line(db, project_id, payload)
+        await sync_project_budget_planned(db, project_id)
+        created, canonical_id = await commit_client_write(
+            db,
+            scope=ESTIMATE_LINE_CREATE_SCOPE,
+            project_id=project_id,
+            user_id=user_id,
+            request_id=client_request_id,
+            payload=payload,
+            entity_id=line.id,
+        )
+    except BaseException:
+        await db.rollback()
+        raise
+
+    if not created:
+        existing = await db.get(EstimateLine, canonical_id)
+        if not existing:
+            raise ValueError("estimate_line_idempotency_target_missing")
+        return existing, True
+
+    await db.refresh(line)
+    return line, False
 
 
 def material_stats(lines: list[EstimateLine]) -> dict:

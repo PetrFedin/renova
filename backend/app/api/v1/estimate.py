@@ -3,13 +3,21 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
-from app.models.entities import EstimateLine, User, UserRole
+from app.models.entities import User, UserRole
 from app.models.entities import Project
-from app.services.estimate_service import prepare_line, material_stats, update_line, lock_estimate, propose_estimate_lock, clear_estimate_proposal, get_estimate_lock_diff, import_estimate_csv
-from app.services.client_write_idempotency import IdempotencyConflict, commit_client_write, replay_entity_id
+from app.services.estimate_service import (
+    create_or_replay_estimate_line,
+    material_stats,
+    update_line,
+    lock_estimate,
+    propose_estimate_lock,
+    clear_estimate_proposal,
+    get_estimate_lock_diff,
+    import_estimate_csv,
+)
+from app.services.client_write_idempotency import IdempotencyConflict
 
 router = APIRouter(prefix="/projects/{project_id}/estimate", tags=["estimate"])
-ESTIMATE_LINE_CREATE_SCOPE = "estimate_line.create"
 
 
 def _idempotency_http_error() -> HTTPException:
@@ -79,43 +87,18 @@ async def create_line(
 
     payload = body.model_dump(exclude={"client_request_id"})
     try:
-        replay_id = await replay_entity_id(
+        line, replayed = await create_or_replay_estimate_line(
             db,
-            scope=ESTIMATE_LINE_CREATE_SCOPE,
             project_id=project_id,
             user_id=user.id,
-            request_id=body.client_request_id,
             payload=payload,
+            client_request_id=body.client_request_id,
         )
     except IdempotencyConflict as exc:
         raise _idempotency_http_error() from exc
-
-    if replay_id:
-        line = await db.get(EstimateLine, replay_id)
-        if not line or line.project_id != project_id:
-            raise HTTPException(409, detail={"code": "idempotency_target_missing"})
-        return {"ok": True, "id": line.id, "idempotent_replay": True}
-
-    line = await prepare_line(db, project_id, payload)
-    from app.services.budget_service import sync_project_budget_planned
-    await sync_project_budget_planned(db, project_id)
-    try:
-        created, entity_id = await commit_client_write(
-            db,
-            scope=ESTIMATE_LINE_CREATE_SCOPE,
-            project_id=project_id,
-            user_id=user.id,
-            request_id=body.client_request_id,
-            payload=payload,
-            entity_id=line.id,
-        )
-    except IdempotencyConflict as exc:
-        raise _idempotency_http_error() from exc
-    if not created:
-        line = await db.get(EstimateLine, entity_id)
-        if not line:
-            raise HTTPException(409, detail={"code": "idempotency_target_missing"})
-    return {"ok": True, "id": line.id, "idempotent_replay": not created}
+    except ValueError as exc:
+        raise HTTPException(409, detail={"code": "idempotency_target_missing"}) from exc
+    return {"ok": True, "id": line.id, "idempotent_replay": replayed}
 
 
 class EstimateCsvImport(BaseModel):
