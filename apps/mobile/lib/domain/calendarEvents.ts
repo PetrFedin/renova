@@ -65,7 +65,7 @@ export function formatCalendarEventDates(e: CalendarEvent): string {
 /** Заказчику — периоды без legacy «старт/финиш» и приёмок. */
 export function filterCalendarEventsForRole(events: CalendarEvent[], role: 'customer' | 'contractor'): CalendarEvent[] {
   if (role !== 'customer') return events;
-  const legacy = new Set(['contractor_ready', 'customer_accepted', 'stage_start', 'stage_end', 'work_start', 'work_due']);
+  const legacy = new Set(['contractor_ready', 'customer_accepted', 'stage_started']);
   return events.filter((e) => !legacy.has(e.kind));
 }
 
