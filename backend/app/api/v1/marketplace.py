@@ -71,6 +71,15 @@ def _can_see_full_address(lead: JobLead, user: User) -> bool:
 def _lead_dict(lead: JobLead, viewer: User, quotes: list[JobLeadQuote] | None = None) -> dict:
     pub = _location_public(lead.address)
     full = _can_see_full_address(lead, viewer)
+    is_owner = viewer.id == lead.customer_id
+    # Price ACL: a contractor's pre_estimate is visible only to the lead owner,
+    # the assigned contractor and the quote's own author — never to competing
+    # contractors (lead.pre_estimate may hold another contractor's price).
+    if is_owner or (lead.assigned_contractor_id is not None and viewer.id == lead.assigned_contractor_id):
+        visible_estimate = lead.pre_estimate
+    else:
+        own = [q for q in (quotes or []) if q.contractor_id == viewer.id]
+        visible_estimate = own[0].pre_estimate if own else None
     out = {
         "id": lead.id,
         "title": lead.title,
@@ -82,11 +91,11 @@ def _lead_dict(lead: JobLead, viewer: User, quotes: list[JobLeadQuote] | None = 
         "budget_hint": lead.budget_hint,
         "description": lead.description,
         "status": lead.status.value,
-        "pre_estimate": lead.pre_estimate,
+        "pre_estimate": visible_estimate,
         "assigned_contractor_id": lead.assigned_contractor_id,
         "quotes_count": len(quotes) if quotes is not None else 0,
     }
-    if quotes is not None and (viewer.id == lead.customer_id or viewer.role == UserRole.customer):
+    if quotes is not None and is_owner:
         out["quotes"] = [
             {
                 "id": q.id,
@@ -296,10 +305,8 @@ async def quote_lead(
             pre_estimate=body.pre_estimate,
         )
         db.add(quote)
-    # Keep lead open until customer accepts a quote; mirror latest for board display
-    lead.pre_estimate = body.pre_estimate
-    if lead.status == JobLeadStatus.open:
-        pass  # stay open — multiple quotes allowed
+    # Keep lead open until customer accepts a quote. Do NOT mirror the price onto
+    # the shared lead row: it would leak one contractor's price to competitors.
     await db.commit()
     await db.refresh(quote)
     return {"ok": True, "quote_id": quote.id, "pre_estimate": quote.pre_estimate, "awaiting_customer_pick": True}
