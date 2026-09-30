@@ -10,7 +10,7 @@ SOURCE VERIFIED означает прочитанную формулу, не п�
 
 ## 2. Денежная арифметика backend
 
-Source `backend/app/services/budget_service.py`, blob `7f8d4977aec667026c209efd132eb43147f254e5`.
+Source `backend/app/services/budget_service.py`, blob `5a317c9b2265f57e5030646c84277c0489e5560b`.
 
 ```text
 money(x) = Decimal(str(x or 0)).quantize(0.01, ROUND_HALF_UP)
@@ -213,7 +213,7 @@ readyCount = readyPickIds(picks, purchases, role).length
 
 ## 17. Selection pending count
 
-Source `OsSelectionsScreen.tsx`, blob `498ecd09ad6ae9692c7e446232a64f19c04113ac`.
+Source `OsSelectionsScreen.tsx`, blob `928c6979f2a2a0d884d19210eb6980c690f331ac`.
 
 ```text
 pending = count(SelectionItem.status == proposed)
