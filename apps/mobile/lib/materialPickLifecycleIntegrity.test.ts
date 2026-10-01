@@ -31,7 +31,18 @@ must(endpoint.includes('MATERIAL_PICK_CREATE_SCOPE = "material_pick.create"'), '
 must(endpoint.includes('replay_entity_id(') && endpoint.includes('commit_client_write('), 'material create uses request ledger');
 must(endpoint.includes('@router.post("/{project_id}/material-picks/{pick_id}/reject")'), 'backend exposes reject transition');
 must(endpoint.includes('user.role != UserRole.customer'), 'approve and reject require customer role');
-must(endpoint.includes('require_editable_pick('), 'price mutation requires editable material');
+// PATCH идёт через сервис: эндпоинт не правит материал сам, а сервис блокирует строку,
+// допускает правку только draft/pending и запрещает её при активной закупке.
+must(endpoint.includes('pick_svc.update_pick_fields('), 'PATCH material goes through the service');
+must(endpoint.includes('PickPatchIn') && !/\bprice:/.test(endpoint.slice(endpoint.indexOf('class PickPatchIn'), endpoint.indexOf('class RejectPickIn'))), 'PATCH body cannot carry price (separate provenance contract)');
+const updateStart = service.indexOf('async def update_pick_fields(');
+const updateEnd = service.indexOf('\nasync def ', updateStart + 10);
+const updateBlock = service.slice(updateStart, updateEnd < 0 ? undefined : updateEnd);
+must(updateStart >= 0, 'service has update_pick_fields');
+must(updateBlock.includes('for_update=True'), 'edit locks the material row');
+must(updateBlock.includes('MaterialPickStatus.draft, MaterialPickStatus.pending') && updateBlock.includes('material_pick_not_editable'), 'edit allowed only for draft/pending');
+must(updateBlock.includes('material_pick_has_active_purchase(') && updateBlock.includes('material_pick_locked_by_purchase'), 'edit blocked by active purchase');
+must(!updateBlock.includes('"price"'), 'edit service does not touch price');
 must(endpoint.includes('analog_of_id=pick_id'), 'analog route sets parent exactly once');
 
 must(service.includes('MaterialPick.id == pick_id,') && service.includes('MaterialPick.project_id == project_id,'), 'material lookup is project scoped before mutation');

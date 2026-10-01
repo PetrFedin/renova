@@ -93,7 +93,7 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
 
   if (loadState === 'error') {
     return (
-      <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
+      <ScrollView style={s.wrap} contentContainerStyle={screenLayout.tabContentStyle}>
         <LoadErrorState title="Не удалось загрузить подбор" onRetry={reload} role={role} showChatCta={role === 'customer'} />
       </ScrollView>
     );
@@ -101,7 +101,7 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
 
   if (loadState === 'loading' && !items.length) {
     return (
-      <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
+      <ScrollView style={s.wrap} contentContainerStyle={screenLayout.tabContentStyle}>
         <LoadingState title="Загружаем подбор…" />
       </ScrollView>
     );
@@ -168,7 +168,7 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
   };
 
   return (
-    <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
+    <ScrollView style={s.wrap} contentContainerStyle={screenLayout.tabContentStyle}>
       <Text style={s.hint}>
         Подбор чистовых материалов: исполнитель предлагает — заказчик согласует. Лимит — предельная цена позиции.
       </Text>

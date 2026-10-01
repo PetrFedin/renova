@@ -153,7 +153,7 @@ export function OsProjectProfileScreen({
   }
 
   return (
-    <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
+    <ScrollView style={s.wrap} contentContainerStyle={screenLayout.tabContentStyle}>
       {readOnly && <ReadOnlyBanner />}
       <ObjectTabGuide tab="profile" role={role} onNextTab={onNextTab} />
       {project.notes ? (

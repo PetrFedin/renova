@@ -1,6 +1,7 @@
 /** Список чатов: фильтр объектов, архив, закрепление — каждый чат привязан к одному объекту.
  * Clarity D: unread только в dock; в списке — title + 1 строка preview. */
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { FAB_SAFE_BOTTOM } from '@/constants/fab';
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { notifyAlert, notifyError } from '@/lib/notify';
 import { useFocusEffect } from 'expo-router';
@@ -233,7 +234,7 @@ export function ChatListView() {
   }
 
   return (
-    <ScrollView style={s.wrap} contentContainerStyle={{ padding: 16, paddingBottom: 24 }}>
+    <ScrollView style={s.wrap} contentContainerStyle={{ padding: 16, paddingBottom: FAB_SAFE_BOTTOM }}>
       {folder === 'active' && (unreadFailed || loadError) && globalUnread === 0 && displayThreads.length > 0 ? (
         <Pressable onPress={() => reload().catch(reportCatch('components.renova.chat.ChatListView.7'))} accessibilityRole="button" accessibilityLabel="Повторить обновление чатов" style={{ minHeight: RenovaTheme.minTouch, justifyContent: 'center' }}>
           <Text style={s.unreadWarn}>Не удалось обновить — нажмите, чтобы повторить</Text>
