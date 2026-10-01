@@ -38,10 +38,17 @@ def _create_all_allowed() -> bool:
 
 
 def _revision_guard_required() -> bool:
-    return policy_for(settings.normalized_environment).name in {
-        "staging",
-        "production",
-    }
+    name = policy_for(settings.normalized_environment).name
+    if name in {"staging", "production"}:
+        return True
+    # APIB-014: a development database that is not created from metadata
+    # (non-SQLite, create_all off => schema is Alembic-only) must be at head too,
+    # otherwise the API starts on a stale schema and fails on the first query.
+    return (
+        name == "development"
+        and not settings.database_url.strip().lower().startswith("sqlite")
+        and not _create_all_allowed()
+    )
 
 
 async def _prepare_database_schema() -> None:

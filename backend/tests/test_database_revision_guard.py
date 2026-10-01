@@ -186,13 +186,16 @@ async def test_working_schema_preparation_requires_revision_guard(
 
 
 @pytest.mark.asyncio
-async def test_local_schema_preparation_does_not_require_revision_guard(monkeypatch):
-    called = False
+async def test_development_alembic_only_postgres_requires_revision_guard(monkeypatch):
+    """APIB-014: development + Postgres + create_all off is Alembic-only, so it is guarded."""
+    calls: list[object] = []
 
-    async def must_not_run(_engine):
-        nonlocal called
-        called = True
-        raise AssertionError("working revision guard called in local environment")
+    async def verified(engine):
+        calls.append(engine)
+        return migration_guard.DatabaseRevisionState(
+            expected_heads=("head",),
+            current_heads=("head",),
+        )
 
     monkeypatch.setattr(db_session.settings, "environment", "development")
     monkeypatch.setattr(
@@ -201,7 +204,52 @@ async def test_local_schema_preparation_does_not_require_revision_guard(monkeypa
         "postgresql+asyncpg://local.invalid/renova",
     )
     monkeypatch.setattr(db_session.settings, "allow_create_all", False)
+    monkeypatch.setattr(db_session, "assert_database_at_head", verified)
+
+    await db_session._prepare_database_schema()
+
+    assert calls == [db_session.engine]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "environment,url,allow_create_all",
+    [
+        ("development", "postgresql+asyncpg://local.invalid/renova", True),
+        ("test", "postgresql+asyncpg://local.invalid/renova", False),
+    ],
+)
+async def test_local_schema_preparation_does_not_require_revision_guard(
+    monkeypatch, environment, url, allow_create_all
+):
+    called = False
+
+    async def must_not_run(_engine):
+        nonlocal called
+        called = True
+        raise AssertionError("working revision guard called in local environment")
+
+    monkeypatch.setattr(db_session.settings, "environment", environment)
+    monkeypatch.setattr(db_session.settings, "database_url", url)
+    monkeypatch.setattr(db_session.settings, "allow_create_all", allow_create_all)
     monkeypatch.setattr(db_session, "assert_database_at_head", must_not_run)
+
+    class _Conn:
+        async def run_sync(self, *_a, **_k):
+            return None
+
+    class _Begin:
+        async def __aenter__(self):
+            return _Conn()
+
+        async def __aexit__(self, *_a):
+            return False
+
+    class _Engine:
+        def begin(self):
+            return _Begin()
+
+    monkeypatch.setattr(db_session, "engine", _Engine())
 
     await db_session._prepare_database_schema()
 
