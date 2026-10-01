@@ -1,5 +1,6 @@
 /** API: market */
 import { req, cachedGet, API_BASE } from './client';
+import { buildJobLeadsQueryString } from '@/lib/domain/jobLeadUi';
 
 /** W140: тело создания заявки — совпадает с backend LeadIn */
 export type JobLeadCreateBody = {
@@ -28,7 +29,11 @@ export const marketApi = {
   upsertContractorProfile: (userId: string, body: object) => req('/api/v1/contractors/profile', { method: 'POST', body: JSON.stringify(body) }, userId),
   matchContractors: (userId: string, renovationType?: string, specialty?: string) => { const q = new URLSearchParams(); if (renovationType) q.set('renovation_type', renovationType); if (specialty) q.set('specialty', specialty); return req<{ id: string; user_id?: string; name: string; company?: string; score: number; rating: number | null; match_basis?: string }[]>(`/api/v1/contractors/match?${q}`, {}, userId); },
   contractorPortfolio: (userId: string, profileId: string) => req<{ id: string; image_url: string; caption?: string }[]>(`/api/v1/contractors/${profileId}/portfolio`, {}, userId),
-  listJobLeads: (userId: string, status?: string) =>
+  listJobLeads: (
+    userId: string,
+    status?: string,
+    page?: { limit?: number; offset?: number; city?: string; renovation_type?: string; budget_min?: number; budget_max?: number },
+  ) =>
     req<
       {
         id: string;
@@ -46,11 +51,23 @@ export const marketApi = {
         quotes_count?: number;
         quotes?: { id: string; contractor_id: string; pre_estimate: number; note?: string | null }[];
       }[]
-    >(`/api/v1/job-leads${status ? `?status=${status}` : ''}`, {}, userId),
+    >(`/api/v1/job-leads${buildJobLeadsQueryString(status, page)}`, {}, userId),
   createJobLead: (userId: string, body: JobLeadCreateBody) =>
     req('/api/v1/job-leads', { method: 'POST', body: JSON.stringify(body) }, userId),
   quoteJobLead: (userId: string, leadId: string, pre_estimate: number) =>
     req(`/api/v1/job-leads/${leadId}/quote`, { method: 'POST', body: JSON.stringify({ pre_estimate }) }, userId),
+  /** Исполнитель отзывает свой отклик (пока заявка открыта). */
+  withdrawJobLeadQuote: (userId: string, leadId: string) =>
+    req(`/api/v1/job-leads/${leadId}/quote/withdraw`, { method: 'POST' }, userId),
+  /** Заказчик закрывает свою открытую заявку; причина необязательна. */
+  closeJobLead: (userId: string, leadId: string, reason?: string) =>
+    req(`/api/v1/job-leads/${leadId}/close`, { method: 'POST', body: JSON.stringify(reason?.trim() ? { reason: reason.trim() } : {}) }, userId),
+  /** Назначенный исполнитель отказывается от заявки. */
+  declineJobLeadAssignment: (userId: string, leadId: string) =>
+    req(`/api/v1/job-leads/${leadId}/decline-assignment`, { method: 'POST' }, userId),
+  /** Заказчик правит свою заявку, пока она открыта. */
+  updateJobLead: (userId: string, leadId: string, body: Partial<JobLeadCreateBody>) =>
+    req(`/api/v1/job-leads/${leadId}`, { method: 'PATCH', body: JSON.stringify(body) }, userId),
   acceptJobLeadQuote: (userId: string, leadId: string, quoteId: string) =>
     req(`/api/v1/job-leads/${leadId}/quotes/${quoteId}/accept`, { method: 'POST' }, userId),
   convertJobLead: (userId: string, leadId: string, body?: { property_type?: string; rooms?: object[] }) =>

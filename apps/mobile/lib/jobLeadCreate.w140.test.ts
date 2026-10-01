@@ -35,7 +35,7 @@ must(leadIn.includes('min_length=1') && leadIn.includes('Field(gt=0'), 'backend 
 must(leadIn.includes('budget_hint: float = Field(gt=0'), 'backend budget required');
 
 must(
-  board.includes("api.listJobLeads(userId, 'quoted')") && board.includes("api.listJobLeads(userId, 'open')"),
+  board.includes("api.listJobLeads(userId, 'quoted')") && board.includes("api.listJobLeads(userId, 'open'"),
   'board must fetch both quoted and open leads so accepted quotes do not disappear before conversion',
 );
 must(
@@ -122,28 +122,19 @@ must(wizard.includes('loadQuotedLead((status) => api.listJobLeads(userId, status
   'wizard must explicitly load the quoted lead supplied by the board');
 must(wizard.includes("loadState === 'error'") && wizard.includes("loadState === 'unavailable'")
   && wizard.includes('title="Повторить загрузку"'), 'wizard must terminate missing/failed loading with recovery');
-must(wizard.includes('busyRef.current') && wizard.includes('loading={busy} disabled={busy}'),
-  'wizard must synchronously reject duplicate clicks and disable the pending action');
+// MKT-028: объект из заявки создаёт заказчик — у исполнителя нет мутации конверсии.
+must(!wizard.includes('convertJobLead') && !wizard.includes('calcRoomMetrics') && !wizard.includes('generateTemplateLines'),
+  'contractor screen must neither convert the lead nor invent a template estimate (MKT-027/028)');
+must(wizard.includes('lead.pre_estimate') && wizard.includes('Цена вашего принятого КП'),
+  'contractor must see the real accepted quote price from the lead response');
 must(!wizard.includes('syncProjectSideEffects') && !wizard.includes('as any'),
-  'wizard must use fresh loadProject propagation, never fabricated domain context');
-const wizardMutation = wizard.indexOf('converted = await api.convertJobLead(');
-const wizardCommitted = wizard.indexOf('committedProjectRef.current = converted;', wizardMutation);
-const wizardOpen = wizard.indexOf('await openConvertedProject(converted.project_id,', wizardCommitted);
-must(wizardMutation >= 0 && wizardCommitted > wizardMutation && wizardOpen > wizardCommitted,
-  'persist the acknowledged project before fallible post-commit operations');
-must(wizard.includes('let converted = committedProjectRef.current;') && wizard.includes('if (!converted)')
-  && wizard.includes('title="Открыть созданный проект"'), 'recovery must open the saved project, not repeat conversion');
-must((wizard.match(/await api\.convertJobLead\(/g) ?? []).length === 1,
-  'wizard must have only one guarded conversion call site');
-must(wizard.includes('if (stateScope !== scopeKey)') && wizard.includes('setRooms(initialRooms());')
-  && wizard.includes('scopeRef.current === scopeKey') && wizard.includes('loadRequest.current === request'),
-  'account/lead changes must clear drafts, hide old identity-bearing state and ignore stale responses');
-const selectionGuard = wizard.indexOf('activeProject?.id !== createdProject.project_id) return;');
-const guardedNavigation = wizard.indexOf("replaceOsNav(tabsRoute('contractor', 'index')", selectionGuard);
-must(selectionGuard >= 0 && guardedNavigation > selectionGuard && wizard.includes('Открытие объекта не подтверждено.'),
-  'a swallowed rate-limit or resolved load promise must not navigate before selected-project identity matches');
+  'wizard must not fabricate domain context');
+must(wizard.includes('scopeRef.current === scopeKey') && wizard.includes('loadRequest.current === request'),
+  'account/lead changes must ignore stale responses');
 must(wizard.includes('<Card ') && !/#[0-9a-f]{3,8}\b/i.test(wizard),
   'wizard must use the shared card and theme tokens rather than local color literals');
+must(board.includes("available={l.status !== 'open'}"),
+  'lead chat must be gated on assignment instead of offering a dead input (MKT-010)');
 
 async function verifyWizardRecovery(): Promise<void> {
   const states: string[] = [];

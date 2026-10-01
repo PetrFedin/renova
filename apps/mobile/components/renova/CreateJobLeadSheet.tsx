@@ -6,15 +6,11 @@ import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { metaCaptionStyle } from '@/constants/formTypography';
 import { isOfflineBlocked, notifyOfflineBlocked } from '@/lib/offlineUi';
+import { RENOVATION_TYPE_OPTIONS } from '@/lib/domain/jobLeadUi';
 import type { JobLeadCreateBody } from '@/lib/api/market';
 import { reportCatch, reportError } from '@/lib/reportError';
 
-const RENOVATION_TYPES = [
-  { id: 'cosmetic', label: 'Косметический' },
-  { id: 'capital', label: 'Капитальный' },
-  { id: 'bathroom', label: 'Ванная' },
-  { id: 'kitchen', label: 'Кухня' },
-] as const;
+const RENOVATION_TYPES = RENOVATION_TYPE_OPTIONS;
 
 type PropagationEvent = { stopPropagation?: () => void };
 
@@ -25,6 +21,7 @@ const TITLE_BY_TYPE: Record<string, string> = {
   capital: 'Капитальный ремонт',
   bathroom: 'Ремонт ванной',
   kitchen: 'Ремонт кухни',
+  house: 'Ремонт дома',
 };
 
 function parsePositive(raw: string): number | undefined {
@@ -37,8 +34,13 @@ export function CreateJobLeadSheet({
   visible,
   onClose,
   onCreate,
+  mode = 'create',
+  initial,
 }: {
   visible: boolean;
+  /** edit — правка открытой заявки (PATCH); поля предзаполняются из `initial`. */
+  mode?: 'create' | 'edit';
+  initial?: JobLeadCreateBody;
   onClose: () => void;
   onCreate: (body: JobLeadCreateBody) => Promise<void>;
 }) {
@@ -53,6 +55,17 @@ export function CreateJobLeadSheet({
 
   useEffect(() => {
     if (!visible) return;
+    if (mode === 'edit' && initial) {
+      setTitle(initial.title);
+      setAddress(initial.address ?? '');
+      setArea(initial.area_sqm ? String(initial.area_sqm) : '');
+      setBudget(initial.budget_hint ? String(initial.budget_hint) : '');
+      setDescription(initial.description ?? '');
+      setRenovationType(initial.renovation_type);
+      setTitleTouched(true);
+      setBusy(false);
+      return;
+    }
     setTitle(TITLE_BY_TYPE.cosmetic);
     setAddress('');
     setArea('');
@@ -61,6 +74,7 @@ export function CreateJobLeadSheet({
     setRenovationType('cosmetic');
     setTitleTouched(false);
     setBusy(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
   const areaSqm = parsePositive(area);
@@ -108,9 +122,9 @@ export function CreateJobLeadSheet({
       onClose();
     } catch (e: unknown) {
       if (isOfflineBlocked(e)) {
-        notifyOfflineBlocked(e, 'Создание заявки недоступно без интернета.');
+        notifyOfflineBlocked(e, mode === 'edit' ? 'Правка заявки недоступна без интернета.' : 'Создание заявки недоступно без интернета.');
       } else {
-        notifyError('Ошибка', e, 'Не удалось создать заявку');
+        notifyError('Ошибка', e, mode === 'edit' ? 'Не удалось сохранить заявку' : 'Не удалось создать заявку');
       }
     } finally {
       setBusy(false);
@@ -126,7 +140,7 @@ export function CreateJobLeadSheet({
         <Pressable style={s.backdrop} onPress={requestClose}>
           <Pressable style={s.sheet} onPress={(event: PropagationEvent) => event.stopPropagation?.()}>
             <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-              <Text style={s.head}>Новая заявка</Text>
+              <Text style={s.head}>{mode === 'edit' ? 'Редактировать заявку' : 'Новая заявка'}</Text>
               <Text style={s.hint}>Исполнители увидят объект и смогут прислать КП.</Text>
 
               <Text style={s.label}>Тип ремонта</Text>
@@ -205,7 +219,8 @@ export function CreateJobLeadSheet({
               />
 
               <PrimaryButton
-                title={busy ? 'Создание…' : 'Создать заявку'}
+                title={busy ? (mode === 'edit' ? 'Сохранение…' : 'Создание…') : mode === 'edit' ? 'Сохранить' : 'Создать заявку'}
+                variant="accent"
                 onPress={() => {
                   submit().catch(reportCatch('jobLead.submit'));
                 }}
