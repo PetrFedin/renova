@@ -128,7 +128,14 @@ async def test_reject_uses_project_scoped_service_and_actual_customer(monkeypatc
 def test_change_order_endpoint_uses_canonical_scope_guard(endpoint):
     source = inspect.getsource(endpoint)
 
-    assert "claims = _portal_claims(body.token, project_id)" in source
+    # The guard is now state-aware: it takes the session and the required scope
+    # so a deleted account, a revoked session, a removed participant or a
+    # trashed project cannot be reached through an outstanding magic link.
+    # The intent asserted here is unchanged — the endpoint uses the canonical
+    # guard, never calls verify_portal_token itself, and settles scope before
+    # resolving the customer.
+    assert "claims = await _portal_claims(" in source
+    assert 'required_scope="accept_stage"' in source
     assert '_require_portal_scope(claims, "accept_stage")' in source
     assert "portal_tok.verify_portal_token" not in source
     assert source.index("_require_portal_scope") < source.index("_require_customer")
