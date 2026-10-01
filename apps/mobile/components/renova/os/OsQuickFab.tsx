@@ -1,6 +1,7 @@
 /** Единая точка «+» — расход (scan/manual) · работа · чат */
 import { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Modal, Platform, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Modal, Platform, TextInput } from 'react-native';
+import { notifyError } from '@/lib/notify';
 import { usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { FAB_BOTTOM, FAB_RIGHT, FAB_SIZE } from '@/constants/fab';
@@ -164,7 +165,7 @@ export function OsQuickFab({ role }: { role: OsRole }) {
                   existing = await api.chatInbox(user.id);
                 } catch (error) {
                   reportError('quickFab.chatInbox', error, { projectId: activeProject.id });
-                  Alert.alert('Чат', 'Не удалось загрузить чаты. Проверьте сеть.');
+                  notifyError('Чат', error, 'Не удалось загрузить чаты. Проверьте сеть.');
                   return;
                 }
                 await createProjectChat({
@@ -176,7 +177,7 @@ export function OsQuickFab({ role }: { role: OsRole }) {
                 });
               } catch (error) {
                 reportError('quickFab.createChat', error, { projectId: activeProject.id });
-                Alert.alert('Чат', 'Не удалось создать чат. Проверьте подключение и повторите.');
+                notifyError('Чат', error, 'Не удалось создать чат. Проверьте подключение и повторите.');
               }
             }}>
               <Ionicons name="add-circle-outline" size={22} color={RenovaTheme.colors.primary} />

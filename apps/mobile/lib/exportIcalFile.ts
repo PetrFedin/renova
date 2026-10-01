@@ -1,5 +1,6 @@
 /** W124: экспорт .ics — web download + native Share (как CSV/PDF). Разовый файл, не live-синк. */
-import { Platform, Alert } from 'react-native';
+import { Platform } from 'react-native';
+import { notifyAlert } from '@/lib/notify';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { authHeaders } from '@/lib/api/client';
@@ -27,7 +28,7 @@ export async function exportIcalFile(userId: string, projectId: string, filename
   const text = await r.text();
   const cache = FileSystem.cacheDirectory;
   if (!cache) {
-    Alert.alert('Календарь', 'Нет доступа к файловой системе');
+    notifyAlert('Календарь', 'Нет доступа к файловой системе');
     return;
   }
   const out = `${cache}${safe}`;
@@ -39,6 +40,6 @@ export async function exportIcalFile(userId: string, projectId: string, filename
       dialogTitle: 'Импорт в календарь устройства',
     });
   } else {
-    Alert.alert('Календарь', 'Файл сохранён во временную папку приложения.');
+    notifyAlert('Календарь', 'Файл сохранён во временную папку приложения.');
   }
 }

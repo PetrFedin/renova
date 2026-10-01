@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, Linking, StyleSheet, Alert } from 'react-native';
+import { View, Text, Linking, StyleSheet } from 'react-native';
+import { notifyError } from '@/lib/notify';
 import { api } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
@@ -62,8 +63,8 @@ export function DesignPackageList({
       await api.createDesignPackage(userId, projectId, { title: picked.name || 'Дизайн-проект', file_key: key });
       await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any) });
       load();
-    } catch {
-      Alert.alert('Загрузка', 'Не удалось загрузить документ');
+    } catch (err) {
+      notifyError('Загрузка', err, 'Не удалось загрузить документ');
     } finally {
       setUploading(false);
     }

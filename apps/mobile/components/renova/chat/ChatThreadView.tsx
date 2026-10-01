@@ -1,8 +1,7 @@
 /** Экран треда: реакции, закрепление, задачи, счета, участники, файлы */
 import { useEffect, useRef, useState, useCallback } from 'react';
-import {
-  AppState, ScrollView, View, Text, TextInput, StyleSheet, Image, Pressable, Alert, Modal,
-} from 'react-native';
+import { AppState, ScrollView, View, Text, TextInput, StyleSheet, Image, Pressable, Modal } from 'react-native';
+import { notifyError } from '@/lib/notify';
 import { useFocusEffect, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -473,7 +472,7 @@ export function ChatThreadView({
           <Pressable onPress={() => setInviteOpen(true)}><Text style={s.topLink}>+ Участник</Text></Pressable>
         )}
         <Pressable onPress={() => setSettingsOpen(true)}><Text style={s.topLink}>Настройки</Text></Pressable>
-        <Pressable onPress={() => api.exportChatPdf(user.id, projectId, threadId).catch(() => Alert.alert('Ошибка', 'Не удалось экспортировать документ'))}>
+        <Pressable onPress={() => api.exportChatPdf(user.id, projectId, threadId).catch((err) => notifyError('Ошибка', err, 'Не удалось экспортировать документ'))}>
           <Text style={s.topLink}>Документ</Text>
         </Pressable>
         <Pressable onPress={async () => {
@@ -485,7 +484,7 @@ export function ChatThreadView({
               return;
             }
             reportError('ChatThreadView.ChatPin.Mutation', e, { threadId, projectId });
-            Alert.alert('Ошибка', 'Не удалось изменить закрепление');
+            notifyError('Ошибка', e, 'Не удалось изменить закрепление');
             return;
           }
           await refreshChatAfterCommit('ChatPin');
@@ -515,7 +514,7 @@ export function ChatThreadView({
                   return;
                 }
                 reportError('ChatThreadView.Reaction.Mutation', e, { threadId, projectId, messageId: m.id });
-                Alert.alert('Ошибка', 'Не удалось поставить реакцию');
+                notifyError('Ошибка', e, 'Не удалось поставить реакцию');
                 return;
               }
               await refreshChatAfterCommit('Reaction');
@@ -529,7 +528,7 @@ export function ChatThreadView({
                   return;
                 }
                 reportError('ChatThreadView.MessagePin.Mutation', e, { threadId, projectId, messageId: m.id });
-                Alert.alert('Ошибка', 'Не удалось изменить закрепление сообщения');
+                notifyError('Ошибка', e, 'Не удалось изменить закрепление сообщения');
                 return;
               }
               await refreshChatAfterCommit('MessagePin');
@@ -545,7 +544,7 @@ export function ChatThreadView({
                   return;
                 }
                 reportError('ChatThreadView.Confirm.Mutation', e, { threadId, projectId, messageId: m.id });
-                Alert.alert('Ошибка', 'Не удалось подтвердить сообщение');
+                notifyError('Ошибка', e, 'Не удалось подтвердить сообщение');
                 return;
               }
               await reconcileCommittedChatMutation('Confirm');
@@ -588,7 +587,7 @@ export function ChatThreadView({
             } catch (error) {
               setText(tmp);
               reportError('ChatThreadView.SendMessage.Mutation', error, { threadId, projectId });
-              Alert.alert('Ошибка', 'Не удалось отправить сообщение');
+              notifyError('Ошибка', error, 'Не удалось отправить сообщение');
             }
           }} />
           <Pressable disabled={!canWrite} onPress={async () => {
@@ -598,7 +597,7 @@ export function ChatThreadView({
               await sendText('Фото', 'photo', compressDataUrl(`data:image/jpeg;base64,${pick.assets[0].base64}`));
             } catch (error) {
               reportError('ChatThreadView.SendPhoto.Mutation', error, { threadId, projectId });
-              Alert.alert('Ошибка', 'Не удалось отправить фото');
+              notifyError('Ошибка', error, 'Не удалось отправить фото');
             }
           }}><Text style={s.toolBtn}>📷</Text></Pressable>
           <Pressable disabled={!canWrite} onPress={async () => {
@@ -610,7 +609,7 @@ export function ChatThreadView({
               await sendText(a.fileName || (isPhoto ? 'Фото' : 'Файл'), isPhoto ? 'photo' : 'file', compressDataUrl(`data:${a.mimeType || 'image/jpeg'};base64,${a.base64}`));
             } catch (error) {
               reportError('ChatThreadView.SendAttachment.Mutation', error, { threadId, projectId });
-              Alert.alert('Ошибка', 'Не удалось отправить файл');
+              notifyError('Ошибка', error, 'Не удалось отправить файл');
             }
           }}><Text style={s.toolBtn}>📎</Text></Pressable>
           {user.role === 'contractor' && (
@@ -618,7 +617,7 @@ export function ChatThreadView({
               <Pressable disabled={!canWrite} onPress={() => {
                 void sendText('Прошу подтвердить согласование', 'confirm').catch((error) => {
                   reportError('ChatThreadView.SendConfirm.Mutation', error, { threadId, projectId });
-                  Alert.alert('Ошибка', 'Не удалось отправить запрос подтверждения');
+                  notifyError('Ошибка', error, 'Не удалось отправить запрос подтверждения');
                 });
               }}>
                 <Text style={s.toolBtn}>✓?</Text>
@@ -637,7 +636,7 @@ export function ChatThreadView({
                         notifyOfflineQueued('Счёт');
                       } else {
                         reportError('ChatThreadView.Invoice.Mutation', e, { threadId, projectId, amount });
-                        Alert.alert('Ошибка', 'Не удалось создать счёт');
+                        notifyError('Ошибка', e, 'Не удалось создать счёт');
                       }
                       return;
                     }
@@ -710,7 +709,7 @@ export function ChatThreadView({
                 });
               } catch (error) {
                 reportError('ChatThreadView.Invite.Mutation', error, { threadId, projectId });
-                Alert.alert('Ошибка', 'Не удалось пригласить участника');
+                notifyError('Ошибка', error, 'Не удалось пригласить участника');
                 return;
               }
               setInviteOpen(false);

@@ -1,6 +1,7 @@
 /** Профиль объекта — редактирование основных данных проекта (Объект → Профиль) */
 import { useEffect, useState } from 'react';
-import { ScrollView, View, Text, StyleSheet, Alert, Pressable } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
+import { notifyAlert, notifyError } from '@/lib/notify';
 import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { TechnicalSupervisionCard } from '@/components/renova/TechnicalSupervisionCard';
@@ -99,21 +100,21 @@ export function OsProjectProfileScreen({
   async function onSave() {
     const projectId = project.id;
     if (!profileValues.name.trim()) {
-      Alert.alert('Укажите название проекта');
+      notifyAlert('Укажите название проекта');
       return;
     }
     const start = profileValues.planned_start_date?.trim() || '';
     const end = profileValues.planned_end_date?.trim() || '';
     if (start && !isIsoDate(start)) {
-      Alert.alert('Дата старта', 'Формат: YYYY-MM-DD');
+      notifyAlert('Дата старта', 'Формат: YYYY-MM-DD');
       return;
     }
     if (end && !isIsoDate(end)) {
-      Alert.alert('Дата финиша', 'Формат: YYYY-MM-DD');
+      notifyAlert('Дата финиша', 'Формат: YYYY-MM-DD');
       return;
     }
     if (start && end && start > end) {
-      Alert.alert('Сроки', 'Дата старта не может быть позже финиша');
+      notifyAlert('Сроки', 'Дата старта не может быть позже финиша');
       return;
     }
 
@@ -145,7 +146,7 @@ export function OsProjectProfileScreen({
       alertProjectProfileSaved(role, datesChanged);
     } catch (error) {
       reportError('projectProfile.save', error, { projectId });
-      Alert.alert('Ошибка', 'Не удалось сохранить. Проверьте подключение к серверу.');
+      notifyError('Ошибка', error, 'Не удалось сохранить. Проверьте подключение к серверу.');
     } finally {
       setBusy(false);
     }

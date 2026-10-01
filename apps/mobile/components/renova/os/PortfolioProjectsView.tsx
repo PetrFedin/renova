@@ -1,6 +1,7 @@
 /** Портфель — выбор объектов, итоги, статьи расходов, сравнение */
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { notifyError } from '@/lib/notify';
 import { replaceOsNav } from '@/lib/pushOsNav';
 import { tabsRoute, type OsRole } from '@/constants/osSections';
 import { RenovaTheme } from '@/constants/Theme';
@@ -151,7 +152,7 @@ export function PortfolioProjectsView() {
       replaceOsNav(tabsRoute(role, 'index'));
     } catch (error) {
       reportError('portfolio.openProject', error, { projectId: id });
-      Alert.alert('Ошибка', 'Не удалось открыть объект');
+      notifyError('Ошибка', error, 'Не удалось открыть объект');
     }
   }
 

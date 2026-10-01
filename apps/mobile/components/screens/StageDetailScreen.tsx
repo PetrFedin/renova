@@ -1,6 +1,7 @@
 /** Экран этапа: приёмка above fold, вторичное — в accordion */
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { ScrollView, View, Text, Alert, TextInput, StyleSheet, Pressable, Image } from 'react-native';
+import { ScrollView, View, Text, TextInput, StyleSheet, Pressable, Image } from 'react-native';
+import { notifyAlert, notifyError } from '@/lib/notify';
 import { useLocalSearchParams } from 'expo-router';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
@@ -172,8 +173,8 @@ export function StageDetailScreen() {
     if (!user || !activeProject || !stage) return;
     try {
       await api.exportStageAcceptance(user.id, activeProject.id, stage.id, exportChecks);
-    } catch {
-      Alert.alert('Не удалось', 'Акт приёмки временно недоступен. Попробуйте позже.');
+    } catch (err) {
+      notifyError('Не удалось', err, 'Акт приёмки временно недоступен. Попробуйте позже.');
     }
   };
 
@@ -214,11 +215,10 @@ export function StageDetailScreen() {
         onPrimary: () => undefined,
       });
     } catch (e: unknown) {
-      if (isOfflineQueued(e)) notifyOfflineQueued('Возврат на доработку');
-      else {
-        reportError('stage.return', e, { stageId: stage?.id });
-        Alert.alert('Не удалось вернуть этап', e instanceof Error && e.message ? e.message : 'Повторите попытку.');
-      }
+      if (isOfflineQueued(e)) { notifyOfflineQueued('Возврат на доработку'); return true; }
+      reportError('stage.return', e, { stageId: stage?.id });
+      notifyError('Не удалось вернуть этап', e, 'Повторите попытку.');
+      return false;
     }
   };
 
@@ -268,7 +268,7 @@ export function StageDetailScreen() {
           notifyOfflineQueued('Комментарий');
         } else {
           reportError('components.screens.StageDetailScreen.AddComment', error, { stageId: stage.id });
-          Alert.alert('Комментарий', 'Не удалось отправить комментарий. Повторите попытку.');
+          notifyError('Комментарий', error, 'Не удалось отправить комментарий. Повторите попытку.');
         }
         return;
       }
@@ -338,7 +338,7 @@ export function StageDetailScreen() {
           notifyOfflineQueued('Фото');
         } else {
           reportError('components.screens.StageDetailScreen.AddPhoto', error, { stageId: stage.id, label });
-          Alert.alert('Фото', 'Не удалось загрузить фото. Запись этапа не изменена — повторите попытку.');
+          notifyError('Фото', error, 'Не удалось загрузить фото. Запись этапа не изменена — повторите попытку.');
         }
         return;
       }

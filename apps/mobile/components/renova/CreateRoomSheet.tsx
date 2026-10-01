@@ -1,6 +1,7 @@
 /** Создание комнаты — исполнитель (Объект → Комнаты) */
 import { useEffect, useState } from 'react';
-import { Modal, View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
+import { Modal, View, Text, StyleSheet, ScrollView } from 'react-native';
+import { notifyAlert, notifyError } from '@/lib/notify';
 import { isRateLimitError } from '@/lib/api';
 import { parseNonNegativeInt, parsePositiveNumber } from '@/lib/parseLocaleNumber';
 import { RenovaTheme } from '@/constants/Theme';
@@ -112,11 +113,11 @@ export function CreateRoomSheet({
     const plumbingN = plumbing.trim() ? parseNonNegativeInt(plumbing) : 0;
     if (!name.trim()) return;
     if (len === null || wid === null || hei === null) {
-      Alert.alert('Размеры комнаты', 'Длина, ширина и высота — положительные числа в метрах, например 4,2.');
+      notifyAlert('Размеры комнаты', 'Длина, ширина и высота — положительные числа в метрах, например 4,2.');
       return;
     }
     if (outletsN === null || switchesN === null || plumbingN === null) {
-      Alert.alert('Количество точек', 'Розетки, выключатели и точки воды — целые числа от 0.');
+      notifyAlert('Количество точек', 'Розетки, выключатели и точки воды — целые числа от 0.');
       return;
     }
     setBusy(true);
@@ -138,9 +139,9 @@ export function CreateRoomSheet({
       if (!requestMode) alertRoomCreated(role);
     } catch (e) {
       if (isRateLimitError(e)) {
-        Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
+        notifyAlert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
       } else {
-        Alert.alert('Ошибка', requestMode ? 'Не удалось отправить запрос. Проверьте данные и попробуйте снова.' : 'Не удалось создать комнату. Проверьте подключение и попробуйте снова.');
+        notifyError('Ошибка', e, requestMode ? 'Не удалось отправить запрос' : 'Не удалось создать комнату');
       }
     } finally {
       setBusy(false);

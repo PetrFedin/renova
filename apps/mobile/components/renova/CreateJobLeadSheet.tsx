@@ -1,17 +1,7 @@
 /** Форма создания заявки заказчиком (W140) — вместо демо-хардкода 55 м² / 800k */
 import { useEffect, useState } from 'react';
-import {
-  Modal,
-  View,
-  Text,
-  TextInput,
-  StyleSheet,
-  Pressable,
-  ScrollView,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
+import { Modal, View, Text, TextInput, StyleSheet, Pressable, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { notifyAlert, notifyError } from '@/lib/notify';
 import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { metaCaptionStyle } from '@/constants/formTypography';
@@ -94,15 +84,15 @@ export function CreateJobLeadSheet({
     if (busy) return;
     const t = title.trim();
     if (!t) {
-      Alert.alert('Название', 'Укажите название заявки');
+      notifyAlert('Название', 'Укажите название заявки');
       return;
     }
     if (areaSqm == null) {
-      Alert.alert('Площадь', 'Укажите площадь объекта в м²');
+      notifyAlert('Площадь', 'Укажите площадь объекта в м²');
       return;
     }
     if (budgetHint == null) {
-      Alert.alert('Бюджет', 'Укажите ориентировочный бюджет в ₽');
+      notifyAlert('Бюджет', 'Укажите ориентировочный бюджет в ₽');
       return;
     }
     setBusy(true);
@@ -120,7 +110,7 @@ export function CreateJobLeadSheet({
       if (isOfflineBlocked(e)) {
         notifyOfflineBlocked(e, 'Создание заявки недоступно без интернета.');
       } else {
-        Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось создать заявку');
+        notifyError('Ошибка', e, 'Не удалось создать заявку');
       }
     } finally {
       setBusy(false);

@@ -1,5 +1,6 @@
 /** P2.2: Подбор чистовых материалов — room × category × approve */
 import { useCallback, useMemo, useState } from 'react';
+import { notifyError } from '@/lib/notify';
 import { ScrollView, View, Text, StyleSheet, Pressable, TextInput } from 'react-native';
 import { useFocusEffect, usePathname } from 'expo-router';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
@@ -128,7 +129,7 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
         notifyOfflineQueued('Позиция подбора');
         setShowAdd(false);
       } else {
-        showActionConfirm({ title: 'Ошибка', message: 'Не удалось добавить позицию' });
+        notifyError('Ошибка', e, 'Не удалось добавить позицию');
       }
     } finally {
       setBusy(false);

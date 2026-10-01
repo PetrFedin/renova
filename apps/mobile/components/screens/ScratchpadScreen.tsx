@@ -1,8 +1,7 @@
 /** Черновик — записная книжка проекта с превращением в задачи и расходы */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  View, Text, TextInput, StyleSheet, ScrollView, Pressable, Alert, KeyboardAvoidingView, Platform, Modal,
-} from 'react-native';
+import { View, Text, TextInput, StyleSheet, ScrollView, Pressable, KeyboardAvoidingView, Platform, Modal } from 'react-native';
+import { notifyError } from '@/lib/notify';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
@@ -68,7 +67,7 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
         notifyOfflineQueued('Строка черновика');
         setDraft('');
       } else {
-        Alert.alert('Черновик', 'Не удалось сохранить строку');
+        notifyError('Черновик', e, 'Не удалось сохранить строку');
       }
     } finally {
       setBusy(false);
@@ -84,7 +83,7 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
       if (isOfflineQueued(e)) {
         notifyOfflineQueued('Статус строки');
       } else {
-        Alert.alert('Черновик', 'Не удалось изменить статус строки');
+        notifyError('Черновик', e, 'Не удалось изменить статус строки');
       }
     }
   };
@@ -99,7 +98,7 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
       onPrimary: () => {
         void api.deleteScratchpadLine(user.id, activeProject.id, line.id)
           .then(reload)
-          .catch(() => Alert.alert('Черновик', 'Не удалось удалить строку'));
+          .catch((err) => notifyError('Черновик', err, 'Не удалось удалить строку'));
       },
       secondaryLabel: 'Отмена',
       onSecondary: () => undefined,
@@ -129,8 +128,8 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
       await api.patchScratchpadLine(user.id, activeProject.id, editLine.id, { text: editText.trim() });
       setEditLine(null);
       reload();
-    } catch {
-      Alert.alert('Черновик', 'Не удалось сохранить изменения');
+    } catch (err) {
+      notifyError('Черновик', err, 'Не удалось сохранить изменения');
     } finally {
       setBusy(false);
     }
@@ -164,8 +163,8 @@ export function ScratchpadScreen({ role }: { role: OsRole }) {
                     pushOsNav({ pathname: '/chat/[threadId]', params: { threadId } }, returnTo, role);
                   },
                 });
-              } catch {
-                Alert.alert('Чат', 'Не удалось загрузить чаты. Проверьте сеть и повторите.');
+              } catch (err) {
+                notifyError('Чат', err, 'Не удалось загрузить чаты. Проверьте сеть и повторите.');
               }
             })();
           },

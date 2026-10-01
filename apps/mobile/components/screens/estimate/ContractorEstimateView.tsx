@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { router, usePathname } from 'expo-router';
-import { ScrollView, Text, View, StyleSheet, TextInput, Alert } from 'react-native';
+import { ScrollView, Text, View, StyleSheet, TextInput } from 'react-native';
+import { notifyError } from '@/lib/notify';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -135,7 +136,7 @@ export function ContractorEstimateView() {
                   await loadProject(project.id);
                   alertEstimateProposed('contractor');
                 } catch (e: unknown) {
-                  Alert.alert('Не удалось', e instanceof Error ? e.message : 'Ошибка отправки сметы');
+                  notifyError('Не удалось', e, 'Ошибка отправки сметы');
                 }
               }}
             />

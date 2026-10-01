@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { View, TextInput, ScrollView, StyleSheet, Alert, Text, Pressable } from "react-native";
+import { View, TextInput, ScrollView, StyleSheet, Text, Pressable } from "react-native";
+import { notifyAlert } from '@/lib/notify';
 import { useLocalSearchParams } from 'expo-router';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { PrimaryButton } from "@/components/renova/PrimaryButton";
@@ -23,7 +24,7 @@ export default function ArticlesAdmin() {
     if (!user) return;
     if (editSlug) await api.updateArticleAdmin(user.id, editSlug, { slug, title, category: "process", summary: title, body, tags: "" });
     else await api.createArticleAdmin(user.id, { slug, title, category: "process", summary: title, body, tags: "" });
-    Alert.alert("Сохранено"); setEditSlug(null); reload();
+    notifyAlert("Сохранено"); setEditSlug(null); reload();
   };
 
   return (

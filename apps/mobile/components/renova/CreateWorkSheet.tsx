@@ -1,6 +1,7 @@
 /** Форма создания работы — секции: что · где · когда · бюджет */
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Pressable, ScrollView, Modal, Alert } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Pressable, ScrollView, Modal } from 'react-native';
+import { notifyAlert, notifyError } from '@/lib/notify';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -144,17 +145,17 @@ export function CreateWorkSheet({
       setPlannedEnd(d.toISOString().slice(0, 10));
     }
     setTab('form');
-    Alert.alert('Расчёт', `Сумма ${formatRub(est.grand_total)} подставлена в форму`);
+    notifyAlert('Расчёт', `Сумма ${formatRub(est.grand_total)} подставлена в форму`);
   };
 
   async function submit(publish: boolean) {
     if (!title) {
-      Alert.alert('Работа', 'Укажите тип или название');
+      notifyAlert('Работа', 'Укажите тип или название');
       return;
     }
     const budgetNum = budget.trim() ? parseNonNegativeNumber(budget) : 0;
     if (budgetNum === null) {
-      Alert.alert('Бюджет работы', 'Введите бюджет числом, например 25 000 или 25000,50.');
+      notifyAlert('Бюджет работы', 'Введите бюджет числом, например 25 000 или 25000,50.');
       return;
     }
     setBusy(true);
@@ -173,13 +174,13 @@ export function CreateWorkSheet({
         });
       } catch (error) {
         if (isRateLimitError(error)) {
-          Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
+          notifyAlert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
         } else if (isOfflineQueued(error) || (error instanceof Error && error.message === 'offline_queued')) {
           notifyOfflineQueued('Создание работы', variant === 'customer' ? 'customer' : 'contractor');
           onClose();
         } else {
           reportError('createWorkSheet.create', error, { projectId });
-          Alert.alert('Ошибка', 'Не удалось создать работу');
+          notifyError('Ошибка', error, 'Не удалось создать работу');
         }
         return;
       }

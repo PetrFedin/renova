@@ -1,6 +1,7 @@
 /** Чеки без этапа — массовая привязка к одному этапу (без перегруза UI) */
 import { useState } from 'react';
-import { View, Text, StyleSheet, Alert } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { notifyAlert, notifyError } from '@/lib/notify';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { StagePickerChips } from '@/components/renova/StagePickerChips';
@@ -28,7 +29,7 @@ export function ReceiptBulkLinkPanel({ userId, project, receipts, readOnly, onDo
 
   async function linkAll() {
     if (!stageId) {
-      Alert.alert('Этап', 'Выберите этап для привязки');
+      notifyAlert('Этап', 'Выберите этап для привязки');
       return;
     }
     setBusy(true);
@@ -49,8 +50,8 @@ export function ReceiptBulkLinkPanel({ userId, project, receipts, readOnly, onDo
       });
       alertReceiptsBulkLinked((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole, unlinked.length);
       onDone();
-    } catch {
-      Alert.alert('Ошибка', 'Не удалось привязать все чеки. Проверьте сервер.');
+    } catch (err) {
+      notifyError('Ошибка', err, 'Не удалось привязать все чеки. Проверьте сервер.');
     } finally {
       setBusy(false);
     }

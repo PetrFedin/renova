@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { View, Text, TextInput, StyleSheet, Alert, Platform } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Platform } from 'react-native';
+import { notifyAlert, notifyError } from '@/lib/notify';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -51,7 +52,7 @@ export default function ScanReceiptScreen() {
 
     const normalizedQr = qr.trim();
     if (!isReceiptQr(normalizedQr)) {
-      Alert.alert('Некорректный QR чека', 'Нужна строка ФНС с параметрами t, s, fn, i, fp и n. Отсканируйте QR повторно или вставьте полную строку.');
+      notifyAlert('Некорректный QR чека', 'Нужна строка ФНС с параметрами t, s, fn, i, fp и n. Отсканируйте QR повторно или вставьте полную строку.');
       return;
     }
 
@@ -85,9 +86,9 @@ export default function ScanReceiptScreen() {
         },
         () => router.back(),
       );
-    } catch {
+    } catch (err) {
       scanned.current = false;
-      Alert.alert('Ошибка', 'Не удалось проверить чек. Проверьте QR или сервер.');
+      notifyError('Ошибка', err, 'Не удалось проверить чек. Проверьте QR или сервер.');
     } finally {
       setBusy(false);
     }

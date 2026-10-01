@@ -1,6 +1,7 @@
 /** W122: шаринг клиентского портала (Houzz/BT) — приёмка / подпись / оплата */
 import { useState } from 'react';
-import { View, Text, StyleSheet, Switch, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Switch, ActivityIndicator } from 'react-native';
+import { notifyError } from '@/lib/notify';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RenovaTheme } from '@/constants/Theme';
 import { api } from '@/lib/api';
@@ -46,7 +47,7 @@ export function PortalSharePanel({ userId, projectId, role, embedded }: Props) {
       // W135: после шаринга — приёмка / оплаты в кабинете
       alertPortalLinkShared(role, scopeHint);
     } catch (e: unknown) {
-      Alert.alert('Портал', apiErrorMessage(e, 'Не удалось создать ссылку'));
+      notifyError('Портал', e, 'Не удалось создать ссылку');
     } finally {
       setBusy(false);
     }

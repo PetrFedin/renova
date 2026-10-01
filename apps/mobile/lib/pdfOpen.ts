@@ -1,5 +1,6 @@
 /** Открытие PDF — preview / share на native, download на web */
-import { Platform, Alert } from 'react-native';
+import { Platform } from 'react-native';
+import { notifyError } from '@/lib/notify';
 import * as WebBrowser from 'expo-web-browser';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
@@ -42,8 +43,8 @@ async function openPdfNativePreview(blob: Blob, filename: string) {
       presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
       enableBarCollapsing: true,
     });
-  } catch {
-    Alert.alert('Просмотр PDF', 'Не удалось открыть документ.');
+  } catch (err) {
+    notifyError('Просмотр PDF', err, 'Не удалось открыть документ.');
   }
 }
 

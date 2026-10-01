@@ -1,5 +1,6 @@
 /** Детализация выбранного дня — события и быстрые действия по задачам */
-import { View, Text, StyleSheet, Pressable, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
+import { notifyAlert, notifyError } from '@/lib/notify';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
@@ -86,7 +87,7 @@ export function ScheduleDayDetail({
     const expectedUpdatedAt = wo.updated_at;
     if (!expectedUpdatedAt) {
       onChanged?.();
-      Alert.alert(
+      notifyAlert(
         'Нужно обновить задачу',
         'Не удалось подтвердить текущую версию задачи. Календарь обновляется — повторите изменение после загрузки.',
       );
@@ -117,12 +118,12 @@ export function ScheduleDayDetail({
         notifyOfflineQueued('Продление срока');
       } else if (e instanceof ApiError && e.status === 409 && e.code === 'work_order_stale') {
         onChanged?.();
-        Alert.alert(
+        notifyAlert(
           'Задача уже изменилась',
           'Другой участник обновил задачу. Календарь перезагружен — проверьте новый срок и повторите действие.',
         );
       } else {
-        Alert.alert('Ошибка', 'Не удалось продлить срок');
+        notifyError('Ошибка', e, 'Не удалось продлить срок');
       }
     }
   };
@@ -139,7 +140,7 @@ export function ScheduleDayDetail({
       if (isOfflineQueued(e)) {
         notifyOfflineQueued('Смена статуса');
       } else {
-        Alert.alert('Ошибка', 'Не удалось обновить статус');
+        notifyError('Ошибка', e, 'Не удалось обновить статус');
       }
     }
   };

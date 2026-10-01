@@ -1,6 +1,7 @@
 /** Панель детализации работы — заметки, связи, подсказки по процессу */
 import { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Alert, Pressable } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
+import { notifyAlert, notifyError } from '@/lib/notify';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -50,7 +51,7 @@ export function WorkOrderDetailPanel({
     const expectedUpdatedAt = wo.updated_at;
     if (!expectedUpdatedAt) {
       onUpdated();
-      Alert.alert(
+      notifyAlert(
         'Нужно обновить задачу',
         'Не удалось подтвердить текущую версию задачи. Данные обновляются — повторите сохранение после загрузки.',
       );
@@ -64,7 +65,7 @@ export function WorkOrderDetailPanel({
       });
       await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any), role });
       onUpdated();
-      Alert.alert('Сохранено', 'Описание работы обновлено');
+      notifyAlert('Сохранено', 'Описание работы обновлено');
     } catch (e) {
       if (isOfflineQueued(e)) {
         notifyOfflineQueued('Описание работы');
@@ -73,13 +74,13 @@ export function WorkOrderDetailPanel({
       }
       if (e instanceof ApiError && e.status === 409 && e.code === 'work_order_stale') {
         onUpdated();
-        Alert.alert(
+        notifyAlert(
           'Работа уже изменилась',
           'Другой участник обновил эту задачу. Данные перезагружены — проверьте изменения и повторите сохранение.',
         );
         return;
       }
-      Alert.alert('Ошибка', 'Не удалось сохранить описание');
+      notifyError('Ошибка', e, 'Не удалось сохранить описание');
     } finally {
       setSaving(false);
     }

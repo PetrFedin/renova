@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocalSearchParams, usePathname } from 'expo-router';
-import { ScrollView, StyleSheet, Alert } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';

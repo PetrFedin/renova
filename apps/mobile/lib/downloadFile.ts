@@ -1,5 +1,6 @@
 /** Скачивание файлов с API — web download + native share sheet (P2.4) */
-import { Alert, Platform } from 'react-native';
+import { Platform } from 'react-native';
+import { notifyAlert } from '@/lib/notify';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { fetchPdfBlob, openPdfBlob } from '@/lib/pdfOpen';
@@ -34,7 +35,7 @@ export async function downloadFromApi(userId: string, url: string, filename: str
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(cachePath);
   } else {
-    Alert.alert('Файл', `Сохранено: ${safe}`);
+    notifyAlert('Файл', `Сохранено: ${safe}`);
   }
 }
 

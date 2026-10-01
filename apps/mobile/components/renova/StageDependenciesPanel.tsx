@@ -1,6 +1,7 @@
 /** Зависимости этапов — блокировки, материалы, синхронизация workflow */
 import { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { notifyError } from '@/lib/notify';
 import { useFocusEffect, usePathname } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
@@ -84,7 +85,7 @@ export function StageDependenciesPanel({
                   notifyOfflineQueued('Синхронизация зависимостей');
                   return;
                 }
-                Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось синхронизировать');
+                notifyError('Ошибка', e, 'Не удалось синхронизировать');
               } finally {
                 setBusy(false);
               }

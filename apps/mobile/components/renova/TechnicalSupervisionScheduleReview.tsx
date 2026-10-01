@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { notifyAlert } from '@/lib/notify';
 
 import { api, type WorkSchedule } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -46,11 +47,11 @@ export function TechnicalSupervisionScheduleReview() {
     if (!schedule || schedule.status !== 'submitted') return;
     const cleanReason = reason.trim();
     if (!cleanReason) {
-      Alert.alert('План-график', 'Укажите техническую причину возврата графика.');
+      notifyAlert('План-график', 'Укажите техническую причину возврата графика.');
       return;
     }
     const scheduleId = schedule.id;
-    Alert.alert(
+    notifyAlert(
       'Вернуть график на доработку?',
       'Исполнитель получит причину возврата. Согласовать график от имени заказчика технадзор не может.',
       [

@@ -1,6 +1,7 @@
 /** Исполнитель: заявка на объект по коду и статус «Ожидает подтверждения заказчика» */
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Alert } from 'react-native';
+import { View, Text, TextInput, StyleSheet } from 'react-native';
+import { notifyError } from '@/lib/notify';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { RenovaTheme } from '@/constants/Theme';
@@ -33,7 +34,7 @@ export function ContractorClaimPanel({ userId }: { userId: string }) {
       setCode('');
       reload();
     } catch (e: unknown) {
-      Alert.alert('Не удалось отправить заявку', apiErrorMessage(e, 'Проверьте подключение'));
+      notifyError('Не удалось отправить заявку', e, 'Проверьте подключение');
     } finally {
       setBusy(false);
     }

@@ -1,6 +1,6 @@
 import { reportError } from '@/lib/reportError';
 /** Контроль — приёмка, замечания, качество */
-import { Alert, ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { ReadOnlyBanner } from '@/components/renova/ReadOnlyGuard';

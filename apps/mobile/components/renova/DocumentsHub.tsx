@@ -1,9 +1,8 @@
 import { reportError, reportCatch } from '@/lib/reportError';
 /** Документы проекта — по разделам + единый индекс Document Center */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  View, Text, Pressable, StyleSheet, ActivityIndicator, Alert, Platform, Linking,
-} from 'react-native';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator, Platform, Linking } from 'react-native';
+import { notifyError } from '@/lib/notify';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
@@ -453,7 +452,7 @@ export function DocumentsHub({
                   void reconcileProjectAfterCommit('Closeout');
                   alertCloseoutDone('customer', res.next_action);
                 } catch (e: unknown) {
-                  Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось завершить');
+                  notifyError('Ошибка', e, 'Не удалось завершить');
                 }
               })();
             },
@@ -810,7 +809,7 @@ export function DocumentsHub({
                   if (!file) return;
                   await doUploadPicked(file);
                 } catch (e: any) {
-                  Alert.alert('Ошибка загрузки', String(e?.message || e));
+                  notifyError('Ошибка загрузки', e);
                 }
               })();
             },
@@ -824,7 +823,7 @@ export function DocumentsHub({
                   if (!file) return;
                   await doUploadPicked(file);
                 } catch (e: any) {
-                  Alert.alert('Ошибка загрузки', String(e?.message || e));
+                  notifyError('Ошибка загрузки', e);
                 }
               })();
             },
@@ -832,7 +831,7 @@ export function DocumentsHub({
         ],
       });
     } catch (e: any) {
-      Alert.alert('Ошибка загрузки', String(e?.message || e));
+      notifyError('Ошибка загрузки', e);
     }
   }
 

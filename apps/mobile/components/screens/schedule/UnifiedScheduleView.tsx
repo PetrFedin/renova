@@ -1,7 +1,8 @@
 /** W71: канонический hub сроков (календарь + work-schedule + confirm/reject).
  * Единый календарь: компактный календарь + план работ */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, ScrollView, View, Text, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
+import { notifyError } from '@/lib/notify';
 import { useLocalSearchParams } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { CreateWorkSheet } from '@/components/renova/CreateWorkSheet';
@@ -449,7 +450,7 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
                     alertScheduleSubmitted(role);
                   } catch (e: unknown) {
                     if (isOfflineQueued(e)) notifyOfflineQueued('Отправка графика');
-                    else Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось отправить');
+                    else notifyError('Ошибка', e, 'Не удалось отправить');
                   } finally {
                     setPlanBusy(false);
                   }

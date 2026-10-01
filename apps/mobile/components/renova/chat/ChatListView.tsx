@@ -1,7 +1,8 @@
 /** Список чатов: фильтр объектов, архив, закрепление — каждый чат привязан к одному объекту.
  * Clarity D: unread только в dock; в списке — title + 1 строка preview. */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
+import { notifyAlert } from '@/lib/notify';
 import { useFocusEffect } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
@@ -165,7 +166,7 @@ export function ChatListView() {
 
   const openThread = async (t: ChatThread) => {
     if (!t.project_id) {
-      Alert.alert('Ошибка', 'Чат не привязан к объекту. Создайте новый чат для объекта.');
+      notifyAlert('Ошибка', 'Чат не привязан к объекту. Создайте новый чат для объекта.');
       return;
     }
     // Navigation is not evidence of reading. Project context switching is best
@@ -179,7 +180,7 @@ export function ChatListView() {
   const threadActions = (t: ChatThread) => {
     if (!user) return;
     if (!t.project_id) {
-      Alert.alert('Ошибка', 'Чат не привязан к объекту.');
+      notifyAlert('Ошибка', 'Чат не привязан к объекту.');
       return;
     }
     showActionConfirm({

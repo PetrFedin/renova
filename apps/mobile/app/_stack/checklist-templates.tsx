@@ -1,6 +1,7 @@
 /** Шаблоны чеклиста приёмки — из профиля исполнителя */
 import { useCallback, useState } from 'react';
-import { ScrollView, View, Text, StyleSheet, TextInput, Alert } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, TextInput } from 'react-native';
+import { notifyAlert, notifyError } from '@/lib/notify';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -29,12 +30,12 @@ export default function ChecklistTemplatesScreen() {
 
   async function save() {
     if (!user || !name.trim()) {
-      Alert.alert('Шаблон', 'Введите название');
+      notifyAlert('Шаблон', 'Введите название');
       return;
     }
     const parsed = lines.split('\n').map((s) => s.trim()).filter(Boolean);
     if (!parsed.length) {
-      Alert.alert('Шаблон', 'Добавьте пункты чеклиста (по одному на строку)');
+      notifyAlert('Шаблон', 'Добавьте пункты чеклиста (по одному на строку)');
       return;
     }
     try {
@@ -42,8 +43,8 @@ export default function ChecklistTemplatesScreen() {
       setName('');
       setLines('');
       reload();
-    } catch {
-      Alert.alert('Ошибка', 'Не удалось сохранить шаблон');
+    } catch (err) {
+      notifyError('Ошибка', err, 'Не удалось сохранить шаблон');
     }
   }
 

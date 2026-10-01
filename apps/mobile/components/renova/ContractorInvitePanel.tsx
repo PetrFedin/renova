@@ -1,6 +1,7 @@
 /** Подключение исполнителя к объекту */
 import { useState } from 'react';
-import { View, Text, StyleSheet, Share, Alert } from 'react-native';
+import { View, Text, StyleSheet, Share } from 'react-native';
+import { notifyError } from '@/lib/notify';
 import { AssignmentRequestsCard } from '@/components/renova/AssignmentRequestsCard';
 import { api } from '@/lib/api';
 import { apiErrorMessage } from '@/lib/formatPhone';
@@ -42,7 +43,7 @@ export function ContractorInvitePanel({
       onLinked?.();
     } catch (e: unknown) {
       // 409: уже есть начатые этапы, платежи или подписи — сервер объясняет, что сделать сначала
-      Alert.alert('Заменить исполнителя пока нельзя', apiErrorMessage(e, 'Проверьте подключение'));
+      notifyError('Заменить исполнителя пока нельзя', e, 'Проверьте подключение');
     } finally {
       setReleasing(false);
     }

@@ -1,5 +1,6 @@
 /** Выгрузка CSV расходов — web download + native share */
-import { Platform, Alert } from 'react-native';
+import { Platform } from 'react-native';
+import { notifyAlert } from '@/lib/notify';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { authHeaders } from '@/lib/api/client';
@@ -29,6 +30,6 @@ export async function exportExpensesCsvFile(userId: string, projectId: string, f
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(path, { mimeType: 'text/csv', UTI: 'public.comma-separated-values-text' });
   } else {
-    Alert.alert('Экспорт', 'Файл сохранён во временную папку приложения.');
+    notifyAlert('Экспорт', 'Файл сохранён во временную папку приложения.');
   }
 }

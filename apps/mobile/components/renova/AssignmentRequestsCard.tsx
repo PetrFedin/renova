@@ -1,6 +1,7 @@
 /** Заказчик: «Исполнитель предлагает вести проект» — подтвердить или отклонить */
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Alert } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { notifyAlert } from '@/lib/notify';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RenovaTheme } from '@/constants/Theme';
 import { api } from '@/lib/api';
@@ -45,7 +46,7 @@ export function AssignmentRequestsCard({
       reload();
       onResolved?.();
     } catch (e: unknown) {
-      Alert.alert(
+      notifyAlert(
         accept ? 'Не удалось подтвердить' : 'Не удалось отклонить',
         apiErrorMessage(e, 'Проверьте подключение'),
       );

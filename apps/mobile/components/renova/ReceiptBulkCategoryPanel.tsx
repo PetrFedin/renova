@@ -1,6 +1,7 @@
 /** Массовая категоризация чеков — для отфильтрованного списка на «Бюджет → Расходы» */
 import { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { notifyError } from '@/lib/notify';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { EXPENSE_CATEGORIES, type ExpenseCategoryId } from '@/constants/expenseCategories';
@@ -41,8 +42,8 @@ export function ReceiptBulkCategoryPanel({
       });
       alertReceiptsBulkCategorized((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole, expenseCategoryLabel(category), receiptIds.length);
       onDone();
-    } catch {
-      Alert.alert('Ошибка', 'Не удалось обновить категории. Проверьте сервер.');
+    } catch (err) {
+      notifyError('Ошибка', err, 'Не удалось обновить категории. Проверьте сервер.');
     } finally {
       setBusy(false);
     }

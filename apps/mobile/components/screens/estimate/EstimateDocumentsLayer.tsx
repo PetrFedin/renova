@@ -1,6 +1,7 @@
 /** Слой «Документы» — PDF / Excel / CSV сметы + переход в полный раздел документов */
 import { useRef, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, ActivityIndicator, Alert, Platform, Modal, TextInput, ScrollView } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator, Platform, Modal, TextInput, ScrollView } from 'react-native';
+import { notifyAlert, notifyError } from '@/lib/notify';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -72,7 +73,7 @@ export function EstimateDocumentsLayer({
 
   async function submitImport() {
     if (!csvText.trim()) {
-      Alert.alert('Импорт', 'Вставьте CSV-данные сметы.');
+      notifyAlert('Импорт', 'Вставьте CSV-данные сметы.');
       return;
     }
     if (busy) return;
@@ -84,7 +85,7 @@ export function EstimateDocumentsLayer({
         result = await api.importEstimateCsv(userId, projectId, csvText);
       } catch (error) {
         reportError('components.screens.estimate.EstimateDocumentsLayer.Import', error, { projectId });
-        Alert.alert('Импорт', 'Не удалось импортировать CSV. Проверьте формат и что смета не зафиксирована.');
+        notifyError('Импорт', error, 'Не удалось импортировать CSV. Проверьте формат и что смета не зафиксирована.');
         return;
       }
 
@@ -109,7 +110,7 @@ export function EstimateDocumentsLayer({
         );
       }
 
-      Alert.alert(
+      notifyAlert(
         'Импорт сметы',
         `Добавлено: ${result.created}. Пропущено: ${result.skipped}.` +
           (result.delimiter ? ` Разделитель: ${result.delimiter}.` : '') +
@@ -128,7 +129,7 @@ export function EstimateDocumentsLayer({
       await fn();
     } catch (error) {
       reportError('components.screens.estimate.EstimateDocumentsLayer.DocumentAction', error, { projectId, action: id });
-      Alert.alert('Ошибка', 'Не удалось получить документ. Проверьте подключение и повторите.');
+      notifyError('Ошибка', error, 'Не удалось получить документ. Проверьте подключение и повторите.');
     } finally {
       setBusy(null);
     }

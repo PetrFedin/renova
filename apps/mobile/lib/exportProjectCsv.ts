@@ -1,5 +1,6 @@
 /** Выгрузка CSV проекта — web download + native share */
-import { Platform, Alert } from 'react-native';
+import { Platform } from 'react-native';
+import { notifyAlert } from '@/lib/notify';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { authHeaders } from '@/lib/api/client';
@@ -30,7 +31,7 @@ export async function exportProjectCsvFile(
   const safe = filename.replace(/[^\w.-]+/g, '_') || 'renova.csv';
   const cache = FileSystem.cacheDirectory;
   if (!cache) {
-    Alert.alert('Экспорт', 'Нет доступа к файловой системе');
+    notifyAlert('Экспорт', 'Нет доступа к файловой системе');
     return;
   }
   const out = `${cache}${safe}`;
@@ -38,6 +39,6 @@ export async function exportProjectCsvFile(
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(out, { mimeType: 'text/csv', UTI: 'public.comma-separated-values-text' });
   } else {
-    Alert.alert('Экспорт', 'Файл сохранён во временную папку приложения.');
+    notifyAlert('Экспорт', 'Файл сохранён во временную папку приложения.');
   }
 }

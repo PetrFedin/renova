@@ -1,14 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Alert,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { notifyAlert, notifyError } from '@/lib/notify';
 
 import { api, type ProjectIssue, type WorkAcceptance } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -82,7 +74,7 @@ export function TechnicalSupervisionControlView() {
       await load(true);
     } catch (cause) {
       reportError('technicalSupervision.control.issue', cause, { projectId, stageId: selectedStageId });
-      Alert.alert('Замечание', 'Не удалось сохранить замечание. Проверьте соединение и права доступа.');
+      notifyError('Замечание', cause, 'Не удалось сохранить замечание. Проверьте соединение и права доступа.');
     } finally {
       setBusy(false);
     }
@@ -92,7 +84,7 @@ export function TechnicalSupervisionControlView() {
     if (!selectedStageId || !remark.trim() || !canReturn) return;
     const stageId = selectedStageId;
     const text = remark.trim();
-    Alert.alert(
+    notifyAlert(
       'Вернуть этап на доработку?',
       'Исполнитель получит замечание и срок устранения. Финальную приёмку по-прежнему выполняет заказчик.',
       [
@@ -109,7 +101,7 @@ export function TechnicalSupervisionControlView() {
               await load(true);
             } catch (cause) {
               reportError('technicalSupervision.control.rework', cause, { projectId, stageId });
-              Alert.alert('Доработка', 'Не удалось вернуть этап. Обновите состояние и повторите действие.');
+              notifyError('Доработка', cause, 'Не удалось вернуть этап. Обновите состояние и повторите действие.');
             } finally {
               setBusy(false);
             }

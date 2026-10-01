@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
+import { notifyAlert } from '@/lib/notify';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -82,7 +83,7 @@ export default function WizardRooms() {
 
   function continueToEstimate() {
     if (validationError) {
-      Alert.alert('Проверьте комнаты', validationError);
+      notifyAlert('Проверьте комнаты', validationError);
       return;
     }
     pushOsNav('/wizard/confirm');

@@ -1,5 +1,6 @@
 /** Ссылки после завершения — без отдельного заголовка, живут в «Ещё» */
 import { useState } from 'react';
+import { notifyError } from '@/lib/notify';
 import { api } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
@@ -61,7 +62,7 @@ export function HomeCompletionLinks({ role, userId, projectId }: Props) {
                 onSecondary: () => undefined,
               });
             })
-            .catch(() => showActionConfirm({ title: 'Дайджест', message: 'Не удалось отправить' }))
+            .catch((err) => notifyError('Дайджест', err, 'Не удалось отправить'))
             .finally(() => setBusy(false));
         }}
       />

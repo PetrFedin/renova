@@ -1,6 +1,7 @@
 /** Единый список приёмки — Clarity D: поверхность «Решение» (accept/return SoT) */
 import { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { notifyError } from '@/lib/notify';
 import { pushStageDetail } from '@/lib/navigation';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -106,7 +107,7 @@ export function UnifiedAcceptanceList({
             onSecondary: () => undefined,
           });
         } else {
-          Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось выполнить действие');
+          notifyError('Ошибка', e, 'Не удалось выполнить действие');
         }
       }
     } finally {

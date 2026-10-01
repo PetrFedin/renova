@@ -1,6 +1,7 @@
 /** Список чеков — категория, комната, редактирование */
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { notifyError } from '@/lib/notify';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import type { ReceiptItem } from '@/lib/api';
 import { expenseCategoryLabel, EXPENSE_CATEGORIES, type ExpenseCategoryId } from '@/constants/expenseCategories';
@@ -57,7 +58,7 @@ export function ReceiptList({
       // W129: ФНС → расходы SoT
       alertReceiptReverified(role, res);
     } catch (e: unknown) {
-      Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось проверить');
+      notifyError('Ошибка', e, 'Не удалось проверить');
     }
   };
 
@@ -67,8 +68,8 @@ export function ReceiptList({
       await api.patchReceipt(userId, projectId, r.id, patch);
       await syncAfter();
       onUpdated?.();
-    } catch {
-      Alert.alert('Ошибка', 'Не удалось обновить чек');
+    } catch (err) {
+      notifyError('Ошибка', err, 'Не удалось обновить чек');
     }
   }
 

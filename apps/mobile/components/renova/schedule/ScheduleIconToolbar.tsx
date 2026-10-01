@@ -1,6 +1,7 @@
 /** Компактная панель действий календаря — иконки в строку, подсказка при наведении */
 import { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Platform, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
+import { notifyAlert, notifyError } from '@/lib/notify';
 import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
 import { api } from '@/lib/api';
@@ -76,7 +77,7 @@ export function ScheduleIconToolbar({
     const text = await readIcalFile();
     if (!text) return;
     if (!text.includes('BEGIN:VCALENDAR')) {
-      Alert.alert('Календарь', 'Некорректный формат файла');
+      notifyAlert('Календарь', 'Некорректный формат файла');
       return;
     }
     setBusy(true);
@@ -107,7 +108,7 @@ export function ScheduleIconToolbar({
         return;
       }
       reportError('schedule.iconToolbar.importIcal', error, { projectId });
-      Alert.alert('Календарь', 'Не удалось импортировать');
+      notifyError('Календарь', error, 'Не удалось импортировать');
     } finally {
       setBusy(false);
     }
@@ -121,7 +122,7 @@ export function ScheduleIconToolbar({
       alertIcalExported(role);
     } catch (error) {
       reportError('schedule.iconToolbar.exportIcal', error, { projectId });
-      Alert.alert('Календарь', 'Не удалось экспортировать .ics');
+      notifyError('Календарь', error, 'Не удалось экспортировать .ics');
     } finally {
       setBusy(false);
     }

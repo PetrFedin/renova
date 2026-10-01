@@ -1,6 +1,7 @@
 /** Комнаты объекта — список по этажам (вкладка «Объект → Комнаты») */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ScrollView, View, Text, TextInput, StyleSheet, Pressable, Alert } from 'react-native';
+import { notifyError } from '@/lib/notify';
+import { ScrollView, View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
 import { usePathname } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
@@ -378,7 +379,7 @@ function ContractorRoomsBody() {
             else if (isRateLimitError(e)) {
               showActionConfirm({ title: 'Подождите', message: 'Слишком много запросов. Повторите через несколько секунд.' });
             } else {
-              showActionConfirm({ title: 'Ошибка', message: 'Не удалось согласовать запрос' });
+              notifyError('Ошибка', e, 'Не удалось согласовать запрос');
             }
           }
         });
@@ -407,7 +408,7 @@ function ContractorRoomsBody() {
             else if (isRateLimitError(e)) {
               showActionConfirm({ title: 'Подождите', message: 'Слишком много запросов. Повторите через несколько секунд.' });
             } else {
-              showActionConfirm({ title: 'Ошибка', message: 'Не удалось отклонить запрос' });
+              notifyError('Ошибка', e, 'Не удалось отклонить запрос');
             }
           }
         });
@@ -466,7 +467,7 @@ function ContractorRoomsBody() {
                 await loadProject(activeProject.id);
               } catch (e) {
                 if (isOfflineQueued(e)) notifyOfflineQueued('Привязка комнат');
-                else showActionConfirm({ title: 'Ошибка', message: 'Не удалось обновить привязку' });
+                else notifyError('Ошибка', e, 'Не удалось обновить привязку');
               }
             });
           }}

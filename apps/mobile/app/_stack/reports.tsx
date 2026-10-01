@@ -1,7 +1,8 @@
 /** Отчёты Renova OS — просмотр in-app + PDF (открыть / поделиться / скачать).
  * JSON preview sources are independent and must never turn load failure into fake loading/empty truth. */
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, ScrollView, View, Text, StyleSheet, Alert } from 'react-native';
+import { ActivityIndicator, ScrollView, View, Text, StyleSheet } from 'react-native';
+import { notifyAlert, notifyError } from '@/lib/notify';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
@@ -111,7 +112,7 @@ export default function ReportsScreen() {
   useFocusEffect(useCallback(() => { reload(); }, [reload]));
   useProjectDataReload(reload);
 
-  const onPdfError = () => Alert.alert('Ошибка', 'Не удалось сформировать PDF. Проверьте сервер.');
+  const onPdfError = (e?: unknown) => notifyError('Ошибка', e, 'Не удалось сформировать PDF');
 
   if (!user || !activeProject) {
     return <ProjectEmptyState role={user?.role === 'contractor' ? 'contractor' : 'customer'} title="Нет объекта для отчётов" />;
@@ -202,12 +203,12 @@ export default function ReportsScreen() {
             onPress={async () => {
               try {
                 const res = await api.pushWeeklyDigest(user.id, activeProject.id);
-                Alert.alert(
+                notifyAlert(
                   'Дайджест',
                   `${res.source === 'ollama' ? 'Ollama' : 'Rule-based'} · уведомлений ${res.notified}`,
                 );
               } catch (e: unknown) {
-                Alert.alert('Дайджест', e instanceof Error ? e.message : 'Не удалось отправить');
+                notifyError('Дайджест', e, 'Не удалось отправить');
               }
             }}
           />
@@ -216,9 +217,9 @@ export default function ReportsScreen() {
             onPress={async () => {
               try {
                 const res = await api.previewWeeklyDigest(user.id, activeProject.id);
-                Alert.alert(res.title || 'Превью', (res.body || '').slice(0, 500));
+                notifyAlert(res.title || 'Превью', (res.body || '').slice(0, 500));
               } catch (e: unknown) {
-                Alert.alert('Превью', e instanceof Error ? e.message : 'Ошибка');
+                notifyError('Превью', e, 'Ошибка');
               }
             }}
           />

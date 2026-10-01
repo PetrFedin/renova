@@ -1,6 +1,7 @@
 /** Выбор проекта в шапке — группы «В работе» / «Завершённые» + портфель */
 import { useState, useEffect, useMemo } from 'react';
-import { View, Text, Pressable, StyleSheet, Modal, ActivityIndicator, Alert, ScrollView, Platform } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Modal, ActivityIndicator, ScrollView, Platform } from 'react-native';
+import { notifyError } from '@/lib/notify';
 import { Ionicons } from '@expo/vector-icons';
 import { usePathname } from 'expo-router';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
@@ -202,7 +203,7 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
     } catch (error: unknown) {
       const { code, status } = projectSwitchError(error);
       if (code === 'subscription_required' || status === 402) showPaywall();
-      else Alert.alert('Ошибка', 'Не удалось переключить объект. Попробуйте ещё раз.');
+      else notifyError('Ошибка', error, 'Не удалось переключить объект. Попробуйте ещё раз.');
     } finally {
       setBusyId(null);
     }

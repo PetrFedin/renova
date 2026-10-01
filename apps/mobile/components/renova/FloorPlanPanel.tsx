@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
-import { View, Text, Image, Pressable, StyleSheet, PanResponder, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, Image, Pressable, StyleSheet, PanResponder, ActivityIndicator } from 'react-native';
+import { notifyAlert, notifyError } from '@/lib/notify';
 import { useLocalSearchParams, usePathname } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { api, FloorPlan } from '@/lib/api';
@@ -115,7 +116,7 @@ export function FloorPlanPanel({
         floorPlanId: plan.id,
         pinId,
       });
-      Alert.alert('Позиция не сохранена', 'Не удалось сохранить положение метки. Повторите действие.');
+      notifyError('Позиция не сохранена', e, 'Не удалось сохранить положение метки. Повторите действие.');
     }
   };
 
@@ -197,7 +198,7 @@ export function FloorPlanPanel({
           projectId,
           floorPlanId: plan.id,
         });
-        Alert.alert('Ошибка', 'Не удалось добавить замечание');
+        notifyError('Ошибка', e, 'Не удалось добавить замечание');
         return;
       }
 
@@ -231,7 +232,7 @@ export function FloorPlanPanel({
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
-        Alert.alert('Доступ', 'Нужен доступ к галерее');
+        notifyAlert('Доступ', 'Нужен доступ к галерее');
         return;
       }
       const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.92 });
@@ -239,7 +240,7 @@ export function FloorPlanPanel({
       selectedAsset = res.assets[0];
     } catch (error) {
       reportError('components.renova.FloorPlanPanel.planPicker', error, { projectId, floor });
-      Alert.alert('Загрузка', 'Не удалось открыть галерею. Повторите действие.');
+      notifyError('Загрузка', error, 'Не удалось открыть галерею. Повторите действие.');
       return;
     }
 
@@ -264,7 +265,7 @@ export function FloorPlanPanel({
           queued = true;
         } else {
           reportError('components.renova.FloorPlanPanel.uploadPlan', error, { projectId, floor });
-          Alert.alert('Загрузка', 'Не удалось загрузить план');
+          notifyError('Загрузка', error, 'Не удалось загрузить план');
           return;
         }
       }

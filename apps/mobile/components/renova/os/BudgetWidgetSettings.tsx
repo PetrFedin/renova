@@ -1,6 +1,7 @@
 /** Настройка блоков «Бюджет → Сводка» */
 import { useEffect, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Alert } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { notifyAlert } from '@/lib/notify';
 import { RenovaTheme, card } from '@/constants/Theme';
 import {
   BUDGET_WIDGET_CATALOG,
@@ -19,7 +20,7 @@ export function BudgetWidgetSettings({ role, embedded }: { role: OsRole; embedde
 
   const onToggle = async (id: BudgetWidgetId) => {
     if (enabled.has(id) && enabled.size <= 1) {
-      Alert.alert('Минимум один', 'На сводке должен остаться хотя бы один блок.');
+      notifyAlert('Минимум один', 'На сводке должен остаться хотя бы один блок.');
       return;
     }
     const next = await toggleBudgetWidget(role, id);

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { View, StyleSheet, Alert, ScrollView, KeyboardAvoidingView, Platform, Text, TextInput, Pressable } from 'react-native';
+import { View, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Text, TextInput, Pressable } from 'react-native';
+import { notifyAlert } from '@/lib/notify';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RenovaTheme } from '@/constants/Theme';
@@ -38,7 +39,7 @@ export default function WizardType() {
   const goDetailedRooms = () => {
     const name = wizard.name?.trim();
     if (!name) {
-      Alert.alert('Название объекта', 'Укажите название — например «Квартира на Ленина»');
+      notifyAlert('Название объекта', 'Укажите название — например «Квартира на Ленина»');
       return;
     }
     setWizard({ wizard_mode: 'detailed' });
@@ -48,11 +49,11 @@ export default function WizardType() {
   const goQuickConfirm = () => {
     const name = wizard.name?.trim();
     if (!name) {
-      Alert.alert('Название объекта', 'Укажите название — например «Квартира на Ленина»');
+      notifyAlert('Название объекта', 'Укажите название — например «Квартира на Ленина»');
       return;
     }
     if (parsedQuickArea === null || !quickRooms) {
-      Alert.alert('Площадь объекта', 'Укажите площадь больше 0 м²');
+      notifyAlert('Площадь объекта', 'Укажите площадь больше 0 м²');
       return;
     }
 

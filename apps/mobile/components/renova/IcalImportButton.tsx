@@ -1,6 +1,6 @@
 /** Импорт iCal из файла (web + native) — W124: bus + CTA на график SoT */
 import { useState } from 'react';
-import { Alert } from 'react-native';
+import { notifyAlert, notifyError } from '@/lib/notify';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { api } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -28,7 +28,7 @@ export function IcalImportButton({
 
   const runImport = async (content: string) => {
     if (!content.includes('BEGIN:VCALENDAR')) {
-      Alert.alert('Календарь', 'Некорректный формат — нужен BEGIN:VCALENDAR');
+      notifyAlert('Календарь', 'Некорректный формат — нужен BEGIN:VCALENDAR');
       return;
     }
     setBusy(true);
@@ -46,7 +46,7 @@ export function IcalImportButton({
         onImported?.();
         return;
       }
-      Alert.alert('Календарь', 'Не удалось импортировать календарь');
+      notifyError('Календарь', e, 'Не удалось импортировать календарь');
     } finally {
       setBusy(false);
     }

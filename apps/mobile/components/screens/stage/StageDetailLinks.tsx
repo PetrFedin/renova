@@ -1,6 +1,7 @@
 /** Связанные разделы на экране этапа */
 import { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { notifyError } from '@/lib/notify';
 import { RenovaTheme } from '@/constants/Theme';
 import { StageRoomPicker } from '@/components/renova/StageRoomPicker';
 import type { ProjectDetail, StageDetail, User } from '@/lib/api';
@@ -64,8 +65,8 @@ export function StageDetailLinks({ role, user, project, stage, stageId, canWrite
           );
         },
       });
-    } catch {
-      Alert.alert('Ошибка', 'Не удалось открыть чат по этапу');
+    } catch (err) {
+      notifyError('Ошибка', err, 'Не удалось открыть чат по этапу');
     } finally {
       setOpeningChat(false);
     }

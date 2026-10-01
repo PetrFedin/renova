@@ -1,6 +1,7 @@
 import { CUSTOMER_PRO_LIMIT_NOTICE } from '@/lib/paywallPolicy';
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Alert } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { notifyAlert } from '@/lib/notify';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RenovaTheme } from '@/constants/Theme';
 import { api } from '@/lib/api';
@@ -81,7 +82,7 @@ export function ContractorDirectory({
       // Investor P1: paywall/Pro — не маскируем как «сеть»
       const paywall = /pro|подписк|paywall|лимит|403/i.test(msg);
       // ROLE-011: Pro — тариф исполнителя; заказчик его купить не может.
-      Alert.alert(
+      notifyAlert(
         paywall ? CUSTOMER_PRO_LIMIT_NOTICE.title : 'Не удалось подключить',
         paywall ? CUSTOMER_PRO_LIMIT_NOTICE.message : msg,
       );
