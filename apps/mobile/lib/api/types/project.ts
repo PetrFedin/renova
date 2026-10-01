@@ -20,6 +20,8 @@ export type ProjectSummary = {
   planned_end_date?: string | null;
   /** Лимит вложений заказчика (₽) — может отличаться от суммы сметы */
   customer_budget?: number | null;
+  /** Происхождение объекта (заявка биржи, цена принятого КП) — владельцу и исполнителю */
+  notes?: string | null;
   /** Счётов к оплате — если backend отдаёт в списке проектов */
   pending_payments?: number | null;
   /** Подключённый исполнитель */

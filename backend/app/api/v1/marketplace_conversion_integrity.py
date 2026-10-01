@@ -26,8 +26,25 @@ class ConvertLeadIn(BaseModel):
     rooms: list[ConversionRoomIn] | None = Field(default=None, min_length=1, max_length=100)
 
 
-def _conversion_error(error: ValueError) -> HTTPException:
+_LIMIT_MESSAGE = {
+    # Лимит — условие тарифа исполнителя: ему говорим как есть, заказчику — нейтрально.
+    "contractor": "Достигнут лимит бесплатного тарифа: оформите Pro, чтобы принять новый объект.",
+    "customer": "Исполнитель пока не может принять проект. Попробуйте позже или выберите другого исполнителя.",
+}
+
+
+def _conversion_error(error: ValueError, *, actor_role: str = "customer") -> HTTPException:
     code = str(error)
+    if code == "contractor_subscription_required":
+        return HTTPException(402, detail={
+            "code": "subscription_required",
+            "message": _LIMIT_MESSAGE.get(actor_role, _LIMIT_MESSAGE["customer"]),
+        })
+    if code == "customer_confirmation_required":
+        return HTTPException(403, detail={
+            "code": code,
+            "message": "Проект из заявки создаёт заказчик: исполнитель не может сделать это за него.",
+        })
     if isinstance(error, IdempotencyConflict):
         return HTTPException(409, detail={"code": "lead_conversion_idempotency_conflict"})
     if code in {"lead_not_found", "participant_contractor_invalid"}:
@@ -45,6 +62,16 @@ def _conversion_error(error: ValueError) -> HTTPException:
     return HTTPException(status, detail={"code": code})
 
 
+async def _tell_contractor_limit(db: AsyncSession, lead_id: str) -> None:
+    """Исполнитель узнаёт, почему объект по его заявке не создаётся (раз в сутки)."""
+    from app.services import marketplace_notifications
+
+    try:
+        await marketplace_notifications.notify_conversion_blocked_by_limit(db, lead_id=lead_id)
+    except Exception:  # noqa: BLE001 — уведомление не меняет ответ конверсии
+        await db.rollback()
+
+
 @router.post("/job-leads/{lead_id}/convert")
 async def convert_lead(
     lead_id: str,
@@ -53,15 +80,17 @@ async def convert_lead(
     db: AsyncSession = Depends(get_db),
 ):
     body = body or ConvertLeadIn()
-    rooms = body.rooms or [ConversionRoomIn(
-        name="Комната", length_m=4, width_m=3, height_m=2.7,
-        room_type="living", floor_level=1,
-    )]
+    # Комнат у заявки нет: без явного списка проект создаётся без комнат
+    # (MKT-007) — «комнату 4×3» за заказчика не выдумываем.
+    rooms = body.rooms or []
+    actor_role = getattr(user.role, "value", "customer")  # до rollback: потом атрибут протухнет
     try:
         result = await conversion.convert_lead(
             db, lead_id=lead_id, actor_id=user.id,
             rooms_data=[room.model_dump() for room in rooms], property_type=body.property_type,
         )
     except ValueError as error:
-        raise _conversion_error(error) from error
+        if str(error) == "contractor_subscription_required":
+            await _tell_contractor_limit(db, lead_id)
+        raise _conversion_error(error, actor_role=actor_role) from error
     return {"project_id": result.project.id, "name": result.project.name}

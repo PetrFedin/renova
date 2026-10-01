@@ -156,6 +156,12 @@ export function OsProjectProfileScreen({
     <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
       {readOnly && <ReadOnlyBanner />}
       <ObjectTabGuide tab="profile" role={role} onNextTab={onNextTab} />
+      {project.notes ? (
+        <View style={s.originCard}>
+          <Text style={s.originTitle}>Из заявки</Text>
+          <Text style={s.originBody}>{project.notes}</Text>
+        </View>
+      ) : null}
       <ProjectProfileFields
         variant="profile"
         role={role}
@@ -213,4 +219,13 @@ const s = StyleSheet.create({
   roomsLink: { alignSelf: 'flex-start', paddingVertical: 4 },
   roomsLinkT: { fontSize: 13, fontWeight: '600', color: RenovaTheme.colors.primary },
   savedHint: { ...formMetaText.caption },
+  originCard: {
+    backgroundColor: RenovaTheme.colors.infoBg,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+    gap: 4,
+  },
+  originTitle: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.text },
+  originBody: { fontSize: 13, lineHeight: 18, color: RenovaTheme.colors.textMuted },
 });

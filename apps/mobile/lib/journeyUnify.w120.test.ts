@@ -40,7 +40,7 @@ for (const [k, body] of Object.entries(src)) noRawReplace(k, body);
 console.assert(src.payReturn.includes("budgetTabRoute('customer', 'payments')"), 'YuKassa→payments tab');
 console.assert(src.payReturn.includes('replaceOsNav'), 'payment-return SoT');
 console.assert(src.material.includes("repairTabRoute(role, 'materials')"), 'material→materials hub');
-console.assert(src.leadWiz.includes("tabsRoute('contractor', 'index')"), 'lead wizard→home');
+console.assert(src.leadWiz.includes("replaceOsNav('/job-leads'"), 'lead summary→leads board');
 console.assert(src.empty.includes("replaceOsNav(tabsRoute(role, 'index')"), 'empty→home SoT');
 console.assert(src.repair.includes("replaceOsNav(tabsRoute(role, 'calendar')"), 'repair calendar redirect');
 console.assert(src.ctx.includes("replaceOsNav('/(contractor)/subscription'"), 'paywall→subscription');

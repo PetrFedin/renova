@@ -16,7 +16,10 @@ from app.models.entities import (
     User,
     UserRole,
 )
+import logging
 import re
+
+from app.services import marketplace_notifications
 
 router = APIRouter(tags=["marketplace"])
 
@@ -128,9 +131,24 @@ def _can_access_lead(lead: JobLead, user: User) -> bool:
 
 
 def _can_message_lead(lead: JobLead, user: User) -> bool:
+    """Чат заявки: заказчик-владелец и назначенный исполнитель.
+
+    Переписка исполнителей-конкурентов с заказчиком до выбора требует связи
+    «сообщение → адресат» (в `lead_messages` её нет — нужна миграция), поэтому
+    до назначения чат закрыт для всех, кроме владельца (MKT-010, см. LeadChat).
+    """
     if user.role == UserRole.customer:
         return lead.customer_id == user.id
     return lead.assigned_contractor_id == user.id
+
+
+async def _safe_notify(db: AsyncSession, call) -> None:
+    """Уведомление биржи не должно ронять уже зафиксированное действие (MKT-006)."""
+    try:
+        await call
+    except Exception:  # noqa: BLE001 — бизнес-изменение уже закоммичено
+        await db.rollback()
+        logging.getLogger(__name__).exception("marketplace notification failed")
 
 
 @router.get("/contractors")
@@ -309,6 +327,7 @@ async def quote_lead(
     # the shared lead row: it would leak one contractor's price to competitors.
     await db.commit()
     await db.refresh(quote)
+    await _safe_notify(db, marketplace_notifications.notify_quote_received(db, lead=lead, quote=quote))
     return {"ok": True, "quote_id": quote.id, "pre_estimate": quote.pre_estimate, "awaiting_customer_pick": True}
 
 
@@ -334,6 +353,9 @@ async def accept_quote(
     lead.pre_estimate = quote.pre_estimate
     lead.status = JobLeadStatus.quoted
     await db.commit()
+    await _safe_notify(
+        db, marketplace_notifications.notify_quote_decision(db, lead=lead, winner_id=quote.contractor_id)
+    )
     return {
         "ok": True,
         "assigned_contractor_id": lead.assigned_contractor_id,
@@ -505,10 +527,19 @@ async def post_lead_msg(
     lead = await db.get(JobLead, lead_id)
     if not lead or not _can_message_lead(lead, user):
         raise HTTPException(404, "lead_not_found")
+    if not lead.assigned_contractor_id:
+        # MKT-010: писать пока некому — не принимаем сообщение «в пустоту».
+        raise HTTPException(409, detail={
+            "code": "lead_chat_not_available",
+            "message": "Чат заявки откроется, когда вы выберете исполнителя.",
+        })
     message = LeadMessage(lead_id=lead_id, user_id=user.id, text=body.text.strip())
     db.add(message)
     await db.commit()
     await db.refresh(message)
+    await _safe_notify(
+        db, marketplace_notifications.notify_lead_message(db, lead=lead, sender_id=user.id, text=message.text)
+    )
     return {"ok": True, "id": message.id}
 
 
@@ -541,6 +572,9 @@ async def auto_assign(
     lead.assigned_contractor_id = best_user.id
     lead.status = JobLeadStatus.quoted
     await db.commit()
+    await _safe_notify(
+        db, marketplace_notifications.notify_quote_decision(db, lead=lead, winner_id=best_user.id)
+    )
     return {
         "contractor_id": best_user.id,
         "name": best_user.full_name or best_user.phone,

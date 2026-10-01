@@ -186,7 +186,7 @@ async def test_participant_audit_failure_rolls_back_all_rows(db, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_conversion_replays_after_midnight_and_across_authorized_actors(db, monkeypatch):
+async def test_conversion_replays_after_midnight_and_contractor_cannot_convert(db, monkeypatch):
     owner, _, contractor, _, lead = await _lead(db)
     owner_id, contractor_id, lead_id = owner.id, contractor.id, lead.id
     monkeypatch.setattr(outbox_inline_dispatch, "dispatch_best_effort", AsyncMock())
@@ -197,7 +197,10 @@ async def test_conversion_replays_after_midnight_and_across_authorized_actors(db
         def today(cls):
             return date(2031, 1, 1)
     monkeypatch.setattr(creation, "date", Tomorrow)
-    second = await conversion.convert_lead(db, lead_id=lead_id, actor_id=contractor_id, rooms_data=_rooms(), property_type="apartment")
+    # MKT-028: исполнитель не конвертирует за заказчика — ни до, ни после его конверсии.
+    with pytest.raises(ValueError, match="customer_confirmation_required"):
+        await conversion.convert_lead(db, lead_id=lead_id, actor_id=contractor_id, rooms_data=_rooms(), property_type="apartment")
+    second = await conversion.convert_lead(db, lead_id=lead_id, actor_id=owner_id, rooms_data=_rooms(), property_type="apartment")
     assert first.replayed is False and second.replayed is True
     assert second.project.id == project_id and second.project.planned_start_date == original_start
     assert await db.scalar(select(JobLead.status).where(JobLead.id == lead_id)) == JobLeadStatus.taken
@@ -321,7 +324,7 @@ async def test_postgres_warm_two_session_assignment_keeps_one_winner(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_postgres_warm_customer_contractor_conversion_returns_one_project():
+async def test_postgres_warm_two_owner_sessions_conversion_returns_one_project():
     engine, Session = _postgres_session()
     try:
         async with Session() as db:
@@ -335,7 +338,7 @@ async def test_postgres_warm_customer_contractor_conversion_returns_one_project(
                 await barrier.wait()
                 result = await conversion.convert_lead(db, lead_id=lead_id, actor_id=actor_id, rooms_data=_rooms(), property_type="apartment")
                 return result.project.id, result.replayed
-        results = await asyncio.wait_for(asyncio.gather(convert_once(owner_id), convert_once(contractor_id)), timeout=45)
+        results = await asyncio.wait_for(asyncio.gather(convert_once(owner_id), convert_once(owner_id)), timeout=45)
         assert results[0][0] == results[1][0]
         assert sorted(result[1] for result in results) == [False, True]
         async with Session() as db:

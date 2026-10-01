@@ -6,8 +6,9 @@ import math
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import JobLead, JobLeadStatus, Project, User, UserRole
+from app.models.entities import JobLead, JobLeadQuote, JobLeadStatus, Project, User, UserRole
 from app.services import project_create_service as creation
+from app.services import project_assignment_service as assignment
 from app.services.client_write_idempotency import commit_client_write, replay_entity_id
 
 
@@ -22,6 +23,45 @@ async def _conversion_project(
     return await creation._loaded_project(db, project_id)
 
 
+def _rub(value: float) -> str:
+    return f"{value:,.0f}".replace(",", " ") + " ₽"
+
+
+async def _accepted_quote(db: AsyncSession, lead: JobLead) -> JobLeadQuote | None:
+    if not lead.assigned_contractor_id:
+        return None
+    return await db.scalar(
+        select(JobLeadQuote).where(
+            JobLeadQuote.lead_id == lead.id,
+            JobLeadQuote.contractor_id == lead.assigned_contractor_id,
+        )
+    )
+
+
+def _origin(lead: JobLead, quote: JobLeadQuote | None) -> tuple[str | None, str | None]:
+    """(notes, origin_summary): что заявка и принятый отклик говорят о проекте.
+
+    У проекта нет отдельного поля под цену исполнителя: ``budget_planned``
+    выводится из сметы и перезаписывается при её пересчёте, поэтому цену КП
+    честно держим в заметке проекта и в записи ленты «Создан объект», а не
+    выдаём за смету. Ориентир бюджета заказчика уходит в его приватный
+    ``customer_budget`` (см. вызывающий код).
+    """
+    price = quote.pre_estimate if quote is not None else lead.pre_estimate
+    lines = ["Создан из заявки биржи."]
+    description = (lead.description or "").strip()
+    if description:
+        lines.append(f"Описание заявки: {description}")
+    summary = None
+    if price:
+        lines.append(f"Цена принятого КП исполнителя: {_rub(float(price))} (не смета проекта).")
+        summary = f"цена принятого КП: {_rub(float(price))}"
+    note = (quote.note or "").strip() if quote is not None else ""
+    if note:
+        lines.append(f"Заметка исполнителя к КП: {note}")
+    return "\n".join(lines), summary
+
+
 async def convert_lead(
     db: AsyncSession,
     *,
@@ -31,6 +71,13 @@ async def convert_lead(
     property_type: str,
 ) -> creation.ProjectCreateResult:
     """Authorize before replay; never persist a project without taking its lead.
+
+    Конвертирует только заказчик-владелец (MKT-028): исполнитель не может сам
+    выбрать комнаты/тип и создать объект от имени заказчика. Комнат у заявки нет —
+    без явных ``rooms_data`` проект создаётся без комнат (заказчик добавит их),
+    а не с выдуманной «комнатой 4×3». Цена КП, описание, адрес, бюджетный
+    ориентир и заметка исполнителя переносятся (MKT-007); лимит бесплатного
+    тарифа исполнителя проверяется так же, как при назначении (MKT-008).
 
     The replay fingerprint represents explicit conversion input, not date.today()
     or mutable lead display fields. A retry after midnight or a lost response
@@ -50,8 +97,7 @@ async def convert_lead(
             if actor.id != lead.customer_id:
                 raise ValueError("lead_owner_only")
         elif actor.role == UserRole.contractor:
-            if actor.id != lead.assigned_contractor_id:
-                raise ValueError("assigned_contractor_only")
+            raise ValueError("customer_confirmation_required")
         else:
             raise ValueError("lead_conversion_role_forbidden")
 
@@ -63,11 +109,10 @@ async def convert_lead(
         clean_property = property_type.strip()
         if not clean_property or len(clean_property) > 32:
             raise ValueError("project_type_invalid")
-        if not isinstance(rooms_data, list) or not rooms_data or any(
-            not isinstance(room, dict) for room in rooms_data
-        ):
+        rooms_data = rooms_data or []
+        if not isinstance(rooms_data, list) or any(not isinstance(room, dict) for room in rooms_data):
             raise ValueError("project_rooms_required")
-        normalized_rooms = creation._normalized_rooms(rooms_data)
+        normalized_rooms = creation._normalized_rooms(rooms_data) if rooms_data else []
         for room in normalized_rooms:
             for value in room.values():
                 if isinstance(value, float) and not math.isfinite(value):
@@ -99,11 +144,19 @@ async def convert_lead(
         if not math.isfinite(float(lead.area_sqm)) or lead.area_sqm <= 0:
             raise ValueError("project_area_invalid")
 
+        if await assignment.free_slot_exhausted(db, contractor_id):
+            raise ValueError("contractor_subscription_required")
+
+        quote = await _accepted_quote(db, lead)
+        notes, origin_summary = _origin(lead, quote)
+        budget_hint = float(lead.budget_hint) if lead.budget_hint and lead.budget_hint > 0 else None
         payload = creation._project_payload(
             name=lead.title, address=lead.address, renovation_type=lead.renovation_type,
             property_type=clean_property, total_area_sqm=lead.area_sqm,
             planned_start_date=None, planned_end_date=None,
             rooms_data=normalized_rooms, contractor_id=contractor_id, template_id=None,
+            allow_empty_rooms=True, notes=notes, customer_budget=budget_hint,
+            origin_summary=origin_summary,
         )
         project = await creation.prepare_project_in_transaction(
             db, customer_id=customer_id, payload=payload, participant_actor_id=actor_id,

@@ -81,6 +81,7 @@ def _project_out(
         budget_planned=0.0 if hide_money else p.budget_planned,
         budget_spent=0.0 if hide_money else p.budget_spent,
         customer_budget=float(customer_budget) if customer_budget is not None else None,
+        notes=(getattr(p, "notes", None) if access_mode in {"owner", "contractor"} else None),
         # JRN-018: колонка projects.progress_percent никем не обновляется и всегда
         # 0 — считаем по этапам тем же взвешенным методом, что и дашборд.
         progress_percent=stage_status_svc.weighted_progress(list(p.stages or [])),

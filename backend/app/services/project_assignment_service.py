@@ -41,6 +41,16 @@ async def _project_count(db: AsyncSession, contractor_id: str) -> int:
     )
 
 
+async def free_slot_exhausted(db: AsyncSession, contractor_id: str) -> bool:
+    """True, когда исполнителю нельзя взять ещё один объект (лимит бесплатного тарифа).
+
+    Единая проверка для назначения исполнителя и для конверсии заявки биржи
+    (MKT-008/ROLE-013): путь «через заявку» не должен обходить монетизацию.
+    """
+    count = await _project_count(db, contractor_id)
+    return count >= settings.contractor_free_project_limit and not await is_pro(db, contractor_id)
+
+
 async def resolve_contractor_user_id(db: AsyncSession, contractor_ref: str) -> str:
     """Accept a user id or a ContractorProfile id (directory rows carry both).
 
@@ -78,8 +88,7 @@ async def assign_locked(
         return "contractor_invalid"
 
     if current != contractor_id:
-        count = await _project_count(db, contractor_id)
-        if count >= settings.contractor_free_project_limit and not await is_pro(db, contractor_id):
+        if await free_slot_exhausted(db, contractor_id):
             return "subscription_required"
 
     await participant_service.sync_current_lead_in_transaction(

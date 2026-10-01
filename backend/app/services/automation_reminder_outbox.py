@@ -24,13 +24,14 @@ async def enqueue_notification_once(
     db: AsyncSession,
     *,
     dedupe_key: str,
-    project_id: str,
+    project_id: str | None,
     user_id: str,
     notification_type: str,
     title: str,
     body: str,
     link_path: str,
     return_to: str | None = None,
+    aggregate_id: str | None = None,
 ) -> bool:
     """Enqueue one reminder exactly once across retries and concurrent workers.
 
@@ -53,7 +54,8 @@ async def enqueue_notification_once(
     row = DomainOutbox(
         id=row_id,
         aggregate_type="automation_reminder",
-        aggregate_id=project_id,
+        # Событие без проекта (заявка биржи) привязывается к своей сущности.
+        aggregate_id=aggregate_id or project_id,
         event_type=NOTIFICATION_EVENT,
         payload_json=json.dumps(payload, ensure_ascii=False),
         created_at=utc_now(),

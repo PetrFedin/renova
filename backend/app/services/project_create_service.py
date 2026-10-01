@@ -107,7 +107,18 @@ def _project_payload(
     rooms_data: list[dict],
     contractor_id: str | None,
     template_id: str | None,
+    allow_empty_rooms: bool = False,
+    notes: str | None = None,
+    customer_budget: float | None = None,
+    origin_summary: str | None = None,
 ) -> dict:
+    """Нормализованный payload проекта.
+
+    ``allow_empty_rooms``/``notes``/``customer_budget`` нужны только конверсии
+    заявки биржи (MKT-007): комнат у заявки нет, и выдумывать «комнату 4×3» нельзя.
+    Ключи попадают в payload лишь когда заданы — отпечаток идемпотентности
+    обычного создания проекта остаётся прежним.
+    """
     clean_name = name.strip()
     if not clean_name or len(clean_name) > 255:
         raise ValueError("project_name_invalid")
@@ -116,7 +127,7 @@ def _project_payload(
     clean_property = (property_type or "").strip()
     if not clean_renovation or not clean_property:
         raise ValueError("project_type_invalid")
-    rooms = _normalized_rooms(rooms_data)
+    rooms = _normalized_rooms(rooms_data) if (rooms_data or not allow_empty_rooms) else []
     area = total_area_sqm
     if area is None:
         area = round(sum(room["length_m"] * room["width_m"] for room in rooms), 2)
@@ -128,7 +139,7 @@ def _project_payload(
     end = planned_end_date or (start + timedelta(days=60))
     if end < start:
         raise ValueError("project_dates_invalid")
-    return {
+    payload = {
         "name": clean_name,
         "address": clean_address,
         "renovation_type": clean_renovation,
@@ -140,6 +151,16 @@ def _project_payload(
         "contractor_id": contractor_id,
         "template_id": template_id,
     }
+    clean_notes = (notes or "").strip()
+    if clean_notes:
+        payload["notes"] = clean_notes
+    if origin_summary:
+        payload["origin_summary"] = origin_summary.strip()
+    if customer_budget is not None:
+        if not isinstance(customer_budget, (int, float)) or customer_budget <= 0 or customer_budget != customer_budget:
+            raise ValueError("project_customer_budget_invalid")
+        payload["customer_budget"] = float(customer_budget)
+    return payload
 
 
 def _normalized_weights(plans: list[tuple[str, float]]) -> list[Decimal]:
@@ -259,6 +280,7 @@ async def _prepare_activity(
     customer_id: str,
     rooms_count: int,
     stages_count: int,
+    origin_summary: str | None = None,
 ) -> None:
     await outbox.enqueue(
         db,
@@ -273,6 +295,7 @@ async def _prepare_activity(
             "body": (
                 f"Комнат: {rooms_count}; этапов: {stages_count}; "
                 f"план: {float(project.budget_planned or 0):.2f} ₽"
+                + (f"; {origin_summary}" if origin_summary else "")
             ),
             "link_path": "/(customer)/(tabs)/object",
         },
@@ -311,7 +334,11 @@ async def prepare_project_in_transaction(
         contractor_id=contractor_id,
         planned_start_date=date.fromisoformat(payload["planned_start_date"]),
         planned_end_date=date.fromisoformat(payload["planned_end_date"]),
+        notes=payload.get("notes"),
     )
+    if payload.get("customer_budget") is not None and "customer_budget" in Project.__table__.c:
+        # приватный лимит заказчика (не бюджет проекта и не цена исполнителя)
+        project.customer_budget = payload["customer_budget"]
     db.add(project)
     await db.flush()
     if contractor_id:
@@ -326,6 +353,7 @@ async def prepare_project_in_transaction(
     await _prepare_activity(
         db, project=project, customer_id=customer_id,
         rooms_count=len(rooms), stages_count=len(stages),
+        origin_summary=payload.get("origin_summary"),
     )
     return project
 

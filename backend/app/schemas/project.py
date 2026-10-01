@@ -189,6 +189,8 @@ class ProjectOut(BaseModel):
     budget_planned: float
     budget_spent: float
     customer_budget: float | None = None
+    # Происхождение объекта (заявка биржи, цена принятого КП): владельцу и исполнителю.
+    notes: str | None = None
     progress_percent: float
     vat_rate: float = 0
     rooms_count: int
