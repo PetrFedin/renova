@@ -2,6 +2,7 @@
 import { Share, Platform } from 'react-native';
 import { messengerShareMessage } from '@/lib/messengerGap';
 import { notifyInfo } from '@/lib/notify';
+import { reportError } from '@/lib/reportError';
 
 export { MESSENGER_GAP, messengerShareMessage } from '@/lib/messengerGap';
 
@@ -20,8 +21,8 @@ export async function shareText(message: string, title = 'Renova', url?: string)
         await navigator.clipboard.writeText(message);
         notifyInfo('Скопировано', 'Текст в буфере обмена — вставьте его в мессенджер.');
         return;
-      } catch {
-        // падаем в общее сообщение ниже
+      } catch (clipboardError) {
+        reportError('share.clipboard', clipboardError); // и показываем общее сообщение ниже
       }
     }
     notifyInfo('Не удалось поделиться', 'Скопируйте текст вручную.');

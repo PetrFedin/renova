@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
@@ -112,7 +113,7 @@ export default function SubscriptionScreen() {
             : `Бесплатно · ${sub.free_limit ?? 1} объект`}
         </Text> : null}
         {sub?.expires_at && sub.is_pro ? (
-          <Text style={s.meta}>До {sub.expires_at.slice(0, 10)}</Text>
+          <Text style={s.meta}>До {formatScheduleDayFull(sub.expires_at)}</Text>
         ) : null}
         {sub ? <Text style={[s.badge, mode === 'live' ? s.badgeOk : s.badgeWarn]}>{modeLabel}</Text> : null}
 

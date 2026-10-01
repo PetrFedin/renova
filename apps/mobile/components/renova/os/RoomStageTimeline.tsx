@@ -9,6 +9,7 @@ import type { RoomStageCard } from '@/lib/api';
 import { pushStageDetail } from '@/lib/navigation';
 import { pushOsNav } from '@/lib/pushOsNav';
 import type { OsRole } from '@/constants/osSections';
+import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
 
 const ST_COLOR: Record<string, string> = {
   completed: '#22c55e', waiting_acceptance: '#f59e0b', in_progress: RenovaTheme.colors.accent,
@@ -46,7 +47,7 @@ export function RoomStageTimeline({ stages, role = 'customer' }: { stages: RoomS
                 <>
                   <Text style={s.meta}>{st.works_done}/{st.works_total} работ · {st.percent_complete}%{st.overdue_days ? ` · +${st.overdue_days} дн.` : ''}</Text>
                   <View style={s.bar}><View style={[s.fill, { width: `${Math.min(100, st.percent_complete)}%` }]} /></View>
-                  {st.planned_start && st.planned_end && <Text style={s.dates}>{st.planned_start.slice(0, 10)} → {st.planned_end.slice(0, 10)}</Text>}
+                  {st.planned_start && st.planned_end && <Text style={s.dates}>{formatScheduleDayFull(st.planned_start)} → {formatScheduleDayFull(st.planned_end)}</Text>}
                   <View style={s.actions}>
                     <PrimaryButton
                       title={st.next_action.button}

@@ -27,6 +27,7 @@ import { objectTabRoute } from '@/constants/osSections';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { writeResultMessage } from '@/lib/offlineResultMessage';
 import { controlSummary, customerIssueActions, customerIssueWaitingHint, type IssueAction } from '@/lib/domain/issueControlActions';
+import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
 
 export function CustomerControlView() {
   const pathname = usePathname();
@@ -305,7 +306,7 @@ export function CustomerControlView() {
           disabled={!iss.stage_id}
         >
           <Text style={s.title}>{iss.title}{iss.photo_url ? ' · фото' : ''}{iss.floor_plan_id ? ' · план' : ''}</Text>
-          <Text style={s.meta}>{issueSeverityLabel(iss.severity)} · {issueStatusLabel(iss.status)}{iss.due_at ? ` · до ${iss.due_at.slice(0, 10)}` : ''}{iss.stage_id ? ' · → этап' : ''}</Text>
+          <Text style={s.meta}>{issueSeverityLabel(iss.severity)} · {issueStatusLabel(iss.status)}{iss.due_at ? ` · до ${formatScheduleDayFull(iss.due_at)}` : ''}{iss.stage_id ? ' · → этап' : ''}</Text>
           {iss.floor_plan_id ? (
             <Pressable
               onPress={() => pushOsNav(objectTabRoute('customer', 'plan', 'floor'), pathname, 'customer')}

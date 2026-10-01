@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import type { ExpenseDetailRow } from '@/lib/domain/expenseAnalytics';
+import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
 
 const KIND_LABEL: Record<string, string> = {
   receipt: 'Чек',
@@ -34,7 +35,7 @@ export function UnifiedExpenseList({
               {' · '}{row.categoryLabel}
               {row.roomName ? ` · ${row.roomName}` : ''}
               {row.stageName ? ` · ${row.stageName}` : ''}
-              {row.date ? ` · ${row.date.slice(0, 10)}` : ''}
+              {row.date ? ` · ${formatScheduleDayFull(row.date)}` : ''}
             </Text>
           </View>
           {row.kind === 'receipt' ? (

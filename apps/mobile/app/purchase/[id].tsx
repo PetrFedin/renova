@@ -20,6 +20,7 @@ import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { alertPurchaseAdvanced } from '@/lib/procurementNav';
 import { reportError } from '@/lib/reportError';
 import { useBusyAction } from '@/lib/hooks/useBusyAction';
+import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
 
 const ST: Record<string, string> = {
   draft: 'Черновик', approved: 'Согласовано', ordered: 'Заказано', paid: 'Оплачено',
@@ -89,8 +90,8 @@ export default function PurchaseDetailScreen() {
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
         <View style={s.card}>
           <Text style={s.sum}>{formatRub(purchase.total_amount)}</Text>
-          {purchase.ordered_at && <Text style={s.meta}>Заказ: {purchase.ordered_at.slice(0, 10)}</Text>}
-          {purchase.delivered_at && <Text style={s.meta}>Доставка: {purchase.delivered_at.slice(0, 10)}</Text>}
+          {purchase.ordered_at && <Text style={s.meta}>Заказ: {formatScheduleDayFull(purchase.ordered_at)}</Text>}
+          {purchase.delivered_at && <Text style={s.meta}>Доставка: {formatScheduleDayFull(purchase.delivered_at)}</Text>}
         </View>
         <Text style={s.section}>Позиции</Text>
         {purchase.items.map((i) => (

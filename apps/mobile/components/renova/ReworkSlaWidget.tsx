@@ -8,6 +8,7 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { pushStageDetail } from '@/lib/navigation';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { notifyError } from '@/lib/notify';
+import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
 
 export function ReworkSlaWidget({
   stages,
@@ -32,7 +33,7 @@ export function ReworkSlaWidget({
       {rework.map(st => (
         <View key={st.id} style={s.row}>
           <Pressable style={{ flex: 1 }} onPress={() => pushStageDetail(st.id, pathname)}>
-            <Text style={s.line}>{st.name} · SLA {st.rework_deadline?.slice(0, 10)}</Text>
+            <Text style={s.line}>{st.name} · SLA {formatScheduleDayFull(st.rework_deadline)}</Text>
           </Pressable>
           {role === 'contractor' && userId && projectId && (
             <PrimaryButton

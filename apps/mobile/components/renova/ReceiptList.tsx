@@ -10,6 +10,7 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { alertReceiptReverified } from '@/lib/receiptNav';
 import type { OsRole } from '@/constants/osSections';
+import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
 
 export function ReceiptList({
   receipts, rooms, stages, userId, projectId, editable, onUpdated, onReceiptPress, totalLabel = 'Чеки',
@@ -88,7 +89,7 @@ export function ReceiptList({
             <Text style={s.date}>
               {expenseCategoryLabel(r.expense_category)}
               {r.room_id && rooms ? ` · ${rooms.find((x) => x.id === r.room_id)?.name || 'комната'}` : ''}{r.stage_id && stages ? ` · ${stages.find((x) => x.id === r.stage_id)?.name || 'этап'}` : ''}
-              {' · '}{r.receipt_at || r.created_at?.slice(0, 10)}
+              {' · '}{formatScheduleDayFull(r.receipt_at || r.created_at)}
               {r.description && r.source === 'manual' ? ` · ${r.description}` : ''}{r.fn && r.fn !== 'MANUAL' ? ` · ФН ${r.fn.slice(-4)}` : ''}
             </Text>
             {editable && (

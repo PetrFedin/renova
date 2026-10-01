@@ -37,6 +37,7 @@ import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { STAGE_STATUS_LABEL } from '@/constants/labels';
 import { reportError, reportCatch } from '@/lib/reportError';
 import { StageDetailExecutorChecklist } from '@/components/screens/stage/StageDetailExecutorChecklist';
+import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
 
 // Шаблоны только для обычных комментариев: сдачу на приёмку запускает кнопка «Готово — на приёмку».
 const TEMPLATES = ['Работы выполнены по смете', 'Нужен доступ на объект', 'Задержка из-за материалов'];
@@ -495,7 +496,7 @@ export function StageDetailScreen() {
                       {p.image_url ? (
                         <Image source={{ uri: p.image_url }} style={styles.img} />
                       ) : null}
-                      <Text>{p.caption || 'Фото'} · {p.created_at.slice(0, 10)}</Text>
+                      <Text>{p.caption || 'Фото'} · {formatScheduleDayFull(p.created_at)}</Text>
                     </View>
                   ))}
                 </View>

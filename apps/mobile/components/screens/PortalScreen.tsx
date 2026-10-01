@@ -39,6 +39,7 @@ import { buildPaymentRequisites } from '@/lib/paymentRequisites';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { reportError } from '@/lib/reportError';
+import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
 
 const PORTAL_USER_KEY = 'renova:portal:user';
 
@@ -789,7 +790,7 @@ export default function PortalScreen() {
           >
             <Text style={styles.meta}>
               {snapshot.estimate_summary.locked_at
-                ? `Зафиксирована ${snapshot.estimate_summary.locked_at.slice(0, 10)}`
+                ? `Зафиксирована ${formatScheduleDayFull(snapshot.estimate_summary.locked_at)}`
                 : snapshot.estimate_summary.proposed_at
                   ? 'На согласовании'
                   : 'Черновик — ожидает отправки исполнителем'}
