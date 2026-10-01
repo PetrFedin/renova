@@ -116,7 +116,7 @@ export const roomsApi = {
   },
   approveRoomChange: async (userId: string, projectId: string, reqId: string) => {
     try {
-      return await req(`/api/v1/projects/${projectId}/room-change-requests/${reqId}/approve`, { method: 'POST' }, userId);
+      return await req<{ ok: boolean; room_id: string | null; estimate_frozen?: boolean }>(`/api/v1/projects/${projectId}/room-change-requests/${reqId}/approve`, { method: 'POST' }, userId);
     } catch (e) {
       if (e instanceof ApiError) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');

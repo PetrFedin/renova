@@ -17,6 +17,8 @@ export type Room = {
   perimeter_m: number;
   is_archived?: boolean;
   budget_alert_pct?: number | null;
+  /** EST-001: смета зафиксирована — данные комнаты сохранены, строки сметы не пересчитаны */
+  estimate_frozen?: boolean;
 };
 
 export type RoomStageCard = {
@@ -64,7 +66,9 @@ export type RoomSnapshot = {
 
 export type RoomChangeRequest = {
   id: string;
-  room_id: string;
+  /** null — запрос «добавить комнату» (QLT-007): поля новой комнаты в payload */
+  room_id: string | null;
+  created_room_id?: string | null;
   status: string;
   message: string;
   payload: Record<string, unknown> | null;

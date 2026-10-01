@@ -27,6 +27,8 @@ import { DOCUMENTS_MENU_HINT } from '@/lib/documentsNav';
 import { screenLayout } from '@/constants/screenLayout';
 import { reportCatch, reportError } from '@/lib/reportError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { InfoBanner } from '@/components/ui/InfoBanner';
+import { alertEstimateFrozen, isEstimateFrozen, ESTIMATE_FROZEN_MESSAGE, ESTIMATE_FROZEN_ACTION } from '@/lib/estimateFrozenHint';
 
 type RoomMutation = 'archive' | 'save' | 'materials';
 type RoomLoadState = 'loading' | 'ready' | 'error';
@@ -50,6 +52,8 @@ export function RoomDetailScreen() {
   const [calcItems, setCalcItems] = useState<{ name: string; qty: number; unit: string; note?: string }[]>([]);
   const [roomSnap, setRoomSnap] = useState<RoomSnapshot | null>(null);
   const [mutation, setMutation] = useState<RoomMutation | null>(null);
+  /** EST-001: размеры комнаты разошлись со сметой (смета зафиксирована, строки не пересчитаны) */
+  const [estimateDiverged, setEstimateDiverged] = useState(false);
   const mutationRef = useRef(false);
   const contextRef = useRef<{ userId: string | null; projectId: string | null }>({ userId: null, projectId: null });
   contextRef.current = { userId: user?.id ?? null, projectId: activeProject?.id ?? null };
@@ -183,8 +187,10 @@ export function RoomDetailScreen() {
     const projectId = activeProject.id;
     const roomId = room.id;
     await runMutation('save', async () => {
+      let frozen = false;
       try {
-        await api.updateRoom(actor.id, projectId, roomId, body);
+        const saved = await api.updateRoom(actor.id, projectId, roomId, body);
+        frozen = isEstimateFrozen(saved);
       } catch (error: unknown) {
         if (isOfflineQueued(error)) {
           notifyOfflineQueued('Изменения комнаты');
@@ -197,6 +203,10 @@ export function RoomDetailScreen() {
         return;
       }
       await reconcileCommittedRoomMutation(actor, projectId);
+      if (frozen) {
+        setEstimateDiverged(true);
+        alertEstimateFrozen(role, pathname);
+      }
     });
   };
 
@@ -302,6 +312,13 @@ export function RoomDetailScreen() {
             <Text style={s.fabHint}>Скан чека — кнопка + внизу экрана (с привязкой к комнате)</Text>
           </View>
         ); })()}
+
+        {estimateDiverged && (isContractor || ownerCanEdit || !!activeProject.contractor_id) ? (
+          <>
+            <InfoBanner tone="warning" title="Размеры разошлись со сметой" message={ESTIMATE_FROZEN_MESSAGE} />
+            <PrimaryButton title={ESTIMATE_FROZEN_ACTION} variant="outline" compact onPress={() => alertEstimateFrozen(role, pathname)} />
+          </>
+        ) : null}
 
         <Pressable style={s.toggle} disabled={busy} onPress={() => setShowDetails(v => !v)}>
           <Text style={s.toggleT}>{showDetails ? 'Скрыть детали' : 'Детали комнаты и журнал'}</Text>

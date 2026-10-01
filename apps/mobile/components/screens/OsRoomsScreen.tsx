@@ -30,6 +30,7 @@ import {
 } from '@/lib/siteOpsNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { alertApprovalApproved, alertApprovalRejected } from '@/lib/fieldCreateNav';
+import { alertEstimateFrozen, isEstimateFrozen } from '@/lib/estimateFrozenHint';
 import type { OsRole } from '@/constants/osSections';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { screenLayout } from '@/constants/screenLayout';
@@ -71,6 +72,8 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
   });
   const [query, setQuery] = useState('');
   const [roomFilter, setRoomFilter] = useState('active');
+  const [showRequestRoom, setShowRequestRoom] = useState(false);
+  const canWriteRooms = useWriteAllowed();
 
   const userId = user?.id;
   const projectId = activeProject?.id;
@@ -163,6 +166,13 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
             onPress={() => pushOsNav(repairTabRoute('customer', 'works'), nav.from, 'customer')}
           />
         )}
+        {activeProject.contractor_id && canWriteRooms ? (
+          <PrimaryButton
+            title="Запросить новую комнату"
+            variant="outline"
+            onPress={() => setShowRequestRoom(true)}
+          />
+        ) : null}
         <SearchFilter query={query} onQuery={setQuery} filters={ROOM_FILTERS} active={roomFilter} onFilter={setRoomFilter} />
         <Text style={styles.hint}>
           {activeProject.contractor_id
@@ -242,16 +252,40 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
         {requestsState.data.length > 0 && <Text style={styles.section}>Мои запросы</Text>}
         {requestsState.data.map((r) => (
           <View key={r.id} style={styles.req}>
+            {r.room_id === null ? <Text style={styles.reqTitle}>Новая комната{r.payload && typeof r.payload.name === 'string' ? `: ${r.payload.name}` : ''}</Text> : null}
             <Text>{r.message}</Text>
             <Text style={styles.status}>Статус: {roomChangeStatusLabel(r.status)}</Text>
           </View>
         ))}
       </ScrollView>
+      <CreateRoomSheet
+        visible={showRequestRoom}
+        project={activeProject}
+        requestMode
+        onClose={() => setShowRequestRoom(false)}
+        onCreate={async (body) => {
+          try {
+            await api.createRoomChangeRequest(user.id, activeProject.id, {
+              message: `Добавить комнату «${body.name}»`,
+              payload: body,
+            });
+          } catch (e) {
+            if (isOfflineQueued(e)) {
+              notifyOfflineQueued('Запрос на добавление комнаты');
+              return;
+            }
+            throw e;
+          }
+          alertRoomChangeRequested('customer');
+          await reloadRooms();
+        }}
+      />
     </>
   );
 }
 
 function ContractorRoomsBody() {
+  const pathname = usePathname();
   const nav = useNavFromHere();
   const canWrite = useWriteAllowed();
   const { user, activeProject, loadProject } = useRenova();
@@ -325,17 +359,20 @@ function ContractorRoomsBody() {
     const key = `approve:${request.id}`;
     showActionConfirm({
       title: 'Согласовать запрос?',
-      message: request.message || 'Комната будет изменена по запросу заказчика.',
+      message: request.message || (request.room_id === null
+        ? 'Комната будет создана по запросу заказчика.'
+        : 'Комната будет изменена по запросу заказчика.'),
       primaryLabel: 'Согласовать',
       onPrimary: () => {
         void runMutation(key, async () => {
           try {
-            await api.approveRoomChange(user.id, activeProject.id, request.id);
+            const approved = await api.approveRoomChange(user.id, activeProject.id, request.id);
             await syncProjectSideEffects({ user, project: activeProject });
             await reloadRequests();
             await loadProject(activeProject.id);
             await reloadRooms();
-            alertApprovalApproved('contractor', 'room_change');
+            if (isEstimateFrozen(approved)) alertEstimateFrozen('contractor', pathname);
+            else alertApprovalApproved('contractor', 'room_change');
           } catch (e) {
             if (isOfflineQueued(e)) notifyOfflineQueued('Одобрение запроса');
             else if (isRateLimitError(e)) {
@@ -440,7 +477,7 @@ function ContractorRoomsBody() {
         <SearchFilter query={query} onQuery={setQuery} filters={ROOM_FILTERS} active={roomFilter} onFilter={setRoomFilter} />
         {requests.filter((r) => r.status === 'pending').map((r) => (
           <View key={r.id} style={styles.reqPending}>
-            <Text style={styles.reqTitle}>Запрос заказчика</Text>
+            <Text style={styles.reqTitle}>{r.room_id === null ? 'Запрос заказчика: добавить комнату' : 'Запрос заказчика'}</Text>
             <Text>{r.message}</Text>
             <View style={styles.row}>
               <PrimaryButton

@@ -26,7 +26,10 @@ export function CreateRoomSheet({
   project,
   onClose,
   onCreate,
+  requestMode = false,
 }: {
+  /** Заказчик при подключённом исполнителе: комната создаётся по запросу, а не сразу (QLT-007) */
+  requestMode?: boolean;
   visible: boolean;
   project: ProjectDetail;
   onClose: () => void;
@@ -131,13 +134,13 @@ export function CreateRoomSheet({
       });
       resetForm();
       onClose();
-      // W133: комната → план / смета
-      alertRoomCreated(role);
+      // W133: комната → план / смета (запрос комнаты подтверждает вызывающий экран)
+      if (!requestMode) alertRoomCreated(role);
     } catch (e) {
       if (isRateLimitError(e)) {
         Alert.alert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
       } else {
-        Alert.alert('Ошибка', 'Не удалось создать комнату. Проверьте подключение и попробуйте снова.');
+        Alert.alert('Ошибка', requestMode ? 'Не удалось отправить запрос. Проверьте данные и попробуйте снова.' : 'Не удалось создать комнату. Проверьте подключение и попробуйте снова.');
       }
     } finally {
       setBusy(false);
@@ -150,7 +153,7 @@ export function CreateRoomSheet({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={s.backdrop}>
         <View style={s.sheet}>
-          <Text style={s.head}>Новая комната</Text>
+          <Text style={s.head}>{requestMode ? 'Запрос новой комнаты' : 'Новая комната'}</Text>
           <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             <RoomFormGuideBox compact />
             <PropertyTypeBanner propertyType={propertyType} />
@@ -172,7 +175,7 @@ export function CreateRoomSheet({
             <RoomDimensionsSection values={dimValues} setters={dimSetters} />
             <RoomEngineeringSection values={dimValues} setters={dimSetters} />
             <PrimaryButton
-              title={busy ? 'Создание…' : 'Создать комнату'}
+              title={busy ? (requestMode ? 'Отправка…' : 'Создание…') : (requestMode ? 'Отправить запрос' : 'Создать комнату')}
               onPress={submit}
               disabled={busy || !canSubmit}
             />
