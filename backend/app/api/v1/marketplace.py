@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -20,8 +22,11 @@ import logging
 import re
 
 from app.services import marketplace_notifications
+from app.services.calc.estimate import RenovationType
 
 router = APIRouter(tags=["marketplace"])
+
+ANONYMOUS_CONTRACTOR_NAME = "Исполнитель"
 
 
 class ProfileIn(BaseModel):
@@ -37,18 +42,28 @@ class LeadIn(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     address: str | None = None
     area_sqm: float = Field(gt=0, description="Площадь м²")
-    renovation_type: str = "cosmetic"
+    renovation_type: RenovationType = "cosmetic"
     budget_hint: float = Field(gt=0, description="Ориентир бюджета ₽")
     description: str | None = Field(default=None, max_length=4000)
 
 
+class LeadPatchIn(BaseModel):
+    """MKT-005: правка заявки заказчиком, пока она open и отклик не принят."""
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    address: str | None = None
+    area_sqm: float | None = Field(default=None, gt=0)
+    renovation_type: RenovationType | None = None
+    budget_hint: float | None = Field(default=None, gt=0)
+    description: str | None = Field(default=None, max_length=4000)
+
+
+class LeadCloseIn(BaseModel):
+    reason: str | None = Field(default=None, max_length=500)
+
+
 class QuoteIn(BaseModel):
     pre_estimate: float = Field(gt=0)
-
-
-class ConvertLeadIn(BaseModel):
-    property_type: str = "apartment"
-    rooms: list | None = None
+    note: str | None = Field(default=None, max_length=2000)
 
 
 class LeadMsgIn(BaseModel):
@@ -97,6 +112,7 @@ def _lead_dict(lead: JobLead, viewer: User, quotes: list[JobLeadQuote] | None = 
         "pre_estimate": visible_estimate,
         "assigned_contractor_id": lead.assigned_contractor_id,
         "quotes_count": len(quotes) if quotes is not None else 0,
+        "has_my_quote": any(q.contractor_id == viewer.id for q in (quotes or [])),
     }
     if quotes is not None and is_owner:
         out["quotes"] = [
@@ -124,10 +140,9 @@ def _lead_dict(lead: JobLead, viewer: User, quotes: list[JobLeadQuote] | None = 
     return out
 
 
-def _can_access_lead(lead: JobLead, user: User) -> bool:
-    if user.role == UserRole.customer:
-        return lead.customer_id == user.id
-    return lead.assigned_contractor_id == user.id or lead.status == JobLeadStatus.open
+def _public_name(contractor: User) -> str:
+    """MKT-014: телефон исполнителя в публичных ответах не отдаём."""
+    return (contractor.full_name or "").strip() or ANONYMOUS_CONTRACTOR_NAME
 
 
 def _can_message_lead(lead: JobLead, user: User) -> bool:
@@ -160,7 +175,7 @@ async def list_contractors(
     q = (
         select(ContractorProfile, User)
         .join(User, User.id == ContractorProfile.user_id)
-        .where(ContractorProfile.visible.is_(True))
+        .where(ContractorProfile.visible.is_(True), User.deleted_at.is_(None))
     )
     if city:
         q = q.where(ContractorProfile.city == city)
@@ -168,8 +183,9 @@ async def list_contractors(
     return [
         {
             "id": profile.id,
+            "profile_id": profile.id,
             "user_id": profile.user_id,
-            "name": contractor.full_name or contractor.phone,
+            "name": _public_name(contractor),
             "company": profile.company_name,
             "specialties": profile.specialties,
             # `rating`/`jobs_done` отдаются только когда их кто-то измерил;
@@ -232,10 +248,11 @@ async def upsert_profile(
         await db.execute(select(ContractorProfile).where(ContractorProfile.user_id == user.id))
     ).scalar_one_or_none()
     if not profile:
-        profile = ContractorProfile(user_id=user.id, **body.model_dump())
+        profile = ContractorProfile(user_id=user.id, **body.model_dump(exclude_unset=True))
         db.add(profile)
     else:
-        for key, value in body.model_dump().items():
+        # MKT-003: только присланные поля — «сохранить реквизиты» не трогает город/био.
+        for key, value in body.model_dump(exclude_unset=True).items():
             setattr(profile, key, value)
     await db.commit()
     await db.refresh(profile)
@@ -245,10 +262,16 @@ async def upsert_profile(
 @router.get("/job-leads")
 async def list_leads(
     status: str | None = "open",
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    city: str | None = Query(None, max_length=64, description="Подстрока адреса/города"),
+    renovation_type: RenovationType | None = None,
+    budget_min: float | None = Query(None, ge=0),
+    budget_max: float | None = Query(None, ge=0),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    q = select(JobLead).order_by(JobLead.created_at.desc())
+    q = select(JobLead).order_by(JobLead.created_at.desc(), JobLead.id)
     if user.role == UserRole.customer:
         q = q.where(JobLead.customer_id == user.id)
     else:
@@ -263,7 +286,15 @@ async def list_leads(
             q = q.where(JobLead.status == JobLeadStatus(status))
         except ValueError as exc:
             raise HTTPException(422, "invalid_lead_status") from exc
-    rows = list((await db.execute(q.limit(50))).scalars().all())
+    if city and city.strip():
+        q = q.where(JobLead.address.ilike(f"%{city.strip()}%"))
+    if renovation_type:
+        q = q.where(JobLead.renovation_type == renovation_type)
+    if budget_min is not None:
+        q = q.where(JobLead.budget_hint >= budget_min)
+    if budget_max is not None:
+        q = q.where(JobLead.budget_hint <= budget_max)
+    rows = list((await db.execute(q.limit(limit).offset(offset))).scalars().all())
     lead_ids = [lead.id for lead in rows]
     quotes_by: dict[str, list[JobLeadQuote]] = {lid: [] for lid in lead_ids}
     if lead_ids:
@@ -305,6 +336,9 @@ async def quote_lead(
         raise HTTPException(404, "lead_not_open")
     if lead.assigned_contractor_id and lead.assigned_contractor_id != user.id:
         raise HTTPException(409, "lead_already_assigned")
+    if lead.assigned_contractor_id == user.id:
+        # MKT-002: принятый отклик неизменяем — цена в шапке заявки и в отклике не расходится.
+        raise HTTPException(409, "quote_locked_after_accept")
     existing = (
         await db.execute(
             select(JobLeadQuote).where(
@@ -315,12 +349,15 @@ async def quote_lead(
     ).scalar_one_or_none()
     if existing:
         existing.pre_estimate = body.pre_estimate
+        if "note" in body.model_fields_set:
+            existing.note = body.note
         quote = existing
     else:
         quote = JobLeadQuote(
             lead_id=lead_id,
             contractor_id=user.id,
             pre_estimate=body.pre_estimate,
+            note=body.note,
         )
         db.add(quote)
     # Keep lead open until customer accepts a quote. Do NOT mirror the price onto
@@ -329,6 +366,105 @@ async def quote_lead(
     await db.refresh(quote)
     await _safe_notify(db, marketplace_notifications.notify_quote_received(db, lead=lead, quote=quote))
     return {"ok": True, "quote_id": quote.id, "pre_estimate": quote.pre_estimate, "awaiting_customer_pick": True}
+
+
+@router.post("/job-leads/{lead_id}/quote/withdraw")
+async def withdraw_quote(
+    lead_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """MKT-005: исполнитель отзывает свой отклик, пока заявка не принята. Идемпотентно."""
+    if user.role != UserRole.contractor:
+        raise HTTPException(403, "contractor_only")
+    lead = await db.get(JobLead, lead_id)
+    if not lead:
+        raise HTTPException(404, "lead_not_found")
+    if lead.assigned_contractor_id == user.id:
+        raise HTTPException(409, "quote_locked_after_accept")
+    result = await db.execute(
+        delete(JobLeadQuote).where(
+            JobLeadQuote.lead_id == lead_id, JobLeadQuote.contractor_id == user.id
+        )
+    )
+    await db.commit()
+    return {"ok": True, "withdrawn": bool(result.rowcount), "status": lead.status.value}
+
+
+@router.post("/job-leads/{lead_id}/close")
+async def close_lead(
+    lead_id: str,
+    body: LeadCloseIn | None = None,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """MKT-005: заказчик-владелец закрывает заявку; отклики перестают приниматься. Идемпотентно."""
+    if user.role != UserRole.customer:
+        raise HTTPException(403, "customer_only")
+    lead = await db.get(JobLead, lead_id)
+    if not lead or lead.customer_id != user.id:
+        raise HTTPException(404, "lead_not_found")
+    if lead.status == JobLeadStatus.taken:
+        raise HTTPException(409, "lead_already_converted")
+    if lead.status != JobLeadStatus.closed:
+        lead.status = JobLeadStatus.closed
+        await db.commit()
+    return {"ok": True, "status": lead.status.value, "reason": (body.reason if body else None)}
+
+
+@router.post("/job-leads/{lead_id}/decline-assignment")
+async def decline_assignment(
+    lead_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """MKT-005: назначенный исполнитель отказывается до конверсии; заявка снова open."""
+    if user.role != UserRole.contractor:
+        raise HTTPException(403, "contractor_only")
+    lead = await db.get(JobLead, lead_id)
+    if not lead or lead.assigned_contractor_id != user.id:
+        raise HTTPException(404, "lead_not_found")
+    if lead.status != JobLeadStatus.quoted:
+        raise HTTPException(409, "lead_not_declinable")
+    lead.assigned_contractor_id = None
+    lead.pre_estimate = None
+    lead.status = JobLeadStatus.open
+    # Его отклик снимаем: иначе заказчик мог бы снова «принять» отказавшегося.
+    await db.execute(
+        delete(JobLeadQuote).where(
+            JobLeadQuote.lead_id == lead_id, JobLeadQuote.contractor_id == user.id
+        )
+    )
+    await db.commit()
+    return {"ok": True, "status": lead.status.value}
+
+
+@router.patch("/job-leads/{lead_id}")
+async def update_lead(
+    lead_id: str,
+    body: LeadPatchIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """MKT-005: заказчик правит заявку, пока она open и отклик не принят."""
+    if user.role != UserRole.customer:
+        raise HTTPException(403, "customer_only")
+    lead = await db.get(JobLead, lead_id)
+    if not lead or lead.customer_id != user.id:
+        raise HTTPException(404, "lead_not_found")
+    if lead.status != JobLeadStatus.open or lead.assigned_contractor_id:
+        raise HTTPException(409, "lead_not_editable")
+    changes = body.model_dump(exclude_unset=True)
+    for required in ("title", "area_sqm", "renovation_type", "budget_hint"):
+        if required in changes and changes[required] is None:
+            raise HTTPException(422, f"{required}_required")
+    for key, value in changes.items():
+        setattr(lead, key, value)
+    await db.commit()
+    quotes = list(
+        (await db.execute(select(JobLeadQuote).where(JobLeadQuote.lead_id == lead_id))).scalars().all()
+    )
+    return _lead_dict(lead, user, quotes)
 
 
 @router.post("/job-leads/{lead_id}/quotes/{quote_id}/accept")
@@ -374,15 +510,16 @@ async def match_contractors(
     q = (
         select(ContractorProfile, User)
         .join(User, User.id == ContractorProfile.user_id)
-        .where(ContractorProfile.visible.is_(True))
+        .where(ContractorProfile.visible.is_(True), User.deleted_at.is_(None))
     )
     rows = (await db.execute(q)).all()
     ranked = reputation.ranked(rows, renovation_type=renovation_type, specialty=specialty)
     result = [
         {
             "id": profile.id,
+            "profile_id": profile.id,
             "user_id": profile.user_id,
-            "name": contractor.full_name or contractor.phone,
+            "name": _public_name(contractor),
             "company": profile.company_name,
             "specialties": profile.specialties,
             "rating": reputation.public_rating(profile),
@@ -423,8 +560,8 @@ async def portfolio(
 @router.post("/contractors/{profile_id}/portfolio")
 async def add_portfolio(
     profile_id: str,
-    image_key: str,
-    caption: str | None = None,
+    image_key: str = Query(..., max_length=512),
+    caption: str | None = Query(None, max_length=255),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -433,66 +570,14 @@ async def add_portfolio(
     profile = await db.get(ContractorProfile, profile_id)
     if not profile or profile.user_id != user.id:
         raise HTTPException(404, "contractor_profile_not_found")
+    # MKT-024: ключ — только из собственного пространства портфолио пользователя.
+    if not re.fullmatch(rf"portfolio/{re.escape(user.id)}/[A-Za-z0-9][A-Za-z0-9._-]{{0,199}}", image_key) or ".." in image_key:
+        raise HTTPException(422, "invalid_image_key")
     photo = ContractorPortfolioPhoto(profile_id=profile_id, image_key=image_key, caption=caption)
     db.add(photo)
     await db.commit()
     await db.refresh(photo)
     return {"ok": True, "id": photo.id}
-
-
-@router.post("/job-leads/{lead_id}/convert")
-async def convert_lead(
-    lead_id: str,
-    body: ConvertLeadIn | None = None,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    from app.services import project_service as project_service
-
-    lead = await db.get(JobLead, lead_id)
-    if not lead:
-        raise HTTPException(404, "lead_not_found")
-    if lead.status != JobLeadStatus.quoted:
-        raise HTTPException(409, "lead_not_ready_for_conversion")
-
-    if user.role == UserRole.customer:
-        if lead.customer_id != user.id:
-            raise HTTPException(403, "lead_owner_only")
-        contractor_id = lead.assigned_contractor_id
-    else:
-        if lead.assigned_contractor_id != user.id:
-            raise HTTPException(403, "assigned_contractor_only")
-        contractor_id = user.id
-
-    if not contractor_id:
-        raise HTTPException(409, "lead_has_no_contractor")
-
-    if body and body.rooms:
-        rooms = [room if isinstance(room, dict) else room.model_dump() for room in body.rooms]
-    else:
-        rooms = [{
-            "name": "Комната",
-            "length_m": 4,
-            "width_m": 3,
-            "height_m": 2.7,
-            "room_type": "living",
-            "floor_level": 1,
-        }]
-    property_type = body.property_type if body else "apartment"
-    project = await project_service.create_project(
-        db,
-        customer_id=lead.customer_id,
-        name=lead.title,
-        address=lead.address,
-        renovation_type=lead.renovation_type,
-        rooms_data=rooms,
-        contractor_id=contractor_id,
-        total_area_sqm=lead.area_sqm,
-        property_type=property_type,
-    )
-    lead.status = JobLeadStatus.taken
-    await db.commit()
-    return {"project_id": project.id, "name": project.name}
 
 
 @router.get("/job-leads/{lead_id}/messages")
@@ -554,22 +639,56 @@ async def auto_assign(
     lead = await db.get(JobLead, lead_id)
     if not lead or lead.customer_id != user.id:
         raise HTTPException(404, "lead_not_found")
-    if lead.status not in {JobLeadStatus.open, JobLeadStatus.quoted}:
+    if lead.assigned_contractor_id:
+        # MKT-001: уже назначенную заявку не переназначаем (цена прежнего победителя).
+        raise HTTPException(409, "lead_already_assigned")
+    if lead.status != JobLeadStatus.open:
         raise HTTPException(409, "lead_not_assignable")
 
+    # MKT-004: назначаем только по реальному основанию. Есть отклики — выбираем
+    # из откликнувшихся (они согласны на заявку) по совпадению, затем по цене;
+    # откликов нет — только исполнителей с совпадением по специализации/типу ремонта.
+    quotes = list(
+        (await db.execute(select(JobLeadQuote).where(JobLeadQuote.lead_id == lead_id))).scalars().all()
+    )
+    quote_by_user = {q.contractor_id: q for q in quotes}
     rows = (
         await db.execute(
             select(ContractorProfile, User)
             .join(User, User.id == ContractorProfile.user_id)
-            .where(ContractorProfile.visible.is_(True))
+            .where(
+                ContractorProfile.visible.is_(True),
+                User.deleted_at.is_(None),
+                User.role == UserRole.contractor,
+            )
         )
     ).all()
     ranked = reputation.ranked(rows, renovation_type=lead.renovation_type)
-    if not ranked:
-        raise HTTPException(404, "no_contractors")
-    best_profile, best_user, best_score = ranked[0]
+    if quote_by_user:
+        by_user = {r[1].id: r for r in ranked}
+        # Откликнувшийся без публичного профиля тоже кандидат: он сам предложил цену.
+        for u in (
+            await db.execute(
+                select(User).where(
+                    User.id.in_(list(quote_by_user)),
+                    User.deleted_at.is_(None),
+                    User.role == UserRole.contractor,
+                )
+            )
+        ).scalars():
+            by_user.setdefault(u.id, (None, u, 0.0))
+        candidates = list(by_user[uid] for uid in quote_by_user if uid in by_user)
+        candidates.sort(key=lambda r: (-r[2], quote_by_user[r[1].id].pre_estimate, r[1].id))
+    else:
+        candidates = [r for r in ranked if r[2] > 0]
+    if not candidates:
+        raise HTTPException(404, "no_matching_contractors")
+    best_profile, best_user, best_score = candidates[0]
+    winner_quote = quote_by_user.get(best_user.id)
 
     lead.assigned_contractor_id = best_user.id
+    # Цена — только победителя; без его отклика цены нет (не чужая).
+    lead.pre_estimate = winner_quote.pre_estimate if winner_quote else None
     lead.status = JobLeadStatus.quoted
     await db.commit()
     await _safe_notify(
@@ -577,9 +696,12 @@ async def auto_assign(
     )
     return {
         "contractor_id": best_user.id,
-        "name": best_user.full_name or best_user.phone,
-        # Называем основание: без совпадения по специализации подбирать было
-        # не по чему, и заказчик должен это видеть, а не догадываться.
-        "match_basis": reputation.match_basis(best_profile, renovation_type=lead.renovation_type),
+        "name": _public_name(best_user),
+        "match_basis": reputation.match_basis(best_profile, renovation_type=lead.renovation_type)
+        if best_profile is not None
+        else "Исполнитель сам откликнулся на заявку",
         "score": best_score,
+        "status": lead.status.value,
+        "pre_estimate": lead.pre_estimate,
+        "source": "quote" if winner_quote else "match",
     }
