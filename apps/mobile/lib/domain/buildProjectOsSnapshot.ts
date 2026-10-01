@@ -365,7 +365,7 @@ export function buildProjectOsSnapshot(
     const proposed = !!project.estimate_lock_proposed_at;
     nextAction = {
       title: proposed ? 'Смета у заказчика' : 'Отправить смету на согласование',
-      subtitle: proposed ? 'Ждём фиксацию заказчиком' : 'Предложить фиксацию без одностороннего lock',
+      subtitle: proposed ? 'Ждём фиксацию заказчиком' : 'Предложить заказчику зафиксировать смету — решает он',
       button: 'Смета',
       href: objectTabRoute(role, 'estimate'),
       kind: 'expense',
