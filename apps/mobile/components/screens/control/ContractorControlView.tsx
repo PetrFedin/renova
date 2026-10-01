@@ -77,7 +77,7 @@ export function ContractorControlView() {
       </View>
 
       <Text style={s.section}>Решение у заказчика</Text>
-      <UnifiedAcceptanceList stages={activeProject.stages} acceptances={acceptances} returnTo={pathname} role="contractor" />
+      <UnifiedAcceptanceList stages={activeProject.stages} acceptances={acceptances} returnTo={pathname} role="contractor" onChanged={reload} />
 
       <Text style={s.section}>Замечания</Text>
       {!issues.filter(i => i.status !== 'closed').length && <Text style={s.empty}>Нет открытых замечаний</Text>}
@@ -143,15 +143,7 @@ export function ContractorControlView() {
         </Pressable>
       ))}
 
-      {rework.length > 0 && <>
-        <Text style={s.section}>Доработка</Text>
-        {rework.map((st) => (
-          <Pressable key={st.id} style={s.row} onPress={() => nav.stage(st.id)}>
-            <Text style={s.title}>{st.name}</Text>
-            <Text style={s.meta}>Доработка</Text>
-          </Pressable>
-        ))}
-      </>}
+      {/* Доработка (причина, срок, «Сдать повторно») — в UnifiedAcceptanceList */}
     </ScrollView>
   );
 }

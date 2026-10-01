@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { evaluateApiBaseGuard } from '@/lib/apiBaseGuard';
 import { isAuthoritativeRefreshRejection, shouldFallbackToDurableCache } from './failurePolicy';
 import { validationMessage, isHumanMessage } from './validationMessage';
+import { completionGateMessage } from '@/lib/domain/completionGate';
 import { currentSessionUserId, getSessionStamp } from '@/lib/domain/sessionAuthority';
 
 export class ApiError extends Error {
@@ -55,6 +56,9 @@ export function parseApiErrorBody(txt: string, status: number): { message: strin
       if (human) return { message: human, code: 'validation_error', detail };
     } else if (typeof j.detail === 'object' && j.detail) {
       const d = j.detail as { code?: string; message?: string };
+      // STG-011: 409/422 completion_gate — список невыполненных условий, а не «Ошибка сервера».
+      const gate = completionGateMessage(j.detail);
+      if (gate) return { message: gate, code: 'completion_gate', detail };
       if (typeof d.message === 'string' && d.message) {
         return { message: d.message, code: d.code || j.code, detail };
       }

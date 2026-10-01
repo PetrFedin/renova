@@ -9,7 +9,9 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { pushOsNav } from '@/lib/pushOsNav';
 import type { OsRole } from '@/constants/osSections';
 import { alertStageStarted } from '@/lib/jobLeadNav';
-import { alertStageSubmittedForAcceptance } from '@/lib/fieldCreateNav';
+import { submitStageWithFeedback } from '@/lib/submitStageUi';
+import { acceptanceActions, stageStatusText, latestReturnedAcceptance } from '@/lib/domain/acceptanceActions';
+import { useEffect, useState } from 'react';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { apiErrorMessage } from '@/lib/formatPhone';
 import { StageContextSummary } from '@/components/screens/stage/StageContextSummary';
@@ -46,7 +48,15 @@ export function StageDetailHero({
 }: Props) {
   const role: OsRole = isContractor ? 'contractor' : 'customer';
   const stageReturn = `/stage/${stage.id}`;
-  const statusLabel = STAGE_STATUS_LABEL[stage.status] || stage.status;
+  const statusLabel = stageStatusText(stage, STAGE_STATUS_LABEL);
+  const acts = acceptanceActions({
+    role,
+    stageStatus: stage.status,
+    needsRework: stage.needs_rework,
+    canSubmit: stage.capabilities ? stage.capabilities.can_submit_for_review === true : undefined,
+    canReview: stage.capabilities ? stage.capabilities.can_review : undefined,
+  });
+  const reworkReason = useReworkReason(stage, userId, projectId);
   // Server capability is the sole source of truth for mutation affordances.
   // A legacy/stale cached StageDetail without capabilities intentionally hides writes.
   const canStart = stage.capabilities?.can_start === true;
@@ -68,7 +78,16 @@ export function StageDetailHero({
       {stage.planned_start ? (
         <Text style={s.meta}>План: {stage.planned_start} → {stage.planned_end || '—'}</Text>
       ) : null}
-      {stage.contractor_ready ? <Text style={s.ok}>Исполнитель отметил готовность</Text> : null}
+      {stage.contractor_ready && stage.status !== 'active' ? <Text style={s.ok}>Исполнитель отметил готовность</Text> : null}
+      {isContractor && stage.status === 'review' && acts.statusText ? <Text style={s.meta}>{acts.statusText}</Text> : null}
+
+      {stage.status === 'active' && stage.needs_rework ? (
+        <View style={s.warnBox}>
+          <Text style={s.warnHead}>{isContractor ? 'Заказчик вернул этап на доработку' : 'Этап возвращён исполнителю на доработку'}</Text>
+          <Text style={s.warnItem}>Причина: {reworkReason || 'не указана — уточните в комментариях'}</Text>
+          {stage.rework_deadline ? <Text style={s.warnItem}>Срок доработки: {stage.rework_deadline.slice(0, 10)}</Text> : null}
+        </View>
+      ) : null}
 
       <StageContextSummary
         stage={stage}
@@ -80,7 +99,7 @@ export function StageDetailHero({
       {workSnap && !workSnap.completion.ok && workSnap.completion.failed.length > 0 && canSubmit ? (
         <View style={s.warnBox}>
           <Text style={s.warnHead}>Перед сдачей:</Text>
-          {workSnap.completion.failed.slice(0, 3).map((c) => (
+          {workSnap.completion.failed.map((c) => (
             <Text key={c.id} style={s.warnItem}>• {c.message}</Text>
           ))}
         </View>
@@ -143,9 +162,10 @@ export function StageDetailHero({
               if (isOfflineQueued(e)) {
                 notifyOfflineQueued('Старт этапа');
               } else if (e instanceof ApiError && e.status === 409) {
+                const code = (e.detail as { code?: string } | undefined)?.code;
                 showActionConfirm({
-                  title: 'Блокировка',
-                  message: 'Сначала завершите зависимый этап',
+                  title: code === 'stage_start_invalid_status' ? 'Этап уже в работе' : 'Блокировка',
+                  message: code === 'stage_start_invalid_status' ? 'Статус этапа изменился — обновите экран.' : 'Сначала завершите зависимый этап',
                   primaryLabel: 'Понятно',
                   onPrimary: () => undefined,
                 });
@@ -177,27 +197,15 @@ export function StageDetailHero({
 
       {canSubmit ? (
         <PrimaryButton
+          variant="accent"
           disabled={!canWrite || (workSnap ? !workSnap.completion.ok : false)}
-          title={workSnap?.next_action?.button || 'Готово — на приёмку'}
-          onPress={async () => {
-            try {
-              await onSubmitStage(stage.id);
-              await onReload();
-              await onProjectReload();
-              alertStageSubmittedForAcceptance(role);
-            } catch (e: unknown) {
-              if (isOfflineQueued(e)) {
-                notifyOfflineQueued('Сдача');
-              } else if (e instanceof ApiError && e.status === 400) {
-                const d = e.detail as { completion?: { failed?: { message: string }[] } } | undefined;
-                showActionConfirm({
-                  title: 'Не готово',
-                  message: (d?.completion?.failed || []).map((x) => x.message).join('\n') || e.message,
-                  primaryLabel: 'Понятно',
-                  onPrimary: () => undefined,
-                });
-              } else throw e;
-            }
+          title={stage.needs_rework ? 'Сдать повторно' : workSnap?.next_action?.button || 'Готово — на приёмку'}
+          onPress={() => {
+            void submitStageWithFeedback({
+              submit: () => onSubmitStage(stage.id),
+              role,
+              onSubmitted: async () => { await onReload(); await onProjectReload(); },
+            });
           }}
         />
       ) : null}
@@ -214,3 +222,18 @@ const s = StyleSheet.create({
   warnHead: { fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.warningText },
   warnItem: { fontSize: 12, color: RenovaTheme.colors.warningText, marginTop: 2 },
 });
+
+/** Причина последнего возврата — из записи приёмки (comment) со статусом returned. */
+function useReworkReason(stage: StageDetail, userId: string, projectId: string): string | null {
+  const [reason, setReason] = useState<string | null>(null);
+  const active = stage.status === 'active' && stage.needs_rework === true;
+  useEffect(() => {
+    if (!active) { setReason(null); return; }
+    let live = true;
+    api.listWorkAcceptances(userId, projectId, stage.id)
+      .then((rows) => { if (live) setReason(latestReturnedAcceptance(rows, stage.id)?.comment?.trim() || null); })
+      .catch(() => { if (live) setReason(null); });
+    return () => { live = false; };
+  }, [active, stage.id, userId, projectId]);
+  return reason;
+}

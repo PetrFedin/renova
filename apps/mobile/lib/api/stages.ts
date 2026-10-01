@@ -108,7 +108,15 @@ export const stagesApi = {
     opts?: { qualityScore?: number | null },
   ) => {
     const acceptance = await activeAcceptance(userId, projectId, stageId);
-    if (!acceptance) throw new ApiError(409, 'Нет активной приёмки по этапу', 'acceptance_not_requested');
+    if (!acceptance) {
+      // STG-004: этап в review без записи приёмки (legacy-сирота) — канонический возврат
+      // через /stages/{id}/reject, иначе заказчик не может вернуть этап вообще.
+      return req(
+        `/api/v1/projects/${projectId}/stages/${stageId}/reject`,
+        { method: 'POST', body: JSON.stringify({ text }) },
+        userId,
+      );
+    }
     const body = acceptanceDecisionBody({ comment: text, createIssue: true, qualityScore: opts?.qualityScore });
     try {
       return await req(
@@ -135,7 +143,13 @@ export const stagesApi = {
     opts?: { qualityScore?: number | null; comment?: string; checklist?: string[] },
   ) => {
     const acceptance = await activeAcceptance(userId, projectId, stageId);
-    if (!acceptance) throw new ApiError(409, 'Нет активной приёмки по этапу', 'acceptance_not_requested');
+    if (!acceptance) {
+      throw new ApiError(
+        409,
+        'По этапу нет запроса на приёмку. Верните этап на доработку — исполнитель сдаст его заново.',
+        'acceptance_not_requested',
+      );
+    }
     const body = {
       ...acceptanceDecisionBody({
         qualityScore: opts?.qualityScore,
@@ -274,5 +288,11 @@ export const stagesApi = {
       userId,
     ),
   extendReworkSla: (userId: string, projectId: string, stageId: string, days = 1) => req(`/api/v1/projects/${projectId}/rework-sla/extend?stage_id=${stageId}&days=${days}`, { method: 'POST' }, userId),
+  /** STG-002: исполнитель — запрос продления (срок не меняется); заказчик — продление сразу. */
+  declineReworkSlaExtension: (userId: string, projectId: string, stageId: string, reason?: string) => req(`/api/v1/projects/${projectId}/rework-sla/decline?stage_id=${stageId}${reason ? `&reason=${encodeURIComponent(reason)}` : ''}`, { method: 'POST' }, userId),
+  /** STG-010: снять зависимость (WorkDependency) не начатого этапа. */
+  removeStageDependency: (userId: string, projectId: string, dependencyId: string) => req(`/api/v1/projects/${projectId}/dependencies/${dependencyId}`, { method: 'DELETE' }, userId),
+  /** STG-010: отменить (удалить) не начатый этап; начатый — 409 stage_delete_blocked. */
+  deleteStage: (userId: string, projectId: string, stageId: string) => req(`/api/v1/projects/${projectId}/stages/${stageId}`, { method: 'DELETE' }, userId),
   reworkSlaCheck: (userId: string, projectId: string) => req(`/api/v1/projects/${projectId}/rework-sla/check`, { method: 'POST' }, userId),
 };

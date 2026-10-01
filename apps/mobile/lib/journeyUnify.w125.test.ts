@@ -20,7 +20,7 @@ must(nav.includes('alertStageAccepted') && nav.includes("objectTabRoute(role, 'p
 must(nav.includes("budgetTabRoute(role, 'payments'"), 'nav→payments');
 must(list.includes('alertStageAccepted'), 'list uses shared alert');
 must(list.includes('acceptanceDecisionBody'), 'list uses decide helper');
-must(list.includes('QualityScorePicker'), 'optional score UI in hub');
+must(list.includes('AcceptanceDecisionButtons') && readFileSync(join(mobile, 'components/renova/AcceptanceDecisionButtons.tsx'), 'utf8').includes('QualityScorePicker'), 'optional score UI in hub');
 must(stageUi.includes('alertStageAccepted'), 'stage card uses shared alert after accept');
 must(!stages.includes('quality_score: 10') && !stages.includes('quality_score: 5'), 'no fake 10/5 in stages API');
 must(decide.includes('qualityScore') && decide.includes('<= 10'), 'decide helper bounds');

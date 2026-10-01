@@ -4,7 +4,7 @@ import { View, Text, StyleSheet, Pressable, TextInput, Image } from 'react-nativ
 import { RenovaTheme, card } from '@/constants/Theme';
 import { inputField } from '@/constants/uiTokens';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
-import { QualityScorePicker } from '@/components/renova/QualityScorePicker';
+import { AcceptanceDecisionButtons } from '@/components/renova/AcceptanceDecisionButtons';
 import { PhotoCompare } from '@/components/renova/PhotoCompare';
 import { PhotoSwipeCompare } from '@/components/renova/PhotoSwipeCompare';
 import type { StageDetail } from '@/lib/api';
@@ -35,7 +35,8 @@ type Props = {
   setSwipeOpen: (v: boolean) => void;
   /** qualityScore: null = без оценки (не подставляем 10/5) */
   onAcceptPress: (qualityScore: number | null) => void;
-  onRejectPress: (qualityScore: number | null) => void;
+  /** Причина возврата обязательна (запрашивается в AcceptanceDecisionButtons) */
+  onReturnPress: (reason: string, qualityScore: number | null) => void;
   onExportAcceptance: () => void;
   onReload: () => Promise<void>;
 };
@@ -56,7 +57,7 @@ export function StageDetailAcceptanceFold({
   swipeOpen,
   setSwipeOpen,
   onAcceptPress,
-  onRejectPress,
+  onReturnPress,
   onExportAcceptance,
   onReload,
 }: Props) {
@@ -64,7 +65,6 @@ export function StageDetailAcceptanceFold({
   const contextRef = useRef({ userId: user?.id ?? null, projectId: activeProject?.id ?? null });
   contextRef.current = { userId: user?.id ?? null, projectId: activeProject?.id ?? null };
   const [newCheck, setNewCheck] = useState('');
-  const [qualityScore, setQualityScore] = useState<number | null>(null);
 
   const reconcileCommittedStageChange = async (source: string) => {
     if (contextRef.current.userId !== userId || contextRef.current.projectId !== projectId) {
@@ -140,17 +140,13 @@ export function StageDetailAcceptanceFold({
         );
       })}
 
-      {canWrite ? <QualityScorePicker value={qualityScore} onChange={setQualityScore} /> : null}
-      <PrimaryButton
-        title="Принять этап"
-        disabled={acceptBlocked || !canWrite}
-        onPress={() => onAcceptPress(qualityScore)}
-      />
-      <PrimaryButton
-        title="Вернуть на доработку"
-        variant="dangerOutline"
-        disabled={!canWrite}
-        onPress={() => onRejectPress(qualityScore)}
+      <AcceptanceDecisionButtons
+        stageName={stage.name}
+        showScore={canWrite}
+        acceptDisabled={acceptBlocked || !canWrite}
+        returnDisabled={!canWrite}
+        onAccept={onAcceptPress}
+        onReturn={onReturnPress}
       />
       <PrimaryButton title="Акт приёмки (PDF)" variant="outline" onPress={onExportAcceptance} />
 

@@ -39,3 +39,11 @@ must(parseApiErrorBody('', 500).message.includes('HTTP 500'), 'empty');
 must(isHumanMessage('Привет') && !isHumanMessage('{"a":1}'), 'isHumanMessage');
 
 console.log('parseApiErrorBody tests OK');
+
+// STG-011: гейт сдачи (409) — человекочитаемый список, detail сохранён для UI.
+const gate409 = parseApiErrorBody(
+  JSON.stringify({ detail: { code: 'completion_gate', completion: { ok: false, checks: [], failed: [{ id: 'photos_after', ok: false, message: 'Не добавлены фотографии результата' }] } } }),
+  409,
+);
+must(gate409.code === 'completion_gate' && gate409.message.includes('• Не добавлены фотографии результата'), `gate message: ${gate409.message}`);
+must(typeof gate409.detail === 'object', 'gate detail preserved');

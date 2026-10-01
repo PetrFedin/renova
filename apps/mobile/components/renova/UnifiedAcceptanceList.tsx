@@ -4,7 +4,7 @@ import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
 import { pushStageDetail } from '@/lib/navigation';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
-import { QualityScorePicker } from '@/components/renova/QualityScorePicker';
+import { AcceptanceDecisionButtons } from '@/components/renova/AcceptanceDecisionButtons';
 import { EmptyActionState } from '@/components/ui/EmptyActionState';
 import { buildUnifiedAcceptanceItems, type UnifiedAcceptanceItem } from '@/lib/domain/acceptancePending';
 import { api, type Stage, type WorkAcceptance } from '@/lib/api';
@@ -18,6 +18,8 @@ import { alertStageAccepted } from '@/lib/acceptanceNav';
 import { reportCatch } from '@/lib/reportError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { ActionConfirmSheet } from '@/components/renova/ActionConfirmSheet';
+import { buildReworkItems, effectiveAcceptanceRole, type ReworkItem } from '@/lib/domain/acceptanceActions';
+import { submitStageWithFeedback } from '@/lib/submitStageUi';
 
 export function UnifiedAcceptanceList({
   stages,
@@ -33,35 +35,38 @@ export function UnifiedAcceptanceList({
   /** После accept/return — обновить parent (список acceptances) */
   onChanged?: () => void;
 }) {
-  const { user, activeProject } = useRenova();
+  const { user, activeProject, submitStage } = useRenova();
   const items = buildUnifiedAcceptanceItems(stages, acceptances);
-  const isContractor = role === 'contractor';
+  // UI-010: исполнитель никогда не видит кнопки заказчика, что бы ни передал родитель
+  const effectiveRole = effectiveAcceptanceRole(user?.role, role);
+  const isContractor = effectiveRole === 'contractor';
+  const reworkItems = isContractor ? buildReworkItems(stages, acceptances) : [];
   const [busyId, setBusyId] = useState<string | null>(null);
-  /** Оценка только по явному выбору пользователя (не 10/5 по умолчанию) */
-  const [scores, setScores] = useState<Record<string, number | null>>({});
   /** Clarity D: sheet вместо Alert после возврата */
   const [returnSheet, setReturnSheet] = useState<{ stageId: string } | null>(null);
 
   const projectId = activeProject?.id;
   const userId = user?.id;
 
-  const decide = async (item: UnifiedAcceptanceItem, action: 'accept' | 'return') => {
+  const decide = async (
+    item: UnifiedAcceptanceItem,
+    action: 'accept' | 'return',
+    opts: { qualityScore: number | null; reason?: string },
+  ) => {
     if (!userId || !projectId) return;
-    if (item.kind !== 'acceptance') {
-      // Нет WorkAcceptance — открыть этап для чеклиста/решения
-      pushStageDetail(item.stageId, returnTo);
-      return;
-    }
     setBusyId(item.id);
     try {
-      const qualityScore = scores[item.id] ?? null;
       if (action === 'accept') {
+        if (item.kind !== 'acceptance') {
+          pushStageDetail(item.stageId, returnTo);
+          return;
+        }
         await api.acceptWork(
           userId,
           projectId,
           item.acceptanceId,
           {
-            ...acceptanceDecisionBody({ qualityScore, comment: 'Работы приняты' }),
+            ...acceptanceDecisionBody({ qualityScore: opts.qualityScore, comment: 'Работы приняты' }),
             mode: 'inline',
           },
         );
@@ -70,16 +75,19 @@ export function UnifiedAcceptanceList({
         // W125: оплата / план с ✓ pin (единый SoT с карточкой этапа)
         alertStageAccepted(role);
       } else {
-        await api.returnWork(
-          userId,
-          projectId,
-          item.acceptanceId,
-          acceptanceDecisionBody({
-            qualityScore,
-            comment: 'Нужна доработка',
-            createIssue: true,
-          }),
-        );
+        const reason = opts.reason?.trim();
+        if (!reason) return; // причина возврата обязательна (проверяет и RejectStageModal)
+        if (item.kind === 'acceptance') {
+          await api.returnWork(
+            userId,
+            projectId,
+            item.acceptanceId,
+            acceptanceDecisionBody({ qualityScore: opts.qualityScore, comment: reason, createIssue: true }),
+          );
+        } else {
+          // сирота: этап в review без записи приёмки — канонический возврат этапа
+          await api.rejectStage(userId, projectId, item.stageId, reason, { qualityScore: opts.qualityScore });
+        }
         await syncProjectSideEffects({ user, project: activeProject });
         onChanged?.();
         setReturnSheet({ stageId: item.stageId });
@@ -106,11 +114,20 @@ export function UnifiedAcceptanceList({
     }
   };
 
-  if (!items.length) {
+  const resubmit = (item: ReworkItem) => {
+    void submitStageWithFeedback({
+      submit: () => submitStage(item.stageId),
+      role: 'contractor',
+      onSubmitted: async () => { onChanged?.(); },
+      onOpenStage: () => pushStageDetail(item.stageId, returnTo),
+    });
+  };
+
+  if (!items.length && !reworkItems.length) {
     return (
       <EmptyActionState
         title={isContractor ? 'Нет этапов на приёмке' : 'Сейчас ничего не ждёт решения'}
-        hint={isContractor ? 'Когда сдадите этап — статус появится здесь.' : 'Когда исполнитель сдаст этап — решите здесь.'}
+        hint={isContractor ? 'Когда сдадите этап — статус появится здесь. Вернут на доработку — причина и срок тоже.' : 'Когда исполнитель сдаст этап — решите здесь.'}
         icon="checkmark-done-outline"
         actionLabel="Открыть этапы"
         actionVariant="accent"
@@ -121,51 +138,45 @@ export function UnifiedAcceptanceList({
 
   return (
     <>
-      <Text style={s.hint}>
-        {isContractor
-          ? `${items.length} у заказчика — откройте этап или дождитесь решения.`
-          : `${items.length} ждут решения — примите или верните.`}
-      </Text>
+      {reworkItems.map((r) => (
+        <ReworkRow key={`rw-${r.stageId}`} item={r} onOpen={() => pushStageDetail(r.stageId, returnTo)} onResubmit={() => resubmit(r)} />
+      ))}
+      {items.length ? (
+        <Text style={s.hint}>
+          {isContractor
+            ? `${items.length} у заказчика — откройте этап или дождитесь решения.`
+            : `${items.length} ждут решения — примите или верните (причина обязательна).`}
+        </Text>
+      ) : null}
       {items.map((it) => (
         <AcceptanceRow
           key={it.id}
           item={it}
           isContractor={isContractor}
           busy={busyId === it.id}
-          qualityScore={scores[it.id] ?? null}
-          onScoreChange={(v) => setScores((prev) => ({ ...prev, [it.id]: v }))}
           onOpen={() => pushStageDetail(it.stageId, returnTo)}
-          onAccept={() => {
+          onAccept={(qualityScore) => {
             // Clarity U: pre-confirm (portal return уже sheet; accept был one-tap)
             showActionConfirm({
               title: 'Принять этап?',
               message: `«${it.title}». После приёмки откроется цепочка оплаты.`,
               primaryLabel: 'Принять',
               onPrimary: () => {
-                decide(it, 'accept').catch(reportCatch('acceptance.accept'));
+                decide(it, 'accept', { qualityScore }).catch(reportCatch('acceptance.accept'));
               },
               secondaryLabel: 'Отмена',
               onSecondary: () => undefined,
             });
           }}
-          onReturn={() => {
-            showActionConfirm({
-              title: 'Вернуть на доработку?',
-              message: `«${it.title}» вернётся исполнителю с задачей на правку.`,
-              primaryLabel: 'Вернуть',
-              onPrimary: () => {
-                decide(it, 'return').catch(reportCatch('acceptance.return'));
-              },
-              secondaryLabel: 'Отмена',
-              onSecondary: () => undefined,
-            });
+          onReturn={(reason, qualityScore) => {
+            decide(it, 'return', { qualityScore, reason }).catch(reportCatch('acceptance.return'));
           }}
         />
       ))}
       <ActionConfirmSheet
         visible={Boolean(returnSheet)}
         title="На доработку"
-        message="Исполнитель получил задачу на правку."
+        message="Исполнитель увидит причину и срок доработки и сдаст этап повторно."
         primaryLabel="К этапу"
         onPrimary={() => {
           if (returnSheet) pushStageDetail(returnSheet.stageId, returnTo);
@@ -185,18 +196,15 @@ function AcceptanceRow({
   onReturn,
   isContractor,
   busy,
-  qualityScore,
-  onScoreChange,
 }: {
   item: UnifiedAcceptanceItem;
   onOpen: () => void;
-  onAccept: () => void;
-  onReturn: () => void;
+  onAccept: (qualityScore: number | null) => void;
+  onReturn: (reason: string, qualityScore: number | null) => void;
   isContractor: boolean;
   busy: boolean;
-  qualityScore: number | null;
-  onScoreChange: (v: number | null) => void;
 }) {
+  const orphan = item.kind !== 'acceptance';
   return (
     <View style={s.rowCard}>
       <View style={s.rowTop}>
@@ -204,34 +212,41 @@ function AcceptanceRow({
           <Text style={s.title}>{item.title}</Text>
           <Text style={s.meta}>
             {item.sub}
-            {item.kind === 'acceptance' ? (isContractor ? ' · у заказчика' : ' · решение') : ' · откройте этап'}
+            {isContractor ? ' · ждёт решения заказчика' : orphan ? ' · запрос на приёмку не найден' : ' · ждёт вашего решения'}
           </Text>
         </Pressable>
-        {isContractor ? <PrimaryButton title="Открыть этап" compact onPress={onOpen} /> : null}
+        <PrimaryButton title="Открыть этап" compact variant="outline" onPress={onOpen} />
       </View>
       {!isContractor ? (
-        <View style={s.actions}>
-          {item.kind === 'acceptance' ? (
-            <QualityScorePicker value={qualityScore} onChange={onScoreChange} />
-          ) : null}
-          <View style={s.btnRow}>
-            <PrimaryButton
-              title="Принять"
-              compact
-              disabled={busy || item.kind !== 'acceptance'}
-              onPress={item.kind === 'acceptance' ? onAccept : onOpen}
-            />
-            <PrimaryButton
-              title="Вернуть"
-              compact
-              variant="outline"
-              disabled={busy}
-              onPress={item.kind === 'acceptance' ? onReturn : onOpen}
-            />
-            <PrimaryButton title="Этап" compact variant="ghost" onPress={onOpen} />
-          </View>
-        </View>
+        <AcceptanceDecisionButtons
+          stageName={item.title}
+          compact
+          inline
+          busy={busy}
+          showScore={!orphan}
+          acceptDisabled={orphan}
+          onAccept={onAccept}
+          onReturn={onReturn}
+        />
       ) : null}
+    </View>
+  );
+}
+
+/** Исполнитель: этап вернули — причина, срок и «Сдать повторно». */
+function ReworkRow({ item, onOpen, onResubmit }: { item: ReworkItem; onOpen: () => void; onResubmit: () => void }) {
+  return (
+    <View style={s.rowCard}>
+      <Pressable onPress={onOpen}>
+        <Text style={s.title}>{item.title}</Text>
+        <Text style={s.meta}>Возвращено на доработку</Text>
+        <Text style={s.meta}>Причина: {item.reason || 'не указана — уточните в комментариях этапа'}</Text>
+        {item.deadline ? <Text style={s.meta}>Срок доработки: {item.deadline}</Text> : null}
+      </Pressable>
+      <View style={s.btnRow}>
+        <PrimaryButton title="Сдать повторно" variant="accent" compact onPress={onResubmit} />
+        <PrimaryButton title="Открыть этап" variant="outline" compact onPress={onOpen} />
+      </View>
     </View>
   );
 }

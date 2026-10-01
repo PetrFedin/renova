@@ -41,7 +41,8 @@ if (!contractorEst.includes("title: 'Отозвать предложение?'")
 }
 
 const acceptance = src('components/renova/UnifiedAcceptanceList.tsx');
-if (!acceptance.includes("title: 'Принять этап?'") || !acceptance.includes("title: 'Вернуть на доработку?'")) {
+// Возврат подтверждается модалкой с обязательной причиной (AcceptanceDecisionButtons → RejectStageModal)
+if (!acceptance.includes("title: 'Принять этап?'") || !src('components/renova/AcceptanceDecisionButtons.tsx').includes('RejectStageModal')) {
   throw new Error('acceptance pre-confirm missing');
 }
 

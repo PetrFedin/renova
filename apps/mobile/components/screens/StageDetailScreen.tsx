@@ -20,7 +20,6 @@ import { StageEstimatePanel } from '@/components/renova/StageEstimatePanel';
 import { ReactionAvatars } from '@/components/renova/ReactionAvatars';
 import { toggleReaction, getReaction } from '@/lib/commentReactions';
 import { getCustomChecks } from '@/lib/customChecklist';
-import { RejectStageModal } from '@/components/renova/RejectStageModal';
 import { StageDetailLinks } from '@/components/screens/stage/StageDetailLinks';
 import { StageDetailHero } from '@/components/screens/stage/StageDetailHero';
 import { StageDetailAcceptanceFold } from '@/components/screens/stage/StageDetailAcceptanceFold';
@@ -102,8 +101,6 @@ export function StageDetailScreen() {
   const [wfChecks, setWfChecks] = useState<{ id: string; text: string; done: boolean }[]>([]);
   const [workSnap, setWorkSnap] = useState<WorkSnapshot | null>(null);
   const [contractGate, setContractGate] = useState<{ ok: boolean; reason?: string; message?: string; pending_titles?: string[] } | null>(null);
-  const [rejectOpen, setRejectOpen] = useState(false);
-  const [rejectQualityScore, setRejectQualityScore] = useState<number | null>(null);
   const [loadError, setLoadError] = useState(false);
   const stageRef = useRef<StageDetail | null>(null);
   stageRef.current = stage;
@@ -194,7 +191,34 @@ export function StageDetailScreen() {
       alertStageAccepted(role);
     } catch (e: unknown) {
       if (isOfflineQueued(e)) notifyOfflineQueued('Приёмка');
-      else throw e;
+      else {
+        reportError('stage.accept', e, { stageId: stage?.id });
+        showActionConfirm({
+          title: 'Этап не принят',
+          message: e instanceof Error && e.message ? e.message : 'Повторите попытку.',
+          primaryLabel: 'Понятно',
+          onPrimary: () => undefined,
+        });
+      }
+    }
+  };
+
+  const runReturnStage = async (reason: string, qualityScore: number | null) => {
+    try {
+      await rejectStage(stage!.id, reason, { qualityScore });
+      await reload();
+      showActionConfirm({
+        title: 'Возвращено на доработку',
+        message: 'Исполнитель увидит причину и срок доработки и сдаст этап повторно.',
+        primaryLabel: 'Понятно',
+        onPrimary: () => undefined,
+      });
+    } catch (e: unknown) {
+      if (isOfflineQueued(e)) notifyOfflineQueued('Возврат на доработку');
+      else {
+        reportError('stage.return', e, { stageId: stage?.id });
+        Alert.alert('Не удалось вернуть этап', e instanceof Error && e.message ? e.message : 'Повторите попытку.');
+      }
     }
   };
 
@@ -394,10 +418,7 @@ export function StageDetailScreen() {
             swipeOpen={swipeOpen}
             setSwipeOpen={setSwipeOpen}
             onAcceptPress={onAcceptPress}
-            onRejectPress={(qualityScore) => {
-              setRejectQualityScore(qualityScore);
-              setRejectOpen(true);
-            }}
+            onReturnPress={(reason, qualityScore) => { runReturnStage(reason, qualityScore).catch(reportCatch('stage.return')); }}
             onExportAcceptance={() => { onExportAcceptance().catch(reportCatch('stage.exportAcceptance')); }}
             onReload={reload}
           />
@@ -534,24 +555,6 @@ export function StageDetailScreen() {
         ) : null}
       </ScrollView>
 
-      <RejectStageModal
-        visible={rejectOpen}
-        stageName={stage.name}
-        onClose={() => setRejectOpen(false)}
-        onConfirm={async (reason) => {
-          setRejectOpen(false);
-          try {
-            await rejectStage(stage.id, reason, { qualityScore: rejectQualityScore });
-            await reload();
-          } catch (e: unknown) {
-            if (isOfflineQueued(e)) {
-              notifyOfflineQueued('Отклонение');
-            } else {
-              Alert.alert('Ошибка', 'Не удалось вернуть этап на доработку');
-            }
-          }
-        }}
-      />
     </>
   );
 }

@@ -12,7 +12,7 @@ import { SearchFilter } from '@/components/renova/SearchFilter';
 import { RepairProcessTimeline } from '@/components/renova/RepairProcessTimeline';
 import { ReadOnlyBanner } from '@/components/renova/ReadOnlyGuard';
 import { WorkStageCard } from '@/components/renova/WorkStageCard';
-import { RejectStageModal } from '@/components/renova/RejectStageModal';
+import { submitStageWithFeedback } from '@/lib/submitStageUi';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { WORKS_FILTER_LABEL } from '@/constants/labels';
 import {
@@ -49,7 +49,7 @@ const FILTERS = [
 
 export function OsWorksScreen({ role }: { role: OsRole }) {
   const nav = useNavFromHere();
-  const { user, activeProject, rejectStage, loadProject, submitStage, readOnly } = useRenova();
+  const { user, activeProject, loadProject, submitStage, readOnly } = useRenova();
   const isContractor = role === 'contractor';
   const isCustomer = role === 'customer';
   const [blockedMap, setBlockedMap] = useState<Record<string, { blocked: boolean; depends_on?: string; status_label?: string }>>({});
@@ -71,8 +71,6 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
       }
     }
   }, [filterParam, isCustomer, isContractor]);
-  const [rejectId, setRejectId] = useState<string | null>(null);
-  const [rejectName, setRejectName] = useState('');
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [showCreate, setShowCreate] = useState(false);
   const [showCreateWork, setShowCreateWork] = useState(false);
@@ -208,7 +206,16 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
 
   const bulkReady = async () => {
     if (!user || !activeProject) return;
-    for (const id of sel) await submitStage(id);
+    // Канонический вызов сдачи (POST /work-acceptances) по каждому этапу; гейт 409
+    // показывает список условий, остальные этапы пакета продолжают сдаваться.
+    for (const id of sel) {
+      await submitStageWithFeedback({
+        submit: () => submitStage(id),
+        role: 'contractor',
+        silent: true,
+        onOpenStage: () => nav.stage(id),
+      });
+    }
     await loadProject(activeProject.id);
     setSel(new Set());
   };
@@ -287,7 +294,6 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
           );
         })}
         {isContractor && <Text style={s.hint}>Долгое нажатие — выбрать для массовой сдачи</Text>}
-        <RejectStageModal visible={!!rejectId} stageName={rejectName} onClose={() => setRejectId(null)} onConfirm={async (reason) => { if (rejectId) await rejectStage(rejectId, reason); setRejectId(null); await loadProject(activeProject.id); }} />
         {!stages.length && emptyState && (
           <View style={s.emptyBox}>
             <Text style={s.emptyTitle}>{emptyState.title}</Text>
