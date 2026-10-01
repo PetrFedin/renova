@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from app.core.timeutil import utc_now
 from datetime import datetime, timedelta
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import AppNotification, NotificationType
@@ -42,6 +42,17 @@ def _stored_link(link_path: str | None, return_to: str | None) -> str | None:
 
 
 async def notify(
+async def _nudge_inbox(user_id: str) -> None:
+    """Best-effort WS frame so an open app refreshes its notification badge at once."""
+    try:
+        from app.api.v1.ws import broadcast_inbox
+
+        await broadcast_inbox(user_id, {"type": "notification"})
+    except Exception:
+        # The badge also refreshes on the regular inbox sync; never fail a notify.
+        pass
+
+
     db: AsyncSession,
     *,
     user_id: str,
@@ -164,12 +175,28 @@ async def notify_from_outbox(
     return notification
 
 
-async def list_for_user(db: AsyncSession, user_id: str, unread_only: bool = False) -> list[AppNotification]:
-    query = select(AppNotification).where(AppNotification.user_id == user_id)
-    query = query.where((AppNotification.snoozed_until.is_(None)) | (AppNotification.snoozed_until < utc_now()))
+def _visible_filter(user_id: str):
+    """Snoozed notifications are hidden until their snooze expires."""
+    return (
+        AppNotification.user_id == user_id,
+        (AppNotification.snoozed_until.is_(None)) | (AppNotification.snoozed_until < utc_now()),
+    )
+
+
+async def list_for_user(
+    db: AsyncSession,
+    user_id: str,
+    unread_only: bool = False,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[AppNotification]:
+    """One page of visible notifications, newest first (COM-009: paginated)."""
+    query = select(AppNotification).where(*_visible_filter(user_id))
     if unread_only:
         query = query.where(AppNotification.read.is_(False))
-    result = await db.execute(query.order_by(AppNotification.created_at.desc()).limit(50))
+    query = query.order_by(AppNotification.created_at.desc(), AppNotification.id.desc())
+    result = await db.execute(query.limit(max(1, min(limit, 200))).offset(max(0, offset)))
     return list(result.scalars().all())
 
 
@@ -205,6 +232,27 @@ async def snooze_until(db: AsyncSession, notification_id: str, user_id: str, unt
 
 async def snooze(db: AsyncSession, notification_id: str, user_id: str, hours: int = 24) -> bool:
     result = await db.execute(
+async def count_unread(db: AsyncSession, user_id: str) -> int:
+    """Real COUNT of every visible unread notification (COM-009: no 50 cap)."""
+    result = await db.execute(
+        select(func.count())
+        .select_from(AppNotification)
+        .where(*_visible_filter(user_id), AppNotification.read.is_(False))
+    )
+    return int(result.scalar_one() or 0)
+
+
+async def mark_all_read(db: AsyncSession, user_id: str) -> int:
+    """Mark every unread notification of the user as read; returns how many changed."""
+    result = await db.execute(
+        update(AppNotification)
+        .where(AppNotification.user_id == user_id, AppNotification.read.is_(False))
+        .values(read=True)
+    )
+    await db.commit()
+    return int(result.rowcount or 0)
+
+
         select(AppNotification).where(
             AppNotification.id == notification_id,
             AppNotification.user_id == user_id,
@@ -226,9 +274,14 @@ def notif_dict(notification: AppNotification) -> dict:
         "title": notification.title,
         "body": notification.body,
         "link_path": notification.link_path,
-        "return_to": (notification.link_path or "").split("returnTo=")[-1].split("&")[0]
-        if "returnTo=" in (notification.link_path or "")
-        else None,
+        "return_to": _return_to_of(notification.link_path),
         "read": notification.read,
         "created_at": notification.created_at.isoformat(),
     }
+def _return_to_of(link_path: str | None) -> str | None:
+    """Decoded returnTo carried by a stored link (stored percent-encoded, see _stored_link)."""
+    if not link_path or "returnTo=" not in link_path:
+        return None
+    return unquote(link_path.split("returnTo=")[-1].split("&")[0])
+
+
