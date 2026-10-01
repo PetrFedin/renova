@@ -1,6 +1,6 @@
 /** #298 — mixed own/purchased material truth through the public API. */
 import { test, expect } from '@playwright/test';
-import { API, authHeaders, cleanupE2eGateProject, type DemoUser } from './helpers';
+import { assignContractorViaRequest, API, authHeaders, cleanupE2eGateProject, type DemoUser } from './helpers';
 
 test.describe('#298 material supply truth', () => {
   test('own material stays outside procurement while the responsible buyer purchases only the remainder', async ({ request }) => {
@@ -25,8 +25,7 @@ test.describe('#298 material supply truth', () => {
 
     try {
       await request.post(`${API}/api/v1/subscription/checkout`, { headers: hContractor });
-      const assigned = await request.post(`${API}/api/v1/projects/${projectId}/assign`, { headers: hContractor });
-      expect(assigned.ok()).toBeTruthy();
+      await assignContractorViaRequest(request, projectId, hContractor, hCustomer);
 
       const ownCreate = await request.post(`${API}/api/v1/projects/${projectId}/material-picks`, {
         headers: hContractor,

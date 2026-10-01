@@ -9,7 +9,7 @@ test.describe('Renova critical path (API)', () => {
     const hCont = authHeaders(cont);
 
     const projects = await (await request.get(`${API}/api/v1/projects`, { headers: hCust })).json();
-    expect(projects.length).toBeGreaterThanOrEqual(2);
+    expect(projects.length).toBeGreaterThanOrEqual(1);
     const pid = pickPrimaryDemoProject(projects).id as string;
 
     await request.post(`${API}/api/v1/subscription/checkout`, { headers: hCont });
@@ -40,10 +40,11 @@ test.describe('Renova critical path (API)', () => {
       data: { amount: 2500, description: 'E2E manual', expense_category: 'labor', room_id: roomId, stage_id: stage.id },
     });
     expect(manual.ok()).toBeTruthy();
+    const manualBody = await manual.json();
 
     const beforeProj = await (await request.get(`${API}/api/v1/projects/${pid}`, { headers: hCust })).json();
     const spentBefore = beforeProj.budget_spent as number;
-    const del = await request.delete(`${API}/api/v1/projects/${pid}/receipts/${recBody.id as string}`, {
+    const del = await request.delete(`${API}/api/v1/projects/${pid}/receipts/${manualBody.id as string}`, {
       headers: hCont,
     });
     expect(del.ok()).toBeTruthy();
@@ -61,6 +62,9 @@ test.describe('Renova critical path (API)', () => {
     expect(summary.by_room?.length).toBeGreaterThan(0);
     expect(summary.receipts_total).toBeGreaterThan(0);
 
+    // Скан без проверки ФНС в факт не входит — убираем и его, чтобы не копить мусор в demo-проекте.
+    expect((await request.delete(`${API}/api/v1/projects/${pid}/receipts/${recBody.id as string}`, { headers: hCont })).ok()).toBeTruthy();
+
     const csv = await request.get(`${API}/api/v1/projects/${pid}/analytics/expenses.csv`, { headers: hCust });
     expect(csv.status()).toBe(200);
     expect(await csv.text()).toContain('Итого');
@@ -73,7 +77,9 @@ test.describe('Renova critical path (API)', () => {
 
     const viewer = (await (await request.post(`${API}/api/v1/auth/demo/guest`, { data: {} })).json()) as DemoUser;
     const vProjects = await (await request.get(`${API}/api/v1/projects`, { headers: authHeaders(viewer) })).json();
-    expect(vProjects.length).toBeGreaterThanOrEqual(2);
+    // Гость — read-only viewer: видит именно канонический demo-проект (демо-дом появляется
+    // в seed только со второго запуска, поэтому число объектов не фиксируем).
+    expect((vProjects as { id: string }[]).some((p) => p.id === pid)).toBe(true);
     const forbidden = await request.post(`${API}/api/v1/projects/${pid}/stages/${stage.id}/accept`, { headers: authHeaders(viewer) });
     expect(forbidden.status()).toBeGreaterThanOrEqual(400);
   });

@@ -87,9 +87,28 @@ test.describe('P0.1 Customer path checklist (API)', () => {
     });
     expect(scan.ok()).toBeTruthy();
     const rec = await scan.json();
+    // Чек без проверки ФНС (verify_mode=off в dev) сохранён, но расходом не считается (#652).
     const proj1 = await (await request.get(`${API}/api/v1/projects/${pid}`, { headers: h })).json();
-    expect(proj1.budget_spent as number).toBeGreaterThan(spent0);
-    await request.delete(`${API}/api/v1/projects/${pid}/receipts/${rec.id}`, { headers: h });
+    if (rec.verified) {
+      expect(proj1.budget_spent as number).toBeGreaterThan(spent0);
+    } else {
+      expect(proj1.budget_spent as number).toBe(spent0);
+    }
+
+    // Ручной чек — осознанная трата человека: идёт в факт бюджета и уходит при удалении.
+    const manual = await request.post(`${API}/api/v1/projects/${pid}/receipts/manual`, {
+      headers: h,
+      data: { amount: 199, description: 'E2E manual fact', expense_category: 'materials', room_id: roomId },
+    });
+    expect(manual.ok()).toBeTruthy();
+    const man = await manual.json();
+    const proj2 = await (await request.get(`${API}/api/v1/projects/${pid}`, { headers: h })).json();
+    expect(proj2.budget_spent as number).toBeGreaterThan(spent0);
+
+    expect((await request.delete(`${API}/api/v1/projects/${pid}/receipts/${man.id}`, { headers: h })).ok()).toBeTruthy();
+    expect((await request.delete(`${API}/api/v1/projects/${pid}/receipts/${rec.id}`, { headers: h })).ok()).toBeTruthy();
+    const proj3 = await (await request.get(`${API}/api/v1/projects/${pid}`, { headers: h })).json();
+    expect(proj3.budget_spent as number).toBe(spent0);
   });
 
   test('07 — чат: создать thread', async ({ request }) => {

@@ -11,7 +11,7 @@
  * project") and exercises the post-executor authority split.
  */
 import { test, expect } from '@playwright/test';
-import { API, authHeaders, DemoUser } from './helpers';
+import { assignContractorViaRequest, API, authHeaders, DemoUser } from './helpers';
 
 type RoomOut = {
   id: string;
@@ -57,8 +57,7 @@ async function createAssignedProject(
   const pid = ((await created.json()) as { id: string }).id;
 
   await request.post(`${API}/api/v1/subscription/checkout`, { headers: hCont });
-  const assigned = await request.post(`${API}/api/v1/projects/${pid}/assign`, { headers: hCont });
-  if (!assigned.ok()) throw new Error(`assign failed: ${assigned.status()}`);
+  await assignContractorViaRequest(request, pid, hCont, hCust);
   return pid;
 }
 

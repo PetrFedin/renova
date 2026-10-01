@@ -19,9 +19,9 @@ test.describe('P3-W14 Portal + documents UI', () => {
       name: string;
     }[];
     const project = pickPrimaryDemoProject(projects);
-    const link = (await (
-      await request.post(`${API}/api/v1/projects/${project.id}/portal-link`, { headers, data: {} })
-    ).json()) as { token: string };
+    const linkRes = await request.post(`${API}/api/v1/projects/${project.id}/portal-link`, { headers, data: {} });
+    expect(linkRes.ok(), `portal-link failed: ${linkRes.status()} ${await linkRes.text()}`).toBeTruthy();
+    const link = (await linkRes.json()) as { token: string };
 
     await page.goto(`/portal?token=${encodeURIComponent(link.token)}`);
     await expect(page.getByText('RENOVA', { exact: true })).toBeVisible({ timeout: 20_000 });

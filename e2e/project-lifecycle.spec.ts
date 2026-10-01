@@ -2,7 +2,7 @@
  * P3-W12 — archive/trash lifecycle + documents list smoke (API E2E).
  */
 import { test, expect } from '@playwright/test';
-import { API, authHeaders, DemoUser } from './helpers';
+import { assignContractorViaRequest, API, authHeaders, DemoUser } from './helpers';
 
 test.describe('P3-W12 Project lifecycle', () => {
   test('archive → trash → restore + guest forbidden + documents list', async ({ request }) => {
@@ -218,8 +218,7 @@ test.describe('P3-W12 Project lifecycle', () => {
     expect(preAssignRead.status()).toBe(403);
 
     await request.post(`${API}/api/v1/subscription/checkout`, { headers: hCont });
-    const assigned = await request.post(`${API}/api/v1/projects/${pid}/assign`, { headers: hCont });
-    expect(assigned.ok(), `assign failed: ${assigned.status()}`).toBeTruthy();
+    await assignContractorViaRequest(request, pid, hCont, hCust);
 
     // read access recovered after canonical assignment
     const postAssignRead = await (await request.get(`${API}/api/v1/projects/${pid}`, { headers: hCont })).json();

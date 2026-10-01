@@ -96,6 +96,30 @@ export async function seedDemoContractorSession(
   await page.reload();
 }
 
+/**
+ * Исполнитель лидирует на объекте только после подтверждения заказчиком:
+ * POST /assign создаёт заявку (202 pending_customer_confirmation), заказчик принимает её.
+ * Повторный вызов для уже назначенного исполнителя безопасен (200 assigned).
+ */
+export async function assignContractorViaRequest(
+  request: import('@playwright/test').APIRequestContext,
+  projectId: string,
+  hCont: Record<string, string>,
+  hCust: Record<string, string>,
+): Promise<void> {
+  const res = await request.post(`${API}/api/v1/projects/${projectId}/assign`, { headers: hCont });
+  if (res.status() === 200) return; // already lead
+  if (res.status() !== 202) throw new Error(`assign request failed: ${res.status()}`);
+  const body = (await res.json()) as { request?: { id?: string } };
+  const requestId = body.request?.id;
+  if (!requestId) throw new Error('assign request missing request.id');
+  const accepted = await request.post(
+    `${API}/api/v1/projects/${projectId}/assignment-requests/${requestId}/accept`,
+    { headers: hCust },
+  );
+  if (!accepted.ok()) throw new Error(`assignment accept failed: ${accepted.status()}`);
+}
+
 /** Fresh project + lock estimate → planned stage + unsigned contract (E2E gate). */
 export async function prepareContractGateScenario(
   request: import('@playwright/test').APIRequestContext,
@@ -132,8 +156,7 @@ export async function prepareContractGateScenario(
   const pid = ((await created.json()) as { id: string }).id;
 
   await request.post(`${API}/api/v1/subscription/checkout`, { headers: hCont });
-  const assigned = await request.post(`${API}/api/v1/projects/${pid}/assign`, { headers: hCont });
-  if (!assigned.ok()) throw new Error(`assign failed: ${assigned.status()}`);
+  await assignContractorViaRequest(request, pid, hCont, hCust);
   // W57: contractor proposes → customer finalizes lock (not contractor POST /lock)
   const proposed = await request.post(`${API}/api/v1/projects/${pid}/estimate/propose-lock`, {
     headers: hCont,
