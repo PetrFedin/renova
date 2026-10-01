@@ -502,4 +502,5 @@ async def room_snapshot(project_id: str, room_id: str, user: User = Depends(get_
     room = await db.get(Room, room_id)
     if not room or room.project_id != project_id:
         raise HTTPException(404)
-    return await rs.build_room_snapshot(db, p, room)
+    viewer_role = user.role.value if hasattr(user.role, "value") else str(user.role)
+    return await rs.build_room_snapshot(db, p, room, role=viewer_role)

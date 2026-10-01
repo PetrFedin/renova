@@ -58,7 +58,7 @@ async def _stage_card(db, stage: Stage, project, *, role: str = "customer") -> d
     }
 
 
-async def build_room_snapshot(db: AsyncSession, project, room: Room) -> dict:
+async def build_room_snapshot(db: AsyncSession, project, room: Room, *, role: str = "customer") -> dict:
     """Снимок комнаты для паспорта и UI."""
     stages = _stages_for_room(project, room.id)
     if not stages:
@@ -76,7 +76,11 @@ async def build_room_snapshot(db: AsyncSession, project, room: Room) -> dict:
     expenses = (await db.execute(select(Expense).where(Expense.room_id == room.id, Expense.status == "confirmed"))).scalars().all()
     spent = sum(e.amount or 0 for e in expenses)
 
-    lines = [l for l in (project.estimate_lines or []) if l.room_id == room.id or l.room_name == room.name]
+    # OBJ-23: строка с чужим room_id и тем же названием комнаты не наша; по имени — только строки без room_id.
+    lines = [
+        l for l in (project.estimate_lines or [])
+        if (l.room_id == room.id if l.room_id else l.room_name == room.name)
+    ]
     planned = sum((l.quantity_planned or 0) * (l.unit_price or 0) for l in lines)
 
     issues = (await db.execute(select(ProjectIssue).where(ProjectIssue.room_id == room.id))).scalars().all()
@@ -89,7 +93,7 @@ async def build_room_snapshot(db: AsyncSession, project, room: Room) -> dict:
     elif active:
         na = {"title": f"В работе: {active.name}", "button": "Открыть", "kind": "work", "href": f"/stage/{active.id}"}
     elif need_buy:
-        na = {"title": f"Закупить материалы ({len(need_buy)})", "button": "Материалы", "kind": "material", "href": "/(customer)/(tabs)/repair?tab=materials"}
+        na = {"title": f"Закупить материалы ({len(need_buy)})", "button": "Материалы", "kind": "material", "href": f"/({role if role in ('customer', 'contractor') else 'customer'})/(tabs)/repair?tab=materials"}
     elif not stages:
         na = {"title": "Рассчитать материалы", "button": "Калькулятор", "kind": "calc", "href": f"/room/{room.id}"}
 
@@ -97,7 +101,8 @@ async def build_room_snapshot(db: AsyncSession, project, room: Room) -> dict:
 
     stage_cards = []
     for s in stages:
-        stage_cards.append(await _stage_card(db, s, project))
+        # OBJ-18: действие этапа зависит от роли смотрящего — исполнителю не показываем «Принять».
+        stage_cards.append(await _stage_card(db, s, project, role=role))
 
     return {
         "id": room.id,

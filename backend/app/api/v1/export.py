@@ -169,32 +169,54 @@ async def export_project_pdf(project_id: str, user: User = Depends(get_current_u
 
 @router.get("/{project_id}/estimate.csv")
 async def export_estimate_csv(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    import csv
+    import io
+
     p = await require_project(db, project_id, user, write=False)
-    lines = ["name,unit,qty_plan,qty_fact,unit_price,total"]
+    buf = io.StringIO()
+    # OBJ-32: csv.writer экранирует запятые и кавычки в названиях строк.
+    writer = csv.writer(buf, lineterminator="\n")
+    writer.writerow(["name", "unit", "qty_plan", "qty_fact", "unit_price", "total"])
     for line in p.estimate_lines:
-        lines.append(f"{line.name},{line.unit},{line.quantity_planned},{line.quantity_actual},{line.unit_price},{line.quantity_planned * line.unit_price}")
-    body = "\n".join(lines)
+        writer.writerow([line.name, line.unit, line.quantity_planned, line.quantity_actual, line.unit_price, line.quantity_planned * line.unit_price])
+    body = buf.getvalue()
     return Response(body, media_type="text/csv", headers={"Content-Disposition": f"attachment; filename=estimate-{project_id[:8]}.csv"})
 
 
 @router.get("/{project_id}/estimate.xlsx")
 async def export_xlsx(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Таблица сметы в формате Excel 2003 XML (SpreadsheetML), открывается в Excel/Numbers.
+
+    OBJ-32: НДС — по ставке проекта (`vat_rate`), а не зашитые 20%; имена экранируются для XML.
+    Файл отдаётся с расширением .xls: это не OOXML .xlsx.
+    """
     from itertools import groupby
+    from xml.sax.saxutils import escape
 
     p = await require_project(db, project_id, user, write=False)
+    vat_rate = float(getattr(p, "vat_rate", 0) or 0) / 100.0
     total = sum(line.quantity_planned * line.unit_price for line in p.estimate_lines)
     sorted_lines = sorted(p.estimate_lines, key=lambda x: x.room_name or "Obschee")
     rows = ""
     for room, grp in groupby(sorted_lines, key=lambda x: x.room_name or "Obschee"):
-        rows += f"<Row><Cell><Data>[{room}]</Data></Cell></Row>"
+        rows += f"<Row><Cell><Data ss:Type=\"String\">[{escape(str(room))}]</Data></Cell></Row>"
         for line in grp:
-            rows += f"<Row><Cell><Data>{line.name}</Data></Cell><Cell><Data>{line.quantity_planned}</Data></Cell><Cell><Data>{line.unit_price}</Data></Cell><Cell><Data>{line.quantity_planned * line.unit_price * 0.2:.0f}</Data></Cell></Row>"
+            line_total = line.quantity_planned * line.unit_price
+            rows += (
+                f"<Row><Cell><Data ss:Type=\"String\">{escape(str(line.name))}</Data></Cell>"
+                f"<Cell><Data ss:Type=\"Number\">{line.quantity_planned}</Data></Cell>"
+                f"<Cell><Data ss:Type=\"Number\">{line.unit_price}</Data></Cell>"
+                f"<Cell><Data ss:Type=\"Number\">{line_total:.2f}</Data></Cell></Row>"
+            )
+    vat_amount = total * vat_rate
     xml = (
         '<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?>'
-        '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet">'
-        f'<Worksheet ss:Name="Estimate" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Table>{rows}'
-        f"<Row><Cell><Data>TOTAL</Data></Cell><Cell/><Cell/><Cell><Data>{total * 0.2:.0f}</Data></Cell>"
-        f"<Cell><Data>{total * 1.2:.0f}</Data></Cell></Row></Table></Worksheet></Workbook>"
+        '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">'
+        f'<Worksheet ss:Name="Estimate"><Table>{rows}'
+        f'<Row><Cell><Data ss:Type="String">TOTAL</Data></Cell><Cell/><Cell/><Cell><Data ss:Type="Number">{total:.2f}</Data></Cell></Row>'
+        f'<Row><Cell><Data ss:Type="String">VAT {vat_rate * 100:g}%</Data></Cell><Cell/><Cell/><Cell><Data ss:Type="Number">{vat_amount:.2f}</Data></Cell></Row>'
+        f'<Row><Cell><Data ss:Type="String">TOTAL WITH VAT</Data></Cell><Cell/><Cell/><Cell><Data ss:Type="Number">{total + vat_amount:.2f}</Data></Cell></Row>'
+        "</Table></Worksheet></Workbook>"
     )
     return Response(xml.encode("utf-8"), media_type="application/vnd.ms-excel", headers={"Content-Disposition": f"attachment; filename=estimate-{project_id[:8]}.xls"})
 
