@@ -9,6 +9,7 @@ from app.core.security import create_access_token
 from app.db.session import get_db
 from app.models.entities import Project, User, UserRole
 from app.services import portal_token_service as portal_tok
+from app.services import project_role_policy
 from app.services import team_service as team_svc
 
 router = APIRouter(tags=["portal"])
@@ -52,7 +53,7 @@ async def portal_session(body: PortalSessionIn, db: AsyncSession = Depends(get_d
         raise HTTPException(404, "project_not_found")
 
     mode, read_only = await team_svc.project_access_mode(db, user, project)
-    if mode == "none":
+    if mode in ("none", "participant"):
         raise HTTPException(403, "no_access")
     if claims["project_id"] != project.id or claims["user_id"] != user.id:
         raise HTTPException(401, "token_mismatch")
@@ -341,7 +342,11 @@ async def portal_snapshot(
         "pending_payments": pending,
         "contractor_recipient_name": recipient_name,
         "contractor_company_name": recipient_name,
-        "contractor_payment_requisites": payment_requisites,
+        "contractor_payment_requisites": (
+            payment_requisites
+            if await project_role_policy.can_see_contractor_requisites(db, user, p)
+            else None
+        ),
         "payments_mode": payments_mode,
         "documents": canonical[:20],
         "documents_total": len(canonical),
@@ -424,6 +429,17 @@ async def portal_accept_work(
         )
     except ValueError as exc:
         code = str(exc)
+        gate = getattr(exc, "gate", None)
+        if gate is not None:
+            raise HTTPException(
+                409,
+                detail={
+                    "code": code,
+                    "message": f"Закройте критичные и высокие замечания по этапу: {gate['blocking_count']}",
+                    "issues": gate["blocking"],
+                    "warning_count": gate["warning_count"],
+                },
+            ) from exc
         if code == "photos_required":
             raise HTTPException(
                 409,

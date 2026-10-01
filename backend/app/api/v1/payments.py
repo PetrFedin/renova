@@ -118,15 +118,18 @@ async def project_payment_requisites(
     from sqlalchemy import select
     from app.models.entities import ContractorProfile
 
+    from app.services import project_role_policy as role_policy
+
     project = await require_project(db, project_id, user, write=False)
     recipient_name = None
     payment_requisites = None
     phone = None
+    show_private = await role_policy.can_see_contractor_requisites(db, user, project)
     if project.contractor_id:
         contractor = await db.get(User, project.contractor_id)
         if contractor:
             recipient_name = contractor.full_name
-            phone = contractor.phone
+            phone = contractor.phone if show_private else None
         profile = (
             await db.execute(
                 select(ContractorProfile).where(ContractorProfile.user_id == project.contractor_id)
@@ -138,7 +141,7 @@ async def project_payment_requisites(
                 recipient_name = profile.company_name
     return {
         "recipient_name": recipient_name,
-        "payment_requisites": payment_requisites,
+        "payment_requisites": payment_requisites if show_private else None,
         "phone": phone,
         "has_bank_details": bool((payment_requisites or "").strip()),
     }

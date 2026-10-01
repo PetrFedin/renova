@@ -45,3 +45,12 @@ async def require_project_owner(db: AsyncSession, user: User, project: Project, 
                 "message": f"{action} может только заказчик — владелец объекта",
             },
         )
+
+
+async def can_see_contractor_requisites(db: AsyncSession, user: User, project: Project) -> bool:
+    """Платёжные реквизиты и телефон исполнителя (JRN-031).
+
+    Видны только заказчику-владельцу (ему переводить деньги) и самому ведущему
+    исполнителю. Гость, технадзор, участник/прораб бригады и посторонние их не видят.
+    """
+    return await project_actor_role(db, user, project) in (ROLE_CUSTOMER, ROLE_LEAD)

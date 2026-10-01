@@ -278,10 +278,14 @@ async def test_09_guest_viewer_is_read_only(w):
     assert r.status_code == 403
 
 
-@pytest.mark.xfail(strict=True, reason="JRN-031: гость видит банковские реквизиты исполнителя (волна 6)")
 async def test_09b_guest_does_not_see_payment_requisites(w):
+    """JRN-031 закрыт: реквизиты и телефон исполнителя видят только заказчик-владелец и сам исполнитель."""
     r = await w.call("guest", "GET", f"{P(w)}/payment-requisites")
     assert r.status_code == 403 or not (r.json() or {}).get("payment_requisites")
+    if r.status_code == 200:
+        assert r.json().get("phone") is None
+    owner = await w.call("cust", "GET", f"{P(w)}/payment-requisites", expect=200)
+    assert owner.json()["payment_requisites"]
 
 
 # ---------------------------------------------------------------- 3. смета
@@ -726,11 +730,15 @@ async def test_25e_customer_opens_dispute_on_confirmed_payment(w):
                      {"reason": "Оплатил, а акт не подписан по факту"}, expect=(200, 409))
 
 
-@pytest.mark.xfail(strict=True, reason="JRN-020: спор по платежу закрывает только заказчик, у исполнителя нет права ответа (волна 1)")
 async def test_25f_contractor_can_answer_dispute(w):
+    """JRN-020 закрыт: исполнитель отвечает на спор (статус платежа не меняет — спор закрывает заказчик)."""
+    r = await w.call("lead", "POST", f"{P(w)}/payments/{w.s['pay']}/dispute/respond",
+                     {"response": "contest", "comment": "Акт подписан, работы выполнены"})
+    assert r.status_code == 200, r.text[:200]
+    assert r.json()["payment"]["status"] == "disputed"
     r = await w.call("lead", "POST", f"{P(w)}/payments/{w.s['pay']}/dispute/resolve",
                      {"note": "Акт подписан, работы выполнены"})
-    assert r.status_code == 200, r.text[:200]
+    assert r.status_code == 403  # закрывает спор по-прежнему только заказчик
 
 
 async def test_25g_customer_resolves_dispute(w):

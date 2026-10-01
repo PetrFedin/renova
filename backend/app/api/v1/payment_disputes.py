@@ -20,6 +20,13 @@ class PaymentDisputeResolutionIn(BaseModel):
     note: str = Field(min_length=10, max_length=1000)
 
 
+class PaymentDisputeResponseIn(BaseModel):
+    """Ответ исполнителя: comment — комментарий, agree — согласен вернуть, contest — оспаривает."""
+
+    response: str = Field(pattern="^(comment|agree|contest)$")
+    comment: str = Field(min_length=10, max_length=1000)
+
+
 class PaymentDisputeOut(BaseModel):
     payment: PaymentOut
     changed: bool
@@ -33,13 +40,17 @@ def _dispute_http_error(exc: ValueError) -> HTTPException:
         "payment_dispute_reason_too_long",
         "payment_dispute_resolution_note_too_short",
         "payment_dispute_resolution_note_too_long",
+        "payment_dispute_response_too_short",
+        "payment_dispute_response_too_long",
+        "payment_dispute_response_invalid",
     }:
         return HTTPException(422, detail={"code": code})
-    if code == "payment_dispute_customer_required":
+    if code in {"payment_dispute_customer_required", "payment_dispute_contractor_required"}:
         return HTTPException(403, detail={"code": code})
     if code in {
         "payment_dispute_already_open",
         "payment_dispute_already_resolved",
+        "payment_dispute_not_open",
         "payment_dispute_evidence_missing",
         "payment_dispute_source_status_invalid",
         "payment_dispute_expense_missing",
@@ -117,6 +128,42 @@ async def resolve_payment_dispute(
             payment_id=payment_id,
             actor_user_id=user.id,
             note=body.note,
+        )
+    except ValueError as exc:
+        await db.rollback()
+        raise _dispute_http_error(exc) from exc
+
+    if not result:
+        raise HTTPException(404, detail={"code": "payment_not_found"})
+    return await _payment_dispute_out(db, result)
+
+
+@router.post(
+    "/{project_id}/payments/{payment_id}/dispute/respond",
+    response_model=PaymentDisputeOut,
+)
+async def respond_to_payment_dispute(
+    project_id: str,
+    payment_id: str,
+    body: PaymentDisputeResponseIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """JRN-020: исполнитель-получатель отвечает на спор заказчика (статус не меняет)."""
+    from app.services import project_role_policy as role_policy
+
+    project = await require_project(db, project_id, user, write=True)
+    if await role_policy.project_actor_role(db, user, project) != role_policy.ROLE_LEAD:
+        raise HTTPException(403, detail={"code": "payment_dispute_contractor_required"})
+
+    try:
+        result = await disputes.respond_to_payment_dispute(
+            db,
+            project_id=project_id,
+            payment_id=payment_id,
+            actor_user_id=user.id,
+            response=body.response,
+            comment=body.comment,
         )
     except ValueError as exc:
         await db.rollback()

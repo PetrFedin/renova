@@ -366,3 +366,101 @@ async def resolve_payment_dispute(
     await db.commit()
     await db.refresh(payment)
     return PaymentDisputeResult(payment=payment, changed=True, replayed=False)
+
+
+# JRN-020: исполнитель-получатель отвечает на спор заказчика. Ответ не меняет
+# статус платежа (спор закрывает заказчик) — это запись в журнале + уведомление.
+CONTRACTOR_RESPONSE_KINDS = {
+    "comment": "contractor_dispute_comment",
+    "agree": "contractor_dispute_agree",
+    "contest": "contractor_dispute_contest",
+}
+_RESPONSE_TITLES = {
+    "comment": "Исполнитель ответил на спор",
+    "agree": "Исполнитель согласен вернуть оплату",
+    "contest": "Исполнитель оспаривает ваш спор",
+}
+
+
+async def respond_to_payment_dispute(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    payment_id: str,
+    actor_user_id: str,
+    response: str,
+    comment: str,
+) -> PaymentDisputeResult | None:
+    evidence_type = CONTRACTOR_RESPONSE_KINDS.get(response)
+    if evidence_type is None:
+        raise ValueError("payment_dispute_response_invalid")
+    normalized = _normalize_text(
+        comment,
+        short_code="payment_dispute_response_too_short",
+        long_code="payment_dispute_response_too_long",
+    )
+    payment = await _locked_payment(db, project_id=project_id, payment_id=payment_id)
+    if not payment:
+        return None
+    project = await db.get(Project, project_id)
+    if not project or not project.contractor_id or project.contractor_id != actor_user_id:
+        raise ValueError("payment_dispute_contractor_required")
+    if payment.status != PaymentStatus.disputed:
+        raise ValueError("payment_dispute_not_open")
+    dispute_event = await _latest_dispute_event(db, payment.id)
+    if dispute_event is None:
+        raise ValueError("payment_dispute_evidence_missing")
+
+    prior = (
+        await db.execute(
+            select(PaymentEvent)
+            .where(
+                PaymentEvent.payment_id == payment.id,
+                PaymentEvent.evidence_type.in_(list(CONTRACTOR_RESPONSE_KINDS.values())),
+                PaymentEvent.evidence_ref == dispute_event.id,
+            )
+            .order_by(PaymentEvent.created_at.desc(), PaymentEvent.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if (
+        prior is not None
+        and prior.evidence_type == evidence_type
+        and " ".join((prior.note or "").split()) == normalized
+    ):
+        await db.commit()
+        return PaymentDisputeResult(payment=payment, changed=False, replayed=True)
+
+    db.add(
+        PaymentEvent(
+            id=_uuid(),
+            payment_id=payment.id,
+            actor_user_id=actor_user_id,
+            source="manual",
+            old_status=PaymentStatus.disputed.value,
+            new_status=PaymentStatus.disputed.value,
+            evidence_type=evidence_type,
+            evidence_ref=dispute_event.id,
+            note=normalized,
+        )
+    )
+    from app.services import outbox_service as outbox
+
+    await outbox.enqueue(
+        db,
+        aggregate_type="payment",
+        aggregate_id=payment.id,
+        event_type=outbox.PAYMENT_CREATED_EVENT,
+        payload={
+            "user_id": project.customer_id,
+            "project_id": payment.project_id,
+            "notification_type": "other",
+            "title": f"{_RESPONSE_TITLES[response]}: {payment.title}",
+            "body": normalized,
+            "link_path": "/(customer)/(tabs)/budget?tab=payments",
+            "return_to": "/(customer)/(tabs)/",
+        },
+    )
+    await db.commit()
+    await db.refresh(payment)
+    return PaymentDisputeResult(payment=payment, changed=True, replayed=False)

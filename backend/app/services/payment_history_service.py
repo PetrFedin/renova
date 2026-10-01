@@ -11,6 +11,9 @@ from app.models.entities import PaymentEvent, Receipt, User, UserRole
 _SAFE_NOTE_EVIDENCE = {
     "customer_dispute",
     "customer_dispute_resolution",
+    "contractor_dispute_comment",
+    "contractor_dispute_agree",
+    "contractor_dispute_contest",
     "invoice_cancelled",
     "invoice_rejected",
     "recipient_confirmed",
