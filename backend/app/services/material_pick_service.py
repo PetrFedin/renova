@@ -20,7 +20,7 @@ from app.models.entities import (
 from app.services import material_supply_service
 from app.services.client_write_side_effects import PreparedSideEffect, activate_client_write_side_effects
 
-MaterialPickAction = Literal["submit", "approve", "reject"]
+MaterialPickAction = Literal["submit", "approve", "reject", "revoke"]
 
 _ACTIVE_PURCHASE_STATUSES = {
     PurchaseStatus.draft,
@@ -243,6 +243,8 @@ def _target_for(action: MaterialPickAction) -> MaterialPickStatus:
         "submit": MaterialPickStatus.pending,
         "approve": MaterialPickStatus.approved,
         "reject": MaterialPickStatus.draft,
+        # EST-025: заказчик отзывает своё согласование, пока нет активной закупки.
+        "revoke": MaterialPickStatus.draft,
     }[action]
 
 
@@ -256,6 +258,7 @@ def validate_transition(current: MaterialPickStatus, action: MaterialPickAction)
         (MaterialPickStatus.draft, "submit"),
         (MaterialPickStatus.pending, "approve"),
         (MaterialPickStatus.pending, "reject"),
+        (MaterialPickStatus.approved, "revoke"),
     }
     if (current, action) not in allowed:
         raise ValueError("material_pick_transition_invalid")
@@ -294,6 +297,16 @@ def event_for(
             notification_link="/(contractor)/(tabs)/repair?tab=materials",
         )
     recipient = project.contractor_id if project and project.contractor_id != actor_id else None
+    if action == "revoke":
+        return MaterialPickEvent(
+            kind="approval",
+            title=f"Согласование отозвано: {pick.name}",
+            body=reason_text,
+            recipient_id=recipient,
+            notification_title="Согласование материала отозвано",
+            notification_body=pick.name,
+            notification_link="/(contractor)/(tabs)/repair?tab=materials",
+        )
     return MaterialPickEvent(
         kind="approval",
         title=f"На доработку: {pick.name}",
@@ -459,3 +472,140 @@ async def transition_pick(
     await db.refresh(pick)
     activate_client_write_side_effects(effects)
     return pick, True, event
+
+
+_EDITABLE_FIELDS = ("name", "room_id", "qty", "unit", "shop_url", "shop_name", "work_type", "notes")
+
+
+async def update_pick_fields(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    pick_id: str,
+    actor_id: str,
+    fields: dict,
+) -> tuple[MaterialPick | None, bool]:
+    """EST-025: правка draft/pending-материала (цена — отдельным price-контрактом).
+
+    Правка pending-позиции отзывает её с согласования (возврат в draft): заказчик
+    не должен утверждать то, что уже изменилось. Идемпотентна: те же значения -> no-op.
+    """
+    from app.services import outbox_service as outbox
+
+    pick = await get_pick(db, project_id=project_id, pick_id=pick_id, for_update=True)
+    if not pick:
+        return None, False
+    if pick.status not in (MaterialPickStatus.draft, MaterialPickStatus.pending):
+        raise ValueError("material_pick_not_editable")
+    if await material_pick_has_active_purchase(db, project_id=project_id, pick_id=pick.id):
+        raise ValueError("material_pick_locked_by_purchase")
+
+    clean: dict = {}
+    for key in _EDITABLE_FIELDS:
+        if key not in fields:
+            continue
+        value = fields[key]
+        if isinstance(value, str):
+            value = value.strip()
+        if key in ("shop_url", "shop_name", "work_type", "notes", "room_id"):
+            value = value or None
+        if key in ("name", "unit") and not value:
+            raise ValueError("material_pick_field_required")
+        clean[key] = value
+    if "room_id" in clean:
+        await _validate_room(db, project_id=project_id, room_id=clean["room_id"])
+
+    changed = {k: v for k, v in clean.items() if getattr(pick, k) != v}
+    if not changed:
+        await db.commit()
+        return pick, False
+
+    if "qty" in changed:
+        new_qty = float(changed["qty"])
+        if new_qty <= 0:
+            raise ValueError("material_pick_qty_invalid")
+        source = material_supply_service.supply_source(pick)
+        available = material_supply_service.available_quantity(pick)
+        if source == "customer_on_hand":
+            available = new_qty
+        try:
+            pick.qty_available = material_supply_service.validate_supply_truth(
+                source=source, required_qty=new_qty, qty_available=available
+            )
+        except material_supply_service.MaterialSupplyError as error:
+            raise ValueError(error.code) from error
+        if pick.qty_needed is not None:
+            pick.qty_needed = new_qty
+    for key, value in changed.items():
+        setattr(pick, key, value)
+    if pick.status == MaterialPickStatus.pending:
+        pick.status = MaterialPickStatus.draft
+    await outbox.enqueue(
+        db,
+        aggregate_type="material_pick",
+        aggregate_id=pick.id,
+        event_type=outbox.ACTIVITY_EVENT,
+        payload={
+            "project_id": project_id,
+            "user_id": actor_id,
+            "kind": "MaterialUpdated",
+            "title": f"Материал изменён: {pick.name}",
+            "body": ", ".join(sorted(changed)),
+            "room_id": pick.room_id,
+            "work_type": pick.work_type,
+            "link_path": "/(customer)/(tabs)/repair?tab=materials",
+        },
+    )
+    await db.commit()
+    await db.refresh(pick)
+    return pick, True
+
+
+async def delete_pick(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    pick_id: str,
+    actor_id: str,
+) -> MaterialPick | None:
+    """EST-025: удалить ошибочный draft/pending, на который ничто не ссылается."""
+    from app.services import outbox_service as outbox
+
+    pick = await get_pick(db, project_id=project_id, pick_id=pick_id, for_update=True)
+    if not pick:
+        return None
+    if pick.status not in (MaterialPickStatus.draft, MaterialPickStatus.pending):
+        raise ValueError("material_pick_not_deletable")
+    linked_item = (
+        await db.execute(
+            select(PurchaseItem.id).where(PurchaseItem.material_pick_id == pick.id).limit(1)
+        )
+    ).scalar_one_or_none()
+    if linked_item:
+        raise ValueError("material_pick_has_purchase_history")
+    analog = (
+        await db.execute(
+            select(MaterialPick.id).where(MaterialPick.analog_of_id == pick.id).limit(1)
+        )
+    ).scalar_one_or_none()
+    if analog:
+        raise ValueError("material_pick_has_analogs")
+    await outbox.enqueue(
+        db,
+        aggregate_type="material_pick",
+        aggregate_id=pick.id,
+        event_type=outbox.ACTIVITY_EVENT,
+        payload={
+            "project_id": project_id,
+            "user_id": actor_id,
+            "kind": "MaterialDeleted",
+            "title": f"Материал удалён: {pick.name}",
+            "body": None,
+            "room_id": pick.room_id,
+            "work_type": pick.work_type,
+            "link_path": "/(customer)/(tabs)/repair?tab=materials",
+        },
+    )
+    await db.delete(pick)
+    await db.commit()
+    return pick

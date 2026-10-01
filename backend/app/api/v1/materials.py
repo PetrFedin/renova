@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
+from app.models import material_price_truth
 from app.models.entities import MaterialPick, MaterialPickStatus, Project, User, UserRole
 from app.services import activity_service as act
 from app.services import material_pick_service as pick_svc
@@ -51,6 +52,19 @@ class SupplyIn(BaseModel):
     qty_available: float = Field(ge=0)
 
 
+class PickPatchIn(BaseModel):
+    """EST-025: правка draft/pending. Цена меняется отдельным /price (provenance)."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    room_id: str | None = None
+    qty: float | None = Field(default=None, gt=0)
+    unit: str | None = Field(default=None, min_length=1, max_length=16)
+    shop_url: str | None = Field(default=None, max_length=512)
+    shop_name: str | None = Field(default=None, max_length=64)
+    work_type: str | None = Field(default=None, max_length=64)
+    notes: str | None = None
+
+
 class RejectPickIn(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
@@ -79,6 +93,10 @@ def _out(pick: MaterialPick) -> dict:
         "analog_of_id": pick.analog_of_id,
         "notes": pick.notes,
         "total": round(pick.qty * pick.price, 2),
+        # EST-011: клиент не предлагает закупку по позициям с непроверенной ценой.
+        "price_source": pick.price_source,
+        "price_verified": material_price_truth.is_verified_price_source(pick.price_source),
+        "price_actionable": material_price_truth.is_actionable_purchase_price(pick),
     }
 
 
@@ -115,7 +133,12 @@ def _transition_error(error: ValueError) -> HTTPException:
         "material_pick_transition_terminal": "Закупленный материал нельзя вернуть в согласование",
         "material_pick_transition_invalid": "Недопустимый переход статуса материала",
         "material_pick_locked_by_purchase": "Материал уже включён в активную закупку",
-        "material_pick_not_editable": "Изменять можно только черновик материала",
+        "material_pick_not_editable": "Изменять можно только черновик или материал на согласовании. Согласованный сначала отзовите",
+        "material_pick_not_deletable": "Удалять можно только черновик или материал на согласовании",
+        "material_pick_has_purchase_history": "Материал уже входил в закупку — удалить нельзя",
+        "material_pick_has_analogs": "У материала есть аналоги — сначала удалите их",
+        "material_pick_field_required": "Название и единица не могут быть пустыми",
+        "material_pick_qty_invalid": "Количество должно быть больше нуля",
         "material_pick_room_not_found": "Комната не найдена в этом проекте",
         "material_pick_analog_not_found": "Исходный материал не найден в этом проекте",
         "material_supply_source_invalid": "Выберите корректный источник материала",
@@ -126,6 +149,8 @@ def _transition_error(error: ValueError) -> HTTPException:
     validation_codes = {
         "material_pick_room_not_found",
         "material_pick_analog_not_found",
+        "material_pick_field_required",
+        "material_pick_qty_invalid",
         "material_supply_source_invalid",
         "material_qty_available_invalid",
         "material_qty_available_exceeds_required",
@@ -318,6 +343,51 @@ async def create_pick(
     return response
 
 
+@router.patch("/{project_id}/material-picks/{pick_id}")
+async def patch_pick(
+    project_id: str,
+    pick_id: str,
+    body: PickPatchIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await require_project(db, project_id, user, write=True)
+    try:
+        pick, changed = await pick_svc.update_pick_fields(
+            db,
+            project_id=project_id,
+            pick_id=pick_id,
+            actor_id=user.id,
+            fields=body.model_dump(exclude_unset=True),
+        )
+    except ValueError as error:
+        raise _transition_error(error) from error
+    if not pick:
+        raise HTTPException(404)
+    response = _out(pick)
+    response["replayed"] = not changed
+    return response
+
+
+@router.delete("/{project_id}/material-picks/{pick_id}")
+async def delete_pick(
+    project_id: str,
+    pick_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await require_project(db, project_id, user, write=True)
+    try:
+        pick = await pick_svc.delete_pick(
+            db, project_id=project_id, pick_id=pick_id, actor_id=user.id
+        )
+    except ValueError as error:
+        raise _transition_error(error) from error
+    if not pick:
+        raise HTTPException(404)
+    return {"id": pick_id, "deleted": True}
+
+
 @router.patch("/{project_id}/material-picks/{pick_id}/supply")
 async def update_supply(
     project_id: str,
@@ -468,6 +538,28 @@ async def reject_pick(
         pick_id=pick_id,
         user=user,
         action="reject",
+        reason=body.reason,
+    )
+
+
+@router.post("/{project_id}/material-picks/{pick_id}/revoke")
+async def revoke_pick(
+    project_id: str,
+    pick_id: str,
+    body: RejectPickIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """EST-025: заказчик отзывает согласование (approved -> draft), пока нет активной закупки."""
+    await require_project(db, project_id, user, write=True)
+    if user.role != UserRole.customer:
+        raise HTTPException(403)
+    return await _transition_endpoint(
+        db,
+        project_id=project_id,
+        pick_id=pick_id,
+        user=user,
+        action="revoke",
         reason=body.reason,
     )
 

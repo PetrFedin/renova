@@ -64,6 +64,13 @@ class SelectionIn(BaseModel):
     client_request_id: str | None = Field(default=None, min_length=8, max_length=80)
 
 
+class SelectionApproveIn(BaseModel):
+    """EST-013: количество и единица для закупки (у подбора их нет в схеме)."""
+
+    qty: float | None = Field(default=None, gt=0, le=1_000_000)
+    unit: str | None = Field(default=None, min_length=1, max_length=16)
+
+
 class SelectionRejectIn(BaseModel):
     reason: str | None = None
 
@@ -240,6 +247,7 @@ async def propose_selection(
 async def approve_selection(
     project_id: str,
     selection_id: str,
+    body: SelectionApproveIn | None = None,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -260,7 +268,9 @@ async def approve_selection(
     row.approved_at = utc_now()
     from app.services.selection_service import material_pick_from_selection
 
-    pick = await material_pick_from_selection(db, row)
+    pick = await material_pick_from_selection(
+        db, row, qty=body.qty if body else None, unit=body.unit if body else None
+    )
     await db.commit()
     await act.log_event(
         db,
