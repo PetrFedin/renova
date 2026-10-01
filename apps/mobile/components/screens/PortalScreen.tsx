@@ -16,6 +16,9 @@ import * as Clipboard from 'expo-clipboard';
 import * as WebBrowser from 'expo-web-browser';
 
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { previewProjectPdf } from '@/lib/pdfOpen';
+import { notifyError } from '@/lib/notify';
+import { awaitsMySignature, portalDocumentContentPath } from '@/lib/domain/documentSigning';
 import { PaymentDetailSheet } from '@/components/renova/PaymentDetailSheet';
 import { SheetSurface, sheetContentStyles } from '@/components/renova/SheetSurface';
 import { portalLoadErrorMessage } from '@/lib/domain/portalErrors';
@@ -333,7 +336,7 @@ export default function PortalScreen() {
   const schedule = snapshot.schedule as PortalSchedule;
   const progress = Math.min(100, Math.max(0, Number(schedule.progress_percent ?? snapshot.project.progress_percent ?? 0)));
   const busy = mutationKey !== null;
-  const pendingDocuments = snapshot.documents.filter((document) => document.status === 'draft');
+  const pendingDocuments = snapshot.documents.filter((document) => awaitsMySignature(document, session.user_id));
   const canDecideEstimate = capabilities.accept
     && Boolean(snapshot.estimate_summary?.proposed_at)
     && !snapshot.estimate_summary?.locked_at;
@@ -893,6 +896,16 @@ export default function PortalScreen() {
               {pendingDocuments.map((document) => (
                 <View key={document.id} style={styles.row}>
                   <Text style={styles.rowTitle}>{document.title}</Text>
+                  <PrimaryButton
+                    title="Открыть"
+                    variant="outline"
+                    compact
+                    disabled={busy}
+                    onPress={() => {
+                      previewProjectPdf(session.user_id, portalDocumentContentPath(session.project_id, document.id), `${document.title}.pdf`)
+                        .catch((e) => notifyError('Документ', e, 'Не удалось открыть документ'));
+                    }}
+                  />
                   {capabilities.signDocuments ? (
                     <PortalActionRow>
                       <PrimaryButton

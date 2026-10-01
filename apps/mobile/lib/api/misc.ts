@@ -137,7 +137,7 @@ export const miscApi = {
         payment_type?: string;
         needs_acceptance?: boolean;
       }[];
-      documents: { id: string; title: string; kind?: string; status?: string }[];
+      documents: { id: string; title: string; kind?: string; status?: string; meta?: { signatures?: { signer_user_id?: string | null; status?: string }[] } | null }[];
       documents_total: number;
       selections: { id: string; title: string; category: string; status: string; price: number; allowance?: number | null }[];
       selections_total: number;

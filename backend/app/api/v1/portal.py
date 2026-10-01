@@ -612,6 +612,43 @@ async def portal_return_work(
     return acceptance_dict(row)
 
 
+@router.get("/portal/projects/{project_id}/documents/{document_id}/content")
+async def portal_document_content(
+    project_id: str,
+    document_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """DOC-015: просмотр текущей версии документа гостем портала перед подписью (scope read)."""
+    from fastapi import Response
+    from fastapi.responses import RedirectResponse
+    import mimetypes
+    from app.models.project_documents import DocumentStatus, ProjectDocument
+    from app.services import project_document_service as docs_svc
+    from app.services import storage_service as storage_svc
+
+    await require_project(db, project_id, user, write=False)
+    doc = await db.get(ProjectDocument, document_id)
+    if not doc or doc.project_id != project_id or doc.status == DocumentStatus.deleted.value:
+        raise HTTPException(404, "document_not_found")
+    version = await docs_svc.get_current_version(db, doc.id)
+    if version is None:
+        raise HTTPException(404, "document_file_unavailable")
+    if version.storage_key:
+        url = storage_svc.presigned_url(version.storage_key)
+        if url:
+            return RedirectResponse(url, status_code=302, headers={"Cache-Control": "private, no-store"})
+        data = await storage_svc.read_image(version.storage_key)
+        if data:
+            mime = version.mime_type or mimetypes.guess_type(version.storage_key)[0] or "application/octet-stream"
+            return Response(content=data, media_type=mime, headers={"Cache-Control": "private, no-store"})
+    if version.content_snapshot:
+        return Response(
+            content=version.content_snapshot, media_type="application/json", headers={"Cache-Control": "private, no-store"}
+        )
+    raise HTTPException(404, "document_file_unavailable")
+
+
 class PortalSignIn(BaseModel):
     token: str
     provider: str = "in_app"

@@ -9,6 +9,7 @@ import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { api, ApiError, type ProjectDocument, type ProjectDocumentsResponse } from '@/lib/api';
 import { fetchPdfBlob, openPdfBlob, previewProjectPdf } from '@/lib/pdfOpen';
+import { awaitsMySignature } from '@/lib/domain/documentSigning';
 import { pollDocumentSignature } from '@/lib/esignPoll';
 import { exportGdprJsonFile } from '@/lib/exportGdprJson';
 import { apiErrorMessage } from '@/lib/formatPhone';
@@ -207,8 +208,8 @@ export function DocumentsHub({
   const recentDocs = useMemo(() => (docIndex?.items || []).slice(0, 8), [docIndex]);
   /** Clarity D: черновики ждут подписи — pinned сверху */
   const needsSignDocs = useMemo(
-    () => (docIndex?.items || []).filter((d) => d.status === 'draft'),
-    [docIndex],
+    () => (docIndex?.items || []).filter((d) => awaitsMySignature(d, user?.id)),
+    [docIndex, user?.id],
   );
   /** Clarity D: секции свёрнуты по умолчанию — меньше шума */
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});

@@ -66,6 +66,8 @@ def _validate_access_session(
 # get_current_user/resolve_user_id, автоматически защищён.
 _PORTAL_ALLOWED_ROUTES: tuple[tuple[str, re.Pattern[str], str], ...] = (
     ("GET", re.compile(r"^(?:/api/v\d+)?/portal/projects/(?P<pid>[^/]+)/snapshot/?$"), "read"),
+    # DOC-015: заказчик читает документ перед подписью по токену портала.
+    ("GET", re.compile(r"^(?:/api/v\d+)?/portal/projects/(?P<pid>[^/]+)/documents/[^/]+/content/?$"), "read"),
     (
         "POST",
         re.compile(r"^(?:/api/v\d+)?/projects/(?P<pid>[^/]+)/payments/[^/]+/yookassa-checkout/?$"),
