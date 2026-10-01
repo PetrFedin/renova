@@ -20,6 +20,10 @@ export type ChatMessage = {
   file_name?: string | null;
   assignee_id?: string | null;
   due_at?: string | null;
+  /** COM-006: мягкое удаление — text/image_url приходят пустыми. */
+  deleted?: boolean;
+  deleted_at?: string | null;
+  edited_at?: string | null;
 };
 
 export type ChatThread = {
@@ -43,6 +47,8 @@ export type ChatParticipant = {
   profile_code?: string | null;
   full_name?: string | null;
   status: string;
+  /** customer | contractor | team_* | invited (только приглашённых можно убрать или они могут выйти). */
+  role?: string | null;
 };
 
 export type ChatCapabilities = {

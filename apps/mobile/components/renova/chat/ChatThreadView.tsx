@@ -1,7 +1,7 @@
 /** Экран треда: реакции, закрепление, задачи, счета, участники, файлы */
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { AppState, ScrollView, View, Text, TextInput, StyleSheet, Pressable, Modal } from 'react-native';
-import { notifyError, notifyInfo } from '@/lib/notify';
+import { confirmAction, notifyError, notifyInfo } from '@/lib/notify';
 import { useFocusEffect, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -35,6 +35,17 @@ import { alertChatInvoiceCreated, alertChatTaskCreated } from '@/lib/estimatePay
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { textWithoutReplyPrefix } from '@/lib/domain/chatReplyPrefix';
 import { router } from 'expo-router';
+import { goBack } from '@/lib/navigation';
+import {
+  canLeaveThread,
+  canManageThread,
+  canRemoveParticipant,
+  chatMutationError,
+  editedLabel,
+  messageActions,
+  participantRoleLabel,
+  type MessageActions,
+} from '@/lib/chatActions';
 
 const REACTIONS = ['👍', '✅', '❤️', '🔥', '❓'];
 
@@ -91,6 +102,10 @@ function MessageBubble({
   onTask,
   onConfirm,
   onPay,
+  onEdit,
+  onDelete,
+  actions,
+  busy,
   repliedTo,
   onOpenReplied,
   userId,
@@ -111,6 +126,12 @@ function MessageBubble({
   onTask?: () => void;
   onConfirm?: () => void;
   onPay?: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
+  /** Что разрешено над этим сообщением (messageActions). */
+  actions: MessageActions;
+  /** Идёт запрос: кнопки изменения неактивны (двойной тап). */
+  busy?: boolean;
   repliedTo?: ChatMessage | null;
   onOpenReplied?: () => void;
 }) {
@@ -127,6 +148,19 @@ function MessageBubble({
     );
   }
 
+  if (m.deleted) {
+    return (
+      <View
+        style={[s.msg, mine ? s.me : s.them, highlight && s.highlight]}
+        onLayout={(e: { nativeEvent: { layout: { y: number } } }) => onLayoutY?.(e.nativeEvent.layout.y)}
+      >
+        <Text style={s.role}>{roleLabel}</Text>
+        <Text style={s.deletedText}>Сообщение удалено</Text>
+        <Text style={s.time}>{m.created_at.slice(11, 16)}</Text>
+      </View>
+    );
+  }
+
   return (
     <Pressable
       style={[s.msg, mine ? s.me : s.them, highlight && s.highlight, m.is_pinned && s.pinnedMsg]}
@@ -137,8 +171,10 @@ function MessageBubble({
           message: 'Реакция или действие',
           actions: [
             ...REACTIONS.map((e) => ({ label: e, onPress: () => onReact(e) })),
-            ...(onPin ? [{ label: m.is_pinned ? 'Открепить' : 'Закрепить', onPress: onPin }] : []),
-            { label: 'Ответить', onPress: onReply },
+            ...(actions.pin && onPin ? [{ label: m.is_pinned ? 'Открепить' : 'Закрепить', onPress: onPin }] : []),
+            ...(actions.reply ? [{ label: 'Ответить', onPress: onReply }] : []),
+            ...(actions.edit && onEdit && !busy ? [{ label: 'Редактировать', onPress: onEdit }] : []),
+            ...(actions.remove && onDelete && !busy ? [{ label: 'Удалить', onPress: onDelete, destructive: true }] : []),
             ...(onTask ? [{ label: 'Создать задачу', onPress: onTask }] : []),
           ],
         });
@@ -166,6 +202,7 @@ function MessageBubble({
       {m.text ? (
         <HighlightText text={textWithoutReplyPrefix(m.text, !!repliedTo)} query={query} />
       ) : null}
+      {editedLabel(m) ? <Text style={s.edited}>{editedLabel(m)}</Text> : null}
       {m.message_type === 'payment' && m.confirmed !== true && onPay && (
         <PrimaryButton title="Перейти к оплате" compact onPress={onPay} />
       )}
@@ -211,8 +248,14 @@ function MessageBubble({
             })
           }
         />
-        <MessageAction icon="arrow-undo-outline" label="Ответить на сообщение" onPress={onReply} />
-        {onPin ? (
+        {actions.reply ? <MessageAction icon="arrow-undo-outline" label="Ответить на сообщение" onPress={onReply} /> : null}
+        {actions.edit && onEdit ? (
+          <MessageAction icon="create-outline" label="Редактировать сообщение" onPress={() => { if (!busy) onEdit(); }} />
+        ) : null}
+        {actions.remove && onDelete ? (
+          <MessageAction icon="trash-outline" label="Удалить сообщение" onPress={() => { if (!busy) onDelete(); }} />
+        ) : null}
+        {actions.pin && onPin ? (
           <MessageAction
             icon={m.is_pinned ? 'bookmark' : 'bookmark-outline'}
             label={m.is_pinned ? 'Открепить сообщение' : 'Закрепить сообщение'}
@@ -261,6 +304,13 @@ export function ChatThreadView({
   const [inviteCode, setInviteCode] = useState('');
   const [taskMsg, setTaskMsg] = useState<ChatMessage | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Правка сообщения, переименование и «занято»: один запрос за раз, повторный тап игнорируется.
+  const [editMsg, setEditMsg] = useState<ChatMessage | null>(null);
+  const [editText, setEditText] = useState('');
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameText, setRenameText] = useState('');
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const busyRef = useRef<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const loadGenerationRef = useRef(0);
   // COM-024: окно истории. null = последние сообщения; id = окно вокруг найденного сообщения.
@@ -376,7 +426,7 @@ export function ChatThreadView({
     };
   }, [chat, screenFocused, appState, threadId]);
 
-  const overlayBlocking = (canManageParticipants && inviteOpen) || settingsOpen || (canCreateTask && !!taskMsg);
+  const overlayBlocking = (canManageParticipants && inviteOpen) || settingsOpen || renameOpen || !!editMsg || (canCreateTask && !!taskMsg);
 
   useEffect(() => {
     if (
@@ -576,6 +626,140 @@ export function ChatThreadView({
     if (hasProjectScope) await refreshProjectAfterCommit(action);
   };
 
+  const canManage = canManageThread(user, chat.participants, chat.messages);
+  const canLeave = canLeaveThread(user, chat.participants);
+  const leaveRoute = `/(${role})/(tabs)/chat`;
+
+  /** Один запрос на изменение за раз: busyRef закрывает двойной тап до перерисовки. */
+  const runBusy = async (key: string, title: string, what: string, job: () => Promise<void>): Promise<boolean> => {
+    if (busyRef.current) return false;
+    busyRef.current = key;
+    setBusyKey(key);
+    try {
+      await job();
+      return true;
+    } catch (e) {
+      if (isOfflineQueued(e)) {
+        notifyOfflineQueued(title);
+        return false;
+      }
+      reportError(`ChatThreadView.${key}`, e, { threadId, projectId });
+      notifyError(title, chatMutationError(e) ?? e, what);
+      return false;
+    } finally {
+      busyRef.current = null;
+      setBusyKey(null);
+    }
+  };
+
+  const submitEdit = async () => {
+    const target = editMsg;
+    const body = editText.trim();
+    if (!target || !body) return;
+    if (body === (target.text ?? '').trim()) {
+      setEditMsg(null);
+      return;
+    }
+    const ok = await runBusy(`edit:${target.id}`, 'Сообщение не изменено', 'Не удалось сохранить изменения.', async () => {
+      await api.editChatMessage(user.id, projectId, threadId, target.id, body);
+    });
+    if (ok) {
+      setEditMsg(null);
+      await refreshChatAfterCommit('EditMessage');
+    }
+  };
+
+  const deleteMessage = async (target: ChatMessage) => {
+    if (busyRef.current) return;
+    const yes = await confirmAction({
+      title: 'Удалить сообщение?',
+      message: 'Участники увидят вместо него «Сообщение удалено». Вернуть текст будет нельзя.',
+      confirmLabel: 'Удалить',
+      destructive: true,
+    });
+    if (!yes) return;
+    const ok = await runBusy(`delete:${target.id}`, 'Сообщение не удалено', 'Не удалось удалить сообщение.', async () => {
+      await api.deleteChatMessage(user.id, projectId, threadId, target.id);
+    });
+    if (ok) await refreshChatAfterCommit('DeleteMessage');
+  };
+
+  const submitRename = async () => {
+    const title = renameText.trim().replace(/\s+/g, ' ');
+    if (!title) {
+      notifyInfo('Название не изменено', 'Введите название чата.');
+      return;
+    }
+    if (title === chat.title) {
+      setRenameOpen(false);
+      return;
+    }
+    const ok = await runBusy('rename', 'Название не изменено', 'Не удалось переименовать чат.', async () => {
+      await api.renameChat(user.id, projectId, threadId, title);
+    });
+    if (ok) {
+      setRenameOpen(false);
+      await refreshChatAfterCommit('RenameChat');
+    }
+  };
+
+  const archiveThread = async () => {
+    if (busyRef.current) return;
+    const yes = await confirmAction({
+      title: 'Архивировать чат?',
+      message: 'Чат уйдёт в архив у всех участников. Его можно открыть во вкладке «Архив» списка чатов.',
+      confirmLabel: 'В архив',
+    });
+    if (!yes) return;
+    const ok = await runBusy('archive', 'Чат не архивирован', 'Не удалось отправить чат в архив.', async () => {
+      await api.archiveChat(user.id, projectId, threadId, true);
+    });
+    if (ok) goBack(leaveRoute, user.role);
+  };
+
+  const leaveThread = async () => {
+    if (busyRef.current) return;
+    const yes = await confirmAction({
+      title: 'Покинуть чат?',
+      message: 'Вы перестанете получать сообщения этого чата. Вернуться можно только по новому приглашению.',
+      confirmLabel: 'Покинуть',
+      destructive: true,
+    });
+    if (!yes) return;
+    const ok = await runBusy('leave', 'Не удалось выйти из чата', 'Не удалось выйти из чата.', async () => {
+      await api.leaveChat(user.id, projectId, threadId);
+    });
+    if (ok) goBack(leaveRoute, user.role);
+  };
+
+  const removeParticipant = async (participantId: string, name: string) => {
+    if (busyRef.current) return;
+    const yes = await confirmAction({
+      title: 'Убрать участника?',
+      message: `${name} перестанет видеть этот чат.`,
+      confirmLabel: 'Убрать',
+      destructive: true,
+    });
+    if (!yes) return;
+    const ok = await runBusy(`remove:${participantId}`, 'Участник не убран', 'Не удалось убрать участника.', async () => {
+      await api.removeChatParticipant(user.id, projectId, threadId, participantId);
+    });
+    if (ok) await refreshChatAfterCommit('RemoveParticipant');
+  };
+
+  const openThreadMenu = () => {
+    showActionConfirm({
+      title: chat.title,
+      message: 'Действия с чатом',
+      actions: [
+        ...(canManage ? [{ label: 'Переименовать', onPress: () => { setRenameText(chat.title); setRenameOpen(true); } }] : []),
+        ...(canManage ? [{ label: 'Архивировать', onPress: () => { void archiveThread(); } }] : []),
+        { label: 'Участники', onPress: () => setSettingsOpen(true) },
+        ...(canLeave ? [{ label: 'Покинуть чат', onPress: () => { void leaveThread(); }, destructive: true }] : []),
+      ],
+    });
+  };
+
   const sendText = async (body: string, type = 'text', image?: string) => {
     const prefix = replyTo?.text ? `↩ ${replyTo.text.slice(0, 40)}…\n` : '';
     try {
@@ -604,7 +788,7 @@ export function ChatThreadView({
         {canManageParticipants && (
           <Pressable onPress={() => setInviteOpen(true)}><Text style={s.topLink}>+ Участник</Text></Pressable>
         )}
-        <Pressable onPress={() => setSettingsOpen(true)}><Text style={s.topLink}>Настройки</Text></Pressable>
+        <Pressable onPress={openThreadMenu} accessibilityRole="button" accessibilityLabel="Действия с чатом"><Text style={s.topLink}>Меню чата</Text></Pressable>
         <Pressable onPress={() => api.exportChatPdf(user.id, projectId, threadId).catch((err) => notifyError('Ошибка', err, 'Не удалось экспортировать документ'))}>
           <Text style={s.topLink}>Документ</Text>
         </Pressable>
@@ -714,6 +898,10 @@ export function ChatThreadView({
               await refreshChatAfterCommit('MessagePin');
             } : undefined}
             onReply={() => setReplyTo(m)}
+            actions={messageActions(m, user, { canPin: canManageParticipants, canWrite })}
+            busy={busyKey !== null}
+            onEdit={() => { setEditText(m.text ?? ''); setEditMsg(m); }}
+            onDelete={() => { void deleteMessage(m); }}
             onTask={canCreateTask ? () => setTaskMsg(m) : undefined}
             onConfirm={canManageParticipants && m.message_type === 'confirm' ? async () => {
               try {
@@ -869,15 +1057,65 @@ export function ChatThreadView({
             {chat.participants && chat.participants.length > 0 && (
               <>
                 <Text style={s.settingLabel}>Участники</Text>
-                {chat.participants.map((p) => (
-                  <Text key={p.id} style={s.participant}>
-                    {p.full_name || p.phone || p.profile_code || 'Участник'}
-                    {p.status === 'active' ? '' : ` · ${p.status}`}
-                  </Text>
-                ))}
+                {chat.participants.map((p) => {
+                  const name = p.full_name || p.phone || p.profile_code || 'Участник';
+                  const roleText = participantRoleLabel(p.role);
+                  return (
+                    <View key={p.id} style={s.participantRow}>
+                      <Text style={s.participant}>
+                        {name}
+                        {p.user_id === user.id ? ' (вы)' : ''}
+                        {roleText ? ` · ${roleText}` : ''}
+                        {p.status === 'active' ? '' : ` · ${p.status}`}
+                      </Text>
+                      {canRemoveParticipant(canManage, user, p) ? (
+                        <Pressable
+                          disabled={busyKey !== null}
+                          onPress={() => { void removeParticipant(p.id, name); }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Убрать участника ${name}`}
+                          hitSlop={8}
+                        >
+                          <Text style={[s.topLink, busyKey !== null && s.disabledLink]}>Убрать</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  );
+                })}
               </>
             )}
             <PrimaryButton title="Закрыть" variant="outline" onPress={() => setSettingsOpen(false)} />
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={!!editMsg} transparent animationType="slide" onRequestClose={() => setEditMsg(null)}>
+        <View style={s.modalBg}>
+          <View style={s.modal}>
+            <Text style={s.modalTitle}>Изменить сообщение</Text>
+            <TextInput style={s.input} value={editText} onChangeText={setEditText} multiline autoFocus maxLength={8000} />
+            <Text style={s.hint}>Свои текстовые сообщения можно менять в течение суток после отправки. У сообщения появится пометка «изменено».</Text>
+            <PrimaryButton
+              title={busyKey?.startsWith('edit:') ? 'Сохраняем…' : 'Сохранить'}
+              disabled={busyKey !== null || !editText.trim()}
+              onPress={() => { void submitEdit(); }}
+            />
+            <PrimaryButton title="Отмена" variant="outline" disabled={busyKey !== null} onPress={() => setEditMsg(null)} />
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={renameOpen} transparent animationType="slide" onRequestClose={() => setRenameOpen(false)}>
+        <View style={s.modalBg}>
+          <View style={s.modal}>
+            <Text style={s.modalTitle}>Название чата</Text>
+            <TextInput style={s.input} value={renameText} onChangeText={setRenameText} autoFocus maxLength={255} placeholder="Название" />
+            <PrimaryButton
+              title={busyKey === 'rename' ? 'Сохраняем…' : 'Сохранить'}
+              disabled={busyKey !== null || !renameText.trim()}
+              onPress={() => { void submitRename(); }}
+            />
+            <PrimaryButton title="Отмена" variant="outline" disabled={busyKey !== null} onPress={() => setRenameOpen(false)} />
           </View>
         </View>
       </Modal>
@@ -994,5 +1232,9 @@ const s = StyleSheet.create({
   settingRow: { marginBottom: 8 },
   settingLabel: { ...screenTypography.section, marginTop: 4, marginBottom: 0 },
   settingVal: { fontSize: 15, fontWeight: '600', color: RenovaTheme.colors.text, marginTop: 4 },
-  participant: { fontSize: 13, color: RenovaTheme.colors.text, paddingVertical: 4 },
+  participant: { fontSize: 13, color: RenovaTheme.colors.text, paddingVertical: 4, flexShrink: 1 },
+  participantRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  disabledLink: { opacity: 0.4 },
+  deletedText: { fontSize: 14, fontStyle: 'italic', color: RenovaTheme.colors.textMuted },
+  edited: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginTop: 2 },
 });

@@ -2,7 +2,7 @@
  * Clarity D: unread только в dock; в списке — title + 1 строка preview. */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
-import { notifyAlert } from '@/lib/notify';
+import { notifyAlert, notifyError } from '@/lib/notify';
 import { useFocusEffect } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
@@ -196,6 +196,7 @@ export function ChatListView() {
                 await reload();
               } catch (e) {
                 if (isOfflineQueued(e)) notifyOfflineQueued(t.is_pinned ? 'Открепление чата' : 'Закрепление чата');
+                else notifyError('Не удалось изменить чат', e, 'Повторите попытку позже.');
               }
             })();
           },
@@ -209,6 +210,7 @@ export function ChatListView() {
                 await reload();
               } catch (e) {
                 if (isOfflineQueued(e)) notifyOfflineQueued(folder === 'archive' ? 'Восстановление чата' : 'Архивация чата');
+                else notifyError('Не удалось изменить чат', e, 'Повторите попытку позже.');
               }
             })();
           },

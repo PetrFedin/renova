@@ -279,6 +279,34 @@ export const chatsApi = {
       { method: 'DELETE' },
       userId,
     ),
+  /** Переименовать тред (создатель или заказчик; иначе 403). */
+  renameChat: (userId: string, projectId: string, threadId: string, title: string) =>
+    req<ChatThread>(
+      `/api/v1/projects/${projectId}/chats/${threadId}`,
+      { method: 'PATCH', body: JSON.stringify({ title }) },
+      userId,
+    ),
+  /** Архив для всех участников (создатель или заказчик). */
+  archiveChat: (userId: string, projectId: string, threadId: string, archived: boolean) =>
+    req<{ archived: boolean }>(
+      `/api/v1/projects/${projectId}/chats/${threadId}/archive`,
+      { method: 'POST', body: JSON.stringify({ archived }) },
+      userId,
+    ),
+  /** Убрать приглашённого участника (создатель или заказчик). */
+  removeChatParticipant: (userId: string, projectId: string, threadId: string, participantId: string) =>
+    req<{ id: string; status: string }>(
+      `/api/v1/projects/${projectId}/chats/${threadId}/participants/${participantId}`,
+      { method: 'DELETE' },
+      userId,
+    ),
+  /** Приглашённый участник выходит из чата (участник проекта — 409). */
+  leaveChat: (userId: string, projectId: string, threadId: string) =>
+    req<{ id: string; status: string }>(
+      `/api/v1/projects/${projectId}/chats/${threadId}/participants/leave`,
+      { method: 'POST' },
+      userId,
+    ),
   /** W114: подтверждение из чата — очередь офлайн */
   confirmChatMessage: async (userId: string, projectId: string, threadId: string, messageId: string) => {
     try {

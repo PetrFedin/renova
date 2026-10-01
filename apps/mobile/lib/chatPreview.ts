@@ -15,6 +15,7 @@ export function isChatCreationSystemMessage(msg: ChatMessage | null | undefined)
 /** Текст для строки списка — пропускаем системное «чат создан» */
 export function chatListPreview(thread: ChatThread): string {
   const last = thread.last_message;
+  if (last?.deleted) return 'Сообщение удалено';
   if (!last?.text?.trim()) return 'Нет сообщений';
   if (isChatCreationSystemMessage(last)) return 'Новый чат';
   if (last.message_type === 'photo' || last.text === 'Фото') return '📷 Фото';

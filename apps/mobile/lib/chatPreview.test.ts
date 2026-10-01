@@ -16,6 +16,8 @@ assert.equal(isChatCreationSystemMessage({ id: '1', author_role: 'system', messa
 assert.equal(chatListPreview(thread('a', { last_message: { id: 'm', author_role: 'system', message_type: 'system', text: 'Чат «E2E» создан', image_url: null, created_at: '' } })), 'Новый чат');
 assert.equal(chatListPreview(thread('b', { last_message: { id: 'm', author_role: 'customer', message_type: 'text', text: 'Привет', image_url: null, created_at: '' } })), 'Привет');
 
+assert.equal(chatListPreview(thread('d', { last_message: { id: 'm', author_role: 'customer', message_type: 'text', text: null, deleted: true, image_url: null, created_at: '' } })), 'Сообщение удалено');
+
 const sorted = sortChatThreads([
   thread('1', { updated_at: '2026-06-28T09:00:00', is_pinned: false }),
   thread('2', { updated_at: '2026-06-28T08:00:00', is_pinned: true }),
