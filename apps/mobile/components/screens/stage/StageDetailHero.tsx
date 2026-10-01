@@ -15,6 +15,7 @@ import { useEffect, useState } from 'react';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { apiErrorMessage } from '@/lib/formatPhone';
 import { StageContextSummary } from '@/components/screens/stage/StageContextSummary';
+import { ReworkExtensionRequestCard } from '@/components/screens/stage/ReworkExtensionRequestCard';
 
 type Props = {
   stage: StageDetail;
@@ -88,6 +89,15 @@ export function StageDetailHero({
           {stage.rework_deadline ? <Text style={s.warnItem}>Срок доработки: {stage.rework_deadline.slice(0, 10)}</Text> : null}
         </View>
       ) : null}
+
+      <ReworkExtensionRequestCard
+        stage={stage}
+        isContractor={isContractor}
+        canWrite={canWrite}
+        userId={userId}
+        projectId={projectId}
+        onChanged={async () => { await onReload(); await onProjectReload(); }}
+      />
 
       <StageContextSummary
         stage={stage}

@@ -7,6 +7,7 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { pushStageDetail } from '@/lib/navigation';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { notifyError } from '@/lib/notify';
 
 export function ReworkSlaWidget({
   stages,
@@ -39,7 +40,12 @@ export function ReworkSlaWidget({
               variant="outline"
               onPress={async () => {
                 // STG-002: срок продлевает заказчик — исполнитель отправляет запрос.
-                await api.extendReworkSla(userId, projectId, st.id, 1);
+                try {
+                  await api.extendReworkSla(userId, projectId, st.id, 1);
+                } catch (error) {
+                  notifyError('Запрос не отправлен', error, 'Повторите позже.');
+                  return;
+                }
                 showActionConfirm({
                   title: 'Запрос отправлен',
                   message: 'Срок доработки изменится, когда заказчик подтвердит продление.',
