@@ -36,6 +36,7 @@ export function OsSearchModal({
           suggestions={suggestions}
           returnTo={returnTo}
           role={role}
+          onClose={onClose}
         />
       </View>
     </Modal>

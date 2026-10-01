@@ -2,6 +2,7 @@
 import { calendarTabRoute, budgetTabRoute, objectTabRoute, parseOsHref, repairTabRoute, tabsRoute, type OsRole } from '../constants/osSections';
 import { TAB_ALIASES, legacyRouteCanonical, logLegacyRouteDeprecation } from './legacyRoutes';
 import { resolveRegistryRedirect, warrantyRoute } from './navigation/navigationPolicy';
+import { isUnsafeNavTarget, sanitizeReturnTo } from './safeNavTarget';
 
 export type PushTarget = { pathname: string; params: Record<string, string> };
 
@@ -50,8 +51,10 @@ export function resolvePushLink(
   role: OsRole = 'customer',
 ): PushTarget | null {
   if (!rawLink) return null;
+  // SCR-002: внешний адрес не маршрут приложения (иначе router.replace откроет его системой).
+  if (isUnsafeNavTarget(rawLink)) return null;
   const link = linkForRole(rawLink, role);
-  const returnTo = linkForRole(rawReturnTo, role);
+  const returnTo = sanitizeReturnTo(linkForRole(rawReturnTo, role));
   const [path, query = ''] = link.split('?');
   const canonical = TAB_ALIASES[path] || link;
   const canonicalPath = canonical.split('?')[0];
@@ -59,9 +62,9 @@ export function resolvePushLink(
   const incoming = queryParams(canonicalQuery || '');
   // An explicit returnTo carried by the inbound URL is authoritative; the
   // caller-provided context is only a fallback for links that omit it.
-  const rt = linkForRole(incoming.returnTo, role) || returnTo || '/';
+  const rt = sanitizeReturnTo(linkForRole(incoming.returnTo, role)) || returnTo || '/';
 
-  const bareHub = canonicalPath.match(/^\/(object|repair|budget|calendar)$/)?.[1];
+  const bareHub = canonicalPath.match(/^\/(object|repair|budget|calendar|chat)$/)?.[1];
   if (bareHub) {
     const { tab, ...extra } = incoming;
     const target = tabsRoute(role, bareHub, tab, extra);

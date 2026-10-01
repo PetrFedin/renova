@@ -25,6 +25,9 @@ export default function Index() {
         return;
       }
       setHref(osEntryRoute(user.role === 'contractor' ? 'contractor' : 'customer'));
+    }).catch(() => {
+      // HOM-28: хранилище недоступно — не вешаем вечный спиннер, ведём на главную роли.
+      setHref(osEntryRoute(user.role === 'contractor' ? 'contractor' : 'customer'));
     });
   }, [loading, user?.id, user?.role]);
 

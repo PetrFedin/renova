@@ -40,6 +40,7 @@ export function GlobalSearchBar({
   suggestions = [],
   returnTo,
   role = 'customer',
+  onClose,
 }: {
   project: ProjectDetail;
   chatTitles?: Record<string, string>;
@@ -48,6 +49,8 @@ export function GlobalSearchBar({
   /** Текущий экран — для полоски «Назад» на результатах поиска */
   returnTo?: string;
   role?: OsRole;
+  /** Закрыть контейнер (модалку) при переходе к результату — иначе экран открывается под ней (SCR-008). */
+  onClose?: () => void;
 }) {
   const [q, setQ] = useState('');
   const [hist, setHist] = useState<string[]>([]);
@@ -87,7 +90,7 @@ export function GlobalSearchBar({
         </View>
       )}
       {all.map((h: any) => (
-        <Pressable key={`${h.id || h.href}:${h.msgId ?? ''}`} style={s.hit} onPress={() => openSearchHit(h, returnTo, role)}>
+        <Pressable key={`${h.id || h.href}:${h.msgId ?? ''}`} style={s.hit} onPress={() => { onClose?.(); openSearchHit(h, returnTo, role); }}>
           <Text style={s.title}>{h.title}</Text><Text style={s.sub}>{h.sub}</Text>
         </Pressable>
       ))}

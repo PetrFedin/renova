@@ -5,6 +5,7 @@ import type { ApprovalItem } from '@/lib/api';
 import type { OsRole } from '@/constants/osSections';
 import { pushOsNav, replaceOsNav, type OsNavHref } from '@/lib/pushOsNav';
 import { pushOsTabNav } from '@/lib/osTabNav';
+import { sanitizeReturnTo } from '@/lib/safeNavTarget';
 
 /**
  * W119: helpers поверх pushOsNav SoT —
@@ -97,7 +98,7 @@ export function useNavFromHere(role: OsRole = 'customer') {
 }
 
 export function goBack(returnTo?: string | string[], role?: string | null) {
-  const rt = Array.isArray(returnTo) ? returnTo[0] : returnTo;
+  const rt = sanitizeReturnTo(Array.isArray(returnTo) ? returnTo[0] : returnTo);
   if (rt && rt.length > 1) {
     const osRole: OsRole = role === 'contractor' ? 'contractor' : 'customer';
     // W110: тот же SoT, что pushOsNav
