@@ -4,7 +4,7 @@
 **Язык:** русский
 **Дата текущей сверки:** 2026-09-08
 **Проверенный продуктовый срез:** `95dd4a8e117289df11e1300891490768c22f585f`
-**Текущий schema head в этой редакции:** `x04roomaddreq01`
+**Текущий schema head в этой редакции:** `x05teaminviteinvitee01`
 **Текущий verification status:** `SOURCE AUDITED / BOUNDED CI EVIDENCE / FULL PRODUCT ACCEPTANCE INCOMPLETE`
 **Широкий production-запуск:** `BLOCKED_FOR_BROAD_PRODUCTION`
 
@@ -24,7 +24,7 @@
 |---|---|---|
 | `AGENTS.md` | `767d38e76d04209e609bbe7173a2c448cfc5fa00` | Engineering policy |
 | `backend/app/api/v1/router.py` | `292dd48b37b77cc408db9f0c215ad7a5007e6cd0` | Реальная composition маршрутов |
-| `backend/app/models/entities.py` | `a8261ef4e2485817ca975f0491fdbac2fcd55b12` | Базовые entities/enums |
+| `backend/app/models/entities.py` | `05528844a1ec04921e04d62858ef67b77779505c` | Базовые entities/enums |
 | `backend/app/main.py` | `7f778fc54e7ff0a05b512791a8841615b24e33c1` | API lifespan + middleware chain |
 | `backend/app/services/seed_demo.py` | `c62ba920130a7ba7f6e2bd0a54e63feadce5c6cd` | Явный development seed |
 | `backend/scripts/verify_orm_schema_parity.py` | `ba08d0681df301f446b3adbf811ad9367eeb24b9` | Schema/ORM parity |
@@ -41,7 +41,7 @@
 | `apps/mobile/components/screens/OsBudgetHubScreen.tsx` | `4e0e8267d68b600cf0d8bdf716a4c8eddaa3bcbd` | Budget hub |
 | `apps/mobile/constants/budgetTabs.ts` | `d02c05560176535e130d76960c2b67691bcbb3b7` | Budget tab canon |
 | `.cursor/rules/renova-design-system.mdc` | `2f48e46f5b348b8cbc3a370615a5a5e93d93421f` | UI rules |
-| `package.json` | `0c7da3bba665884da86f9fe0b0cbe84d7f175485` | Root commands/test entrypoints (+5 sessionFence tests wired into mobile:test) |
+| `package.json` | `fbeaf8f8cf9c08a8895cde33bcc1cc8126a6791f` | Root commands/test entrypoints (+5 sessionFence tests wired into mobile:test) |
 | `.github/workflows/local-runtime-integrity.yml` | `63831ec7622794843ca724319178e2de18cdb971` | Local runtime proof |
 | `backend/alembic/versions/w16legacystatus01_legacy_status_enum_parity.py` | `d2137f2b87c1ac6f679093331bd034aff17c8188` | Legacy status repair |
 | `backend/alembic/versions/w17chatmessageenum01_chat_message_enum_parity.py` | `0537268c85e26b7a607d36f967a3402b8bba53c4` | Chat enum repair |

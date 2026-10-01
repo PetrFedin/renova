@@ -11,7 +11,7 @@ This is a product AND external-operations decision. Architecture and a green bou
 
 | Fact | Current value |
 |---|---|
-| Alembic head | `x04roomaddreq01` |
+| Alembic head | `x05teaminviteinvitee01` |
 | Mobile source version | `0.3.7` |
 | iOS buildNumber / Android versionCode | `3` / `3` |
 | Backend image | `ghcr.io/petrfedin/renova-api:sha-${GIT_SHA}` |
