@@ -14,6 +14,8 @@ const types = readFileSync(join(root, 'lib/domain/osTypes.ts'), 'utf8');
 must(types.includes("IssueFixed"), 'osTypes IssueFixed');
 must(contr.includes('isOfflineQueued') && contr.includes('Исправлено'), 'contractor offline+fixed');
 must(contr.includes('заказчик получит уведомление'), 'contractor honesty alert');
-must(cust.includes('isOfflineQueued') && cust.includes('Подтвердить исправление'), 'customer offline+confirm');
+// «Подтвердить исправление» вынесено в lib/domain/issueControlActions (REP-07/08)
+const actions = readFileSync(join(root, 'lib/domain/issueControlActions.ts'), 'utf8');
+must(cust.includes('isOfflineQueued') && cust.includes('customerIssueActions') && actions.includes('Подтвердить исправление'), 'customer offline+confirm');
 
 console.log('issueFixedNotify.w149.test.ts OK');

@@ -112,7 +112,9 @@ if (
 }
 
 const cust = src('components/screens/control/CustomerControlView.tsx');
-if (!cust.includes("'Подтвердить исправление?'") && !cust.includes("'Закрыть замечание?'")) {
+const issueActions = src('lib/domain/issueControlActions.ts');
+// Заголовки подтверждения вынесены в issueControlActions (REP-07/08): экран обязан показывать их перед переходом.
+if (!cust.includes('action.confirmTitle') || !issueActions.includes("'Подтвердить исправление?'") || !issueActions.includes("'Закрыть замечание?'")) {
   throw new Error('customer control pre-confirm');
 }
 
