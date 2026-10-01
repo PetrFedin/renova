@@ -1,79 +1,128 @@
-# Renova — Production Readiness
+# Renova — готовность к production
 
-**Broad production launch:** **BLOCKED_FOR_BROAD_PRODUCTION**
-**Observed on:** 2026-09-08. **Audited product SHA:** `95dd4a8e117289df11e1300891490768c22f585f`.
-**Machine-readable source:** `docs/production-readiness-evidence.json`.
-**Full product audit:** `docs/technical-spec/PRODUCT-COMPLETENESS-AUDIT-2026-09-08.md`.
+**Решение о широком запуске: BLOCKED_FOR_BROAD_PRODUCTION.**
+**Ревизия документа:** 2026-10-01, исходники на SHA `b17ac2c72b9cb412fa8712b4a8e903a32450e1c5` (main) плюс последующие коммиты релизной подготовки.
+**Машиночитаемый источник:** `docs/production-readiness-evidence.json` (проверяется `scripts/production_readiness.py`).
+**Полный аудит продукта:** `docs/technical-spec/PRODUCT-COMPLETENESS-AUDIT-2026-09-08.md`.
+**Релиз и откат:** `docs/RELEASE-RUNBOOK.md`. **Бэкапы:** `docs/BACKUP-POLICY.md`. **Сквозной smoke:** `scripts/release-smoke.py`.
 
-This is a product AND external-operations decision. Architecture and a green bounded PR do not make every user outcome production-ready. This audit records source-confirmed defects; it does not assert new full runtime/device/external qualification.
+Правило этого документа: «готово» пишется только там, где это подтверждено кодом или выполненной проверкой. Зелёный CI репозитория не доказывает развёрнутую среду, живые ключи провайдеров, нагрузочную ёмкость, восстановление из реального бэкапа, юридическое одобрение или независимый пентест. Всё, что требует внешнего действия, помечено владельцем и ждёт доказательства, а не вывода из CI.
 
-## 1. Repository facts
+## 1. Факты репозитория
 
 | Fact | Current value |
 |---|---|
-| Alembic head | `x06coinvoicelink01` |
+| Alembic head | `x08schemadrift01` |
 | Mobile source version | `0.3.7` |
 | iOS buildNumber / Android versionCode | `3` / `3` |
+| Bundle id (iOS) | `ru.renova.app` |
 | Backend image | `ghcr.io/petrfedin/renova-api:sha-${GIT_SHA}` |
-| Runtime | `renova-api` + `renova-worker`, one immutable image |
+| Runtime | `renova-api` + `renova-worker`, один неизменяемый образ |
 
-CI supplies the evaluated SHA. `scripts/production_readiness.py` derives migration/mobile facts and live main/blocker states. A source build number is not an EAS/TestFlight/store release.
+Номер сборки в исходниках не равен релизу в EAS, TestFlight или сторе.
 
-## 2. Merged, bounded implementation evidence
+## 2. Что готово (подтверждено в репозитории)
 
-- #288 canonical local runtime/agent workflow, merge `7bd1dceb273a7e1f26ddf2333e9199d8d498ae54`.
-- #290 isolated logical restore, run `33344103969`, merge `748ed5f22db0bfe18001f276ec521d0198d4dc57`; not managed production backup/PITR.
-- #270 chat read cursor; #277 invitation outbox; #292 incoming message atomicity, merge `9d3f96bad6138aef7f7db32407162fe07897572d`. Equal timestamps #271 and other chat business actions are separate.
-- #295 warranty creation, qualified head `22dd1f2d379f3d2f26278b58b03a1ca4f022da3c`, merge `9fed24c1b59d767daef4d6395fd01cb303c838e3`; #266 closed.
-- #297 manual payment evidence, qualified head `7983b0dfecc3dd799ec8e498680bdfaa0141fc4b`, merge `389f35d819dbf0b81d2e821da851fa9a647705d2`; #265 closed. One confirmed Payment→Expense in that bounded flow is already implemented/qualified.
-- #309 explicit work start; #310 quantity-aware material supply, w20; #311 price provenance/quarantine, merge `85f8d279d393b42bae5d76fea333f9d13c8ae0b5`, w21.
-- #312 participant foundation, merge `38657631348ea7bbe9a22cd5d631cb4ddba0250e`, w22; not complete multi-contractor support.
-- #313 participant management/atomic lead conversion is MERGED, not still a candidate. Qualified head `ae8a0750bb6cc788c9e93a1f85a7355f3b180380`, full CI `34262996030`, participant PostgreSQL `34262996112`, merge `65ddb7e59e6bcb23473b1017686cd3adbd882187`. 35 focused tests included genuine two-session PostgreSQL races; not all fixtures were PostgreSQL-only.
-- #314 quoted-lead wizard recovery is MERGED. Qualified head `6e88a1d15883964b1c3f4f0a0f203fb6ef2f0817`, CI `34264654118`, merge `95dd4a8e117289df11e1300891490768c22f585f`. General Playwright passed; a new dedicated native wizard scenario was not proved.
-
-Previous implementation runs are retained historical evidence for their exact code. An updated candidate requires fresh applicable qualification. Neither a master-document rewrite nor a static inventory upgrades implementation evidence.
-
-## 3. Source-confirmed product blockers
-
-| Issue | Priority | Remaining user-result gap |
+| Область | Что именно подтверждено | Чем |
 |---|---|---|
-| #316 | P0 | Queued chat invoice/task and direct WorkOrder create lack a complete first-attempt idempotency/atomicity chain; lost-response retry can duplicate operations. |
-| #315 | P1 launch-blocking | Global context/token/queue work is not fenced across session changes; queue owner may differ from current Bearer. Server ACL still applies; no universal bypass claimed. |
-| #317 | P1 | Normalized ApiError0 prevents intended enqueue in some producers; layered cache can mislabel stale results fresh. |
-| #318 | P1 | Monthly plan buckets can total125%; portfolio category actuals are not independent measured facts. This is not an asserted corruption of server spend. |
-| #319 | P1 | Project purge/empty-trash does not cover the new participant/evidence graph and explicit retention outcome. |
-| #320 | P1 | Reachable chat PDF action lacks native file/save/share completion. |
-| #300 | P1 | Scoped independent-contractor domain/mobile/payee/document/chat journey remains incomplete despite foundation+management. |
-| #305 | P1 correctness subset | Commit success can be shown as failure after refresh; complete role/error/recovery/accessibility interaction is unfinished. |
+| Fail-closed backend | Пустой `ENVIRONMENT` трактуется как production. В staging/production запрещены SQLite, `ALLOW_CREATE_ALL`, `ALLOW_DEMO_SEED`, `AUTH_ALLOW_HEADER_USER_ID`, не-https и localhost `PUBLIC_BASE_URL`, `SECRET_KEY` короче 32 байт или из списка слабых. Обязательны `REDIS_URL`, полный Twilio, непустой `ADMIN_USER_IDS` без дублей. | `backend/app/core/environment.py`, `runtime_policy.py` |
+| Observability в production | Старт падает без `SENTRY_DSN`, без `OTEL_EXPORTER_OTLP_ENDPOINT` (не localhost, не insecure), при `LOG_JSON=false`. | `backend/app/core/observability.py` |
+| Rate limit | В staging/production квота хранится в Redis; при недоступном Redis API отвечает 503 `rate_limit_backend_unavailable`, а не пропускает трафик. | `backend/app/core/rate_limit.py`, `middleware/rate_limit.py` |
+| Хранилище | Частичная S3-конфигурация — ошибка, а не тихий переход на диск. При настроенном S3 запись не откатывается на локальный диск. | `backend/app/services/storage_service.py` |
+| Провайдеры | `simulated` запрещён в staging/production; `real` без реквизитов — ошибка старта; `off` честно сообщает недоступность. | `backend/app/services/providers/registry.py` |
+| Образ | Базовый образ закреплён по digest, процесс не root (uid 10001), `poetry check --lock`, `pip check`, HEALTHCHECK, одна роль на процесс (`renova-api`/`renova-worker`). | `backend/Dockerfile`, `backend/docker/*` |
+| Health/readiness | `/health` отдаёт среду, версию, SHA и digest; `/ready` проверяет БД и общий Redis. Сквозной контракт API+worker проверяется внешним скриптом staging. | `backend/app/main.py`, `scripts/external-staging-release-smoke.sh` |
+| Шаблоны окружения | `backend/.env.production.example` приведён к обязательному контракту (раньше не содержал Redis, Twilio, `ADMIN_USER_IDS`, OTLP, S3, CORS и поэтому старт по нему падал). Недостающие ключи добавлены в `backend/.env.example`. | 2026-10-01 |
+| Мобильный релизный контракт | `eas-cli`, Node, образы сборки закреплены; прогон `check-mobile-release-integrity.mjs` — OK. Bundle id, русская локаль, плагин уведомлений проверяются. Строки приватности iOS для камеры и фото заданы на русском. | `scripts/check-mobile-release-integrity.mjs`, `assert-expo-public-config.mjs` |
+| Тесты пути | Сквозной регресс жизненного цикла в CI отдельным job (`journey-regression`), ratchet дрейфа схемы, calc-engine, worker heartbeat — подключены в CI 2026-10-01. | `.github/workflows/ci.yml`, `worker-runtime-integrity.yml` |
+| Smoke критического пути | `scripts/release-smoke.py`: 21/21 (read) на живом стеке `127.0.0.1:8100`; 59/59 (read+write) на одноразовом стеке со SQLite. | прогон 2026-10-01 |
+| Логическое восстановление | Дамп → изоляционный restore → паритет схемы → `/ready`. Это CI-доказательство процедуры, не production-бэкап. | #290, `docs/DISASTER-RECOVERY.md` |
+| Контроли безопасности репозитория | CodeQL, gitleaks, dependency/контейнерные гейты включены. | `docs/production-readiness-evidence.json` |
 
-These findings require tests of real consumers and failure boundaries. Existing #265/#266/#299 must not be reopened merely because unrelated operations have defects. Full audit G01–G10 defines the remaining end-to-end acceptance target without reducing scope to an MVP.
+## 3. Что блокирует релиз
 
-## 4. External environment and providers
+### 3.1 Внешние зависимости (нужны действия вне репозитория)
 
-Persistent external staging and production: **NOT EXTERNALLY VERIFIED**. Absence of retained evidence is not proof the environment literally does not exist. #233 requires exact deployed SHA/digest, TLS/DNS, managed dependencies and promotion evidence.
+Роли ниже — это кого назначить, а не имена. Конкретных людей назначает владелец продукта.
 
-Live YooKassa, FNS/НПД, Контур, SMS and push delivery/liveness/recovery are not proved by repository CI. S3 ambiguous-write/orphan recovery remains #238. Goskey is explicitly unavailable in the inspected code; document metadata classification is not content OCR. Planned optional-provider/release-scope decisions must be explicit; disabled capability is not completed functionality.
+| # | Блокер | Что нужно получить | Владелец (роль) | Связанные задачи |
+|---|---|---|---|---|
+| E1 | **НПД / «Мой налог»** | Реквизиты OAuth-клиента ФНС (client id/secret, redirect URI, token URL), подтверждение контракта обновления токена. Автообновление не поддержано (`automatic_refresh_supported=false`). Пока не получено — `MOY_NALOG_ENABLED=false`, привязка отвечает 501. Проверку живого статуса НПД и фискальные чеки нужно решить так же. | Владелец продукта + бэкенд | #238 |
+| E2 | **Платежи (ЮKassa)** | Боевые `YOOKASSA_SHOP_ID/SECRET/WEBHOOK_SECRET`, зарегистрированный webhook `{PUBLIC_BASE_URL}/api/v1/subscription/webhook`, тестовый платёж и возврат в реальном магазине. Без них checkout отвечает 503. | Владелец продукта (договор с ЮKassa) + бэкенд | #238 |
+| E3 | **SMS** | Рабочая учётная запись Twilio (SID/token/from) с подтверждённой доставкой на российские номера; в production без неё сервис не стартует. Проверить, что отправитель допустим для РФ. | Владелец продукта + DevOps | — |
+| E4 | **Push-ключи** | Для iOS — APNs-ключ, привязанный к `ru.renova.app` в учётке Apple (через EAS credentials). Для Android — FCM-ключ сервис-аккаунта. `extra.eas.projectId` нужен для получения Expo push token. Живая доставка и квитанции не проверены. | Мобайл + владелец аккаунтов Apple/Google | evidence: push `LIVE_PROVIDER_LIVENESS_UNVERIFIED` |
+| E5 | **Сторы** | Apple Developer Program и запись приложения в App Store Connect (нужен `ascAppId` для `submit`); Google Play Console и пакет Android; URL политики конфиденциальности и условий; анкеты «App Privacy»/«Data safety»; скриншоты, описание, демо-аккаунт и заметки для ревью. | Владелец продукта + юрист (тексты) + мобайл | #241 |
+| E6 | **Среда** | Выбранный хостинг (в репозитории нет определения облака), домен и TLS, управляемые PostgreSQL (с PITR), Redis, S3-хранилище, два процесса из одного digest. Постоянный staging с точным digest не доказан. | DevOps | #233 |
+| E7 | **Бэкапы и DR** | Управляемый PostgreSQL с бэкапами и PITR, шифрование, хранение 35+ дней, реальный restore drill с замером RPO/RTO. См. `docs/BACKUP-POLICY.md`. | DevOps | #234 |
+| E8 | **Алерты** | Sentry-проект и OTLP-коллектор; сквозная проверка «ошибка → алерт → доставка дежурному → подтверждение». | DevOps + дежурный | #235 |
+| E9 | **Защита main** | Включённая защита ветки и обязательные проверки (сейчас пуши в main проходят по bypass). | Владелец репозитория | #247 |
+| E10 | **Ёмкость** | Реальный нагрузочный прогон с аутентификацией против staging. | DevOps + бэкенд | #236 |
+| E11 | **Безопасность** | Независимый пентест, ревью привилегированного доступа, ротация ключей провайдеров. | Владелец продукта | #237, #256, #257 |
+| E12 | **Юридическое и пилот** | Политика конфиденциальности, согласия на обработку ПДн, пилот на реальных пользователях, поддержка. | Юрист + владелец продукта | #241 |
+| E13 | **Контур (e-sign)** | Решение, входит ли внешняя подпись в релиз. Госключ не реализован (`GOSKEY_MODE=off`). Если Контур входит — ключ и боевая проверка webhook. | Владелец продукта | #238 |
 
-## 5. Capacity, DR and observability
+### 3.2 Конфигурация релиза: найдено и не исправлено в репозитории
 
-Candidate targets: HTTP failure rate<1%, p95<1000ms/p99<2500ms; WebSocket delivery failure<1%, p95<1000ms/p99<2500ms. Real authenticated smoke/ramp/spike/soak evidence remains #236; no measured production capacity asserted.
+Проверено 2026-10-01. Это не внешние зависимости, но правка требует решения владельца (идентификаторы публикуются необратимо) или изменения кода другими исполнителями.
 
-Repository logical restore is bounded CI evidence (#290). Managed production backup/PITR remains #234. Targets RPO≤15min, RTO≤60min, PITR window≥7days, retention≥35days are not measured achievements.
+| # | Находка | Последствие | Что сделать | Владелец |
+|---|---|---|---|---|
+| C1 | `eas.json`: production `EXPO_PUBLIC_API_URL=https://api.renova.example.com`, preview/testflight/staging `https://api-staging.example.com` — заглушки. | Сборка уйдёт на несуществующий хост. | Подставить реальные URL после E6. | DevOps + мобайл |
+| C2 | `app.json`: нет `android.package`. | Нельзя собрать и опубликовать Android; идентификатор публикуется навсегда. | Выбрать id (вероятно `ru.renova.app`, как в iOS) и записать. | Владелец продукта |
+| C3 | `app.json`: нет `owner` и `extra.eas.projectId`. | Нет привязки к проекту EAS; `getExpoPushTokenAsync` без projectId не выдаст токен. | `eas init` в аккаунте владельца, закоммитить projectId. | Мобайл |
+| C4 | `eas.json`: `submit.production.ios` пуст (нужен `ascAppId`), для Android нет ключа сервис-аккаунта (используется internal-трек). | Автоотправка в сторы невозможна. | После E5. | Мобайл |
+| C5 | Нет `ITSAppUsesNonExemptEncryption` в `ios.infoPlist`. | Вопрос об экспортном шифровании при каждой сборке в App Store Connect. | Решение владельца по декларации (приложение использует только стандартный HTTPS). | Владелец продукта |
+| C6 | Нет плагина `expo-camera` и разрешения `CAMERA` в `app.json`, при этом камера используется (`scan-receipt`, `team-qr`); строка `NSCameraUsageDescription` задана вручную. | Нужно проверить итоговый манифест Android после prebuild; возможна лишняя `RECORD_AUDIO` от библиотеки. | Проверить собранный манифест; при необходимости `blockedPermissions`. | Мобайл |
+| C7 | Краш-репортинг мобильного приложения не поставляется: `extra.sentryEnabled=false`, зависимости `@sentry/react-native` нет, `sentryInit.ts` без неё ничего не делает. | В production нет данных о падениях клиента. | Добавить зависимость и DSN либо явно принять риск на пилот. | Мобайл |
+| C8 | OTA-обновлений нет: в `eas.json` заданы каналы, но `expo-updates`, `runtimeVersion` и `updates.url` отсутствуют. | Любое исправление клиента = новая сборка и ревью стора. | Принять как есть или добавить OTA осознанно. | Мобайл |
+| C9 | Backend в production не требует S3: если все `S3_*` пусты, API молча пишет файлы на локальный диск контейнера. | Потеря документов и фото при пересоздании контейнера. | Требование S3 в staging/production на уровне кода (бэкенд-логика, чужая правка); пока — проверка в чек-листе runbook. | Бэкенд |
+| C10 | CORS: `CORS_ALLOWED_ORIGINS=*` допускается и в production (шаблон лишь запрещает это словами). | Нет защиты от ошибки конфигурации; риск ограничен тем, что при `*` куки/credentials не разрешаются. | Добавить guard в `environment.py`. | Бэкенд |
+| C11 | За балансировщиком IP клиента определяется как адрес балансировщика, пока у процесса не задан `FORWARDED_ALLOW_IPS`; `renova-api` запускает uvicorn без явных флагов прокси. | Анонимный rate limit и лимиты по IP схлопываются в один ключ. | Задать `FORWARDED_ALLOW_IPS` у API-процесса (в runbook). | DevOps |
+| C12 | Нет определения production-развёртывания: `docker-compose.yml` помечен как только для разработки, `docker-compose.staging.yml` поднимает только Postgres и Redis. | Нечем воспроизводимо развернуть. | Определить платформу (E6) и описать деплой. | DevOps |
+| C13 | Скрипты бэкапа в `scripts/` (`backup.sh`, `backup-s3.sh`, `cron-backup.sh`, `pitr-backup.sh`) не являются рабочей процедурой: `backup.sh` пишет дамп в stdout, `backup-s3.sh` при сбое `aws` молча копирует файл в `./backups`, `pitr-backup.sh` дописывает строку в локальный `postgresql.conf`. | Ложное ощущение, что бэкап есть. | Не использовать в production (см. `docs/BACKUP-POLICY.md`). | DevOps |
+| C14 | `docs/RENOVA-TECHNICAL-SPECIFICATION.md` объявляет schema head `x06coinvoicelink01`, граф Alembic уже на `x08schemadrift01`. `scripts/technicalSpecAlembicContract.test.mjs` падает. Спека содержит blob-SHA отслеживаемых файлов и здесь не правилась. | Красный gate `Renova technical specification integrity` на main. | Синхронизировать спеку тем, кто вносит миграции. | Автор миграции x07/x08 |
+| C15 | Откат схемы: `downgrade()` есть в 61 из 62 ревизий, но цепочка downgrade в CI проверяется только для календаря и push-квитанций. | Откат миграции вниз нельзя считать проверенным. | Руководствоваться runbook: откат приложения без отката схемы, схема — вперёд-исправлением или восстановлением. | DevOps |
 
-External ingestion→alert→delivery→ACK→recovery remains #235. Old draft #283 is a probe implementation, not evidence of actual alert delivery. Mobile crash reporting and operator response also require retained evidence.
+### 3.3 Продуктовые блокеры по аудиту 2026-09-08 (не перепроверялись 2026-10-01)
 
-## 6. Security and release
+Ниже статусы по `docs/production-readiness-evidence.json`. С 8 сентября в main вошло много исправлений (см. `CHANGELOG.md`); часть задач могла быть закрыта, но без перепроверки их нельзя считать закрытыми. Перед решением о запуске список надо актуализировать по открытым issue.
 
-Repository CodeQL/dependency/secret/container controls exist. #247 enforced main protection, #256 privileged-access review, #257 independent penetration/abuse test and #237 external security/credential acceptance remain open. Do not describe controls as nonexistent, or externally verified from CI.
+| Issue | Приоритет | Суть |
+|---|---|---|
+| #316 | P0 | Очередь чата (счёт/задача) и прямое создание наряда без полной идемпотентности первой попытки; повтор после потерянного ответа может задвоить операцию. |
+| #315 | P1 | Контекст, токен и очередь не изолированы между сменами сессии. |
+| #317 | P1 | Нормализованные ошибки транспорта мешают постановке в очередь; слоёный кэш может подписать устаревшее как свежее. |
+| #318 | P1 | Месячные корзины плана могут давать 125%; категории портфеля не независимые факты. |
+| #319 | P1 | Удаление проекта не покрывает граф участников/доказательств и политику хранения. |
+| #320 | P1 | PDF из чата не доводится до нативного сохранения/отправки. |
+| #300 | P1 | Полный сценарий независимого подрядчика не завершён. |
+| #305 | P1 | Успех коммита может показываться как ошибка после обновления; роли/ошибки/доступность не завершены. |
 
-Canonical mobile typecheck currently accepts named JSX diagnostics; dependency policy has bounded advisories. Green means those configured gates passed, not clean raw tsc/zero vulnerabilities. `docs/js-dependency-security.md` and source baselines are the policy reference; no new risk acceptance is granted by this audit.
+## 4. Чек-лист перед релизом
 
-Actual EAS/TestFlight/Android release remains NOT EXTERNALLY VERIFIED without exact build IDs and retained delivery evidence. Pilot/telemetry/legal/privacy/support operations remain #241.
+Каждый пункт отмечается только при наличии сохранённого доказательства.
 
-## 7. Ordered continuation
+- [ ] E1–E13 закрыты или явно исключены из объёма релиза решением владельца (запись в этом файле).
+- [ ] C1–C8 исправлены; C9–C11 закрыты кодом или ручной проверкой по runbook.
+- [ ] Список блокеров §3.3 актуализирован по открытым issue; нет открытых P0.
+- [ ] CI зелёный на release-коммите, включая `Renova technical specification integrity` (после C14).
+- [ ] Образ собран из этого коммита; digest записан; `RENOVA_IMAGE_DIGEST` задан для API и worker.
+- [ ] `alembic upgrade head` выполнен one-off задачей тем же образом; `python -m app.core.runtime_preflight` — OK.
+- [ ] `/health` и `/ready` на реальном HTTPS-адресе показывают нужные SHA/digest; `release-smoke.py` (read) зелёный; write-сценарий прогнан на одноразовой среде.
+- [ ] Workflow `External staging release` зелёный на этом SHA и digest.
+- [ ] Бэкап проверен восстановлением на изолированную среду (E7), результат с RPO/RTO сохранён.
+- [ ] Алерт доставлен дежурному и подтверждён (E8).
+- [ ] Мобильная сборка из `production`-профиля с реальным API URL; установлена на устройство; пройден smoke регистрации по SMS, создание проекта, push.
+- [ ] Тексты стора, политика конфиденциальности, анкеты приватности согласованы юристом.
 
-Product: #316 + #315 → safe offline/error/cache #317 → analytics/lifecycle/native/interaction #318/#319/#320/#305 → full scoped #300. Provider recovery #238 is a separate functional stream.
+## 5. Порядок работ
 
-In parallel: main protection #247 and external staging #233; then real alert/DR/capacity/security/pilot evidence with their own dependencies. Do not impose a fictitious single serial chain or a launch ETA without resource/external access evidence.
+1. Параллельно: E6 (среда) + E9 (защита main) + получение учётных записей E5 и ключей E1–E4.
+2. После E6: C1, C12, C11, настройка Sentry/OTLP (E8), бэкапы (E7).
+3. Код (бэкенд и мобайл): C9, C10, C14, затем актуализация §3.3.
+4. Staging с точным digest → `External staging release` → restore drill → алерт-drill → нагрузка (E10) → пилот (E12).
+5. Решение о запуске принимается только когда весь список §4 отмечен на одном релизном кандидате. Срок не называется: он зависит от внешних доступов.
 
-The next admissible production decision requires the complete declared product result and external operational gates on one release candidate. Current decision remains **BLOCKED_FOR_BROAD_PRODUCTION**.
+## 6. Граница истины
+
+Эта страница не заменяет `docs/production-readiness-evidence.json`. Там внешние статусы остаются `NOT_EXTERNALLY_VERIFIED`, пока не появится сохранённое доказательство (workflow run, digest, build id, отчёт drill).
