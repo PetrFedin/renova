@@ -295,7 +295,7 @@ Receipt QR scan → receipt evidence/reconcile flow; факт нельзя сч�
 
 # 6. Selections screen
 
-**VERIFIED. Source:** `OsSelectionsScreen.tsx` blob `f2e220d292b717f3d903c64dc265337b00a02953`.
+**VERIFIED. Source:** `OsSelectionsScreen.tsx` blob `f7caf79aa7b7ae00f7a2cef17628c602bb999354`.
 
 Business flow:
 

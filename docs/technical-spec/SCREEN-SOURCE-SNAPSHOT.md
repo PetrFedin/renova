@@ -9,8 +9,8 @@
 | `apps/mobile/components/screens/OsRepairHubScreen.tsx` | `62060329592176b8d42591b92fe197aaa52e59d7` | Repair hub |
 | `apps/mobile/components/screens/OsBudgetHubScreen.tsx` | `4e0e8267d68b600cf0d8bdf716a4c8eddaa3bcbd` | Budget hub |
 | `apps/mobile/components/screens/OsMaterialsScreen.tsx` | `ecd2bfed4ee90389987d3833eb30379ae9400fab` | Materials/procurement hub + supply-aware next action |
-| `apps/mobile/components/renova/MaterialPickList.tsx` | `c56a42a935f84e30f04a29fe1827b7053d407574` | material supply editor + approval + truthful supplier-price refresh UX; durable price provenance is governed by `MATERIAL-PRICE-TRUTH-CONTRACT.md` |
-| `apps/mobile/components/screens/OsSelectionsScreen.tsx` | `f2e220d292b717f3d903c64dc265337b00a02953` | Selections |
+| `apps/mobile/components/renova/MaterialPickList.tsx` | `e31c8afd50fc7bbebeae08861c0234a50b33fd62` | material supply editor + approval + truthful supplier-price refresh UX; durable price provenance is governed by `MATERIAL-PRICE-TRUTH-CONTRACT.md` |
+| `apps/mobile/components/screens/OsSelectionsScreen.tsx` | `f7caf79aa7b7ae00f7a2cef17628c602bb999354` | Selections |
 | `apps/mobile/components/screens/OsControlScreen.tsx` | `299b29fe2571900663e290c35bc0096854b8eb7f` | role/access-mode control router |
 | `apps/mobile/components/screens/control/CustomerControlView.tsx` | `1a26c543d050225e8ae09179313fc552b9fc00af` | customer acceptance/QC/warranty view |
 | `apps/mobile/components/screens/control/ContractorControlView.tsx` | `6c5cd6b869f38502caf180b2e77b2dfa598958dd` | contractor acceptance/QC view |

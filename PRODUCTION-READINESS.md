@@ -12,7 +12,7 @@
 
 | Fact | Current value |
 |---|---|
-| Alembic head | `x08schemadrift01` |
+| Alembic head | `x09selectionqty01` |
 | Mobile source version | `0.3.7` |
 | iOS buildNumber / Android versionCode | `3` / `3` |
 | Bundle id (iOS) | `ru.renova.app` |
@@ -80,7 +80,7 @@
 | C11 | За балансировщиком IP клиента определяется как адрес балансировщика, пока у процесса не задан `FORWARDED_ALLOW_IPS`; `renova-api` запускает uvicorn без явных флагов прокси. | Анонимный rate limit и лимиты по IP схлопываются в один ключ. | Задать `FORWARDED_ALLOW_IPS` у API-процесса (в runbook). | DevOps |
 | C12 | Нет определения production-развёртывания: `docker-compose.yml` помечен как только для разработки, `docker-compose.staging.yml` поднимает только Postgres и Redis. | Нечем воспроизводимо развернуть. | Определить платформу (E6) и описать деплой. | DevOps |
 | C13 | Скрипты бэкапа в `scripts/` (`backup.sh`, `backup-s3.sh`, `cron-backup.sh`, `pitr-backup.sh`) не являются рабочей процедурой: `backup.sh` пишет дамп в stdout, `backup-s3.sh` при сбое `aws` молча копирует файл в `./backups`, `pitr-backup.sh` дописывает строку в локальный `postgresql.conf`. | Ложное ощущение, что бэкап есть. | Не использовать в production (см. `docs/BACKUP-POLICY.md`). | DevOps |
-| C14 | `docs/RENOVA-TECHNICAL-SPECIFICATION.md` объявляет schema head `x06coinvoicelink01`, граф Alembic уже на `x08schemadrift01`. `scripts/technicalSpecAlembicContract.test.mjs` падает. Спека содержит blob-SHA отслеживаемых файлов и здесь не правилась. | Красный gate `Renova technical specification integrity` на main. | Синхронизировать спеку тем, кто вносит миграции. | Автор миграции x07/x08 |
+| C14 | ~~Спека не синхронизирована со схемой~~ — синхронизирована (schema head `x09selectionqty01`), контракты зелёные. | — | Поддерживать при каждой миграции (`sync_spec`). | Закрыто |
 | C15 | Откат схемы: `downgrade()` есть в 61 из 62 ревизий, но цепочка downgrade в CI проверяется только для календаря и push-квитанций. | Откат миграции вниз нельзя считать проверенным. | Руководствоваться runbook: откат приложения без отката схемы, схема — вперёд-исправлением или восстановлением. | DevOps |
 
 ### 3.3 Продуктовые блокеры по аудиту 2026-09-08 (не перепроверялись 2026-10-01)
