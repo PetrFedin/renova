@@ -6,6 +6,7 @@ import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import type { Stage } from '@/lib/api';
 import { STAGE_STATUS_ICON } from '@/constants/labels';
 import { pushStageDetail } from '@/lib/navigation';
+import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
 
 export function RepairProcessTimeline({ stages }: { stages: Stage[] }) {
   const pathname = usePathname();
@@ -19,7 +20,7 @@ export function RepairProcessTimeline({ stages }: { stages: Stage[] }) {
           <Text style={s.num}>{STAGE_STATUS_ICON[st.status] || '·'}</Text>
           <View style={{ flex: 1 }}>
             <Text style={s.name}>{st.name}</Text>
-            <Text style={s.meta}>{st.planned_start && st.planned_end ? `${st.planned_start} → ${st.planned_end}` : 'Даты не заданы'}{st.room_ids?.length ? ` · ${st.room_ids.length} комн.` : ''}</Text>
+            <Text style={s.meta}>{st.planned_start && st.planned_end ? `${formatScheduleDayFull(st.planned_start)} → ${formatScheduleDayFull(st.planned_end)}` : 'Даты не заданы'}{st.room_ids?.length ? ` · ${st.room_ids.length} комн.` : ''}</Text>
           </View>
           <Text style={s.pay}>{formatRub(st.payment_amount)}</Text>
         </Pressable>

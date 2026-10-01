@@ -47,3 +47,18 @@ export function formatScheduleWorkSpan(
   if (start && end) return `${a} — ${b}`;
   return start ? `с ${a}` : `до ${b}`;
 }
+
+/**
+ * Момент события для ленты: «02.10.2026 00:36» в часовом поясе пользователя.
+ * Сервер отдаёт время без пояса (UTC), поэтому без суффикса считаем его UTC.
+ */
+export function formatEventDateTime(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const normalized = iso.replace(' ', 'T');
+  const hasZone = /(Z|[+-]\d{2}:?\d{2})$/.test(normalized);
+  const d = new Date(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(normalized) && !hasZone ? `${normalized}Z` : normalized);
+  if (Number.isNaN(d.getTime())) return iso;
+  const date = d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const time = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  return `${date} ${time}`;
+}

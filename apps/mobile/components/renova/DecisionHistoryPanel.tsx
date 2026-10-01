@@ -16,6 +16,7 @@ import { pushOsNav } from '@/lib/pushOsNav';
 import { useRenova } from '@/lib/context/RenovaContext';
 import type { OsRole } from '@/constants/osSections';
 import { reportError } from '@/lib/reportError';
+import { formatEventDateTime } from '@/lib/formatScheduleDate';
 
 type Props = {
   userId: string;
@@ -109,7 +110,7 @@ export function DecisionHistoryPanel({
               {item.body ? <Text style={s.body} numberOfLines={2}>{item.body}</Text> : null}
               <Text style={s.meta}>
                 {item.actorHint ? `${item.actorHint} · ` : ''}
-                {item.at.slice(0, 16).replace('T', ' ')}
+                {formatEventDateTime(item.at)}
               </Text>
             </View>
           </Pressable>

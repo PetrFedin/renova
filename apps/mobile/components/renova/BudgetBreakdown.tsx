@@ -45,7 +45,7 @@ export function BudgetBreakdown({ userId, projectId }: { userId: string; project
       {lvl === 'detailed' ? (
         <Text style={s.sub}>Итого план: {formatRub(d.total_planned)} · бюджет проекта: {formatRub(d.budget_planned)}</Text>
       ) : null}
-      <Text style={s.sub}>Факт по статьям — с сервера (budget_spent). Список «Расходы» — unified без дублей.</Text>
+      <Text style={s.sub}>Факт по статьям считается по данным объекта. Список «Расходы» собран без дублей.</Text>
     </View>
   );
 }
