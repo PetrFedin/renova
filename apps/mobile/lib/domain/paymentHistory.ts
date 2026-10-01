@@ -1,6 +1,7 @@
 /** События счёта для timeline в PaymentDetailSheet */
 import type { Payment, PaymentEvent } from '@/lib/api';
 import { PAYMENT_STATUS_LABEL, PAYMENT_TYPE_LABEL } from '@/constants/labels';
+import { DISPUTE_RESPONSE_TITLE, disputeResponseKindOf } from '@/lib/domain/paymentDisputeResponse';
 
 export type PaymentHistoryEvent = {
   id: string;
@@ -28,9 +29,14 @@ const EVIDENCE_LABEL: Record<string, string> = {
   yookassa_refund: 'Основание: возврат ЮKassa',
   customer_dispute: 'Основание: заявление заказчика',
   customer_dispute_resolution: 'Основание: отзыв спора заказчиком',
+  contractor_dispute_comment: 'Ответ исполнителя на спор',
+  contractor_dispute_agree: 'Ответ исполнителя на спор',
+  contractor_dispute_contest: 'Ответ исполнителя на спор',
 };
 
 function canonicalTitle(event: PaymentEvent): string {
+  const responseKind = disputeResponseKindOf(event.evidence_type);
+  if (responseKind) return DISPUTE_RESPONSE_TITLE[responseKind];
   if (event.evidence_type === 'customer_dispute_resolution') {
     return event.new_status === 'confirmed'
       ? 'Спор отозван — оплата подтверждена'

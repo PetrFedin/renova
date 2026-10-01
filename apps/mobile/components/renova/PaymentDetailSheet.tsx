@@ -27,6 +27,13 @@ import { buildPaymentRequisites } from '@/lib/paymentRequisites';
 import { alertPaymentConfirmed } from '@/lib/estimatePayNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { reportCatch, reportError } from '@/lib/reportError';
+import { confirmAction, notifyError } from '@/lib/notify';
+import {
+  canRespondToDispute,
+  latestDisputeResponse,
+  validateDisputeResponseComment,
+  type DisputeResponseKind,
+} from '@/lib/domain/paymentDisputeResponse';
 
 export { PAYMENT_TYPE_LABEL, PAYMENT_STATUS_LABEL } from '@/constants/labels';
 
@@ -76,7 +83,7 @@ export function PaymentDetailSheet({
   onClose: () => void;
   onChanged?: () => void;
 }) {
-  const { user, activeProject } = useRenova();
+  const { user, activeProject, teamRole } = useRenova();
   const pathname = usePathname();
   const [step, setStep] = useState<PayStep>('info');
   const [transferAck, setTransferAck] = useState(false);
@@ -92,6 +99,9 @@ export function PaymentDetailSheet({
   const [disputeReason, setDisputeReason] = useState('');
   const [resolutionOpen, setResolutionOpen] = useState(false);
   const [resolutionNote, setResolutionNote] = useState('');
+  const [respondOpen, setRespondOpen] = useState(false);
+  const [respondKind, setRespondKind] = useState<DisputeResponseKind | null>(null);
+  const [respondText, setRespondText] = useState('');
   const [editOpen, setEditOpen] = useState(false);
   const [editAmount, setEditAmount] = useState('');
 
@@ -124,6 +134,9 @@ export function PaymentDetailSheet({
     setDisputeReason('');
     setResolutionOpen(false);
     setResolutionNote('');
+    setRespondOpen(false);
+    setRespondKind(null);
+    setRespondText('');
     setEditOpen(false);
     setEditAmount(payment.amount ? String(payment.amount) : '');
     void reloadReceiptFlag().catch(reportCatch('payment.receiptFlag'));
@@ -187,6 +200,8 @@ export function PaymentDetailSheet({
   const canEditInvoice = isContractor && !readOnly && payment.status === 'pending';
   const canDispute = isCustomer && !readOnly && ['confirmed', 'paid_unverified'].includes(payment.status);
   const canResolveDispute = isCustomer && !readOnly && payment.status === 'disputed';
+  const canRespondDispute = canRespondToDispute({ role, teamRole, readOnly, status: payment.status });
+  const disputeResponse = payment.status === 'disputed' ? latestDisputeResponse(payment.events) : null;
   const stageNeedsAcceptance = Boolean(stage && stage.status !== 'done');
   const statusLabel = PAYMENT_STATUS_LABEL[payment.status] || payment.status;
   const typeLabel = PAYMENT_TYPE_LABEL[payment.payment_type] || payment.payment_type;
@@ -587,6 +602,46 @@ export function PaymentDetailSheet({
     });
   };
 
+  const submitDisputeResponse = () => {
+    if (mutationRef.current || !respondKind) return;
+    const checked = validateDisputeResponseComment(respondText);
+    if (!checked.ok) {
+      notifyError('Ответ на спор', undefined, checked.message);
+      return;
+    }
+    const kind = respondKind;
+    void (async () => {
+      const confirmed = await confirmAction({
+        title: kind === 'agree' ? 'Согласиться вернуть оплату?' : kind === 'contest' ? 'Не согласиться со спором?' : 'Отправить комментарий?',
+        message: 'Заказчик получит уведомление и увидит ваш ответ в истории платежа. Статус оплаты от ответа не изменится.',
+        confirmLabel: 'Отправить',
+      });
+      if (!confirmed) return;
+      if (!beginMutation('dispute')) return;
+      try {
+        try {
+          await api.respondPaymentDispute(userId, projectId, payment.id, { response: kind, comment: checked.text });
+        } catch (error: unknown) {
+          reportError('payment.dispute.respond.mutation', error, { userId, projectId, paymentId: payment.id });
+          notifyError('Ответ не отправлен', error, 'Проверьте, что спор ещё открыт, и повторите.');
+          return;
+        }
+        const reconciled = await reconcileCommittedPayment('respond_dispute');
+        onClose();
+        showActionConfirm({
+          title: 'Ответ отправлен',
+          message: reconciled
+            ? 'Заказчик увидит ваш ответ в истории платежа.'
+            : 'Ответ сохранён. Связанные данные синхронизируются при следующем обновлении.',
+          primaryLabel: 'Понятно',
+          onPrimary: () => undefined,
+        });
+      } finally {
+        endMutation();
+      }
+    })();
+  };
+
   const runInvoiceMutation = async (
     kind: 'cancel' | 'edit' | 'received' | 'notReceived',
     operation: string,
@@ -739,6 +794,18 @@ export function PaymentDetailSheet({
       )}
       <PrimaryButton title="Закрыть" variant="ghost" onPress={closeSafely} disabled={busy} fullWidth />
     </>
+  ) : canRespondDispute ? (
+    <>
+      {respondOpen ? (
+        <>
+          <PrimaryButton title="Отправить ответ" variant="accent" onPress={submitDisputeResponse} loading={mutation === 'dispute'} disabled={!respondKind || (busy && mutation !== 'dispute')} fullWidth />
+          <PrimaryButton title="Отмена" variant="ghost" onPress={() => { setRespondOpen(false); setRespondKind(null); setRespondText(''); }} disabled={busy} fullWidth />
+        </>
+      ) : (
+        <PrimaryButton title={disputeResponse ? 'Изменить ответ на спор' : 'Ответить на спор'} variant="accent" onPress={() => setRespondOpen(true)} disabled={busy} fullWidth />
+      )}
+      <PrimaryButton title="Закрыть" variant="ghost" onPress={closeSafely} disabled={busy} fullWidth />
+    </>
   ) : canResumeCard ? (
     <>
       <PrimaryButton title="Продолжить оплату картой" variant="accent" onPress={() => { void payWithCard(); }} loading={mutation === 'card'} disabled={busy && mutation !== 'card'} fullWidth />
@@ -816,6 +883,17 @@ export function PaymentDetailSheet({
         </View>
       ) : null}
 
+      {canRespondDispute && respondOpen ? (
+        <View style={sheetContentStyles.section}>
+          <Text style={sheetContentStyles.fieldLabel}>Ваш ответ заказчику</Text>
+          <PrimaryButton title="Согласен вернуть оплату" variant={respondKind === 'agree' ? 'primary' : 'outline'} onPress={() => setRespondKind('agree')} disabled={busy} fullWidth />
+          <PrimaryButton title="Не согласен со спором" variant={respondKind === 'contest' ? 'primary' : 'outline'} onPress={() => setRespondKind('contest')} disabled={busy} fullWidth />
+          <PrimaryButton title="Только комментарий" variant={respondKind === 'comment' ? 'primary' : 'outline'} onPress={() => setRespondKind('comment')} disabled={busy} fullWidth />
+          <TextInput value={respondText} onChangeText={setRespondText} editable={!busy} multiline maxLength={1000} textAlignVertical="top" placeholder="Поясните позицию: что выполнено, что готовы исправить или вернуть" accessibilityLabel="Комментарий к ответу на спор" style={[sheetContentStyles.input, { minHeight: 96 }]} />
+          <Text style={formMetaText.caption}>{respondText.trim().length}/1000 · минимум 10 символов</Text>
+        </View>
+      ) : null}
+
       {editOpen && canEditInvoice ? (
         <View style={sheetContentStyles.section}>
           <Text style={sheetContentStyles.fieldLabel}>Новая сумма, ₽</Text>
@@ -841,6 +919,21 @@ export function PaymentDetailSheet({
       {payment.status === 'cancelled' ? <InfoBanner tone="info" title="Счёт отменён" message="Сумма не учитывается в оплатах этапа. При необходимости исполнитель выставит новый счёт." /> : null}
 
       {payment.status === 'disputed' ? <InfoBanner tone="warning" title="Оплата оспорена" message="Сумма не учитывается как подтверждённый факт бюджета до разрешения спора или возврата." /> : null}
+      {payment.status === 'disputed' ? (
+        disputeResponse ? (
+          <InfoBanner
+            tone={disputeResponse.kind === 'agree' ? 'info' : 'warning'}
+            title={disputeResponse.title}
+            message={disputeResponse.note || 'Без пояснения.'}
+          />
+        ) : (
+          <InfoBanner
+            tone="info"
+            title="Исполнитель ещё не ответил"
+            message={isContractor ? 'Заказчик оспорил оплату. Ответьте: согласны вернуть или нет, и поясните позицию.' : 'Исполнитель получил уведомление о споре. Его ответ появится здесь и в истории платежа.'}
+          />
+        )
+      ) : null}
 
       <View style={sheetContentStyles.row}><Text style={sheetContentStyles.label}>Тип</Text><Text style={sheetContentStyles.value}>{typeLabel}</Text></View>
       <View style={sheetContentStyles.row}><Text style={sheetContentStyles.label}>Выставлен</Text><Text style={sheetContentStyles.value}>{fmtDate(payment.created_at)}</Text></View>
