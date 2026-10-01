@@ -15,15 +15,11 @@ import { reportError } from '@/lib/reportError';
 import { RenovaTheme } from '@/constants/Theme';
 import { QrCodeImage } from '@/components/renova/QrCodeImage';
 import { parseTeamInviteToken, requireSuccessfulTeamJoin, teamJoinErrorMessage } from '@/lib/teamJoinFlow';
+import { qrScreenMode, resolveTeamView, TEAM_ROLES, type TeamLike, type TeamLoadOutcome, type TeamRoleId } from '@/lib/teamsUi';
 import { writeResultMessage } from '@/lib/offlineResultMessage';
 
-const ROLES = [
-  { id: 'member', label: 'Рабочий', hint: 'Этапы, чеки, снабжение' },
-  { id: 'foreman', label: 'Прораб', hint: 'Координация на объекте' },
-  { id: 'viewer', label: 'Наблюдатель', hint: 'Только просмотр' },
-] as const;
-
-type RoleId = (typeof ROLES)[number]['id'];
+const ROLES = TEAM_ROLES;
+type RoleId = TeamRoleId;
 
 export default function TeamQrScreen() {
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
@@ -33,8 +29,26 @@ export default function TeamQrScreen() {
   const [link, setLink] = useState('');
   const [scan, setScan] = useState(false);
   const [busy, setBusy] = useState(false);
+  // MKT-021: открытие экрана только читает команду; ссылку/бригаду создаёт явная кнопка.
+  const [outcome, setOutcome] = useState<TeamLoadOutcome | null>(null);
   // onBarcodeScanned стреляет многократно, пока камера видит код: один токен — одна попытка.
   const joiningRef = useRef(false);
+
+  const loadTeam = useCallback(async () => {
+    if (!user) return;
+    try {
+      setOutcome({ kind: 'loaded', team: (await api.getTeam(user.id)) as TeamLike | null });
+    } catch (e) {
+      reportError('teamQr.loadTeam', e, { userId: user.id });
+      setOutcome({ kind: 'failed' });
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    void loadTeam();
+  }, [loadTeam]);
+
+  const mode = qrScreenMode(resolveTeamView(outcome), user?.id);
 
   const refreshLink = useCallback(async () => {
     if (!user) return;
@@ -42,6 +56,7 @@ export default function TeamQrScreen() {
     try {
       const l = await api.createTeamInviteLink(user.id, role);
       setLink(l.link);
+      await loadTeam();
     } catch (e: unknown) {
       const msg = writeResultMessage(e, 'Создайте бригаду в профиле');
       // W67 #35
@@ -64,11 +79,7 @@ export default function TeamQrScreen() {
     } finally {
       setBusy(false);
     }
-  }, [user?.id, role]);
-
-  useEffect(() => {
-    void refreshLink();
-  }, [refreshLink]);
+  }, [user?.id, role, loadTeam]);
 
   return (
     <>
@@ -78,15 +89,28 @@ export default function TeamQrScreen() {
         <Text style={s.sub}>Сканирует новый исполнитель → входит в вашу бригаду с выбранной ролью (H1.5). На staging без Pro invite может быть недоступен — см. подписку.</Text>
         <View style={s.roles}>
           {ROLES.map((r) => (
-            <Pressable key={r.id} onPress={() => setRole(r.id)} style={[s.roleChip, role === r.id && s.roleOn]}>
+            <Pressable key={r.id} onPress={() => { setRole(r.id); setLink(''); }} style={[s.roleChip, role === r.id && s.roleOn]}>
               <Text style={[s.roleT, role === r.id && s.roleTOn]}>{r.label}</Text>
               <Text style={s.roleHint}>{r.hint}</Text>
             </Pressable>
           ))}
         </View>
 
+        {mode === 'loading' ? <Text style={s.sub}>Загрузка бригады…</Text> : null}
+        {mode === 'error' ? (
+          <>
+            <Text style={s.sub}>Не удалось загрузить бригаду. Это не значит, что её нет.</Text>
+            <PrimaryButton title="Повторить" variant="outline" onPress={() => void loadTeam()} />
+          </>
+        ) : null}
+        {mode === 'member' ? (
+          <Text style={s.sub}>Вы участник чужой бригады: ссылки-приглашения создаёт её владелец.</Text>
+        ) : null}
+        {mode === 'no-team' ? (
+          <Text style={s.sub}>У вас пока нет бригады. Ссылка создаст бригаду «Бригада».</Text>
+        ) : null}
         <Text style={s.link} selectable>
-          {link || (busy ? 'Генерируем…' : '—')}
+          {link || (busy ? 'Генерируем…' : 'Ссылка ещё не создана')}
         </Text>
         {link ? <QrCodeImage value={link} size={200} /> : null}
 
@@ -113,7 +137,14 @@ export default function TeamQrScreen() {
             }}
           />
         </View>
-        <PrimaryButton title="Обновить QR" variant="outline" disabled={busy} onPress={refreshLink} />
+        {mode === 'owner' || mode === 'no-team' ? (
+          <PrimaryButton
+            title={link ? 'Создать новую ссылку' : mode === 'no-team' ? 'Создать бригаду и ссылку' : 'Создать ссылку'}
+            variant="outline"
+            disabled={busy}
+            onPress={refreshLink}
+          />
+        ) : null}
 
         <PrimaryButton title={scan ? 'Стоп сканер' : 'Сканировать invite'} onPress={() => setScan(!scan)} />
         {!perm?.granted && scan ? <PrimaryButton title="Разрешить камеру" onPress={req} /> : null}

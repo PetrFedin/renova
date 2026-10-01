@@ -53,6 +53,15 @@ function OutboxOperations({ health, onOpen }: { health: any; onOpen: () => void 
   );
 }
 
+function OpsLinks({ onOpen }: { onOpen: (path: string) => void }) {
+  return (
+    <View style={{ gap: RenovaTheme.spacing.sm, marginBottom: RenovaTheme.spacing.md }}>
+      <PrimaryButton title="Возвраты подписки" variant="outline" size="sm" onPress={() => onOpen('/refund-reviews')} />
+      <PrimaryButton title="Сверка провайдеров" variant="outline" size="sm" onPress={() => onOpen('/provider-reconciliations')} />
+    </View>
+  );
+}
+
 /** P3-W39: один файл (раньше .tsx + .web.tsx) */
 export default function AdminDashboardScreen() {
   const { user } = useRenova();
@@ -82,6 +91,10 @@ export default function AdminDashboardScreen() {
 
   const openOutbox = useCallback(() => {
     router.push('/outbox-dead-letters' as never);
+  }, [router]);
+
+  const openPath = useCallback((path: string) => {
+    router.push(path as never);
   }, [router]);
 
   if (Platform.OS !== 'web') {
@@ -116,6 +129,7 @@ export default function AdminDashboardScreen() {
             </Text>
           ) : null}
           <OutboxOperations health={health} onOpen={openOutbox} />
+          <OpsLinks onOpen={openPath} />
           {h0 ? (
             <Text style={st.sub}>
               H0 investor: {h0.ready_for_investor_demo ? 'READY' : 'NOT READY'} · score {h0.score}%
@@ -142,6 +156,7 @@ export default function AdminDashboardScreen() {
       <View style={st.wrap}>
         {health ? <Text style={{ marginBottom: 8 }}>Релиз: {health.crash_free_rate}% без сбоев</Text> : null}
         <OutboxOperations health={health} onOpen={openOutbox} />
+        <OpsLinks onOpen={openPath} />
         {yk ? (
           <Text style={st.sub}>
             ЮKassa: {yk.configured ? 'ключи заданы' : 'нет ключей'}
@@ -174,7 +189,7 @@ export default function AdminDashboardScreen() {
         ) : null}
 
         {rev.map((p) => (
-          <Bar key={`${p.name}r`} label={`${p.name} ₽`} value={p.margin} max={Math.max(...rev.map((x) => x.planned), 1)} />
+          <Bar key={`${p.name}r`} label={`${p.name} ₽`} value={p.paid} max={Math.max(...rev.map((x) => x.planned), 1)} />
         ))}
         {chart.map((p) => (
           <Bar key={p.name} label={p.name} value={p.progress} max={100} />

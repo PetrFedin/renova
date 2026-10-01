@@ -24,7 +24,8 @@ export function FinalReportView({
     <View style={s.wrap}>
       {show('summary') && (
         <View style={s.block}>
-          <Text style={homeTypography.zoneLabel}>Сводка</Text>
+          <Text style={homeTypography.zoneLabel}>{data.is_preliminary ? 'Сводка · предварительная' : 'Сводка'}</Text>
+          {data.is_preliminary ? <Text style={s.meta}>Не все этапы закрыты — цифры могут измениться.</Text> : null}
           <Text style={s.line}>План {formatRub(data.budget_planned || 0)}</Text>
           <Text style={s.line}>Факт {formatRub(data.budget_spent || 0)}</Text>
           {data.overrun ? <Text style={s.warn}>Перерасход {formatRub(data.overrun)}</Text> : null}

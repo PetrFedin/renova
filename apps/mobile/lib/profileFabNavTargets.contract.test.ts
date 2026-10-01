@@ -21,12 +21,13 @@ const read = (rel: string) => readFileSync(join(MOBILE, rel), 'utf8');
 
 // Литералы href из мест вызова (проверяются ниже на присутствие в исходниках).
 const SOURCES: Array<{ file: string; targets: string[] }> = [
-  { file: 'components/screens/profile/ContractorProfileScreen.tsx', targets: ['/subscription', '/audit', '/checklist-templates', '/team-qr'] },
-  { file: 'components/renova/AdminHubLink.tsx', targets: ['/admin', '/admin-dashboard', '/articles-admin'] },
+  { file: 'components/screens/profile/ContractorProfileScreen.tsx', targets: ['/subscription', '/audit', '/checklist-templates'] },
+  { file: 'components/screens/profile/TeamSection.tsx', targets: ['/team-qr'] },
+  { file: 'components/renova/AdminHubLink.tsx', targets: ['/admin', '/admin-dashboard', '/articles-admin', '/refund-reviews', '/provider-reconciliations'] },
   { file: 'components/renova/os/OsQuickFab.tsx', targets: ['/scratchpad'] },
   { file: 'lib/fieldCommsNav.ts', targets: ['/team-qr'] },
   { file: 'lib/context/RenovaContext.tsx', targets: ['/subscription'] },
-  { file: 'app/(contractor)/_screens/admin-dashboard.tsx', targets: ['/outbox-dead-letters'] },
+  { file: 'app/(contractor)/_screens/admin-dashboard.tsx', targets: ['/outbox-dead-letters', '/refund-reviews', '/provider-reconciliations'] },
 ];
 
 const roles: OsRole[] = ['customer', 'contractor'];
@@ -60,7 +61,7 @@ for (const target of all) {
 }
 
 // Админские экраны обёрнуты AdminGate («Нет доступа»), не белый экран.
-for (const k of ['admin', 'admin-dashboard', 'articles-admin', 'audit']) {
+for (const k of ['admin', 'admin-dashboard', 'articles-admin', 'audit', 'refund-reviews', 'provider-reconciliations']) {
   assert.ok(read(`app/${k}.tsx`).includes('AdminGate'), `app/${k}.tsx должен быть под AdminGate`);
 }
 // Админские пункты профиля показываются только при подтверждённом доступе (UI-027).

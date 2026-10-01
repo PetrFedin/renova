@@ -190,3 +190,17 @@ async def test_invite_sms_per_user_limit(db, monkeypatch):
         codes.append(r.status_code)
     assert codes[:10] == [200] * 10
     assert codes[10:] == [429, 429]
+
+
+@pytest.mark.asyncio
+async def test_member_of_foreign_team_does_not_get_own_team_from_invite_link(db):
+    owner, invitee, stranger, _c, team_id = await _seed(db, "pi10")
+    invitee_id = invitee.id
+    await team_svc.ensure_team_membership(db, team_id=team_id, user_id=invitee_id, role="member")
+    await db.commit()
+    r = await _call(db, invitee, "POST", "/api/v1/teams/invite-link", json={"role": "member"})
+    assert r.status_code == 403 and r.json()["detail"]["code"] == "team_owner_only"
+    assert await db.scalar(select(func.count()).select_from(Team).where(Team.owner_id == invitee_id)) == 0
+    # а исполнитель без бригады по-прежнему может создать её явным действием «создать ссылку»
+    ok = await _call(db, stranger, "POST", "/api/v1/teams/invite-link", json={"role": "member"})
+    assert ok.status_code == 200 and ok.json()["team_replayed"] is False

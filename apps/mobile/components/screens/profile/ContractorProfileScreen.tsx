@@ -1,4 +1,3 @@
-import { requireSuccessfulTeamInvite } from '@/lib/teamJoinFlow';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, View, Text, TextInput, Platform } from 'react-native';
 import { router } from 'expo-router';
@@ -13,7 +12,6 @@ import { AdminHubLink } from '@/components/renova/AdminHubLink';
 import { useAdminAccess } from '@/lib/hooks/useAdminAccess';
 import { ProfileExtraLinks } from '@/components/renova/ProfileExtraLinks';
 import { useRenova } from '@/lib/context/RenovaContext';
-import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { useNavFromHere } from '@/lib/navigation';
 import { pushOsNav } from '@/lib/pushOsNav';
@@ -22,9 +20,10 @@ import { exportGdprJsonFile } from '@/lib/exportGdprJson';
 import { ProfileHeader } from './ProfileHeader';
 import { ProfileSection } from './ProfileSection';
 import { profileScreenStyles as ps } from './profileScreenStyles';
-import { alertTeamInviteSent, alertTeamCreated, alertRequisitesSaved } from '@/lib/fieldCommsNav';
+import { alertRequisitesSaved } from '@/lib/fieldCommsNav';
+import { TeamSection } from './TeamSection';
 import * as WebBrowser from 'expo-web-browser';
-import { reportCatch, reportError } from '@/lib/reportError';
+import { reportCatch } from '@/lib/reportError';
 import { useBusyAction } from '@/lib/hooks/useBusyAction';
 import { buildRequisitesPatch, canSaveProfile, type ProfileLoadState, type RequisitesFields } from '@/lib/contractorProfileSave';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
@@ -35,129 +34,6 @@ const EXTRA_ITEMS = [
   { label: 'Помощь', href: '/guide' },
   { label: 'Заявки', href: '/job-leads' },
 ];
-
-function TeamSection() {
-  const { user, activeProject } = useRenova();
-  const nav = useNavFromHere();
-  const [phone, setPhone] = useState('');
-  const [team, setTeam] = useState<any>(null);
-
-  const reloadTeam = useCallback(() => {
-    if (!user) return;
-    api.getTeam(user.id).then(setTeam).catch((e) => { reportError('components.screens.profile.ContractorPro.Team', e); setTeam(null); });
-  }, [user?.id]);
-  useEffect(() => { reloadTeam(); }, [reloadTeam]);
-  useProjectDataReload(reloadTeam);
-
-  if (!user) return null;
-
-  return (
-    <View style={{ gap: 10 }}>
-      {team ? (
-        <>
-          <Text style={ps.userName}>{team.name}</Text>
-          <Text style={ps.userMeta}>Участников: {team.members?.length || 0}</Text>
-          {team.members?.map((m: any) => (
-            <View key={m.user_id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-              <Text style={[ps.userMeta, { flexShrink: 1 }]}>
-                {m.phone} · {m.role}
-              </Text>
-              {team.owner_id === user.id && m.user_id !== user.id && m.role !== 'owner' ? (
-                <PrimaryButton
-                  title="Убрать"
-                  variant="outline"
-                  compact
-                  onPress={() =>
-                    showActionConfirm({
-                      title: 'Убрать из бригады?',
-                      message: `${m.phone} потеряет доступ к вашим объектам, открытые назначения на этапы будут сняты.`,
-                      primaryLabel: 'Убрать',
-                      onPrimary: async () => {
-                        try {
-                          await api.removeTeamMember(user.id, m.user_id);
-                          await syncProjectSideEffects({ user, project: activeProject });
-                          setTeam(await api.getTeam(user.id));
-                        } catch (e: unknown) {
-                          showActionConfirm({ title: 'Не удалось убрать', message: writeResultMessage(e, 'Повторите позже') });
-                        }
-                      },
-                      secondaryLabel: 'Отмена',
-                      onSecondary: () => undefined,
-                    })
-                  }
-                />
-              ) : null}
-            </View>
-          ))}
-          {team.owner_id !== user.id ? (
-            <PrimaryButton
-              title="Выйти из бригады"
-              variant="outline"
-              onPress={() =>
-                showActionConfirm({
-                  title: 'Выйти из бригады?',
-                  message: 'Вы потеряете доступ к объектам владельца бригады.',
-                  primaryLabel: 'Выйти',
-                  onPrimary: async () => {
-                    try {
-                      await api.leaveTeam(user.id);
-                      await syncProjectSideEffects({ user, project: activeProject });
-                      setTeam(null);
-                    } catch (e: unknown) {
-                      showActionConfirm({ title: 'Не удалось выйти', message: writeResultMessage(e, 'Повторите позже') });
-                    }
-                  },
-                  secondaryLabel: 'Отмена',
-                  onSecondary: () => undefined,
-                })
-              }
-            />
-          ) : null}
-          <TextInput
-            style={ps.input}
-            placeholder="+7..."
-            value={phone}
-            onChangeText={setPhone}
-            keyboardType="phone-pad"
-          />
-          <PrimaryButton title="QR-код бригады" variant="outline" onPress={() => nav.href('/team-qr')} />
-          <PrimaryButton
-            title="Пригласить"
-            variant="outline"
-            onPress={async () => {
-              try {
-                // /teams/invite отвечает 200 {ok:false,message} — не показываем «отправлено» без ok:true.
-                requireSuccessfulTeamInvite(await api.inviteTeamMember(user.id, phone));
-                await syncProjectSideEffects({ user, project: activeProject });
-                setTeam(await api.getTeam(user.id));
-                setPhone('');
-                alertTeamInviteSent('contractor');
-              } catch (e: unknown) {
-                showActionConfirm({ title: 'Ошибка', message: writeResultMessage(e, 'Не удалось пригласить') });
-              }
-            }}
-          />
-        </>
-      ) : (
-        <PrimaryButton
-          title="Создать бригаду"
-          variant="outline"
-          onPress={async () => {
-            try {
-              await api.createTeam(user.id, 'Моя бригада');
-              await syncProjectSideEffects({ user, project: activeProject });
-              setTeam(await api.getTeam(user.id));
-              alertTeamCreated('contractor');
-            } catch (e: unknown) {
-              setTeam(null);
-              showActionConfirm({ title: 'Ошибка', message: writeResultMessage(e, 'Не удалось создать бригаду') });
-            }
-          }}
-        />
-      )}
-    </View>
-  );
-}
 
 export function ContractorProfileScreen() {
   const nav = useNavFromHere();

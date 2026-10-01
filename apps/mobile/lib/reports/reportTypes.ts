@@ -10,7 +10,10 @@ export type FinalReport = {
   project_name?: string;
   budget_planned?: number;
   budget_spent?: number;
-  savings?: number;
+  /** null — экономия не считается (объект не закрыт или нет факта). */
+  savings?: number | null;
+  /** true — не все этапы закрыты: отчёт предварительный. */
+  is_preliminary?: boolean;
   overrun?: number;
   forecast_total?: number;
   works?: { name: string; status: string; amount?: number }[];

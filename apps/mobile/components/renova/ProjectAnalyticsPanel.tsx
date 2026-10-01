@@ -29,6 +29,9 @@ function budgetAnalyticsReturnTo(role: 'customer' | 'contractor') {
   return budgetTabHref(role, 'deviations');
 }
 
+/** Снимок остатка бюджета — раз за сессию на проект (сервер к тому же не чаще раза в сутки). */
+const snapshotTaken = new Set<string>();
+
 export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
   const { user, activeProject, readOnly } = useRenova();
   const canWrite = useWriteAllowed();
@@ -40,7 +43,7 @@ export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
   const [loadError, setLoadError] = useState(false);
   const [apiSummary, setApiSummary] = useState<{ receipts_total: number; expenses_total?: number } | null>(null);
   const [osBudget, setOsBudget] = useState<import('@/lib/api').OsBudgetSummary | null>(null);
-  const [kpiPoints, setKpiPoints] = useState<{ id: string; label: string; margin: number }[]>([]);
+  const [kpiPoints, setKpiPoints] = useState<{ id: string; label: string; remaining: number }[]>([]);
   const [expenseDetail, setExpenseDetail] = useState<ExpenseDetailTarget | null>(null);
 
   const onExpenseRowPress = useCallback((row: ExpenseDetailRow) => {
@@ -57,6 +60,12 @@ export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
     setLoading(true);
     try {
       setLoadError(false);
+      // MKT-020: раньше снимок остатка никто не писал, и график был пуст всегда.
+      // Исполнитель при открытии аналитики фиксирует снимок (сервер — не чаще раза в сутки).
+      if (user.role === 'contractor' && !snapshotTaken.has(activeProject.id)) {
+        snapshotTaken.add(activeProject.id);
+        await api.kpiSnapshot(user.id, activeProject.id).catch(reportCatch('analytics.kpiSnapshot'));
+      }
       const [rc, ex, pk, pur, sm, ob, kh] = await Promise.all([
         api.listReceipts(user.id, activeProject.id),
         api.osExpenses(user.id, activeProject.id),
@@ -72,10 +81,10 @@ export function ProjectAnalyticsPanel({ full }: { full?: boolean }) {
       setPurchases(pur);
       setApiSummary(sm);
       setOsBudget(ob);
-      setKpiPoints((kh as { margin: number; at: string }[]).slice(-6).map((p) => ({
+      setKpiPoints((kh as { remaining: number; at: string }[]).slice(-6).map((p) => ({
         id: p.at,
         label: p.at.slice(5, 10),
-        margin: p.margin,
+        remaining: p.remaining,
       })));
     } catch (e) {
       if (isRateLimitError(e)) return;

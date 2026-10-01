@@ -643,9 +643,15 @@ async def create_owner_invite(
     if owner is None or owner.role != UserRole.contractor:
         await db.rollback()
         raise ValueError("team_owner_contractor_only")
-    if not create_team and await owned_team(db, owner.id) is None:
+    has_own_team = await owned_team(db, owner.id) is not None
+    if not create_team and not has_own_team:
         await db.rollback()
         raise ValueError("team_not_found")
+    if not has_own_team and await my_membership(db, owner.id) is not None:
+        # MKT-021: участник чужой бригады не получает «свою» пустую бригаду побочным
+        # эффектом создания ссылки; бригаду он создаёт явно (POST /teams).
+        await db.rollback()
+        raise ValueError("team_owner_only")
     try:
         team_result = await _get_or_create_owned_team_locked(
             db,

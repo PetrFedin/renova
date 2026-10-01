@@ -1,17 +1,17 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 
-export function KPITrends({ points }: { points: { id?: string; label: string; margin: number }[] }) {
+export function KPITrends({ points }: { points: { id?: string; label: string; remaining: number }[] }) {
   if (points.length < 2) return null;
-  const max = Math.max(...points.map(p => Math.abs(p.margin)), 1);
+  const max = Math.max(...points.map(p => Math.abs(p.remaining)), 1);
   return (
     <View style={s.box}>
-      <Text style={s.head}>Динамика маржи</Text>
+      <Text style={s.head}>Динамика остатка бюджета</Text>
       {points.map((p, i) => (
         <View key={p.id ?? `${p.label}-${i}`} style={s.row}>
           <Text style={s.l}>{p.label}</Text>
-          <View style={s.bar}><View style={[s.fill, { width: `${Math.round(Math.abs(p.margin)/max*100)}%`, backgroundColor: p.margin >= 0 ? '#22c55e' : '#ef4444' }]} /></View>
-          <Text style={s.v}>{formatRub(p.margin)}</Text>
+          <View style={s.bar}><View style={[s.fill, { width: `${Math.round(Math.abs(p.remaining)/max*100)}%`, backgroundColor: p.remaining >= 0 ? '#22c55e' : '#ef4444' }]} /></View>
+          <Text style={s.v}>{formatRub(p.remaining)}</Text>
         </View>
       ))}
     </View>

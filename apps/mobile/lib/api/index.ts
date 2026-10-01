@@ -25,6 +25,7 @@ import { miscApi } from './misc';
 import { assignmentRequestsApi } from './assignmentRequests';
 import { selectionsApi } from './selections';
 import { technicalSupervisionApi } from './technicalSupervision';
+import { teamOpsApi } from './teamOps';
 
 export const api = {
   ...authApi,
@@ -53,6 +54,7 @@ export const api = {
   ...assignmentRequestsApi,
   ...selectionsApi,
   ...technicalSupervisionApi,
+  ...teamOpsApi,
 };
 
 export { ApiError, isRateLimitError, req, cachedGet, invalidateProjectsCache, API_BASE } from './client';
