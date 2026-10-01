@@ -9,10 +9,10 @@
 | `apps/mobile/components/screens/OsRepairHubScreen.tsx` | `62060329592176b8d42591b92fe197aaa52e59d7` | Repair hub |
 | `apps/mobile/components/screens/OsBudgetHubScreen.tsx` | `4e0e8267d68b600cf0d8bdf716a4c8eddaa3bcbd` | Budget hub |
 | `apps/mobile/components/screens/OsMaterialsScreen.tsx` | `310f8c9dc20c9580baa2772a7397062fb0456d1b` | Materials/procurement hub + supply-aware next action |
-| `apps/mobile/components/renova/MaterialPickList.tsx` | `e31c8afd50fc7bbebeae08861c0234a50b33fd62` | material supply editor + approval + truthful supplier-price refresh UX; durable price provenance is governed by `MATERIAL-PRICE-TRUTH-CONTRACT.md` |
-| `apps/mobile/components/screens/OsSelectionsScreen.tsx` | `89066ba18feb3023a5f5d90828dfd203f7891401` | Selections |
+| `apps/mobile/components/renova/MaterialPickList.tsx` | `ae24469347576b0675b683545017960711198ad2` | material supply editor + approval + truthful supplier-price refresh UX; durable price provenance is governed by `MATERIAL-PRICE-TRUTH-CONTRACT.md` |
+| `apps/mobile/components/screens/OsSelectionsScreen.tsx` | `8a52566cfd463083b5055318871cc9668f1edf39` | Selections |
 | `apps/mobile/components/screens/OsControlScreen.tsx` | `299b29fe2571900663e290c35bc0096854b8eb7f` | role/access-mode control router |
-| `apps/mobile/components/screens/control/CustomerControlView.tsx` | `9c120ac139a7330dc789b37a1fe1392c893bfe3e` | customer acceptance/QC/warranty view |
+| `apps/mobile/components/screens/control/CustomerControlView.tsx` | `7f84cebb1e7743f7e7d5200c9db4ee0593a6d6bb` | customer acceptance/QC/warranty view |
 | `apps/mobile/components/screens/control/ContractorControlView.tsx` | `6c5cd6b869f38502caf180b2e77b2dfa598958dd` | contractor acceptance/QC view |
 | `apps/mobile/components/screens/control/TechnicalSupervisionControlView.tsx` | `c0d8856adeb78bdbd856ea8612a244b852af87c9` | technical-supervision control view |
 | `apps/mobile/components/renova/os/OsHubTabs.tsx` | `b04ac08459926439b0533db3decce28a4791843c` | hub tab geometry/progressive disclosure |

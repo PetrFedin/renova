@@ -213,7 +213,7 @@ readyCount = readyPickIds(picks, purchases, role).length
 
 ## 17. Selection pending count
 
-Source `OsSelectionsScreen.tsx`, blob `89066ba18feb3023a5f5d90828dfd203f7891401`.
+Source `OsSelectionsScreen.tsx`, blob `8a52566cfd463083b5055318871cc9668f1edf39`.
 
 ```text
 pending = count(SelectionItem.status == proposed)

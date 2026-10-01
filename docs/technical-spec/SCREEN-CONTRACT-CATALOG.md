@@ -295,7 +295,7 @@ Receipt QR scan → receipt evidence/reconcile flow; факт нельзя сч�
 
 # 6. Selections screen
 
-**VERIFIED. Source:** `OsSelectionsScreen.tsx` blob `89066ba18feb3023a5f5d90828dfd203f7891401`.
+**VERIFIED. Source:** `OsSelectionsScreen.tsx` blob `8a52566cfd463083b5055318871cc9668f1edf39`.
 
 Business flow:
 
@@ -413,7 +413,7 @@ else:
 
 # 8. Customer Control view
 
-**VERIFIED. Source:** `CustomerControlView.tsx` blob `9c120ac139a7330dc789b37a1fe1392c893bfe3e`.
+**VERIFIED. Source:** `CustomerControlView.tsx` blob `7f84cebb1e7743f7e7d5200c9db4ee0593a6d6bb`.
 
 Loads concurrently:
 
