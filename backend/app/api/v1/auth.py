@@ -8,6 +8,7 @@ from app.models.entities import User, UserRole
 from app.schemas.auth import DemoLoginRequest, RegisterRequest, UserOut, SmsSendRequest, SmsVerifyRequest, RefreshRequest
 from app.services.seed_demo import DEMO_PHONES
 from app.services.fns.status_npd import check_taxpayer_npd_status
+from app.services.npd_verification import npd_flag_for_inn
 from app.core.security import create_access_token
 from app.services.auth_audit import log_auth_event
 from app.core.config import settings
@@ -136,7 +137,7 @@ async def sms_verify(body: SmsVerifyRequest, db: AsyncSession = Depends(get_db))
         if body.role == "contractor" and body.inn and len(body.inn) == 12:
             try:
                 npd_result = await check_taxpayer_npd_status(body.inn)
-                npd_verified = npd_result["is_npd"]
+                npd_verified = await npd_flag_for_inn(user_id=None, inn=body.inn, fns_is_npd=npd_result["is_npd"] is True)
             except Exception:
                 npd_verified = False
         user = User(
@@ -173,7 +174,7 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)) ->
     if body.role == "contractor" and body.inn and len(body.inn) == 12:
         try:
             npd_result = await check_taxpayer_npd_status(body.inn)
-            npd_verified = npd_result["is_npd"]
+            npd_verified = await npd_flag_for_inn(user_id=None, inn=body.inn, fns_is_npd=npd_result["is_npd"] is True)
         except Exception:
             npd_verified = False
 

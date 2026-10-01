@@ -16,6 +16,7 @@ from app.services import (
 )
 from app.services.auth_audit import log_auth_event
 from app.services.fns.status_npd import check_taxpayer_npd_status
+from app.services.npd_verification import npd_flag_for_inn
 
 router = APIRouter(prefix="/auth/sms", tags=["auth"])
 
@@ -127,7 +128,10 @@ async def verify_code(
     npd_verified = False
     if body.role == "contractor" and body.inn and len(body.inn) == 12:
         try:
-            npd_verified = bool((await check_taxpayer_npd_status(body.inn))["is_npd"])
+            npd_verified = await npd_flag_for_inn(
+                user_id=None, inn=body.inn,
+                fns_is_npd=bool((await check_taxpayer_npd_status(body.inn))["is_npd"]),
+            )
         except Exception:
             npd_verified = False
     try:

@@ -31,6 +31,14 @@ class Settings(BaseSettings):
     # Empty, duplicate, or blank entries fail startup on staging/production.
     admin_user_ids: str = ""
     fns_npd_status_url: str = "https://statusnpd.nalog.ru/api/v1/tracker/taxpayer_status"
+    # MNY-029 / APIA-008: подтверждение владения ИНН самозанятого. Статус ФНС («ИНН — плательщик НПД»)
+    # не доказывает, что ИНН принадлежит этому пользователю. По умолчанию (False) сохраняется прежнее
+    # поведение: npd_verified = ответ ФНС, но API честно отдаёт ownership_status="unverified".
+    # True: npd_verified ставится только при доказанном владении (провайдер npd_ownership_provider).
+    npd_ownership_enforced: bool = False
+    # none — владение проверить нечем (статус всегда unverified);
+    # manual — запрос уходит на ручную проверку оператором (pending_manual), сам флаг не ставит.
+    npd_ownership_provider: str = "none"
     moy_nalog_enabled: bool = False
     moy_nalog_client_id: str | None = None
     moy_nalog_client_secret: str | None = None

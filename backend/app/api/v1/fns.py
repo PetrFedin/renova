@@ -12,6 +12,7 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.models.entities import User
 from app.services.fns import FnsNpdError, check_taxpayer_npd_status
+from app.services import npd_verification as npd_own
 
 router = APIRouter(prefix="/fns", tags=["fns"])
 
@@ -86,6 +87,10 @@ class CheckNpdResponse(BaseModel):
     verified_live: bool
     message: str
     badge: str
+    # MNY-029/APIA-008: статус ФНС не доказывает владение ИНН; честный статус проверки владения.
+    ownership_status: str = "unverified"
+    ownership_provider: str = "none"
+    ownership_message: str = ""
 
 
 @router.post("/check-npd", response_model=CheckNpdResponse)
@@ -94,7 +99,8 @@ async def check_npd(body: CheckNpdRequest, _user: User = Depends(get_current_use
         result = await check_taxpayer_npd_status(body.inn, body.request_date)
     except FnsNpdError as error:
         raise _fns_error(error) from error
-    return CheckNpdResponse(**result, badge="verified" if result["is_npd"] else "not_npd")
+    decision = await npd_own.ownership_decision(user_id=_user.id, inn=body.inn)
+    return CheckNpdResponse(**result, **npd_own.response_fields(result["is_npd"] is True, decision))
 
 
 @router.post("/verify-me", response_model=CheckNpdResponse)
@@ -107,10 +113,11 @@ async def verify_me(
         result = await check_taxpayer_npd_status(body.inn, body.request_date)
     except FnsNpdError as error:
         raise _fns_error(error) from error
+    decision = await npd_own.ownership_decision(user_id=user.id, inn=body.inn)
     user.inn = result["inn"]
-    user.npd_verified = result["is_npd"] is True
+    user.npd_verified = npd_own.npd_flag(result["is_npd"] is True, decision)
     await db.commit()
-    return CheckNpdResponse(**result, badge="verified" if result["is_npd"] else "not_npd")
+    return CheckNpdResponse(**result, **npd_own.response_fields(result["is_npd"] is True, decision))
 
 
 class MoyNalogLinkResponse(BaseModel):
