@@ -30,7 +30,7 @@ jobs:
           timeout 240s poetry run pytest -vv -s --tb=short tests/test_otp_auth_integrity.py tests/test_otp_atomic_consume.py 2>&1 | tee otp-auth-contracts.log
       - name: Upload OTP auth diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: otp-auth-contract-diagnostics
           path: backend/otp-auth-contracts.log

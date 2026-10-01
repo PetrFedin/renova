@@ -113,7 +113,7 @@ jobs:
         run: rm -f "$RUNNER_TEMP/renova-security/pip-audit.json"
       - name: Upload sanitized Python advisory evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: python-advisory-evidence-${{ github.sha }}
           retention-days: 30
@@ -257,7 +257,7 @@ jobs:
           rm -rf "$RUNNER_TEMP/gitleaks-tree"
       - name: Upload sanitized secret-scan evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: secret-scan-evidence-${{ github.sha }}
           retention-days: 30

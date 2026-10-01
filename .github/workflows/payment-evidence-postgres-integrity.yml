@@ -114,7 +114,7 @@ jobs:
           poetry run pytest -vv --tb=short tests/test_payment_evidence_postgres_concurrency.py::test_concurrent_approve_reject_has_exactly_one_terminal_review_winner 2>&1 | tee ../payment-evidence-race-logs/04-approve-reject.log
       - name: Retain PostgreSQL race evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: payment-evidence-postgres-race-${{ github.sha }}
           path: payment-evidence-race-logs/

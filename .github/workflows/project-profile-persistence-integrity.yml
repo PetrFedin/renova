@@ -50,7 +50,7 @@ jobs:
           timeout 240s poetry run pytest -vv -s --tb=short tests/test_project_profile_persistence_integrity.py 2>&1 | tee project-profile-persistence.log
       - name: Upload profile persistence diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: project-profile-persistence-diagnostics
           path: backend/project-profile-persistence.log

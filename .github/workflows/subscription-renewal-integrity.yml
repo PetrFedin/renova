@@ -35,7 +35,7 @@ jobs:
             2>&1 | tee subscription-financial-integrity-contracts.log
       - name: Upload subscription financial diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: subscription-financial-integrity-contract-diagnostics
           path: backend/subscription-financial-integrity-contracts.log
