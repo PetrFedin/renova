@@ -16,6 +16,9 @@ import { api, ProjectIssue, WorkAcceptance } from '@/lib/api';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
+import { LoadingState } from '@/components/ui/LoadingState';
+import { openQcIssue } from '@/lib/qcNav';
+import { contractorCanMarkFixed, controlSummary } from '@/lib/domain/issueControlActions';
 import { screenLayout } from '@/constants/screenLayout';
 import { issueSeverityLabel, issueStatusLabel } from '@/constants/labels';
 import { useNavFromHere } from '@/lib/navigation';
@@ -65,16 +68,25 @@ export function ContractorControlView() {
     );
   }
 
+  if (loadState === 'loading' && !issues.length && !acceptances.length) {
+    return (
+      <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
+        <LoadingState title="Загружаем приёмку…" />
+      </ScrollView>
+    );
+  }
+
   const pendingCount = computePendingAcceptanceCount(activeProject.stages, acceptances);
+  const summary = controlSummary(issues, pendingCount);
   const rework = activeProject.stages.filter((s) => s.needs_rework && s.status !== 'done');
 
   return (
     <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
       <ReadOnlyBanner />
       <View style={s.summary}>
-        <View style={s.cell}><Text style={s.n}>{pendingCount}</Text><Text style={s.l}>Приёмка</Text></View>
-        <View style={s.cell}><Text style={s.n}>{issues.filter(i => i.status !== 'closed').length || rework.length}</Text><Text style={s.l}>Замечания</Text></View>
-        <View style={s.cell}><Text style={s.n}>{issues.filter(i => i.severity === 'critical' || i.severity === 'high').length}</Text><Text style={s.l}>Критичные</Text></View>
+        <View style={s.cell}><Text style={s.n}>{summary.pendingAcceptance}</Text><Text style={s.l}>Приёмка</Text></View>
+        <View style={s.cell}><Text style={s.n}>{summary.openIssues}</Text><Text style={s.l}>Замечания</Text></View>
+        <View style={s.cell}><Text style={s.n}>{summary.criticalOpen}</Text><Text style={s.l}>Критичные</Text></View>
       </View>
 
       <Text style={s.section}>Решение у заказчика</Text>
@@ -91,7 +103,7 @@ export function ContractorControlView() {
         >
           <Text style={s.title}>{iss.title}</Text>
           <Text style={s.meta}>{issueSeverityLabel(iss.severity)} · {issueStatusLabel(iss.status)}{iss.due_at ? ` · до ${iss.due_at.slice(0, 10)}` : ''}{iss.stage_id ? ' · → этап' : ''}</Text>
-          {!readOnly && iss.status !== 'closed' && iss.status !== 'fixed' && !(iss.title || '').startsWith('[Гарантия]') ? (
+          {!readOnly && contractorCanMarkFixed(iss.status, iss.title || '') ? (
             <PrimaryButton
               title="Исправлено"
               compact
@@ -105,7 +117,7 @@ export function ContractorControlView() {
                   onPrimary: () => {
                     void (async () => {
                       try {
-                        const updated = await api.closeIssue(user!.id, activeProject!.id, iss.id);
+                        const updated = await api.transitionIssue(user!.id, activeProject!.id, iss.id, 'fixed');
                         await syncProjectSideEffects({ user, project: activeProject });
                         reload();
                         if (updated?.status === 'fixed') {
@@ -143,6 +155,13 @@ export function ContractorControlView() {
           ) : null}
         </Pressable>
       ))}
+      {issues.some((i) => i.status !== 'closed') ? (
+        <PrimaryButton
+          title="Все замечания"
+          variant="outline"
+          onPress={() => openQcIssue(issues.find((i) => i.status !== 'closed')?.id, pathname, 'contractor')}
+        />
+      ) : null}
 
       {/* Доработка (причина, срок, «Сдать повторно») — в UnifiedAcceptanceList */}
     </ScrollView>

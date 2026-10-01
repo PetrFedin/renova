@@ -36,8 +36,10 @@ import { isQueueableWriteError } from '@/lib/api/queueableError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { STAGE_STATUS_LABEL } from '@/constants/labels';
 import { reportError, reportCatch } from '@/lib/reportError';
+import { StageDetailExecutorChecklist } from '@/components/screens/stage/StageDetailExecutorChecklist';
 
-const TEMPLATES = ['@заказчик готово к приёмке', 'Работы выполнены по смете', 'Нужен доступ на объект', 'Задержка из-за материалов', 'Готово к приёмке'];
+// Шаблоны только для обычных комментариев: сдачу на приёмку запускает кнопка «Готово — на приёмку».
+const TEMPLATES = ['Работы выполнены по смете', 'Нужен доступ на объект', 'Задержка из-за материалов'];
 
 function renderComment(text: string) {
   if (text.startsWith('↩')) return <Text style={{ fontStyle: 'italic', color: RenovaTheme.colors.textMuted }}>{text}</Text>;
@@ -385,8 +387,10 @@ export function StageDetailScreen() {
     }
   };
 
-  const before = stage.photos.filter((p) => (p.caption || '').toLowerCase().includes('до'));
-  const after = stage.photos.filter((p) => (p.caption || '').toLowerCase().includes('после'));
+  // Те же слова, что и в проверке готовности на сервере (work_snapshot_service): иначе блок «После» и гейт расходятся.
+  const isAfterPhoto = (caption?: string | null) => /после|after|результат/i.test(caption || '');
+  const before = stage.photos.filter((p) => !isAfterPhoto(p.caption) && (p.caption || '').toLowerCase().includes('до'));
+  const after = stage.photos.filter((p) => isAfterPhoto(p.caption));
   const other = stage.photos.filter((p) => !before.includes(p) && !after.includes(p));
   const isArchived = stage.status === 'done';
   const showAcceptance = role === 'customer' && stage.status === 'review';
@@ -406,6 +410,7 @@ export function StageDetailScreen() {
             <Pressable onPress={() => pushOsNav(repairTabRoute(role, 'works', 'archive'), undefined, role)}>
               <Text style={styles.link}>→ Архив этапов</Text>
             </Pressable>
+            <PrimaryButton title="Акт приёмки (PDF)" variant="outline" compact onPress={() => { onExportAcceptance().catch(reportCatch('stage.exportAcceptance')); }} />
           </View>
         )}
 
@@ -425,6 +430,17 @@ export function StageDetailScreen() {
           onProjectReload={() => loadProject(activeProject.id)}
           onSubmitStage={submitStage}
         />
+
+        {isContractor && stage.status === 'active' && wfChecks.length > 0 ? (
+          <StageDetailExecutorChecklist
+            stageId={stage.id}
+            checks={wfChecks}
+            canWrite={canWrite}
+            userId={user.id}
+            projectId={activeProject.id}
+            onChanged={async () => { await reload(); await loadProject(activeProject.id); }}
+          />
+        ) : null}
 
         {showAcceptance ? (
           <StageDetailAcceptanceFold
@@ -520,7 +536,7 @@ export function StageDetailScreen() {
           )}
           {stage.comments.map((c) => (
             <Pressable key={c.id} style={styles.comment} onPress={() => setReplyTo(c.text)}>
-              <Text style={styles.commentRole}>{c.author_role === 'contractor' ? 'Исполнитель' : 'Заказчик'}</Text>
+              <Text style={styles.commentRole}>{c.author_role === 'contractor' ? 'Исполнитель' : c.author_role === 'supervisor' ? 'Технадзор' : 'Заказчик'}</Text>
               {renderComment(c.text)}
               <CommentReactions id={c.id} stageId={stage.id} counts={reactCounts[c.id]} />
               <Text style={styles.meta}>{c.created_at.slice(0, 16).replace('T', ' ')}</Text>

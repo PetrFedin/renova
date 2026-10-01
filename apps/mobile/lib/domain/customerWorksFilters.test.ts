@@ -52,6 +52,21 @@ if (counts.now !== 1 || counts.awaiting !== 2 || counts.problems !== 3 || counts
   throw new Error(`counts ${JSON.stringify(counts)}`);
 }
 
-if (CUSTOMER_WORKS_FILTERS.length !== 4) throw new Error('4 customer filters');
+if (CUSTOMER_WORKS_FILTERS.length !== 5) throw new Error('5 customer filters');
 
 console.log('customerWorksFilters.test OK');
+
+
+// REP-12: «Завершённые» для заказчика + разбор ссылок навигации
+import { parseWorksFilterParam } from './customerWorksFilters';
+const doneList = filterStagesForCustomer(stages, 'done', {}, today);
+if (doneList.length !== 1 || doneList[0].id !== 'done') throw new Error('done filter = только завершённые');
+if (countStagesForCustomerFilters(stages, {}, today).done !== 1) throw new Error('done counter');
+const known = ['all', 'today', 'review', 'archive'];
+if (parseWorksFilterParam('archive', true, known).filter !== 'done') throw new Error('archive → done for customer');
+if (parseWorksFilterParam('review', true, known).filter !== 'awaiting') throw new Error('review → awaiting for customer');
+if (parseWorksFilterParam('stage:abc', true, known).stageId !== 'abc') throw new Error('stage:<id> focus');
+if (parseWorksFilterParam('stage:abc', false, known).stageId !== 'abc') throw new Error('stage:<id> focus contractor');
+if (parseWorksFilterParam('archive', false, known).filter !== 'archive') throw new Error('contractor archive');
+if (parseWorksFilterParam('unknown', false, known).filter !== undefined) throw new Error('unknown ignored');
+if (parseWorksFilterParam('unknown', true, known).filter !== undefined) throw new Error('unknown ignored customer');

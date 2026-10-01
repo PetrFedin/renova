@@ -19,6 +19,7 @@ import {
   CUSTOMER_WORKS_FILTERS,
   countStagesForCustomerFilters,
   filterStagesForCustomer,
+  parseWorksFilterParam,
   type CustomerWorksFilter,
 } from '@/lib/domain/customerWorksFilters';
 import { ReworkSlaWidget } from '@/components/renova/ReworkSlaWidget';
@@ -61,14 +62,21 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
   /** Clarity F: зависимости / WO — secondary, не конкурируют со списком этапов */
   const [showSecondaryPanels, setShowSecondaryPanels] = useState(false);
 
+  /** REP-11: ссылка `filter=stage:<id>` — показать один этап */
+  const [focusStageId, setFocusStageId] = useState<string | null>(null);
+
   useEffect(() => {
-    if (typeof filterParam === 'string') {
-      if (isCustomer && CUSTOMER_WORKS_FILTERS.some((f) => f.key === filterParam)) {
-        setFilter(filterParam);
-      } else if (FILTERS.some((f) => f.key === filterParam)) {
-        setFilter(filterParam);
-        if (isContractor) setShowAdvancedFilters(true);
-      }
+    if (typeof filterParam !== 'string') return;
+    const parsed = parseWorksFilterParam(filterParam, isCustomer, FILTERS.map((f) => f.key));
+    if (parsed.stageId) {
+      setFocusStageId(parsed.stageId);
+      setFilter('all');
+      return;
+    }
+    if (parsed.filter) {
+      setFocusStageId(null);
+      setFilter(parsed.filter);
+      if (isContractor) setShowAdvancedFilters(true);
     }
   }, [filterParam, isCustomer, isContractor]);
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -151,8 +159,9 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
           return true;
         });
 
+    if (focusStageId) return base.filter((s) => s.id === focusStageId);
     return filteredBase.filter((s) => !query || s.name.toLowerCase().includes(query.toLowerCase()));
-  }, [activeProject, filter, query, blockedMap, isCustomer]);
+  }, [activeProject, filter, query, blockedMap, isCustomer, focusStageId]);
 
   const customerFilterCounts = useMemo(() => {
     if (!isCustomer || !activeProject) return null;
@@ -235,6 +244,9 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
           </>
         )}
         <SearchFilter query={query} onQuery={setQuery} filters={activeFilters} active={filter} onFilter={setFilter} />
+        {focusStageId ? (
+          <PrimaryButton title="Показан один этап — показать все" variant="outline" compact onPress={() => setFocusStageId(null)} />
+        ) : null}
         {isContractor && !showAdvancedFilters && (
           <PrimaryButton title="Ещё фильтры" variant="ghost" compact onPress={() => setShowAdvancedFilters(true)} />
         )}
@@ -370,9 +382,6 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
 
 const s = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: RenovaTheme.colors.background },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  muted: { color: RenovaTheme.colors.textMuted },
-  empty: { textAlign: 'center', color: RenovaTheme.colors.textMuted, marginTop: 24 },
   emptyBox: {
     marginTop: RenovaTheme.spacing.lg,
     padding: RenovaTheme.spacing.md,

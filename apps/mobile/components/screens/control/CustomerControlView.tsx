@@ -15,6 +15,7 @@ import { api, ProjectIssue, WorkAcceptance } from '@/lib/api';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
+import { LoadingState } from '@/components/ui/LoadingState';
 import { screenLayout } from '@/constants/screenLayout';
 import { issueSeverityLabel, issueStatusLabel } from '@/constants/labels';
 import { useNavFromHere } from '@/lib/navigation';
@@ -24,6 +25,7 @@ import { pushOsNav } from '@/lib/pushOsNav';
 import { objectTabRoute } from '@/constants/osSections';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { writeResultMessage } from '@/lib/offlineResultMessage';
+import { controlSummary, customerIssueActions, customerIssueWaitingHint, type IssueAction } from '@/lib/domain/issueControlActions';
 
 export function CustomerControlView() {
   const pathname = usePathname();
@@ -78,13 +80,64 @@ export function CustomerControlView() {
     );
   }
 
+  if (loadState === 'loading' && !issues.length && !acceptances.length) {
+    return (
+      <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
+        <LoadingState title="Загружаем приёмку…" />
+      </ScrollView>
+    );
+  }
+
   const pendingCount = computePendingAcceptanceCount(activeProject.stages, acceptances);
+  const selfManaged = !activeProject.contractor_id;
   const rework = activeProject.stages.filter((s) => s.needs_rework && s.status !== 'done');
   const openIssues = issues.filter((i) => i.status !== 'closed');
   const sortedIssues = focusIssueId
     ? [...openIssues].sort((a, b) => Number(b.id === focusIssueId) - Number(a.id === focusIssueId))
     : openIssues;
+  const summary = controlSummary(openIssues, pendingCount);
   const openWarranty = warrantyItems.filter((w) => w.status !== 'closed');
+
+  const confirmIssueAction = (iss: ProjectIssue, action: IssueAction) => {
+    showActionConfirm({
+      title: action.confirmTitle,
+      message: `«${iss.title}»`,
+      primaryLabel: action.confirmPrimary,
+      onPrimary: () => {
+        void (async () => {
+          try {
+            await api.transitionIssue(user.id, activeProject.id, iss.id, action.next);
+            await syncProjectSideEffects({ user, project: activeProject });
+            reload();
+            if (action.key === 'confirm') {
+              showActionConfirm({
+                title: 'Замечание закрыто',
+                message: 'Исправление подтверждено.',
+                primaryLabel: 'Во входящие',
+                onPrimary: () => pushOsNav('/inbox', pathname, 'customer'),
+                secondaryLabel: 'Позже',
+                onSecondary: () => undefined,
+              });
+            }
+          } catch (e) {
+            if (isOfflineQueued(e)) {
+              notifyOfflineQueued(action.label);
+            } else {
+              reportError('control.customerIssueAction', e);
+              showActionConfirm({
+                title: 'Не удалось обновить замечание',
+                message: writeResultMessage(e, 'Повторите попытку.'),
+                primaryLabel: 'Понятно',
+                onPrimary: () => undefined,
+              });
+            }
+          }
+        })();
+      },
+      secondaryLabel: 'Отмена',
+      onSecondary: () => undefined,
+    });
+  };
 
   const warrantyBlock = (warrantyOpen > 0 || focusWarranty) ? (
     <>
@@ -99,16 +152,9 @@ export function CustomerControlView() {
           onPress={() => openQcIssue(w.id, pathname, 'customer')}
         >
           <Text style={s.title}>{w.title}{w.overdue ? ' · просрочено' : ''}</Text>
-          <Text style={s.meta}>{w.status}</Text>
+          <Text style={s.meta}>{issueStatusLabel(w.status)}</Text>
         </Pressable>
       ))}
-      {openWarranty.length > 0 || focusWarranty ? (
-        <PrimaryButton
-          title="Все гарантии (QC)"
-          variant="outline"
-          onPress={() => openQcIssue(openWarranty[0]?.id, pathname, 'customer')}
-        />
-      ) : null}
     </>
   ) : null;
 
@@ -116,9 +162,9 @@ export function CustomerControlView() {
     <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
       <ReadOnlyBanner />
       <View style={s.summary}>
-        <View style={s.cell}><Text style={s.n}>{pendingCount}</Text><Text style={s.l}>Приёмка</Text></View>
-        <View style={s.cell}><Text style={s.n}>{openIssues.length || rework.length}</Text><Text style={s.l}>Замечания</Text></View>
-        <View style={s.cell}><Text style={s.n}>{warrantyOpen || openIssues.filter(i => i.severity === 'critical' || i.severity === 'high').length}</Text><Text style={s.l}>{warrantyOpen ? 'Гарантия' : 'Критичные'}</Text></View>
+        <View style={s.cell}><Text style={s.n}>{summary.pendingAcceptance}</Text><Text style={s.l}>Приёмка</Text></View>
+        <View style={s.cell}><Text style={s.n}>{summary.openIssues}</Text><Text style={s.l}>Замечания</Text></View>
+        <View style={s.cell}><Text style={s.n}>{summary.criticalOpen}</Text><Text style={s.l}>Критичные</Text></View>
       </View>
 
       {/* Investor P1: focus=warranty — блок гарантий первым */}
@@ -142,7 +188,8 @@ export function CustomerControlView() {
         <Pressable
           key={iss.id}
           style={[s.row, iss.id === focusIssueId && s.rowFocus]}
-          onPress={() => openQcIssue(iss.id, pathname, 'customer')}
+          onPress={() => { if (iss.stage_id) nav.stage(iss.stage_id); }}
+          disabled={!iss.stage_id}
         >
           <Text style={s.title}>{iss.title}{iss.photo_url ? ' · фото' : ''}{iss.floor_plan_id ? ' · план' : ''}</Text>
           <Text style={s.meta}>{issueSeverityLabel(iss.severity)} · {issueStatusLabel(iss.status)}{iss.due_at ? ` · до ${iss.due_at.slice(0, 10)}` : ''}{iss.stage_id ? ' · → этап' : ''}</Text>
@@ -154,62 +201,23 @@ export function CustomerControlView() {
               <Text style={s.planLink}>→ На план</Text>
             </Pressable>
           ) : null}
-          {!readOnly && iss.status !== 'closed' && (
-            <PrimaryButton
-              title={iss.status === 'fixed' ? 'Подтвердить исправление' : 'Закрыть'}
-              compact
-              variant="outline"
-              onPress={() => {
-                const wasFixed = iss.status === 'fixed';
-                // Clarity W: pre-confirm до closeIssue
-                showActionConfirm({
-                  title: wasFixed ? 'Подтвердить исправление?' : 'Закрыть замечание?',
-                  message: `«${iss.title}»`,
-                  primaryLabel: wasFixed ? 'Подтвердить' : 'Закрыть',
-                  onPrimary: () => {
-                    void (async () => {
-                      try {
-                        await api.closeIssue(user!.id, activeProject!.id, iss.id);
-                        await syncProjectSideEffects({ user, project: activeProject });
-                        reload();
-                        if (wasFixed) {
-                          showActionConfirm({
-                            title: 'QC',
-                            message: 'Исправление подтверждено — замечание закрыто',
-                            primaryLabel: 'Во входящие',
-                            onPrimary: () => pushOsNav('/inbox', pathname, 'customer'),
-                            secondaryLabel: 'Позже',
-                            onSecondary: () => undefined,
-                          });
-                        }
-                      } catch (e) {
-                        if (isOfflineQueued(e)) {
-                          notifyOfflineQueued(wasFixed ? 'Подтверждение исправления' : 'Закрытие замечания');
-                        } else {
-                          reportError('control.customerClose', e);
-                          showActionConfirm({
-                            title: 'Ошибка',
-                            message: writeResultMessage(e, 'Не удалось обновить'),
-                          });
-                        }
-                      }
-                    })();
-                  },
-                  secondaryLabel: 'Отмена',
-                  onSecondary: () => undefined,
-                });
-              }}
-            />
-          )}
+          {iss.description ? <Text style={s.meta}>{iss.description}</Text> : null}
+          {!readOnly ? (
+            customerIssueActions(iss.status, selfManaged).map((action, idx) => (
+              <PrimaryButton
+                key={action.key}
+                title={action.label}
+                compact
+                variant={idx === 0 ? 'outline' : 'ghost'}
+                onPress={() => confirmIssueAction(iss, action)}
+              />
+            ))
+          ) : null}
+          {!readOnly && customerIssueWaitingHint(iss.status, selfManaged) ? (
+            <Text style={s.meta}>{customerIssueWaitingHint(iss.status, selfManaged)}</Text>
+          ) : null}
         </Pressable>
       ))}
-      {openIssues.length > 0 ? (
-        <PrimaryButton
-          title="Все замечания (QC)"
-          variant="outline"
-          onPress={() => openQcIssue(sortedIssues[0]?.id, pathname, 'customer')}
-        />
-      ) : null}
 
       {rework.length > 0 && <>
         <Text style={s.section}>Доработка</Text>

@@ -729,13 +729,9 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
   const acceptStage = useCallback(
     async (stageId: string, opts?: { qualityScore?: number | null }) => {
       if (!user || !activeProject) return;
-      try {
-        await api.acceptStage(user.id, activeProject.id, stageId, opts);
-      } catch (e: any) {
-        if (e?.message === 'offline_queued') {
-          /* queued */
-        } else throw e;
-      }
+      // offline_queued пробрасываем: приёмка поставлена в очередь, а не выполнена —
+      // экран не должен говорить «Этап принят» и открывать оплату (REP-03).
+      await api.acceptStage(user.id, activeProject.id, stageId, opts);
       await loadProject(activeProject.id);
       await syncProjectSideEffects({ user, project: activeProject });
     },

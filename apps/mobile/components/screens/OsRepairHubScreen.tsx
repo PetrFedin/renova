@@ -67,7 +67,12 @@ export function OsRepairHubScreen({ role }: { role: OsRole }) {
     reportError('components.screens.OsRepairHubScreen.InvalidTab', new Error(`Unsupported repair tab: ${id}`));
   }, [setActive]);
 
-  const controlBadge = pendingAcceptance > 0 ? pendingAcceptance : undefined;
+  // REP-40: бейдж — «ждёт меня». Для заказчика это решения по приёмке и подбору,
+  // для исполнителя — этапы, возвращённые на доработку (приёмка ждёт заказчика, не его).
+  const reworkCount = (activeProject?.stages || []).filter((st) => st.needs_rework && st.status !== 'done').length;
+  const controlWaiting = role === 'customer' ? pendingAcceptance : reworkCount;
+  const selectionsWaiting = role === 'customer' ? pendingSelections : 0;
+  const controlBadge = controlWaiting > 0 ? controlWaiting : undefined;
 
   // Clarity A: Этапы + Приёмка primary; Материалы/Подбор — «Ещё» (badge поднимает подбор)
   const tabs: HubTab[] = [
@@ -77,8 +82,8 @@ export function OsRepairHubScreen({ role }: { role: OsRole }) {
     {
       id: 'selections',
       label: 'Подбор',
-      badge: pendingSelections || undefined,
-      secondary: pendingSelections === 0,
+      badge: selectionsWaiting || undefined,
+      secondary: selectionsWaiting === 0,
     },
   ];
 

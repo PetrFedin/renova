@@ -1,8 +1,7 @@
 /** Приёмка above fold: фото результата → чеклист → принять/вернуть (W139: оценка только явно) */
-import { useRef, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, TextInput, Image } from 'react-native';
+import { useRef } from 'react';
+import { View, Text, StyleSheet, Pressable, Image } from 'react-native';
 import { RenovaTheme, card } from '@/constants/Theme';
-import { inputField } from '@/constants/uiTokens';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { AcceptanceDecisionButtons } from '@/components/renova/AcceptanceDecisionButtons';
 import { PhotoCompare } from '@/components/renova/PhotoCompare';
@@ -12,9 +11,9 @@ import type { StageDetail } from '@/lib/api';
 type StagePhoto = StageDetail['photos'][number];
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { api } from '@/lib/api';
-import { addCustomCheck } from '@/lib/customChecklist';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { reportError } from '@/lib/reportError';
+import { notifyError } from '@/lib/notify';
 
 type WfCheck = { id: string; text: string; done: boolean };
 
@@ -64,7 +63,6 @@ export function StageDetailAcceptanceFold({
   const { user, activeProject, loadProject } = useRenova();
   const contextRef = useRef({ userId: user?.id ?? null, projectId: activeProject?.id ?? null });
   contextRef.current = { userId: user?.id ?? null, projectId: activeProject?.id ?? null };
-  const [newCheck, setNewCheck] = useState('');
 
   const reconcileCommittedStageChange = async (source: string) => {
     if (contextRef.current.userId !== userId || contextRef.current.projectId !== projectId) {
@@ -126,6 +124,7 @@ export function StageDetailAcceptanceFold({
                     notifyOfflineQueued('Чеклист этапа');
                   } else {
                     reportError('components.screens.stage.StageDetailAcceptanceFold.ToggleChecklist', error, { projectId, stageId });
+                    notifyError('Отметка не сохранена', error, 'Повторите попытку.');
                   }
                   return;
                 }
@@ -150,32 +149,6 @@ export function StageDetailAcceptanceFold({
       />
       <PrimaryButton title="Акт приёмки (PDF)" variant="outline" onPress={onExportAcceptance} />
 
-      <TextInput style={s.input} placeholder="Свой пункт чеклиста…" value={newCheck} onChangeText={setNewCheck} editable={canWrite} />
-      <PrimaryButton
-        title="Добавить пункт"
-        variant="outline"
-        disabled={!canWrite}
-        onPress={() => {
-          void (async () => {
-            const text = newCheck.trim();
-            if (!text) return;
-            try {
-              await addCustomCheck(stageId, text);
-            } catch (error) {
-              reportError('components.screens.stage.StageDetailAcceptanceFold.AddCustomCheck', error, { projectId, stageId });
-              return;
-            }
-            setNewCheck('');
-            if (contextRef.current.userId !== userId || contextRef.current.projectId !== projectId) return;
-            try {
-              await onReload();
-            } catch (error) {
-              reportError('components.screens.stage.StageDetailAcceptanceFold.CustomCheckRefresh', error, { projectId, stageId });
-            }
-          })();
-        }}
-      />
-
       {acceptBlocked ? <Text style={s.meta}>Нужны фото результата и отмеченный чеклист (если есть пункты)</Text> : null}
       {!acceptBlocked && checklist.length === 0 ? (
         <Text style={s.meta}>Чеклист пуст — при приёмке будет запрос подтверждения</Text>
@@ -191,7 +164,6 @@ const s = StyleSheet.create({
   section: { fontWeight: RenovaTheme.fontWeight.bold, fontSize: RenovaTheme.fontSize.h3, marginTop: 8 },
   checkRow: { ...card, padding: 10 },
   checkText: { fontSize: RenovaTheme.fontSize.body, color: RenovaTheme.colors.text },
-  input: { ...inputField, minHeight: 44 },
   meta: { color: RenovaTheme.colors.textMuted, fontSize: RenovaTheme.fontSize.bodySmall },
   previewImg: { width: '100%', height: 140, borderRadius: RenovaTheme.radius.md },
 });

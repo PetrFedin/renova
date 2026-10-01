@@ -36,7 +36,7 @@ export function UnifiedAcceptanceList({
   /** После accept/return — обновить parent (список acceptances) */
   onChanged?: () => void;
 }) {
-  const { user, activeProject, submitStage } = useRenova();
+  const { user, activeProject, submitStage, readOnly } = useRenova();
   const items = buildUnifiedAcceptanceItems(stages, acceptances);
   // UI-010: исполнитель никогда не видит кнопки заказчика, что бы ни передал родитель
   const effectiveRole = effectiveAcceptanceRole(user?.role, role);
@@ -143,7 +143,7 @@ export function UnifiedAcceptanceList({
   return (
     <>
       {reworkItems.map((r) => (
-        <ReworkRow key={`rw-${r.stageId}`} item={r} onOpen={() => pushStageDetail(r.stageId, returnTo)} onResubmit={() => resubmit(r)} />
+        <ReworkRow key={`rw-${r.stageId}`} item={r} readOnly={readOnly} onOpen={() => pushStageDetail(r.stageId, returnTo)} onResubmit={() => resubmit(r)} />
       ))}
       {items.length ? (
         <Text style={s.hint}>
@@ -157,6 +157,7 @@ export function UnifiedAcceptanceList({
           key={it.id}
           item={it}
           isContractor={isContractor}
+          readOnly={readOnly}
           busy={busyId === it.id}
           onOpen={() => pushStageDetail(it.stageId, returnTo)}
           onAccept={(qualityScore) => {
@@ -202,6 +203,7 @@ function AcceptanceRow({
   onAccept,
   onReturn,
   isContractor,
+  readOnly,
   busy,
 }: {
   item: UnifiedAcceptanceItem;
@@ -209,6 +211,7 @@ function AcceptanceRow({
   onAccept: (qualityScore: number | null) => void;
   onReturn: (reason: string, qualityScore: number | null) => Promise<boolean>;
   isContractor: boolean;
+  readOnly?: boolean;
   busy: boolean;
 }) {
   const orphan = item.kind !== 'acceptance';
@@ -224,7 +227,7 @@ function AcceptanceRow({
         </Pressable>
         <PrimaryButton title="Открыть этап" compact variant="outline" onPress={onOpen} />
       </View>
-      {!isContractor ? (
+      {!isContractor && !readOnly ? (
         <AcceptanceDecisionButtons
           stageName={item.title}
           compact
@@ -241,7 +244,7 @@ function AcceptanceRow({
 }
 
 /** Исполнитель: этап вернули — причина, срок и «Сдать повторно». */
-function ReworkRow({ item, onOpen, onResubmit }: { item: ReworkItem; onOpen: () => void; onResubmit: () => void }) {
+function ReworkRow({ item, onOpen, onResubmit, readOnly }: { item: ReworkItem; onOpen: () => void; onResubmit: () => void; readOnly?: boolean }) {
   return (
     <View style={s.rowCard}>
       <Pressable onPress={onOpen}>
@@ -251,7 +254,7 @@ function ReworkRow({ item, onOpen, onResubmit }: { item: ReworkItem; onOpen: () 
         {item.deadline ? <Text style={s.meta}>Срок доработки: {item.deadline}</Text> : null}
       </Pressable>
       <View style={s.btnRow}>
-        <PrimaryButton title="Сдать повторно" variant="accent" compact onPress={onResubmit} />
+        {!readOnly ? <PrimaryButton title="Сдать повторно" variant="accent" compact onPress={onResubmit} /> : null}
         <PrimaryButton title="Открыть этап" variant="outline" compact onPress={onOpen} />
       </View>
     </View>

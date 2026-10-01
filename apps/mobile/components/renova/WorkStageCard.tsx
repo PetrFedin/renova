@@ -7,7 +7,7 @@ import { WORK_CARD_STATUS_LABEL } from '@/constants/labels';
 
 type StageLike = {
   id: string; name: string; status: string; planned_end?: string | null; payment_amount?: number;
-  room_ids?: string[]; needs_rework?: boolean; contractor_ready?: boolean; checklist_progress?: number;
+  room_ids?: string[]; needs_rework?: boolean; contractor_ready?: boolean; checklist_progress?: number; percent_complete?: number;
   work_type?: string | null;
   display_status_label?: string;
   works_total?: number;
@@ -29,7 +29,8 @@ type Props = {
 };
 
 export function WorkStageCard({ stage, roomLabel, onOpen, onPrimary, primaryLabel, readOnly, blocked, blockedReason, selected, onLongPress }: Props) {
-  const progress = stage.checklist_progress ?? (stage.status === 'done' ? 100 : stage.status === 'review' ? 90 : 40);
+  // Прогресс — реальный процент выполнения этапа с сервера, а не выдуманные 40/90/100 по статусу.
+  const progress = stage.status === 'done' ? 100 : Math.max(0, Math.min(100, stage.percent_complete ?? stage.checklist_progress ?? 0));
   const overdue = stage.planned_end && stage.planned_end < new Date().toISOString().slice(0, 10) && stage.status !== 'done';
   return (
     <Pressable
@@ -73,7 +74,7 @@ export function WorkStageCard({ stage, roomLabel, onOpen, onPrimary, primaryLabe
 }
 
 const s = StyleSheet.create({
-  overdue: { borderLeftWidth: 3, borderLeftColor: '#D4A574', paddingLeft: 8 },
+  overdue: { borderLeftWidth: 3, borderLeftColor: RenovaTheme.colors.warning, paddingLeft: 8 },
   blocked: { opacity: 0.72 },
   top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   st: { fontSize: 11, color: RenovaTheme.colors.textMuted },
