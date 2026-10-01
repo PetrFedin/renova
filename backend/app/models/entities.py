@@ -501,6 +501,9 @@ class TeamInvite(Base):
     role: Mapped[str] = mapped_column(String(32), default="member")
     expires_at: Mapped[datetime] = mapped_column(DateTime)
     used: Mapped[bool] = mapped_column(Boolean, default=False)
+    # MKT-022: личное приглашение по телефону. NULL — обычная ссылка/QR (по токену);
+    # не NULL — принять или отклонить может только этот исполнитель, токен наружу не выдаётся.
+    invitee_user_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 class ChecklistTemplate(Base):

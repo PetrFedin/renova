@@ -10,6 +10,7 @@ from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.phone import InvalidPhoneNumber, normalize_phone
 from app.core.timeutil import utc_now
 from app.models.entities import (
     Project,
@@ -319,6 +320,14 @@ async def _dispatch(db: AsyncSession, source: str) -> None:
     await dispatch_best_effort(db, source=source, limit=10)
 
 
+INVITATION_LIFETIME = timedelta(days=7)
+NEUTRAL_INVITE_ACK = {
+    "ok": True,
+    "status": "sent",
+    "message": "Приглашение отправлено",
+}
+
+
 async def _invite_phone_for_team(
     db: AsyncSession,
     *,
@@ -326,12 +335,24 @@ async def _invite_phone_for_team(
     phone: str,
     role: str,
 ) -> dict:
+    """MKT-022: личное приглашение с принятием, без раскрытия регистрации номера.
+
+    Участником приглашённый становится только после ``accept_invitation``. Ответ
+    приглашающему одинаков для зарегистрированного, незарегистрированного номера и
+    номера не-исполнителя; различаем лишь ошибки ввода и «уже в бригаде» (владелец и
+    так видит список участников).
+    """
     if not _valid_member_role(role):
-        return {"ok": False, "message": "Некорректная роль"}
-    normalized_phone = phone.strip()
-    target = await db.scalar(select(User).where(User.phone == normalized_phone))
+        return {"ok": False, "code": "invalid_team_role", "message": "Некорректная роль"}
+    try:
+        normalized_phone = normalize_phone(phone)
+    except InvalidPhoneNumber:
+        return {"ok": False, "code": "invalid_phone", "message": "Некорректный номер телефона"}
+    # Поиск по канону и по «как сохранено раньше» (старые строки без нормализации).
+    candidates = {normalized_phone, (phone or "").strip()}
+    target = await db.scalar(select(User).where(User.phone.in_(candidates)))
     if target is None or target.role != UserRole.contractor:
-        return {"ok": False, "message": "Исполнитель не найден"}
+        return dict(NEUTRAL_INVITE_ACK)
 
     existing = await _find_team_membership(
         db,
@@ -339,26 +360,42 @@ async def _invite_phone_for_team(
         user_id=target.id,
     )
     if existing is not None:
-        return {"ok": False, "message": "Уже в бригаде"}
+        return {"ok": False, "code": "already_member", "message": "Уже в бригаде"}
 
-    # Prepare the durable effect before mutating membership. If effect preparation
-    # fails, there is no membership DML to leak through SQLite legacy autocommit.
+    now = utc_now()
+    pending = await db.scalar(
+        select(TeamInvite).where(
+            TeamInvite.team_id == team.id,
+            TeamInvite.invitee_user_id == target.id,
+            TeamInvite.used.is_(False),
+            TeamInvite.expires_at >= now,
+        )
+    )
+    if pending is not None:
+        # Повторное приглашение идемпотентно: только обновляем роль и срок.
+        pending.role = role
+        pending.expires_at = now + INVITATION_LIFETIME
+        return dict(NEUTRAL_INVITE_ACK)
+
+    # Prepare the durable effect together with the pending invitation row.
     await _enqueue_notification(
         db,
         team_id=team.id,
         user_id=target.id,
         title="Приглашение в бригаду",
-        body=f"Вас добавили в бригаду «{team.name}»",
+        body=f"Вас приглашают в бригаду «{team.name}». Откройте профиль, чтобы принять или отклонить.",
     )
-    _member, created = await ensure_team_membership(
-        db,
-        team_id=team.id,
-        user_id=target.id,
-        role=role,
+    db.add(
+        TeamInvite(
+            team_id=team.id,
+            token=secrets.token_urlsafe(16),
+            role=role,
+            expires_at=now + INVITATION_LIFETIME,
+            invitee_user_id=target.id,
+        )
     )
-    if not created:
-        raise _MembershipAlreadyExists("team_membership_race_lost")
-    return {"ok": True, "user_id": target.id}
+    await db.flush()
+    return dict(NEUTRAL_INVITE_ACK)
 
 
 async def invite_phone_as_owner(
@@ -368,7 +405,7 @@ async def invite_phone_as_owner(
     phone: str,
     role: str = "member",
 ) -> dict:
-    """Owner-scoped direct membership mutation with durable notification."""
+    """Owner-scoped personal invitation (membership only after the invitee accepts)."""
     owner = await _locked_user(db, owner_id)
     if owner is None or owner.role != UserRole.contractor:
         await db.rollback()
@@ -391,7 +428,7 @@ async def invite_phone_as_owner(
         await db.commit()
     except _MembershipAlreadyExists:
         await db.rollback()
-        return {"ok": False, "message": "Уже в бригаде"}
+        return {"ok": False, "code": "already_member", "message": "Уже в бригаде"}
     except BaseException:
         await db.rollback()
         raise
@@ -406,7 +443,7 @@ async def invite_phone(
     phone: str,
     role: str = "member",
 ) -> dict:
-    """Compatibility path with the same atomic membership/outbox contract."""
+    """Compatibility path with the same atomic invitation/outbox contract."""
     team = await _locked_team(db, team_id)
     if team is None:
         await db.rollback()
@@ -421,7 +458,7 @@ async def invite_phone(
         await db.commit()
     except _MembershipAlreadyExists:
         await db.rollback()
-        return {"ok": False, "message": "Уже в бригаде"}
+        return {"ok": False, "code": "already_member", "message": "Уже в бригаде"}
     except BaseException:
         await db.rollback()
         raise
@@ -592,8 +629,12 @@ async def create_owner_invite(
     role: str = "member",
     hours: int = 72,
     default_team_name: str = "Бригада",
+    create_team: bool = True,
 ) -> TeamInviteResult:
-    """Create/get the owned team and invite in one transaction."""
+    """Create/get the owned team and invite in one transaction.
+
+    ``create_team=False`` (рассылка SMS, MKT-036) требует уже существующую бригаду.
+    """
     if not _valid_member_role(role):
         raise ValueError("invalid_team_role")
     if hours < 1 or hours > 24 * 30:
@@ -602,6 +643,9 @@ async def create_owner_invite(
     if owner is None or owner.role != UserRole.contractor:
         await db.rollback()
         raise ValueError("team_owner_contractor_only")
+    if not create_team and await owned_team(db, owner.id) is None:
+        await db.rollback()
+        raise ValueError("team_not_found")
     try:
         team_result = await _get_or_create_owned_team_locked(
             db,
@@ -669,6 +713,7 @@ async def join_by_token(db: AsyncSession, user_id: str, token: str) -> dict:
         update(TeamInvite)
         .where(
             TeamInvite.token == normalized,
+            TeamInvite.invitee_user_id.is_(None),
             TeamInvite.used.is_(False),
             TeamInvite.expires_at >= utc_now(),
         )
@@ -707,6 +752,88 @@ async def join_by_token(db: AsyncSession, user_id: str, token: str) -> dict:
     if created:
         await _dispatch(db, "team.join")
     return {"ok": True, "team_id": team_id}
+
+
+async def list_pending_invitations(db: AsyncSession, user_id: str) -> list[dict]:
+    """Личные приглашения в бригады, ожидающие ответа этого исполнителя."""
+    rows = (
+        await db.execute(
+            select(TeamInvite, Team.name)
+            .join(Team, Team.id == TeamInvite.team_id)
+            .where(
+                TeamInvite.invitee_user_id == user_id,
+                TeamInvite.used.is_(False),
+                TeamInvite.expires_at >= utc_now(),
+            )
+            .order_by(TeamInvite.created_at.desc(), TeamInvite.id.asc())
+        )
+    ).all()
+    return [
+        {
+            "id": invite.id,
+            "team_id": invite.team_id,
+            "team_name": team_name,
+            "role": invite.role,
+            "expires_at": invite.expires_at.isoformat(),
+        }
+        for invite, team_name in rows
+    ]
+
+
+async def respond_to_invitation(
+    db: AsyncSession,
+    *,
+    user_id: str,
+    invitation_id: str,
+    accept: bool,
+) -> dict:
+    """Приглашённый принимает/отклоняет; членом становится только при принятии."""
+    user = await _locked_user(db, user_id)
+    if user is None or user.role != UserRole.contractor:
+        await db.rollback()
+        raise ValueError("team_owner_contractor_only")
+    claimed = await db.execute(
+        update(TeamInvite)
+        .where(
+            TeamInvite.id == invitation_id,
+            TeamInvite.invitee_user_id == user.id,
+            TeamInvite.used.is_(False),
+            TeamInvite.expires_at >= utc_now(),
+        )
+        .values(used=True)
+        .returning(TeamInvite.team_id, TeamInvite.role)
+    )
+    row = claimed.first()
+    if row is None:
+        await db.rollback()
+        raise ValueError("invitation_not_found")
+    team_id, role = row
+    team = await _locked_team(db, team_id)
+    if team is None:
+        await db.rollback()
+        raise ValueError("invitation_not_found")
+    try:
+        if accept:
+            await ensure_team_membership(
+                db, team_id=team_id, user_id=user.id, role=role,
+            )
+        await _enqueue_notification(
+            db,
+            team_id=team.id,
+            user_id=team.owner_id,
+            title="Приглашение принято" if accept else "Приглашение отклонено",
+            body=(
+                f"Исполнитель {user.phone} присоединился к «{team.name}»"
+                if accept
+                else f"Исполнитель {user.phone} отклонил приглашение в «{team.name}»"
+            ),
+        )
+        await db.commit()
+    except BaseException:
+        await db.rollback()
+        raise
+    await _dispatch(db, "team.invitation_accepted" if accept else "team.invitation_declined")
+    return {"ok": True, "status": "accepted" if accept else "declined", "team_id": team_id}
 
 
 async def set_member_role(

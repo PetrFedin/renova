@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
+from app.core.phone import InvalidPhoneNumber, normalize_phone
+from app.core.rate_limit import RateLimitBackendUnavailable, rate_limiter
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -44,12 +46,18 @@ def _team_error(error: ValueError) -> HTTPException:
     code = str(error)
     if code in {"team_owner_contractor_only", "team_owner_only"}:
         return HTTPException(403, detail={"code": code})
-    if code in {"team_owner_not_found", "team_not_found", "team_member_not_found"}:
+    if code in {
+        "team_owner_not_found",
+        "team_not_found",
+        "team_member_not_found",
+        "invitation_not_found",
+    }:
         return HTTPException(404, detail={"code": code})
     if code in {
         "invalid_team_name",
         "invalid_team_role",
         "invalid_invite_lifetime",
+        "invalid_phone",
     }:
         return HTTPException(422, detail={"code": code})
     return HTTPException(409, detail={"code": code})
@@ -95,6 +103,28 @@ async def create_team(
     }
 
 
+# MKT-036: SMS шлёт только владелец бригады и не чаще, чем в сутки на пользователя/номер.
+SMS_PER_USER_PER_DAY = 10
+SMS_PER_PHONE_PER_DAY = 3
+PHONE_INVITES_PER_USER_PER_DAY = 30
+_DAY_SECONDS = 24 * 60 * 60
+
+
+async def _enforce_daily_limit(prefix: str, identity: str, limit: int, code: str) -> None:
+    try:
+        decision = await rate_limiter.check(
+            prefix, identity, limit=limit, window_seconds=_DAY_SECONDS,
+        )
+    except RateLimitBackendUnavailable as error:
+        raise HTTPException(503, detail={"code": "rate_limit_unavailable"}) from error
+    if not decision.allowed:
+        raise HTTPException(
+            429,
+            detail={"code": code},
+            headers={"Retry-After": str(decision.retry_after_seconds)},
+        )
+
+
 @router.post("/invite-sms")
 async def invite_sms(
     body: SmsIn,
@@ -103,25 +133,39 @@ async def invite_sms(
 ):
     _require_contractor(user)
     try:
+        phone = normalize_phone(body.phone)
+    except InvalidPhoneNumber as error:
+        raise HTTPException(422, detail={"code": "invalid_phone"}) from error
+    # Только владелец существующей бригады: SMS не создаёт команду и не доступен остальным.
+    if await team_svc.owned_team(db, user.id) is None:
+        raise HTTPException(403, detail={"code": "team_owner_only"})
+    await _enforce_daily_limit("team-sms:user", user.id, SMS_PER_USER_PER_DAY, "sms_user_limit")
+    await _enforce_daily_limit("team-sms:phone", phone, SMS_PER_PHONE_PER_DAY, "sms_phone_limit")
+    try:
         result = await team_svc.create_owner_invite(
             db,
             owner_id=user.id,
             role=body.role,
+            create_team=False,
         )
     except ValueError as error:
         raise _team_error(error) from error
 
     link = f"renova://team/join/{result.invite.token}"
-    from app.services.sms_service import send_sms
+    from app.services.sms_service import SmsError, send_sms
 
-    message = await send_sms(body.phone, f"Renova: присоединяйтесь {link}")
+    try:
+        message = await send_sms(phone, f"Renova: присоединяйтесь {link}")
+    except SmsError as error:
+        raise HTTPException(502, detail={"code": "sms_delivery_failed"}) from error
     return {
         "ok": True,
         "link": link,
         "role": result.invite.role,
         "team_id": result.team.id,
         "team_replayed": result.team_replayed,
-        **message,
+        "delivered": message.delivered,
+        "preview": message.preview,
     }
 
 
@@ -131,13 +175,59 @@ async def invite(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """Приглашение по телефону (MKT-022): создаёт ожидающее приглашение, не членство.
+
+    Ответ нейтрален: «приглашение отправлено» и для незарегистрированного номера.
+    Ошибки ввода: 422 ``invalid_phone``/``invalid_team_role``; «уже в бригаде» — 409.
+    """
     _require_contractor(user)
+    await _enforce_daily_limit(
+        "team-invite:user", user.id, PHONE_INVITES_PER_USER_PER_DAY, "invite_user_limit",
+    )
     try:
-        return await team_svc.invite_phone_as_owner(
+        result = await team_svc.invite_phone_as_owner(
             db,
             owner_id=user.id,
             phone=body.phone,
             role=body.role,
+        )
+    except ValueError as error:
+        raise _team_error(error) from error
+    if not result.get("ok"):
+        status = 409 if result.get("code") == "already_member" else 422
+        raise HTTPException(
+            status,
+            detail={"code": result.get("code", "invite_failed"), "message": result.get("message")},
+        )
+    return result
+
+
+@router.get("/invitations")
+async def my_invitations(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Приглашения в бригады, ожидающие моего ответа."""
+    _require_contractor(user)
+    return {"items": await team_svc.list_pending_invitations(db, user.id)}
+
+
+@router.post("/invitations/{invitation_id}/{decision}")
+async def respond_invitation(
+    invitation_id: str,
+    decision: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_contractor(user)
+    if decision not in {"accept", "decline"}:
+        raise HTTPException(404, detail={"code": "invitation_not_found"})
+    try:
+        return await team_svc.respond_to_invitation(
+            db,
+            user_id=user.id,
+            invitation_id=invitation_id,
+            accept=decision == "accept",
         )
     except ValueError as error:
         raise _team_error(error) from error

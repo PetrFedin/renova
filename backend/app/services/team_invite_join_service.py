@@ -111,6 +111,7 @@ async def join_by_token(
         update(TeamInvite)
         .where(
             TeamInvite.token == normalized,
+            TeamInvite.invitee_user_id.is_(None),
             TeamInvite.used.is_(False),
             TeamInvite.expires_at >= utc_now(),
         )

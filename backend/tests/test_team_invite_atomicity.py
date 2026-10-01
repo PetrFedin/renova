@@ -147,7 +147,7 @@ async def test_invite_phone_validates_role_and_rolls_back_effect_failure(
 
     async with session_factory() as db:
         invalid = await team_svc.invite_phone(db, team.id, first.phone, "owner")
-    assert invalid == {"ok": False, "message": "Некорректная роль"}
+    assert invalid["ok"] is False and invalid["code"] == "invalid_team_role"
 
     async def broken_enqueue(*_args, **_kwargs):
         raise RuntimeError("delivery_prepare_unavailable")

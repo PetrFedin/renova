@@ -276,18 +276,32 @@ async def test_invite_phone_is_owner_scoped_and_atomic(db):
         phone=member_phone,
         role="viewer",
     )
-    assert result == {"ok": True, "user_id": member_id}
+    # MKT-022: приглашение ожидает принятия — членства ещё нет, ответ нейтральный.
+    assert result == {"ok": True, "status": "sent", "message": "Приглашение отправлено"}
+    assert await db.scalar(
+        select(func.count()).select_from(TeamMember).where(
+            TeamMember.team_id == team_id,
+            TeamMember.user_id == member_id,
+        )
+    ) == 0
+    assert await db.scalar(
+        select(func.count())
+        .select_from(DomainOutbox)
+        .where(DomainOutbox.aggregate_id == team_id)
+    ) == 1
+    accepted = await team_svc.respond_to_invitation(
+        db,
+        user_id=member_id,
+        invitation_id=(await team_svc.list_pending_invitations(db, member_id))[0]["id"],
+        accept=True,
+    )
+    assert accepted["status"] == "accepted"
     assert await db.scalar(
         select(TeamMember.role).where(
             TeamMember.team_id == team_id,
             TeamMember.user_id == member_id,
         )
     ) == "viewer"
-    assert await db.scalar(
-        select(func.count())
-        .select_from(DomainOutbox)
-        .where(DomainOutbox.aggregate_id == team_id)
-    ) == 1
 
 
 @pytest.mark.asyncio
