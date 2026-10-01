@@ -167,7 +167,7 @@ async def test_stage_create_is_atomic_replay_safe_and_rejects_foreign_rooms(db):
         select(func.count())
         .select_from(DomainOutbox)
         .where(DomainOutbox.aggregate_id == stage_id)
-    ) == 2
+    ) == 3  # активность + заказчик + прораб бригады (COM-005)
     assert await db.scalar(
         select(func.count())
         .select_from(ClientWriteRequest)
@@ -195,7 +195,7 @@ async def test_stage_create_is_atomic_replay_safe_and_rejects_foreign_rooms(db):
         select(func.count())
         .select_from(DomainOutbox)
         .where(DomainOutbox.aggregate_id == stage_id)
-    ) == 2
+    ) == 3  # активность + заказчик + прораб бригады (COM-005)
 
     with pytest.raises(ValueError, match="idempotency_conflict"):
         await mutations.create_stage(
@@ -339,7 +339,7 @@ async def test_start_is_atomic_replay_safe_and_assignee_only(db, monkeypatch):
         select(func.count())
         .select_from(DomainOutbox)
         .where(DomainOutbox.aggregate_id == stage_id)
-    ) == 2
+    ) == 3  # активность + заказчик + прораб бригады (COM-005)
 
     contractor = await db.get(User, contractor_id)
     assert contractor is not None
@@ -356,7 +356,7 @@ async def test_start_is_atomic_replay_safe_and_assignee_only(db, monkeypatch):
         select(func.count())
         .select_from(DomainOutbox)
         .where(DomainOutbox.aggregate_id == stage_id)
-    ) == 2
+    ) == 3  # активность + заказчик + прораб бригады (COM-005)
 
     async def fail_notification(*_args, **_kwargs):
         raise RuntimeError("synthetic_stage_start_effect_failure")

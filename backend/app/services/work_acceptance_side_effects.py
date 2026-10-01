@@ -7,14 +7,13 @@ from app.models.entities import Project, Stage, WorkAcceptance
 from app.services import outbox_service as outbox
 
 
-def _member_ids(project: Project) -> list[str]:
-    seen: set[str] = set()
-    members: list[str] = []
-    for user_id in (project.customer_id, project.contractor_id):
-        if user_id and user_id not in seen:
-            seen.add(user_id)
-            members.append(user_id)
-    return members
+async def _member_ids(db: AsyncSession, project: Project, stage: Stage) -> list[str]:
+    """Заказчик, ведущий, назначенные на этап члены команды, прораб, технадзор (COM-005)."""
+    from app.services import notification_recipients as recipients_svc
+
+    return await recipients_svc.project_member_ids_for(
+        db, project, recipients_svc.QUALITY, stage_id=stage.id
+    )
 
 
 async def prepare_request_effects(
@@ -44,7 +43,7 @@ async def prepare_request_effects(
     )
     event_ids.append(activity.id)
 
-    for member_id in _member_ids(project):
+    for member_id in await _member_ids(db, project, stage):
         if member_id == requested_by:
             continue
         notification = await outbox.enqueue(
@@ -93,7 +92,7 @@ async def prepare_return_effects(
     )
     event_ids.append(activity.id)
 
-    for member_id in _member_ids(project):
+    for member_id in await _member_ids(db, project, stage):
         if member_id == returned_by:
             continue
         notification = await outbox.enqueue(

@@ -562,13 +562,16 @@ def validate_transition(
         raise ValueError("work_order_role_forbidden")
 
 
-def transition_notification_targets(project: Project, actor_id: str) -> list[str]:
+async def transition_notification_targets(
+    db: AsyncSession, project: Project, actor_id: str, stage_id: str | None = None
+) -> list[str]:
+    """Кому уведомление о смене статуса наряда: заказчик, ведущий, команда по роли, технадзор (COM-005)."""
+    from app.services import notification_recipients as recipients_svc
+
     return sorted(
-        {
-            user_id
-            for user_id in (project.customer_id, project.contractor_id)
-            if user_id and user_id != actor_id
-        }
+        await recipients_svc.project_recipients(
+            db, project, recipients_svc.GENERAL, stage_id=stage_id, exclude=(actor_id,)
+        )
     )
 
 
@@ -689,7 +692,7 @@ async def transition(
                 "link_path": f"/work-order/{work_order.id}",
             },
         )
-        for target_id in transition_notification_targets(project_row, user_id):
+        for target_id in await transition_notification_targets(db, project_row, user_id, work_order.stage_id):
             await outbox.enqueue(
                 db,
                 aggregate_type="work_order",

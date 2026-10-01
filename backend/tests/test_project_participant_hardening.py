@@ -201,8 +201,10 @@ async def test_conversion_replays_after_midnight_and_across_authorized_actors(db
     assert first.replayed is False and second.replayed is True
     assert second.project.id == project_id and second.project.planned_start_date == original_start
     assert await db.scalar(select(JobLead.status).where(JobLead.id == lead_id)) == JobLeadStatus.taken
-    for model in (Project, ProjectParticipant, ProjectParticipantEvent, ClientWriteRequest, DomainOutbox):
+    for model in (Project, ProjectParticipant, ProjectParticipantEvent, ClientWriteRequest):
         assert await db.scalar(select(func.count()).select_from(model)) == 1
+    # событие проекта + ровно одно уведомление исполнителю о конверсии (COM-021), без дублей при повторе
+    assert await db.scalar(select(func.count()).select_from(DomainOutbox)) == 2
 
 
 @pytest.mark.asyncio

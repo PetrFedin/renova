@@ -403,7 +403,9 @@ async def delete_message(project_id: str, thread_id: str, message_id: str, user:
         msg = await chat_message_svc.delete_own_message(db, thread=t, message_id=message_id, user_id=user.id)
     except chat_message_svc.MessageMutationError as exc:
         raise HTTPException(exc.status, exc.code) from exc
-    return chat_svc.msg_dict(msg)
+    out = chat_svc.msg_dict(msg)
+    out["no_recipients"] = not await chat_message_svc.thread_has_other_recipients(db, thread_id=thread_id, sender_id=user.id)
+    return out
 
 
 @router.patch("/{project_id}/chats/{thread_id}")

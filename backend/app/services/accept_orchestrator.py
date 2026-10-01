@@ -215,22 +215,24 @@ async def finalize_work_acceptance(
 
 
 async def emit_acceptance_side_effects(db: AsyncSession, *, project: Project, stage: Stage, accepted_by: str, comment: str | None, payment: Payment | None, next_stage: Stage | None, source: str = "app") -> None:
+    from app.services import notification_recipients as recipients_svc
+    member_ids = await recipients_svc.project_member_ids_for(db, project, recipients_svc.QUALITY, stage_id=stage.id)
     title_suffix = " (портал)" if source == "portal" else ""
     await act.log_event(db, project_id=project.id, user_id=accepted_by, kind="AcceptancePassed", title=f"Этап принят{title_suffix}: {stage.name}", body=comment, link_path=f"/stage/{stage.id}", stage_id=stage.id)
     await act.log_event(db, project_id=project.id, user_id=accepted_by, kind="StageClosed", title=f"Этап закрыт{title_suffix}: {stage.name}", body=comment, link_path=f"/stage/{stage.id}", stage_id=stage.id)
-    for member_id in project_member_ids(project):
+    for member_id in member_ids:
         if member_id == accepted_by:
             continue
         await notif.notify(db, user_id=member_id, project_id=project.id, notification_type="stage_review", title=f"Этап принят: {stage.name}", body=comment or "Работы по этапу приняты заказчиком.", link_path=f"/stage/{stage.id}", return_to="/(customer)/(tabs)/")
     if payment and project.customer_id:
         await notif.notify(db, user_id=project.customer_id, project_id=project.id, notification_type="payment_pending", title="Подтвердите оплату этапа", body=stage.name, link_path="/(customer)/(tabs)/budget?tab=payments", return_to="/(customer)/(tabs)/")
     self_managed = is_self_managed_project(project)
-    for member_id in project_member_ids(project):
+    for member_id in member_ids:
         if self_managed and member_id == accepted_by:
             continue
         await notif.notify(db, user_id=member_id, project_id=project.id, notification_type="document", title=f"Акт приёмки готов: {stage.name}", body="PDF сформирован автоматически после приёмки", link_path="/documents", return_to="/(customer)/(tabs)/" if member_id == project.customer_id else "/(contractor)/(tabs)/")
     if next_stage:
-        for member_id in project_member_ids(project):
+        for member_id in member_ids:
             if self_managed and member_id == accepted_by:
                 continue
             await notif.notify(db, user_id=member_id, project_id=project.id, notification_type="stage_start", title=f"Следующий этап готов к запуску: {next_stage.name}", body="Предыдущий этап принят. Запустите следующий этап после проверки зависимостей и доступности исполнителя.", link_path=f"/stage/{next_stage.id}", return_to="/(customer)/(tabs)/repair")

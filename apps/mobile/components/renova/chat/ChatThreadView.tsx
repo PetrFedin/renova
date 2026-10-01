@@ -752,6 +752,7 @@ export function ChatThreadView({
     </View>
   );
 }
+        {chat?.no_other_recipients && <Text style={s.wsHint}>Исполнитель ещё не подключён — сообщение увидят, когда он появится</Text>}
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: RenovaTheme.colors.background },

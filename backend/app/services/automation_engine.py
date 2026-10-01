@@ -109,24 +109,13 @@ async def prepare_event_effects(
     if kind == "StageStarted" and stage_id:
         actions.append("stage_started")
 
-    if kind in ("AcceptancePassed", "AcceptanceAccepted") and stage_id:
+    if kind == "AcceptancePassed" and stage_id:
+        # COM-019: the acceptance flow itself (accept_orchestrator /
+        # outbox acceptance side effects) sends the single "confirm stage
+        # payment" notification, and only when a payment really exists. The
+        # automation used to add a second, unconditional "can pay" prompt, which
+        # duplicated it and was false for stages without a payment.
         actions.append("payment_allowed")
-        stage = await db.get(Stage, stage_id)
-        if project and project.customer_id and stage:
-            await _enqueue_event_notification(
-                db,
-                effect_key=f"payment-unlocked:{project.customer_id}",
-                aggregate_id=aggregate_id,
-                parent_outbox_id=parent_outbox_id,
-                user_id=project.customer_id,
-                project_id=project_id,
-                notification_type="payment_pending",
-                title="Можно оплатить этап",
-                body=f"«{stage.name}» принят — подтвердите оплату.",
-                link_path="/(customer)/(tabs)/budget",
-                return_to="/(customer)/(tabs)/budget",
-            )
-            actions.append("payment_unlock_notified")
 
     # Попытка оплаты без приёмки
     if kind == "PaymentBlocked" and stage_id:
@@ -150,7 +139,8 @@ async def prepare_event_effects(
     # Материалы доставлены → разблокировка зависимых работ
     if kind == "MaterialDelivered":
         actions.append("dependent_work_unlocked")
-        if project and project.contractor_id:
+        # COM-019(c): never notify the contractor about their own action.
+        if project and project.contractor_id and user_id != project.contractor_id:
             await _enqueue_event_notification(
                 db,
                 effect_key=f"material-delivered:{project.contractor_id}",
@@ -222,25 +212,6 @@ async def prepare_event_effects(
                     link_path="/(customer)/(tabs)/budget",
                     return_to="/(customer)/(tabs)/budget",
                 )
-
-    # Event-driven fallback. Periodic scans use the durable outbox below.
-    if kind == "schedule_overdue" and stage_id:
-        stage = await db.get(Stage, stage_id)
-        if stage and project and project.contractor_id:
-            await _enqueue_event_notification(
-                db,
-                effect_key=f"schedule-overdue:{project.contractor_id}",
-                aggregate_id=aggregate_id,
-                parent_outbox_id=parent_outbox_id,
-                user_id=project.contractor_id,
-                project_id=project_id,
-                notification_type="deadline",
-                title="Просрочка работы",
-                body=stage.name,
-                link_path=f"/stage/{stage.id}",
-                return_to="/(contractor)/(tabs)/repair?tab=works",
-            )
-            actions.append("overdue_notified")
 
     return actions
 
@@ -396,6 +367,9 @@ async def scan_project_reminders(
                 actions.append(f"overdue:{stage.id}")
 
     actions.extend(await _scan_stage_waiting_reminders(db, project, stages))
+    from app.services.lifecycle_notifications import scan_unpaid_invoice_reminders
+
+    actions.extend(await scan_unpaid_invoice_reminders(db, project))
 
     active = [stage for stage in stages if stage.status == StageStatus.active]
     if active and project.customer_id:

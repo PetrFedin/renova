@@ -284,4 +284,26 @@ async def import_ical_atomic(
             "replayed": True,
         }
 
+    if result.updated_stages:
+        try:
+            from app.services import lifecycle_notifications as lifecycle
+            from app.services import notification_recipients as recipients_svc
+
+            project = await db.get(Project, project_id)
+            if project is not None:
+                await lifecycle.notify_once(
+                    db,
+                    dedupe_key=f"ical-import:{canonical_id}",
+                    user_ids=await recipients_svc.project_recipients(
+                        db, project, recipients_svc.SCHEDULE, exclude=(actor_id,)
+                    ),
+                    project_id=project_id,
+                    notification_type="deadline",
+                    title="График обновлён из календаря",
+                    body=f"Изменены даты этапов: {result.updated_stages}",
+                    link_path="/calendar",
+                    return_to="/(customer)/(tabs)/",
+                )
+        except Exception:  # noqa: BLE001 — импорт уже зафиксирован
+            await db.rollback()
     return {"ok": True, "parsed": result.parsed, "updated_stages": result.updated_stages, "replayed": False}

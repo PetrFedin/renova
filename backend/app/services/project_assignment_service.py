@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from typing import Literal
 
 from sqlalchemy import func, select
@@ -147,4 +148,14 @@ async def assign_contractor(
     loaded = await _loaded_project(db, project_id)
     if loaded is None:
         raise ValueError("project_assignment_entity_missing")
+    if actor_id is not None:
+        from app.services import lifecycle_notifications
+
+        try:
+            await lifecycle_notifications.notify_contractor_assigned(
+                db, project_id=project_id, contractor_id=contractor_id, actor_id=actor_id,
+            )
+        except Exception:  # noqa: BLE001 — уведомление не отменяет назначение
+            await db.rollback()
+            logging.getLogger(__name__).exception("contractor assignment notification failed")
     return AssignmentResult(status="assigned", project=loaded, current_contractor_id=contractor_id)

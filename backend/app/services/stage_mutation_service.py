@@ -203,23 +203,30 @@ async def _enqueue_customer_notification(
     body: str,
     actor_id: str | None = None,
 ) -> None:
-    if not project.customer_id or project.customer_id == actor_id:
-        return
-    await outbox.enqueue(
-        db,
-        aggregate_type="stage",
-        aggregate_id=stage.id,
-        event_type=outbox.NOTIFICATION_EVENT,
-        payload={
-            "user_id": project.customer_id,
-            "project_id": project.id,
-            "notification_type": notification_type,
-            "title": title,
-            "body": body,
-            "link_path": f"/stage/{stage.id}",
-            "return_to": "/(customer)/(tabs)/repair?tab=control",
-        },
-    )
+    # Заказчик, ведущий, прораб, назначенный на этап член бригады, технадзор и гости
+    # (кроме автора правки) — единый хелпер получателей (COM-005/COM-021).
+    from app.services import notification_recipients as recipients_svc
+
+    for user_id in sorted(
+        await recipients_svc.project_recipients(
+            db, project, recipients_svc.GENERAL, stage_id=stage.id, exclude=(actor_id,)
+        )
+    ):
+        await outbox.enqueue(
+            db,
+            aggregate_type="stage",
+            aggregate_id=stage.id,
+            event_type=outbox.NOTIFICATION_EVENT,
+            payload={
+                "user_id": user_id,
+                "project_id": project.id,
+                "notification_type": notification_type,
+                "title": title,
+                "body": body,
+                "link_path": f"/stage/{stage.id}",
+                "return_to": "/(customer)/(tabs)/repair?tab=control",
+            },
+        )
 
 
 async def _dispatch(db: AsyncSession, source: str) -> None:

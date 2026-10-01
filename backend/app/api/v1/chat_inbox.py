@@ -1,11 +1,14 @@
 """Inbox чатов — project membership + exact invited threads."""
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.db.session import get_db
-from app.models.entities import Project, User
+from app.models.entities import Project, ProjectViewer, User, UserRole
+from app.models.technical_supervision import ProjectTechnicalSupervisorAssignment
+from app.services import team_service as team_svc
+from app.services import technical_supervision_service as supervision
 from app.services import chat_participant_service as participant_svc
 from app.services import chat_service as chat_svc
 
@@ -13,10 +16,42 @@ router = APIRouter(prefix="/chats", tags=["chats-inbox"])
 
 
 async def _user_projects(db: AsyncSession, user: User) -> list[tuple[str, str]]:
+    """Проекты, чаты которых пользователь вправе видеть (COM-005/COM-007).
+
+    Те же роли, что у `project_access_mode`: владелец, ведущий исполнитель,
+    члены его бригады, гости и назначенный технадзор. Проекты в корзине
+    исключены (их тред всё равно не открыть), поэтому и список, и счётчик
+    «непрочитано» считаются по одному набору. Архивные проекты остаются: чат
+    архивного объекта доступен, а скрытие делается локальным фильтром «Архив».
+    """
+    owners = await team_svc.team_owner_ids(db, user.id)
+    conditions = [
+        Project.customer_id == user.id,
+        Project.contractor_id == user.id,
+        Project.id.in_(select(ProjectViewer.project_id).where(ProjectViewer.user_id == user.id)),
+        Project.id.in_(
+            select(ProjectTechnicalSupervisorAssignment.project_id).where(
+                ProjectTechnicalSupervisorAssignment.representative_user_id == user.id,
+                ProjectTechnicalSupervisorAssignment.revoked_at.is_(None),
+            )
+        ),
+    ]
+    if owners and user.role == UserRole.contractor:
+        conditions.append(Project.contractor_id.in_(owners))
     r = await db.execute(
-        select(Project).where((Project.customer_id == user.id) | (Project.contractor_id == user.id))
+        select(Project).where(or_(*conditions), Project.trashed_at.is_(None))
     )
-    return [(p.id, p.name) for p in r.scalars().all()]
+    out: list[tuple[str, str]] = []
+    for p in r.scalars().all():
+        if p.customer_id != user.id and p.contractor_id != user.id:
+            # отозванный/конфликтный технадзор и «участник» без доступа к чату — не показываем
+            mode, _ = await team_svc.project_access_mode(db, user, p)
+            if mode in ("none", "participant") and not await supervision.is_active_supervisor(
+                db, project_id=p.id, user_id=user.id
+            ):
+                continue
+        out.append((p.id, p.name))
+    return out
 
 
 def _sort_inbox(items: list[dict]) -> list[dict]:

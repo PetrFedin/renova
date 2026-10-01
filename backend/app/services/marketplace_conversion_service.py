@@ -126,4 +126,12 @@ async def convert_lead(
         from app.services.outbox_inline_dispatch import dispatch_best_effort
 
         await dispatch_best_effort(db, source="marketplace.convert", limit=10)
+        from app.services import lifecycle_notifications
+
+        try:
+            await lifecycle_notifications.notify_lead_converted(
+                db, project_id=loaded.id, lead_id=lead_id, actor_id=actor_id, created=True,
+            )
+        except Exception:  # noqa: BLE001 — конверсия уже зафиксирована
+            await db.rollback()
     return creation.ProjectCreateResult(loaded, not created)

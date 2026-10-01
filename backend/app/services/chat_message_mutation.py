@@ -43,7 +43,8 @@ async def _active_recipients(db: AsyncSession, *, thread: ChatThread, sender_id:
     project = await db.get(Project, thread.project_id)
     if project is None:
         return {}
-    target_ids = {project.customer_id, project.contractor_id}
+    from app.services import notification_recipients as recipients_svc
+    target_ids = await recipients_svc.project_recipients(db, project, recipients_svc.CHAT)
     target_ids.update(additional_recipient_ids or set())
     target_ids.update((await db.execute(select(ChatThreadParticipant.user_id).where(ChatThreadParticipant.thread_id == thread.id, ChatThreadParticipant.status == "active", ChatThreadParticipant.user_id.is_not(None)))).scalars().all())
     target_ids.discard(sender_id)
@@ -52,6 +53,14 @@ async def _active_recipients(db: AsyncSession, *, thread: ChatThread, sender_id:
         return {}
     users = (await db.execute(select(User).where(User.id.in_(list(target_ids))))).scalars().all()
     return {user.id: user for user in users if getattr(user, "deleted_at", None) is None}
+
+
+async def thread_has_other_recipients(db: AsyncSession, *, thread_id: str, sender_id: str) -> bool:
+    """False, если сообщение никого не уведомит (например, исполнитель ещё не подключён, COM-027)."""
+    thread = await db.get(ChatThread, thread_id)
+    if thread is None:
+        return True
+    return bool(await _active_recipients(db, thread=thread, sender_id=sender_id))
 
 
 async def _restore_recipient_visibility(db: AsyncSession, *, thread_id: str, recipient_ids: set[str]) -> None:

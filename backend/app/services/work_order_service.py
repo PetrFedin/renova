@@ -231,7 +231,7 @@ async def transition(
                 "link_path": f"/work-order/{work_order.id}",
             },
         )
-        for target_id in transition_notification_targets(project_row, user_id):
+        for target_id in await transition_notification_targets(db, project_row, user_id, work_order.stage_id):
             await outbox.enqueue(
                 db,
                 aggregate_type="work_order",

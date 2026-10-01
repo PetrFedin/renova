@@ -346,7 +346,8 @@ async def send_message(
     proj = await db.get(Project, thread.project_id)
     recipients: dict[str, User] = {}
     if proj:
-        target_ids = {proj.customer_id, proj.contractor_id}
+        from app.services import notification_recipients as recipients_svc
+        target_ids = await recipients_svc.project_recipients(db, proj, recipients_svc.CHAT)
         invited_ids = set(
             (
                 await db.execute(

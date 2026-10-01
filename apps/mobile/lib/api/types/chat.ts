@@ -59,3 +59,5 @@ export type ChatDetail = ChatThread & {
   participants?: ChatParticipant[];
   capabilities?: ChatCapabilities;
 };
+  /** true, если никто, кроме автора, не получит сообщение (исполнитель ещё не подключён) */
+  no_other_recipients?: boolean;

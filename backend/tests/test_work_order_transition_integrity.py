@@ -34,14 +34,18 @@ def test_role_matrix_and_payment_boundary():
     check_denied("draft", "done", UserRole.customer, "invalid_work_order_transition")
 
 
-def test_notification_targets_exclude_actor_and_deduplicate():
-    project = SimpleNamespace(
-        customer_id="customer",
-        contractor_id="contractor",
-        foreman_id="contractor",
-    )
-    assert service.transition_notification_targets(project, "customer") == ["contractor"]
-    assert service.transition_notification_targets(project, "contractor") == ["customer"]
+@pytest.mark.asyncio
+async def test_notification_targets_exclude_actor_and_deduplicate(monkeypatch):
+    from app.services import notification_recipients as recipients_svc
+
+    async def fake_recipients(_db, _project, kind, *, stage_id=None, exclude=()):
+        assert kind == recipients_svc.GENERAL
+        return {"customer", "contractor", "foreman"} - set(exclude)
+
+    monkeypatch.setattr(recipients_svc, "project_recipients", fake_recipients)
+    project = SimpleNamespace(customer_id="customer", contractor_id="contractor")
+    assert await service.transition_notification_targets(None, project, "customer") == ["contractor", "foreman"]
+    assert await service.transition_notification_targets(None, project, "contractor") == ["customer", "foreman"]
 
 
 class FakeDb:
@@ -71,8 +75,12 @@ async def test_transition_writes_audit_and_notifies_counterpart(monkeypatch):
     async def fake_dispatch(_db, *, source):
         dispatched.append(source)
 
+    async def fake_targets(_db, _project, actor_id, stage_id=None):
+        return sorted({"customer", "contractor"} - {actor_id})
+
     monkeypatch.setattr(service.outbox, "enqueue", fake_enqueue)
     monkeypatch.setattr(service, "_dispatch_committed_effects", fake_dispatch)
+    monkeypatch.setattr(service, "transition_notification_targets", fake_targets)
 
     project = SimpleNamespace(
         id="project-1",
