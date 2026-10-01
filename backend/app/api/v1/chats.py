@@ -1,5 +1,9 @@
 """Чаты проекта."""
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Literal
+
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -101,14 +105,32 @@ class ThreadState(BaseModel):
     is_archived: bool | None = None
 
 
+class ThreadRename(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+
+
+class ThreadArchive(BaseModel):
+    archived: bool = True
+
+
+class MessageEdit(BaseModel):
+    text: str = Field(min_length=1, max_length=8000)
+
+
 class ReadBody(BaseModel):
     read_through_message_id: str = Field(min_length=1, max_length=36)
 
 
+# COM-012: clients may only send user-originated types. system/task/invoice/payment
+# are created by the server (task-from-message, invoice-from-chat, thread events);
+# anything else is a 422 from validation, never a spoofed service message.
+ClientMessageType = Literal["text", "photo", "file", "confirm"]
+
+
 class MessageCreate(BaseModel):
     client_request_id: str = Field(min_length=8, max_length=80)
-    text: str | None = None
-    message_type: str = "text"
+    text: str | None = Field(default=None, max_length=8000)
+    message_type: ClientMessageType = "text"
     image_data: str | None = None
     reply_to_id: str | None = None
 
@@ -129,7 +151,7 @@ class InviteBody(BaseModel):
 class TaskFromMessage(BaseModel):
     title: str
     assignee_id: str | None = None
-    due_at: str | None = None
+    due_at: str | None = Field(default=None, max_length=40)
     work_type: str = "general"
     # Offline queue replay identity (apps/mobile/lib/offlineQueue.ts X-Offline-Id).
     # Same id + same fields above -> the original WorkOrder/message are returned.
@@ -328,9 +350,11 @@ async def _post_message(project_id: str, thread_id: str, body: MessageCreate, us
 async def _confirm_message(project_id: str, thread_id: str, message_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Подтверждение сообщения в чате.
 
-    P0: проверки ДО любых commit.
-    Payment-сообщения НЕ меняют финансовый статус — только deep-link в PaymentDetailSheet
-    (канон: POST /payments/{id}/confirm с transfer_ack/receipt).
+    ``confirm``: фиксируется кто и когда подтвердил (confirmed_by/confirmed_at),
+    автору уходит уведомление; автор не может подтвердить свой запрос (403);
+    повтор идемпотентен. ``payment``: финансовый статус НЕ меняется — только
+    deep-link в карточку оплаты; ``confirmed`` ставится сервером при реальном
+    подтверждении платежа (payment_service.confirm_payment, COM-011).
     """
     project, t = await require_chat_access(db, project_id, thread_id, user, write=True)
     msg = await require_chat_message(db, t, message_id)
@@ -346,23 +370,102 @@ async def _confirm_message(project_id: str, thread_id: str, message_id: str, use
             meta_project = meta.get("project_id")
             if meta_project and str(meta_project) != str(project_id):
                 raise HTTPException(409, "payment_project_mismatch")
-        # Honesty: не вызываем confirm_payment — клиент открывает карточку оплаты
         out = chat_svc.msg_dict(msg)
-        out["finance_action"] = "open_payment_sheet"
+        out["finance_action"] = None if msg.confirmed else "open_payment_sheet"
         out["payment_id"] = pid
         return out
 
-    # Обычный confirm (не платёж) — только после ACL
-    msg.confirmed = True
-    await db.commit()
-    await db.refresh(msg)
+    try:
+        msg, _new = await chat_message_svc.confirm_request_message(db, thread=t, message_id=message_id, user=user)
+    except chat_message_svc.MessageMutationError as exc:
+        raise HTTPException(exc.status, exc.code) from exc
     return chat_svc.msg_dict(msg)
+
+
+@router.patch("/{project_id}/chats/{thread_id}/messages/{message_id}")
+async def edit_message(project_id: str, thread_id: str, message_id: str, body: MessageEdit, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Автор правит своё текстовое сообщение (окно 24 ч); чужое — 403."""
+    _p, t = await require_chat_access(db, project_id, thread_id, user, write=True, allow_participant=True)
+    await require_chat_message(db, t, message_id)
+    try:
+        msg = await chat_message_svc.edit_own_message(db, thread=t, message_id=message_id, user_id=user.id, text=body.text)
+    except chat_message_svc.MessageMutationError as exc:
+        raise HTTPException(exc.status, exc.code) from exc
+    return chat_svc.msg_dict(msg)
+
+
+@router.delete("/{project_id}/chats/{thread_id}/messages/{message_id}")
+async def delete_message(project_id: str, thread_id: str, message_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Мягкое удаление своего сообщения (без срока давности); повтор идемпотентен."""
+    _p, t = await require_chat_access(db, project_id, thread_id, user, write=True, allow_participant=True)
+    await require_chat_message(db, t, message_id)
+    try:
+        msg = await chat_message_svc.delete_own_message(db, thread=t, message_id=message_id, user_id=user.id)
+    except chat_message_svc.MessageMutationError as exc:
+        raise HTTPException(exc.status, exc.code) from exc
+    return chat_svc.msg_dict(msg)
+
+
+@router.patch("/{project_id}/chats/{thread_id}")
+async def rename_chat(project_id: str, thread_id: str, body: ThreadRename, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    project, t = await require_chat_access(db, project_id, thread_id, user, write=True)
+    if not chat_svc.can_manage_thread(t, project, user):
+        raise HTTPException(403, "only_creator_or_customer_can_manage_thread")
+    try:
+        t = await chat_svc.rename_thread(db, t, body.title)
+    except chat_svc.ThreadError as exc:
+        raise HTTPException(exc.status, exc.code) from exc
+    return chat_svc.thread_dict(t)
+
+
+@router.post("/{project_id}/chats/{thread_id}/archive")
+async def archive_chat(project_id: str, thread_id: str, body: ThreadArchive, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Архив для всех участников (личный архив — PATCH .../state)."""
+    project, t = await require_chat_access(db, project_id, thread_id, user, write=True)
+    if not chat_svc.can_manage_thread(t, project, user):
+        raise HTTPException(403, "only_creator_or_customer_can_manage_thread")
+    await chat_svc.set_thread_archived_for_all(db, t, body.archived)
+    return {"archived": body.archived}
+
+
+@router.delete("/{project_id}/chats/{thread_id}/participants/{participant_id}")
+async def remove_chat_participant(project_id: str, thread_id: str, participant_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    project, t = await require_chat_access(db, project_id, thread_id, user, write=True)
+    if not chat_svc.can_manage_thread(t, project, user):
+        raise HTTPException(403, "only_creator_or_customer_can_manage_thread")
+    try:
+        row = await chat_svc.remove_participant(db, t, participant_id)
+    except chat_svc.ThreadError as exc:
+        raise HTTPException(exc.status, exc.code) from exc
+    return {"id": row.id, "status": row.status}
+
+
+@router.post("/{project_id}/chats/{thread_id}/participants/leave")
+async def leave_chat(project_id: str, thread_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Приглашённый участник выходит из треда. Участники проекта выйти не могут (409)."""
+    t = await db.get(chat_svc.ChatThread, thread_id)
+    if not t or t.project_id != project_id:
+        raise HTTPException(404, "chat_not_found")
+    try:
+        await require_project(db, project_id, user, write=False)
+    except HTTPException as exc:
+        if exc.status_code != 403:
+            raise
+    else:
+        raise HTTPException(409, "project_member_cannot_leave_thread")
+    try:
+        row = await chat_svc.leave_thread(db, t, user)
+    except chat_svc.ThreadError as exc:
+        raise HTTPException(exc.status, exc.code) from exc
+    return {"id": row.id, "status": row.status}
 
 
 @router.post("/{project_id}/chats/{thread_id}/messages/{message_id}/react")
 async def react_message(project_id: str, thread_id: str, message_id: str, body: ReactionBody, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    # COM-014: реакция пишет в общий meta_json — нужно право записи (read-only гость
+    # и team-viewer получают 403); приглашённый участник треда — через allow_participant.
     _p, t = await require_chat_access(
-        db, project_id, thread_id, user, write=False, allow_participant=True,
+        db, project_id, thread_id, user, write=True, allow_participant=True,
     )
     await require_chat_message(db, t, message_id)
     try:
@@ -411,6 +514,13 @@ async def task_from_message(project_id: str, thread_id: str, message_id: str, bo
         )
     except IdempotencyConflict as error:
         raise _chat_idempotency_http_error() from error
+    except ValueError as exc:
+        code = str(exc)
+        if code == "invalid_due_at":
+            raise HTTPException(422, detail={"code": code, "message": "Срок задачи: дата в формате ГГГГ-ММ-ДД"}) from exc
+        if code == "assignee_not_in_project":
+            raise HTTPException(422, detail={"code": code, "message": "Исполнитель не участвует в проекте"}) from exc
+        raise
     return chat_svc.msg_dict(msg)
 
 

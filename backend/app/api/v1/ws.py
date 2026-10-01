@@ -1,6 +1,7 @@
 """WebSocket чат — JWT required (?token=); inbox sub must match path user_id."""
 from __future__ import annotations
 
+import asyncio
 from collections import defaultdict
 import json
 
@@ -41,23 +42,74 @@ async def _authenticate_ws(websocket: WebSocket) -> str | None:
     return user_id_from_access_token(token)
 
 
-async def _can_access_thread(user_id: str, thread_id: str) -> bool:
+async def _thread_access(user_id: str, thread_id: str) -> str | None:
+    """Return ``"write"``, ``"read"`` or ``None`` (no access) for this thread now.
+
+    ``write`` = may push frames into the room: active invited participant or a
+    project member who is not read-only. Read-only guests and team viewers
+    (``project_access_mode`` read_only) only listen (COM-013).
+    """
     async with SessionLocal() as db:
         thread = await db.get(ChatThread, thread_id)
         if not thread:
-            return False
+            return None
         if await participant_svc.is_active_thread_participant(
             db,
             thread_id=thread_id,
             user_id=user_id,
         ):
-            return True
+            return "write"
         user = await db.get(User, user_id)
         project = await db.get(Project, thread.project_id) if thread.project_id else None
         if not user or not project or getattr(project, "trashed_at", None):
-            return False
-        mode, _ = await team_svc.project_access_mode(db, user, project)
-        return mode not in ("none", "participant")
+            return None
+        mode, read_only = await team_svc.project_access_mode(db, user, project)
+        if mode in ("none", "participant"):
+            return None
+        return "read" if read_only else "write"
+
+
+async def _can_access_thread(user_id: str, thread_id: str) -> bool:
+    return await _thread_access(user_id, thread_id) is not None
+
+
+# COM-013: the only client->server frame is a throttled ``typing`` hint.
+WS_MAX_FRAME_BYTES = 512
+WS_TYPING_MIN_INTERVAL = 1.0
+WS_MAX_VIOLATIONS = 20
+# COM-042: ACL is re-validated while the socket is open (and on revoke events).
+WS_ACCESS_RECHECK_SECONDS = 30.0
+_WS_MESSAGE_TOO_BIG = 1009
+_WS_POLICY = 1008
+
+# websocket -> authenticated user id (for revoke-by-user and diagnostics)
+socket_users: dict[WebSocket, str] = {}
+
+
+async def recheck_user_access(thread_id: str, user_id: str) -> None:
+    """Close this user's sockets in the room if they lost access (revoke event)."""
+    sockets = [w for w in list(rooms.get(thread_id, ())) if socket_users.get(w) == user_id]
+    if not sockets:
+        return
+    if await _thread_access(user_id, thread_id) is not None:
+        return
+    for sock in sockets:
+        rooms[thread_id].discard(sock)
+        try:
+            await sock.close(code=_WS_FORBIDDEN)
+        except Exception:
+            pass
+
+
+def _parse_client_frame(raw: str) -> dict | None:
+    """Validate an incoming frame; ``None`` = drop. Only ``{"type": "typing"}``."""
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(data, dict) or data.get("type") != "typing":
+        return None
+    return {"type": "typing"}
 
 
 @router.websocket("/ws/chats/{thread_id}")
@@ -66,22 +118,57 @@ async def chat_ws(websocket: WebSocket, thread_id: str):
     if not uid:
         await websocket.close(code=_WS_UNAUTHORIZED)
         return
-    if not await _can_access_thread(uid, thread_id):
+    access = await _thread_access(uid, thread_id)
+    if access is None:
         await websocket.close(code=_WS_FORBIDDEN)
         return
     await websocket.accept()
     rooms[thread_id].add(websocket)
+    socket_users[websocket] = uid
+    loop = asyncio.get_running_loop()
+    last_check = loop.time()
+    last_typing = 0.0
+    violations = 0
     try:
         while True:
-            data = await websocket.receive_text()
+            try:
+                raw = await asyncio.wait_for(websocket.receive_text(), timeout=WS_ACCESS_RECHECK_SECONDS)
+            except asyncio.TimeoutError:
+                raw = None
+            now = loop.time()
+            if now - last_check >= WS_ACCESS_RECHECK_SECONDS:
+                last_check = now
+                access = await _thread_access(uid, thread_id)
+                if access is None:
+                    await websocket.close(code=_WS_FORBIDDEN)
+                    return
+            if raw is None:
+                continue
+            if len(raw.encode("utf-8", "ignore")) > WS_MAX_FRAME_BYTES:
+                await websocket.close(code=_WS_MESSAGE_TOO_BIG)
+                return
+            frame = _parse_client_frame(raw)
+            if frame is None or access != "write":
+                violations += 1
+                if violations > WS_MAX_VIOLATIONS:
+                    await websocket.close(code=_WS_POLICY)
+                    return
+                continue
+            if now - last_typing < WS_TYPING_MIN_INTERVAL:
+                continue
+            last_typing = now
+            out = json.dumps({"type": "typing", "user_id": uid})
             for ws in list(rooms[thread_id]):
                 if ws != websocket:
                     try:
-                        await ws.send_text(data)
+                        await ws.send_text(out)
                     except Exception:
                         rooms[thread_id].discard(ws)
     except WebSocketDisconnect:
+        pass
+    finally:
         rooms[thread_id].discard(websocket)
+        socket_users.pop(websocket, None)
 
 
 @router.websocket("/ws/inbox/{user_id}")

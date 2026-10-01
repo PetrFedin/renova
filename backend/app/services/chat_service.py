@@ -32,6 +32,9 @@ from app.services import outbox_service as outbox
 from app.services import storage_service as storage_svc
 from app.services.chat_invitation_delivery import delivery_status as sms_delivery_status
 
+# COM-006: участник вышел сам ("left") или удалён создателем/заказчиком ("removed").
+INACTIVE_PARTICIPANT_STATUSES = ("left", "removed")
+
 _CHAT_INVITE_NAMESPACE = uuid.UUID("bf4e7a2d-07c1-4a79-a7c1-e7ed1583ecb5")
 
 
@@ -409,12 +412,19 @@ def thread_dict(
 
 def msg_dict(m: ChatMessage, read_by_other: bool = False) -> dict:
     meta = _parse_meta(m.meta_json)
+    deleted = bool(meta.get("deleted_at"))
     return {
         "id": m.id,
         "author_role": m.author_role,
         "message_type": m.message_type.value,
-        "text": m.text,
-        "image_url": m.image_url,
+        "text": None if deleted else m.text,
+        "image_url": None if deleted else m.image_url,
+        "deleted": deleted,
+        "deleted_at": meta.get("deleted_at"),
+        "edited_at": meta.get("edited_at"),
+        # COM-010: честный статус подтверждения — кто и когда (None пока не подтверждено).
+        "confirmed_by": meta.get("confirmed_by"),
+        "confirmed_at": meta.get("confirmed_at"),
         "confirmed": m.confirmed,
         "created_at": m.created_at.isoformat(),
         "read": read_by_other,
@@ -690,7 +700,10 @@ async def list_participants(
 
     r = await db.execute(
         select(ChatThreadParticipant)
-        .where(ChatThreadParticipant.thread_id == thread_id)
+        .where(
+            ChatThreadParticipant.thread_id == thread_id,
+            ChatThreadParticipant.status.not_in(INACTIVE_PARTICIPANT_STATUSES),
+        )
         .order_by(ChatThreadParticipant.created_at.asc(), ChatThreadParticipant.id.asc())
     )
     for p in r.scalars().all():
@@ -762,6 +775,10 @@ async def _ensure_participant(
         normalized_phone=normalized_phone,
     )
     if existing is not None:
+        if existing.status in INACTIVE_PARTICIPANT_STATUSES:
+            # Повторное приглашение — явное решение приглашающего: возвращаем доступ.
+            existing.status = "active" if (target is not None or existing.user_id) else "pending"
+            existing.invited_by = inviter.id
         if target is not None and existing.user_id is None:
             existing.user_id = target.id
             existing.status = "active"
@@ -943,6 +960,95 @@ async def invite_participant(
     }
 
 
+async def _require_project_assignee(db: AsyncSession, project_id: str, assignee_id: str) -> None:
+    """Исполнитель задачи из чата — действующий участник проекта (не гость/не чужой)."""
+    from app.services import team_service
+
+    user = await db.get(User, assignee_id)
+    project = await db.get(Project, project_id)
+    if user is None or project is None or getattr(user, "deleted_at", None) is not None:
+        raise ValueError("assignee_not_in_project")
+    mode, read_only = await team_service.project_access_mode(db, user, project)
+    if mode == "participant" or (mode in ("owner", "contractor") and not read_only):
+        return
+    raise ValueError("assignee_not_in_project")
+
+
+async def _send_service_message(
+    db: AsyncSession,
+    thread: ChatThread,
+    user_id: str,
+    role: str,
+    text: str | None,
+    message_type: str,
+    *,
+    meta: dict,
+    request_id: str | None,
+) -> ChatMessage:
+    """Server-originated task/payment message through the reliable client path.
+
+    Outbox notifications + archived-thread visibility restore + message-level
+    idempotency (a retry after a crash replays the same message). The client
+    API cannot create these types (COM-012); only the server does.
+    """
+    from app.services import chat_message_mutation as mutation
+
+    import hashlib
+
+    # request_id column is String(80): derive a fixed-length stable key.
+    digest = hashlib.sha256(request_id.encode("utf-8")).hexdigest()[:32] if request_id else uuid.uuid4().hex
+    client_request_id = f"svc:{message_type}:{digest}"
+    return await mutation.send_client_message(
+        db,
+        thread=thread,
+        user_id=user_id,
+        role=role,
+        client_request_id=client_request_id,
+        text=text,
+        message_type=message_type,
+        meta=meta,
+    )
+
+
+async def mark_payment_messages_confirmed(db: AsyncSession, payment_id: str) -> list[ChatMessage]:
+    """COM-011: a really-confirmed payment marks its chat invoice message(s).
+
+    Called inside the payment confirmation transaction (no commit here). The
+    actor is recorded as ``payment`` because the settlement evidence, not a
+    chat tap, confirmed it. Idempotent: already-confirmed rows are skipped.
+    """
+    rows = (
+        await db.execute(
+            select(ChatMessage).where(
+                ChatMessage.message_type == ChatMessageType.payment,
+                ChatMessage.meta_json.like(f'%"{payment_id}"%'),
+            ).with_for_update()
+        )
+    ).scalars().all()
+    changed: list[ChatMessage] = []
+    for msg in rows:
+        meta = _parse_meta(msg.meta_json)
+        if str(meta.get("payment_id")) != str(payment_id) or msg.confirmed:
+            continue
+        msg.confirmed = True
+        meta["confirmed_by"] = "payment"
+        meta["confirmed_at"] = utc_now().isoformat()
+        msg.meta_json = _dump_meta(meta)
+        changed.append(msg)
+    return changed
+
+
+async def broadcast_messages_updated(messages: list[ChatMessage]) -> None:
+    """Best-effort WS fanout after the payment transaction committed."""
+    from app.api.v1.ws import broadcast
+
+    for msg in messages:
+        try:
+            await broadcast(msg.thread_id, {"type": "message_updated", "message": msg_dict(msg)})
+        except Exception:
+            pass
+
+
 TASK_FROM_MESSAGE_SCOPE = "chat.task_from_message"
 INVOICE_FROM_CHAT_SCOPE = "chat.invoice"
 
@@ -987,7 +1093,16 @@ async def create_task_from_message(
         if existing:
             return existing
 
-    due = date.fromisoformat(due_at[:10]) if due_at else None
+    # COM-016: невалидная дата — 422 (ValueError("invalid_due_at")), а не 500.
+    due = None
+    if due_at:
+        try:
+            due = date.fromisoformat(due_at.strip()[:10])
+        except ValueError as exc:
+            raise ValueError("invalid_due_at") from exc
+    # COM-015: исполнитель обязан быть участником проекта — проверка до любой записи.
+    if assignee_id:
+        await _require_project_assignee(db, thread.project_id, assignee_id)
     # create_work_order is itself idempotent on request_id, so a crash between the
     # WorkOrder commit below and the ledger write further down still cannot duplicate it.
     wo = await wo_svc.create_work_order(
@@ -1007,7 +1122,10 @@ async def create_task_from_message(
 
     text = f"📋 Задача: {title}" + (f" · до {due_at[:10]}" if due_at else "")
     meta = {"work_order_id": wo.id, "assignee_id": assignee_id, "due_at": due_at}
-    msg = await send_message(db, thread, user_id, role, text, "task", meta=meta)
+    # COM-034: тот же надёжный путь, что и обычные сообщения (outbox, идемпотентность).
+    msg = await _send_service_message(
+        db, thread, user_id, role, text, "task", meta=meta, request_id=request_id,
+    )
     # Row lock: this backlink write races toggle_reaction's read-modify-write of
     # the same ChatMessage.meta_json (#384) — without it, whichever writer reads
     # last wins and silently drops the other's field from the shared JSON blob.
@@ -1077,7 +1195,9 @@ async def create_payment_message(
     )
     text = f"💳 Счёт: {title} · {amount:.0f} ₽"
     meta = {"payment_id": pay.id, "amount": amount}
-    msg = await send_message(db, thread, user_id, role, text, "payment", meta=meta)
+    msg = await _send_service_message(
+        db, thread, user_id, role, text, "payment", meta=meta, request_id=request_id,
+    )
 
     await commit_client_write(
         db,
@@ -1089,3 +1209,104 @@ async def create_payment_message(
         entity_id=msg.id,
     )
     return msg
+
+# --- COM-006: thread lifecycle (rename / archive for everyone / membership) ---
+
+class ThreadError(ValueError):
+    def __init__(self, code: str, status: int):
+        super().__init__(code)
+        self.code = code
+        self.status = status
+
+
+def can_manage_thread(thread: ChatThread, project: Project, user: User) -> bool:
+    """Only the thread creator or the project customer manage the thread itself."""
+    return user.id == thread.created_by or user.id == project.customer_id
+
+
+async def rename_thread(db: AsyncSession, thread: ChatThread, title: str) -> ChatThread:
+    clean = " ".join((title or "").strip().split())
+    if not clean:
+        raise ThreadError("empty_title", 422)
+    if clean == thread.title:
+        return thread  # idempotent replay
+    thread.title = clean
+    thread.updated_at = utc_now()
+    await db.commit()
+    await db.refresh(thread)
+    await _broadcast_thread_event(thread.id, {"type": "thread_updated", "thread_id": thread.id, "title": thread.title})
+    return thread
+
+
+async def set_thread_archived_for_all(db: AsyncSession, thread: ChatThread, archived: bool) -> int:
+    """Archive/unarchive the thread in every member's list. Idempotent."""
+    members = {p["user_id"] for p in await list_participants(db, thread.id, None) if p.get("user_id")}
+    members.add(thread.created_by)
+    changed = 0
+    for uid in members:
+        row = await _get_or_create_read(db, thread.id, uid)
+        if bool(row.is_archived) != archived:
+            row.is_archived = archived
+            row.updated_at = utc_now()
+            changed += 1
+    await db.commit()
+    if changed:
+        await _broadcast_thread_event(
+            thread.id, {"type": "thread_updated", "thread_id": thread.id, "archived": archived}
+        )
+    return changed
+
+
+async def _broadcast_thread_event(thread_id: str, payload: dict) -> None:
+    from app.api.v1.ws import broadcast
+
+    try:
+        await broadcast(thread_id, payload)
+    except Exception:
+        pass
+
+
+async def _deactivate_participant(db: AsyncSession, row: ChatThreadParticipant, status: str) -> bool:
+    """Move an invited participant to ``left``/``removed``. Returns True if it changed."""
+    if row.status in INACTIVE_PARTICIPANT_STATUSES:
+        return False
+    row.status = status
+    await db.commit()
+    await _broadcast_thread_event(
+        row.thread_id, {"type": "participant_removed", "thread_id": row.thread_id, "user_id": row.user_id, "status": status}
+    )
+    if row.user_id:
+        from app.api.v1.ws import recheck_user_access
+
+        try:
+            await recheck_user_access(row.thread_id, row.user_id)
+        except Exception:
+            pass
+    return True
+
+
+async def remove_participant(db: AsyncSession, thread: ChatThread, participant_id: str) -> ChatThreadParticipant:
+    row = await db.get(ChatThreadParticipant, participant_id)
+    if row is None or row.thread_id != thread.id:
+        raise ThreadError("participant_not_found", 404)
+    await _deactivate_participant(db, row, "removed")
+    return row
+
+
+async def leave_thread(db: AsyncSession, thread: ChatThread, user: User) -> ChatThreadParticipant:
+    """A thread-only invitee leaves. Repeating the call is a no-op success."""
+    rows = list(
+        (
+            await db.execute(
+                select(ChatThreadParticipant).where(
+                    ChatThreadParticipant.thread_id == thread.id,
+                    ChatThreadParticipant.user_id == user.id,
+                )
+            )
+        ).scalars().all()
+    )
+    if not rows:
+        raise ThreadError("not_a_thread_participant", 403)
+    for row in rows:
+        await _deactivate_participant(db, row, "left" if row.status != "removed" else "removed")
+    return rows[0]

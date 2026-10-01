@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -121,3 +122,193 @@ async def send_client_message(db: AsyncSession, *, thread: ChatThread, user_id: 
     await outbox_inline_dispatch.dispatch_best_effort(db, source="chat.message", limit=max(10, len(recipient_ids) * 2))
     await _broadcast_after_commit(thread_id=thread_id, project_id=project_id, message=message, recipient_ids=recipient_ids)
     return message
+
+
+# --- COM-006: edit / soft-delete of the author's own message -----------------
+#
+# Policy (documented, no migration: state lives in ``meta_json``):
+#   * only the AUTHOR may edit or delete their message (nobody else, including
+#     the project owner; moderation of other people's text is a product decision);
+#   * edit: plain ``text`` messages only, within EDIT_WINDOW (24h) of creation;
+#     stamps ``edited_at``; editing identical text is an idempotent no-op;
+#   * delete: soft, any time, for user-originated types (text/photo/file/confirm).
+#     Text/attachment are wiped from the row and ``meta_json.deleted_at`` is set;
+#     the row stays so reply chains, reads and pins keep their anchors. Repeating
+#     the delete returns the same state;
+#   * service messages (system/task/payment/invoice) are never editable/deletable.
+EDIT_WINDOW = timedelta(hours=24)
+EDITABLE_TYPES = {ChatMessageType.text}
+DELETABLE_TYPES = {ChatMessageType.text, ChatMessageType.photo, ChatMessageType.file, ChatMessageType.confirm}
+MAX_TEXT_LENGTH = 8000
+
+
+class MessageMutationError(ValueError):
+    """Carries a stable machine code; the API maps it to an HTTP status."""
+
+    def __init__(self, code: str, status: int):
+        super().__init__(code)
+        self.code = code
+        self.status = status
+
+
+async def _lock_message(db: AsyncSession, message_id: str) -> ChatMessage:
+    row = (
+        await db.execute(
+            select(ChatMessage)
+            .where(ChatMessage.id == message_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise MessageMutationError("message_not_found", 404)
+    return row
+
+
+async def _broadcast_updated(thread: ChatThread, message: ChatMessage, event: str) -> None:
+    from app.api.v1.ws import broadcast
+    from app.services import chat_service
+
+    try:
+        await broadcast(thread.id, {"type": event, "message": chat_service.msg_dict(message)})
+    except Exception:
+        logger.exception("chat %s websocket fanout failed", event, extra={"thread_id": thread.id, "message_id": message.id})
+
+
+async def edit_own_message(db: AsyncSession, *, thread: ChatThread, message_id: str, user_id: str, text: str) -> ChatMessage:
+    from app.services.chat_service import _dump_meta, _parse_meta
+
+    clean = (text or "").strip()
+    if not clean or len(clean) > MAX_TEXT_LENGTH:
+        raise MessageMutationError("invalid_message_text", 422)
+    message = await _lock_message(db, message_id)
+    if message.thread_id != thread.id:
+        raise MessageMutationError("message_not_found", 404)
+    if message.user_id != user_id:
+        raise MessageMutationError("only_author_can_edit_message", 403)
+    meta = _parse_meta(message.meta_json)
+    if meta.get("deleted_at"):
+        raise MessageMutationError("message_deleted", 409)
+    if message.message_type not in EDITABLE_TYPES:
+        raise MessageMutationError("message_type_not_editable", 409)
+    if message.text == clean:
+        await db.commit()  # release the row lock; identical edit is a no-op
+        await db.refresh(message)
+        return message
+    if utc_now() - message.created_at > EDIT_WINDOW:
+        raise MessageMutationError("edit_window_expired", 409)
+    message.text = clean
+    meta["edited_at"] = utc_now().isoformat()
+    message.meta_json = _dump_meta(meta)
+    await db.commit()
+    await db.refresh(message)
+    await _broadcast_updated(thread, message, "message_edited")
+    return message
+
+
+async def delete_own_message(db: AsyncSession, *, thread: ChatThread, message_id: str, user_id: str) -> ChatMessage:
+    from app.services.chat_service import _dump_meta, _parse_meta
+
+    message = await _lock_message(db, message_id)
+    if message.thread_id != thread.id:
+        raise MessageMutationError("message_not_found", 404)
+    if message.user_id != user_id:
+        raise MessageMutationError("only_author_can_delete_message", 403)
+    meta = _parse_meta(message.meta_json)
+    if meta.get("deleted_at"):
+        await db.commit()  # idempotent repeat; releases the row lock
+        await db.refresh(message)
+        return message
+    if message.message_type not in DELETABLE_TYPES:
+        raise MessageMutationError("message_type_not_deletable", 409)
+    message.text = None
+    message.image_url = None
+    message.storage_key = None
+    message.is_pinned = False
+    meta["deleted_at"] = utc_now().isoformat()
+    meta["deleted_by"] = user_id
+    meta.pop("reactions", None)
+    message.meta_json = _dump_meta(meta)
+    await db.commit()
+    await db.refresh(message)
+    await _broadcast_updated(thread, message, "message_deleted")
+    return message
+
+
+# --- COM-010: confirmation of an approval request ---------------------------
+
+async def confirm_request_message(db: AsyncSession, *, thread: ChatThread, message_id: str, user: User) -> tuple[ChatMessage, bool]:
+    """Record who/when confirmed a ``confirm`` message and tell its author.
+
+    Returns ``(message, newly_confirmed)``. Self-confirmation is refused (the
+    author cannot approve their own request). A repeat by anyone is an
+    idempotent replay: state and the single author notification are unchanged.
+    """
+    from app.services.chat_service import _dump_meta, _parse_meta
+
+    message = await _lock_message(db, message_id)
+    if message.thread_id != thread.id:
+        raise MessageMutationError("message_not_found", 404)
+    if message.message_type != ChatMessageType.confirm:
+        raise MessageMutationError("not_a_confirmation_request", 400)
+    meta = _parse_meta(message.meta_json)
+    if meta.get("deleted_at"):
+        raise MessageMutationError("message_deleted", 409)
+    if message.user_id == user.id:
+        raise MessageMutationError("cannot_confirm_own_request", 403)
+    if message.confirmed:
+        await db.commit()
+        await db.refresh(message)
+        return message, False
+    now = utc_now()
+    message.confirmed = True
+    meta["confirmed_by"] = user.id
+    meta["confirmed_at"] = now.isoformat()
+    message.meta_json = _dump_meta(meta)
+    author = await db.get(User, message.user_id)
+    if author is not None and getattr(author, "deleted_at", None) is None:
+        who = user.full_name or "Участник"
+        await outbox.enqueue_once(
+            db,
+            parent_outbox_id=f"chat-confirm:{message.id}",
+            effect_key=f"notify:{author.id}",
+            aggregate_type="chat_message",
+            aggregate_id=message.id,
+            event_type=outbox.NOTIFICATION_EVENT,
+            payload={
+                "user_id": author.id,
+                "project_id": thread.project_id,
+                "notification_type": "chat_message",
+                "title": f"Согласование подтверждено: {thread.title}",
+                "body": f"{who} подтвердил(а): {message.text or 'запрос'}",
+                "link_path": f"/chat/{thread.id}",
+                "return_to": f"/({author.role.value})/(tabs)/chat",
+            },
+        )
+    await outbox.enqueue_once(
+        db,
+        parent_outbox_id=f"chat-confirm:{message.id}",
+        effect_key="activity:confirmed",
+        aggregate_type="chat_message",
+        aggregate_id=message.id,
+        event_type=outbox.ACTIVITY_EVENT,
+        payload={
+            "project_id": thread.project_id,
+            "user_id": user.id,
+            "kind": "ChatRequestConfirmed",
+            "title": "Согласование подтверждено в чате",
+            "body": thread.title,
+            "link_path": f"/chat/{thread.id}",
+        },
+    )
+    await db.commit()
+    await db.refresh(message)
+    await outbox_inline_dispatch.dispatch_best_effort(db, source="chat.confirm", limit=10)
+    await _broadcast_updated(thread, message, "message_updated")
+    from app.api.v1.ws import broadcast_inbox
+
+    try:
+        await broadcast_inbox(message.user_id, {"type": "inbox", "event": "message", "thread_id": thread.id, "project_id": thread.project_id})
+    except Exception:
+        logger.exception("chat confirm inbox fanout failed")
+    return message, True

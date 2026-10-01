@@ -273,8 +273,10 @@ async def test_supervisor_chat_is_operational_only_and_customer_messages_notify_
             project_id=project.id,
             thread_id=thread.id,
             body=chats_api.MessageCreate(
+                # COM-012: "payment" is no longer a client type at all (422 at the schema);
+                # the supervisor-specific 403 now guards the remaining non-plain type.
                 text="pay",
-                message_type="payment",
+                message_type="confirm",
                 client_request_id="supervision-chat-0002",
             ),
             user=inspector,

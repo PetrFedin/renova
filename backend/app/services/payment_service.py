@@ -355,6 +355,12 @@ async def confirm_payment(
 
         await budget.expense_from_payment(db, payment)
         await budget.refresh_budget_facts(db, payment.project_id)
+        # COM-011: the chat invoice message becomes "confirmed" only on real payment.
+        from app.services import chat_service as _chat_svc
+
+        chat_confirmed = await _chat_svc.mark_payment_messages_confirmed(db, payment.id)
+    else:
+        chat_confirmed = []
 
     project = await db.get(Project, payment.project_id)
     effects = await _prepare_transition_side_effects(
@@ -369,6 +375,10 @@ async def confirm_payment(
         await db.commit()
         await db.refresh(payment)
         activate_client_write_side_effects(effects)
+        if chat_confirmed:
+            from app.services import chat_service as _chat_svc2
+
+            await _chat_svc2.broadcast_messages_updated(chat_confirmed)
     return payment
 
 
