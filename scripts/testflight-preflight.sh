@@ -48,7 +48,7 @@ const profile = eas.build?.[name];
 if (!profile) throw new Error(`missing EAS build profile: ${name}`);
 const url = profile.env?.EXPO_PUBLIC_API_URL || '';
 if (!url.startsWith('https://')) throw new Error(`${name}: EXPO_PUBLIC_API_URL must use https (${url || 'empty'})`);
-if (/localhost|127\.0\.0\.1|example\.com/i.test(url)) {
+if (/localhost|127\.0\.0\.1|example\.com|PLACEHOLDER|\.invalid/i.test(url)) {
   throw new Error(`${name}: EXPO_PUBLIC_API_URL is local/placeholder (${url})`);
 }
 if (profile.env?.EXPO_PUBLIC_DEMO !== '0') throw new Error(`${name}: EXPO_PUBLIC_DEMO must be 0`);
@@ -65,11 +65,11 @@ const app = JSON.parse(fs.readFileSync('apps/mobile/app.json', 'utf8'));
 const pkg = JSON.parse(fs.readFileSync('apps/mobile/package.json', 'utf8'));
 const v = app.expo?.version;
 const bid = app.expo?.ios?.bundleIdentifier;
-const projectId = app.expo?.extra?.eas?.projectId;
+const projectId = process.env.RENOVA_EAS_PROJECT_ID || app.expo?.extra?.eas?.projectId;
 if (!v || v !== pkg.version) throw new Error(`app/package version mismatch: app=${v} package=${pkg.version}`);
 if (bid !== 'ru.renova.app') throw new Error(`unexpected bundleIdentifier: ${bid}`);
 if (!projectId || typeof projectId !== 'string') {
-  throw new Error('EAS project is not linked: apps/mobile/app.json must contain expo.extra.eas.projectId');
+  throw new Error('EAS project is not linked: set RENOVA_EAS_PROJECT_ID (read by apps/mobile/app.config.ts) or expo.extra.eas.projectId in app.json');
 }
 console.log(`OK: version=${v} bundle=${bid} EAS project linked`);
 NODE

@@ -32,7 +32,7 @@
       },
       "channel": "preview",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api-staging.example.com",
+        "EXPO_PUBLIC_API_URL": "https://PLACEHOLDER-api-staging.invalid",
         "EXPO_PUBLIC_DEMO": "0",
         "EXPO_PUBLIC_APP_ENV": "staging"
       }
@@ -48,7 +48,7 @@
         "image": "macos-tahoe-26.4-xcode-26.4"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api-staging.example.com",
+        "EXPO_PUBLIC_API_URL": "https://PLACEHOLDER-api-staging.invalid",
         "EXPO_PUBLIC_DEMO": "0",
         "EXPO_PUBLIC_APP_ENV": "staging"
       }
@@ -65,7 +65,7 @@
       "channel": "production",
       "distribution": "store",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.renova.example.com",
+        "EXPO_PUBLIC_API_URL": "https://PLACEHOLDER-api-production.invalid",
         "EXPO_PUBLIC_DEMO": "0",
         "SENTRY_ORG": "renova",
         "SENTRY_PROJECT": "mobile",
@@ -84,7 +84,7 @@
         "image": "macos-tahoe-26.4-xcode-26.4"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api-staging.example.com",
+        "EXPO_PUBLIC_API_URL": "https://PLACEHOLDER-api-staging.invalid",
         "EXPO_PUBLIC_DEMO": "0",
         "EXPO_PUBLIC_APP_ENV": "staging"
       }
@@ -92,11 +92,18 @@
   },
   "submit": {
     "testflight": {
-      "ios": {}
+      "ios": {
+        "ascAppId": "PLACEHOLDER_ASC_APP_ID",
+        "appleTeamId": "PLACEHOLDER_APPLE_TEAM_ID"
+      }
     },
     "production": {
-      "ios": {},
+      "ios": {
+        "ascAppId": "PLACEHOLDER_ASC_APP_ID",
+        "appleTeamId": "PLACEHOLDER_APPLE_TEAM_ID"
+      },
       "android": {
+        "serviceAccountKeyPath": "PLACEHOLDER_GOOGLE_SERVICE_ACCOUNT_KEY_PATH",
         "track": "internal"
       }
     }
