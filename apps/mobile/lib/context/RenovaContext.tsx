@@ -45,7 +45,8 @@ import { resolveActiveProjectId, isJunkProjectName } from '@/lib/resolveActivePr
 import { SESSION_KEYS } from '@/constants/sessionKeys';
 import { setCustomerBudget } from '@/lib/customerBudgetPrefs';
 import { normalizeCustomerBudget } from '@/lib/customerBudgetSync';
-import { registerNativePushToken } from '@/lib/nativeNotifications';
+import { registerNativePushToken, supportsNativeNotifications } from '@/lib/nativeNotifications';
+import { detachPushToken, rememberPushToken } from '@/lib/pushTokenLifecycle';
 import {
   NOT_APPLICABLE_TEAM_ACCESS,
   UNRESOLVED_TEAM_ACCESS,
@@ -65,7 +66,10 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 /** Native boundary exits before loading expo-notifications on web. */
 function deferPushRegistration(userId: string) {
   setTimeout(() => {
-    void registerNativePushToken((token) => api.registerPushToken(userId, token))
+    void registerNativePushToken(async (token) => {
+      await api.registerPushToken(userId, token);
+      await rememberPushToken(AsyncStorage, token, reportCatch('renovaContext.pushTokenRemember', { userId }));
+    })
       .catch(reportCatch('renovaContext.pushRegistration', { userId }));
   }, 0);
 }
@@ -765,6 +769,15 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
         flushOfflineOutbox().catch(reportCatch('renovaContext.logoutFlush')),
         new Promise<void>((resolve) => setTimeout(resolve, LOGOUT_FLUSH_GRACE_MS)),
       ]);
+    }
+    if (stamp.userId && !expired && supportsNativeNotifications()) {
+      // COM-017: отвязать push-токен ДО очистки токенов сессии (нужен действующий access).
+      // Сбой/таймаут отвязки не блокирует выход.
+      await detachPushToken({
+        storage: AsyncStorage,
+        unregister: (token) => api.unregisterPushToken(stamp.userId as string, token),
+        onError: (error) => reportError('renovaContext.logoutPushDetach', error, { userId: stamp.userId }),
+      });
     }
     if (refresh) {
       try {

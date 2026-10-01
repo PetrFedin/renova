@@ -35,5 +35,8 @@ export const authApi = {
       clearTimeout(timer);
     }
   },
+  /** COM-017: отвязать токен этого устройства (без токена — все токены вызывающего). Идемпотентно. */
+  unregisterPushToken: (userId: string, token?: string) =>
+    req('/api/v1/push/unregister', { method: 'POST', ...(token ? { body: JSON.stringify({ token }) } : {}) }, userId),
   registerPushToken: (userId: string, token: string) => req('/api/v1/push/register', { method: 'POST', body: JSON.stringify({ token }) }, userId),
 };

@@ -4,15 +4,15 @@ import {
   notificationDeliveryId,
 } from '@/lib/notificationDeliveryDedup';
 import {
+  notificationNavigationPayload,
+  type NotificationNavigationPayload,
+} from '@/lib/notificationNavigation';
+import {
   isNativeNotificationPlatform,
   shouldScheduleNativeConflictNotification,
 } from '@/lib/nativeNotificationPolicy';
 
-export type NotificationNavigationPayload = {
-  linkPath?: string;
-  returnTo?: string;
-  role: 'customer' | 'contractor';
-};
+export type { NotificationNavigationPayload } from '@/lib/notificationNavigation';
 
 type NotificationSetupError = (
   scope:
@@ -36,17 +36,6 @@ type NotificationResponseLike = {
 
 export function supportsNativeNotifications(platform = Platform.OS): boolean {
   return isNativeNotificationPlatform(platform);
-}
-
-function navigationPayload(data: Record<string, unknown> | undefined): NotificationNavigationPayload {
-  const linkPath = typeof data?.link_path === 'string' ? data.link_path : undefined;
-  const returnToValue = data?.return_to ?? data?.returnTo;
-  const returnTo = typeof returnToValue === 'string' ? returnToValue : undefined;
-  return {
-    linkPath,
-    returnTo,
-    role: data?.role === 'contractor' ? 'contractor' : 'customer',
-  };
 }
 
 function responseData(response: NotificationResponseLike): Record<string, unknown> | undefined {
@@ -91,7 +80,7 @@ export async function installNativeNotificationInteractions(
 
   const handleResponse = async (response: NotificationResponseLike): Promise<void> => {
     const data = responseData(response);
-    await runNotificationDelivery(notificationDeliveryId(data), () => onOpen(navigationPayload(data)));
+    await runNotificationDelivery(notificationDeliveryId(data), () => onOpen(notificationNavigationPayload(data)));
   };
 
   try {

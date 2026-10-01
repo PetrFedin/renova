@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import type { OsRole } from '../constants/osSections';
-import { resolveNotificationLink, resolvePushLink } from './pushLinks';
+import { linkForRole, resolveNotificationLink, resolvePushLink } from './pushLinks';
 
 const ROOT = join(__dirname, '..', '..', '..');
 const BACKEND = join(ROOT, 'backend', 'app');
@@ -82,6 +82,37 @@ for (const [lit, file] of links) {
   }
 }
 assert.deepEqual(failures, [], `unresolvable backend links:\n${failures.join('\n')}`);
+
+// --- COM-020: a group-prefixed link must land in the RECIPIENT's role group, for both roles ---
+const roleFailures: string[] = [];
+for (const [lit, file] of links) {
+  if (!/^\/\((customer|contractor)\)(\/|$|\?)/.test(lit)) continue;
+  for (const role of ['customer', 'contractor'] as OsRole[]) {
+    const other = role === 'customer' ? 'contractor' : 'customer';
+    const link = lit.replace(/\{[^}]+\}/g, 'x1');
+    const target = resolvePushLink(link, `/(${other})/(tabs)/`, role);
+    if (!target) { roleFailures.push(`${file}: ${link} (${role}) -> null`); continue; }
+    const path = target.pathname.replace(/\/$/, '') || '/';
+    if (path.includes(`/(${other})`)) roleFailures.push(`${file}: ${link} (${role}) -> ${path} leaks the ${other} group`);
+    if (!existing.has(path)) roleFailures.push(`${file}: ${link} (${role}) -> ${path} does not exist`);
+    if (String(target.params.returnTo ?? '').includes(`(${other})`)) {
+      roleFailures.push(`${file}: ${link} (${role}) returnTo leaks the ${other} group`);
+    }
+  }
+}
+assert.deepEqual(roleFailures, [], `role-mismatched backend links:\n${roleFailures.join('\n')}`);
+assert.equal(linkForRole('/(customer)/(tabs)/repair?tab=materials', 'contractor'), '/(contractor)/(tabs)/repair?tab=materials');
+assert.equal(linkForRole('/(contractor)/(tabs)/', 'customer'), '/(customer)/(tabs)/');
+assert.equal(linkForRole('/stage/s1', 'contractor'), '/stage/s1');
+assert.equal(linkForRole('/(customer)/(tabs)/budget', 'customer'), '/(customer)/(tabs)/budget');
+assert.equal(
+  resolvePushLink('/(customer)/(tabs)/repair?tab=materials', '/(customer)/(tabs)/', 'contractor')!.pathname,
+  '/(contractor)/(tabs)/repair',
+);
+assert.equal(
+  resolvePushLink('/stage/s1?returnTo=/(customer)/(tabs)/', null, 'contractor')!.params.returnTo,
+  '/(contractor)/(tabs)/',
+);
 
 // --- stored link format: returnTo is percent-encoded, so a query inside it survives ---
 const stored = '/stage/s1?projectId=p1&returnTo=/(customer)/(tabs)/repair%3Ftab%3Dcontrol';

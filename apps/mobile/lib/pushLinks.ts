@@ -28,12 +28,30 @@ export function resolveLegacyTabHref(legacyPath: string) {
   return parseOsHref(canonical);
 }
 
+/**
+ * COM-020: express a route in the recipient's role group. Backend emitters used
+ * to hard-code `/(customer)/...`, which sent a contractor into customer tabs.
+ * Mirrors backend `notification_links.link_for_role`; role-agnostic paths and
+ * already-correct links pass through unchanged.
+ */
+export function linkForRole<T extends string | null | undefined>(link: T, role: OsRole): T {
+  if (!link) return link;
+  const other: OsRole = role === 'customer' ? 'contractor' : 'customer';
+  const prefix = `/(${other})`;
+  if (link === prefix || link.startsWith(`${prefix}/`) || link.startsWith(`${prefix}?`)) {
+    return `/(${role})${link.slice(prefix.length)}` as T;
+  }
+  return link;
+}
+
 export function resolvePushLink(
-  link?: string | null,
-  returnTo?: string | null,
+  rawLink?: string | null,
+  rawReturnTo?: string | null,
   role: OsRole = 'customer',
 ): PushTarget | null {
-  if (!link) return null;
+  if (!rawLink) return null;
+  const link = linkForRole(rawLink, role);
+  const returnTo = linkForRole(rawReturnTo, role);
   const [path, query = ''] = link.split('?');
   const canonical = TAB_ALIASES[path] || link;
   const canonicalPath = canonical.split('?')[0];
@@ -41,7 +59,7 @@ export function resolvePushLink(
   const incoming = queryParams(canonicalQuery || '');
   // An explicit returnTo carried by the inbound URL is authoritative; the
   // caller-provided context is only a fallback for links that omit it.
-  const rt = incoming.returnTo || returnTo || '/';
+  const rt = linkForRole(incoming.returnTo, role) || returnTo || '/';
 
   const bareHub = canonicalPath.match(/^\/(object|repair|budget|calendar)$/)?.[1];
   if (bareHub) {

@@ -23,7 +23,8 @@ export type ChatInviteResult = {
   id: string;
   status: string;
   user_id: string | null;
-  delivery_channel: 'in_app' | 'sms';
+  /** 'invitation' — нейтральный ответ сервера (COM-041): канал не раскрывает, зарегистрирован ли адресат. */
+  delivery_channel: 'in_app' | 'sms' | 'invitation';
   delivery_status: ChatInviteDeliveryStatus;
   delivery_outbox_id: string | null;
 };

@@ -12,7 +12,7 @@ import { showActionConfirm } from '@/lib/actionConfirmBus';
 import type { ChatInviteDeliveryStatus } from '@/lib/api/chats';
 
 type ChatInviteTruth = {
-  channel: 'sms' | 'in_app';
+  channel: 'sms' | 'in_app' | 'invitation';
   status: ChatInviteDeliveryStatus;
 };
 
@@ -24,6 +24,11 @@ function chatInviteCopy(truth?: ChatInviteTruth): { title: string; message: stri
     };
   }
   switch (truth.status) {
+    case 'processed':
+      return {
+        title: 'Приглашение принято',
+        message: 'Приглашение принято в обработку. Если адресат может его получить, оно придёт ему автоматически.',
+      };
     case 'in_app_notified':
       return {
         title: 'Приглашение сохранено',

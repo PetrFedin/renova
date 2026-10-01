@@ -1,6 +1,6 @@
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import 'react-native-reanimated';
 import NetInfo from '@react-native-community/netinfo';
@@ -14,6 +14,11 @@ import { pollingResumesInMs } from '@/lib/api/client';
 import { currentSessionUserId } from '@/lib/domain/sessionAuthority';
 import { initLang } from '@/lib/i18n';
 import { pushOsNav } from '@/lib/pushOsNav';
+import {
+  createPendingNavigationQueue,
+  type NotificationSession,
+  type PendingNavigationQueue,
+} from '@/lib/notificationNavigation';
 import { initSentry } from '@/lib/sentryInit';
 import { reportCatch, reportError } from '@/lib/reportError';
 import {
@@ -32,26 +37,64 @@ function SplashGate({ children }: { children: ReactNode }) {
   return children;
 }
 
-export default function RootLayout() {
-  useEffect(() => { initLang().catch(reportCatch('i18n.init')); }, []);
+/**
+ * Push-tap navigation (COM-002/COM-040). Lives inside RenovaProvider so a tap
+ * that cold-starts the app is held until the session is restored, then opened
+ * with the payload role or, failing that, the signed-in user's role.
+ */
+function NotificationNavigationBridge() {
+  const { loading, user } = useRenova();
+  const sessionRef = useRef<NotificationSession>({ status: 'loading' });
+  const queueRef = useRef<PendingNavigationQueue | null>(null);
+  sessionRef.current = loading
+    ? { status: 'loading' }
+    : user
+      ? { status: 'authenticated', role: user.role === 'contractor' ? 'contractor' : 'customer' }
+      : { status: 'anonymous' };
 
   useEffect(() => {
     let disposed = false;
     let removeNotificationListener: () => void = () => undefined;
+    const queue = createPendingNavigationQueue({
+      getSession: () => sessionRef.current,
+      navigate: ({ linkPath, returnTo }, role) => {
+        if (linkPath) pushOsNav(linkPath, returnTo, role);
+      },
+      onDropped: (reason, payload) =>
+        reportError('notifications.deferred_navigation_dropped', new Error(reason), { linkPath: payload.linkPath }),
+    });
+    queueRef.current = queue;
 
     // Native notification APIs are loaded only on Android/iOS. Importing the
     // module on web installs unsupported listeners and creates false runtime
     // errors in observability even though the application itself is healthy.
     void installNativeNotificationInteractions(
-      ({ linkPath, returnTo, role }) => {
-        if (linkPath) pushOsNav(linkPath, returnTo, role);
-      },
+      (payload) => queue.push(payload),
       (scope, error) => reportError(scope, error),
     ).then((remove) => {
       if (disposed) remove();
       else removeNotificationListener = remove;
     }).catch(reportCatch('notifications.setup'));
 
+    return () => {
+      disposed = true;
+      removeNotificationListener();
+      queue.dispose();
+      queueRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    queueRef.current?.sessionChanged();
+  }, [loading, user?.id, user?.role]);
+
+  return null;
+}
+
+export default function RootLayout() {
+  useEffect(() => { initLang().catch(reportCatch('i18n.init')); }, []);
+
+  useEffect(() => {
     const apiBase = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
     // W93: online → канон flushOfflineOutbox (offlineFlush + projectDataBus)
     const onOnline = () => flushOfflineOutbox(apiBase).then((result) => {
@@ -77,8 +120,6 @@ export default function RootLayout() {
     if (typeof window !== 'undefined') window.addEventListener('online', onOnline);
 
     return () => {
-      disposed = true;
-      removeNotificationListener();
       unsubNet();
       stopFlushScheduler();
       if (typeof window !== 'undefined') window.removeEventListener('online', onOnline);
@@ -91,6 +132,7 @@ export default function RootLayout() {
         <SplashGate>
           <StatusBar style="dark" />
           <NavTracker />
+          <NotificationNavigationBridge />
           <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
             <Stack.Screen name="index" />
             <Stack.Screen name="onboarding/[step]" options={{ title: 'Онбординг' }} />
@@ -111,6 +153,7 @@ export default function RootLayout() {
             <Stack.Screen name="guide" options={{ headerShown: false }} />
             <Stack.Screen name="job-leads" options={{ headerShown: false }} />
             <Stack.Screen name="inbox" options={{ headerShown: false }} />
+            <Stack.Screen name="notification-center" options={{ headerShown: false }} />
             <Stack.Screen name="scan-receipt" options={{ presentation: 'modal', headerShown: false }} />
             <Stack.Screen name="payment-return" options={{ headerShown: false }} />
             <Stack.Screen name="portal" options={{ headerShown: false }} />
@@ -120,4 +163,3 @@ export default function RootLayout() {
     </SafeAreaProvider>
   );
 }
-            <Stack.Screen name="notification-center" options={{ headerShown: false }} />
