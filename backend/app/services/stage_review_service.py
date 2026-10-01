@@ -22,10 +22,12 @@ from app.models.entities import (
     WorkAcceptance,
 )
 from app.services import outbox_service as outbox
+from app.services import stage_mutation_service
 from app.services import workflow_service as workflow
 from app.services.stage_service import parse_room_ids
 
 REWORK_SLA_DAYS = 3
+_REUSABLE_ACCEPTANCE = {"not_requested", "requested", "in_review"}
 
 
 @dataclass(frozen=True)
@@ -193,7 +195,8 @@ async def submit_for_review(
         await db.rollback()
         return None, None
     try:
-        _require_submit_actor(project, stage, actor)
+        if not await stage_mutation_service.is_team_executor(db, project, actor):
+            _require_submit_actor(project, stage, actor)
     except ValueError:
         await db.rollback()
         raise
@@ -240,7 +243,10 @@ async def submit_for_review(
 
         room_ids = parse_room_ids(stage)
         room_id = room_ids[0] if room_ids else None
-        if acceptance is None:
+        # Каждая сдача — новая запись приёмки (JRN-029): возвращённая или
+        # принятая запись остаётся в истории, а не перезаписывается. Повторно
+        # используем только ещё не рассмотренную (not_requested / requested).
+        if acceptance is None or acceptance.status not in _REUSABLE_ACCEPTANCE:
             acceptance = WorkAcceptance(
                 project_id=project.id,
                 room_id=room_id,
@@ -258,9 +264,6 @@ async def submit_for_review(
             acceptance.requested_at = now
             acceptance.status = "requested"
             acceptance.checklist_json = checklist_json
-            acceptance.accepted_by = None
-            acceptance.accepted_at = None
-            acceptance.quality_score = None
             acceptance.comment = clean_comment
 
         await _enqueue_activity(

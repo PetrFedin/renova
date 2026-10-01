@@ -1,7 +1,7 @@
 """Automation Engine — правила цепочки: работа → приёмка → оплата → закупка."""
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -276,6 +276,91 @@ async def process_event(
     return actions
 
 
+# Окно «срок доработки подходит» и порог долгого ожидания приёмки (STG-014/STG-015).
+REWORK_SLA_SOON_HOURS = 24
+ACCEPTANCE_WAIT_DAYS = 2
+
+_CONTRACTOR_RETURN = "/(contractor)/(tabs)/plan"
+_CUSTOMER_RETURN = "/(customer)/(tabs)/repair?tab=control"
+
+
+async def _scan_stage_waiting_reminders(db: AsyncSession, project: Project, stages: list[Stage]) -> list[str]:
+    """SLA доработки и ожидание приёмки: уведомления без автоприёмки и автоотзыва.
+
+    Каждое уведомление одно на этап и срок/сдачу (устойчивый ключ в durable-outbox),
+    поэтому повторный проход воркера и экран «Работы» ничего не дублируют.
+    """
+    actions: list[str] = []
+    now = utc_now()
+    soon = now + timedelta(hours=REWORK_SLA_SOON_HOURS)
+
+    for stage in stages:
+        executor_id = stage.assignee_id or project.contractor_id
+        deadline = stage.rework_deadline
+        if stage.needs_rework and deadline is not None and stage.status != StageStatus.done:
+            day = deadline.date().isoformat()
+            if now < deadline <= soon:
+                if executor_id and await enqueue_notification_once(
+                    db,
+                    # тот же ключ, что у POST /rework-sla/check — один push на срок
+                    dedupe_key=f"rework_sla:{stage.id}:{day}",
+                    project_id=project.id,
+                    user_id=executor_id,
+                    notification_type="stage_review",
+                    title="SLA доработки завтра",
+                    body=f"{stage.name} до {day}",
+                    link_path=f"/stage/{stage.id}",
+                    return_to=_CONTRACTOR_RETURN,
+                ):
+                    actions.append(f"rework_sla_soon:{stage.id}")
+            elif deadline <= now:
+                if executor_id and await enqueue_notification_once(
+                    db,
+                    dedupe_key=f"rework-sla-overdue:{stage.id}:{day}:executor",
+                    project_id=project.id,
+                    user_id=executor_id,
+                    notification_type="deadline",
+                    title="SLA доработки просрочен",
+                    body=f"{stage.name}: срок был {day}",
+                    link_path=f"/stage/{stage.id}",
+                    return_to=_CONTRACTOR_RETURN,
+                ):
+                    actions.append(f"rework_sla_overdue:{stage.id}")
+                if project.customer_id and await enqueue_notification_once(
+                    db,
+                    dedupe_key=f"rework-sla-overdue:{stage.id}:{day}:customer",
+                    project_id=project.id,
+                    user_id=project.customer_id,
+                    notification_type="deadline",
+                    title="Исполнитель не уложился в срок доработки",
+                    body=f"{stage.name}: срок был {day}. Продлите срок или обсудите в чате этапа",
+                    link_path=f"/stage/{stage.id}",
+                    return_to=_CUSTOMER_RETURN,
+                ):
+                    actions.append(f"rework_sla_overdue_customer:{stage.id}")
+
+        ready_at = stage.contractor_ready_at
+        if (
+            stage.status == StageStatus.review
+            and ready_at is not None
+            and project.customer_id
+            and now - ready_at >= timedelta(days=ACCEPTANCE_WAIT_DAYS)
+        ):
+            if await enqueue_notification_once(
+                db,
+                dedupe_key=f"acceptance-wait:{stage.id}:{ready_at.isoformat()}",
+                project_id=project.id,
+                user_id=project.customer_id,
+                notification_type="stage_review",
+                title="Этап давно ждёт приёмки",
+                body=f"{stage.name}: сдан {ready_at.date().isoformat()} — примите или верните на доработку",
+                link_path=f"/stage/{stage.id}",
+                return_to=_CUSTOMER_RETURN,
+            ):
+                actions.append(f"acceptance_wait:{stage.id}")
+    return actions
+
+
 async def scan_project_reminders(
     db: AsyncSession,
     project: Project,
@@ -292,7 +377,8 @@ async def scan_project_reminders(
         if (
             stage.planned_end
             and stage.planned_end < today
-            and stage.status not in (StageStatus.done,)
+            # этап в `review` ждёт заказчика, а не исполнителя (STG-015)
+            and stage.status not in (StageStatus.done, StageStatus.review)
             and project.contractor_id
         ):
             created = await enqueue_notification_once(
@@ -308,6 +394,8 @@ async def scan_project_reminders(
             )
             if created:
                 actions.append(f"overdue:{stage.id}")
+
+    actions.extend(await _scan_stage_waiting_reminders(db, project, stages))
 
     active = [stage for stage in stages if stage.status == StageStatus.active]
     if active and project.customer_id:

@@ -336,11 +336,13 @@ async def test_reject_returns_acceptance_adds_sla_task_and_is_replay_safe(db):
     assert resubmitted.replayed is False
     assert resubmitted.stage.status == StageStatus.review
     assert resubmitted.stage.needs_rework is False
-    assert resubmitted.acceptance.id == acceptance_id
+    # JRN-029: повторная сдача — новая запись приёмки, возвращённая остаётся в истории.
+    assert resubmitted.acceptance.id != acceptance_id
     assert resubmitted.acceptance.status == "requested"
+    assert (await db.get(WorkAcceptance, acceptance_id)).status == "returned"
     assert await db.scalar(
         select(func.count()).select_from(WorkAcceptance).where(WorkAcceptance.stage_id == stage_id)
-    ) == 1
+    ) == 2
     assert await db.scalar(
         select(func.count()).select_from(DomainOutbox).where(DomainOutbox.aggregate_id == stage_id)
     ) == 8

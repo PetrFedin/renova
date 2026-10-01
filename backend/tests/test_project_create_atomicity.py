@@ -105,8 +105,8 @@ async def test_complete_project_is_one_consistent_commit(db):
 
     stages = sorted(project.stages, key=lambda stage: stage.sort_order)
     assert len(stages) == len(stages_for_renovation("capital"))
-    assert stages[0].status == StageStatus.active
-    assert all(stage.status == StageStatus.planned for stage in stages[1:])
+    # JRN-011: ни один этап не стартует сам — старт это действие исполнителя.
+    assert all(stage.status == StageStatus.planned for stage in stages)
     assert stages[0].planned_start == start
     assert stages[-1].planned_end == end
     for previous, following in zip(stages, stages[1:]):

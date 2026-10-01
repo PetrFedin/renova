@@ -44,6 +44,10 @@ class StageDependencyIn(BaseModel):
     depends_on_stage_id: str | None = None
 
 
+class StageAssigneeIn(BaseModel):
+    assignee_id: str | None = None
+
+
 def _mutation_error(error: ValueError) -> HTTPException:
     code = str(error)
     if code in {
@@ -52,8 +56,18 @@ def _mutation_error(error: ValueError) -> HTTPException:
         "stage_submit_actor_forbidden",
     }:
         return HTTPException(403, detail={"code": code})
+    if isinstance(error, mutations.StageDeleteBlocked):
+        return HTTPException(
+            409,
+            detail={
+                "code": "stage_delete_blocked",
+                "message": "; ".join(b["message"] for b in error.blockers),
+                "blockers": error.blockers,
+            },
+        )
     if code in {
         "confirmed_schedule_controls_dates",
+        "stage_dates_locked_done",
         "stage_configuration_locked",
         "stage_dependency_cycle",
         "stage_dates_locked_done",
@@ -419,3 +433,68 @@ async def sync_dependencies(
     except ValueError as error:
         raise _mutation_error(error) from error
     return {"created": count}
+
+
+@router.delete("/{project_id}/dependencies/{dependency_id}")
+async def remove_dependency(
+    project_id: str,
+    dependency_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Снять зависимость (этап/материал), пока зависимый этап не начат."""
+    await require_project(db, project_id, user, write=True)
+    try:
+        result = await mutations.remove_dependency(
+            db, project_id=project_id, dependency_id=dependency_id, actor=user
+        )
+    except ValueError as error:
+        raise _mutation_error(error) from error
+    if result is None:
+        raise HTTPException(404, detail={"code": "dependency_not_found"})
+    return result
+
+
+@router.delete("/{project_id}/stages/{stage_id}")
+async def delete_stage(
+    project_id: str,
+    stage_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Отменить (удалить) не начатый этап; начатый или с приёмками/платежами — 409."""
+    await require_project(db, project_id, user, write=True)
+    try:
+        result = await mutations.delete_stage(
+            db, project_id=project_id, stage_id=stage_id, actor=user
+        )
+    except ValueError as error:
+        raise _mutation_error(error) from error
+    if result is None:
+        raise HTTPException(404, detail={"code": "stage_not_found"})
+    return result
+
+
+@router.patch("/{project_id}/stages/{stage_id}/assignee")
+async def update_assignee(
+    project_id: str,
+    stage_id: str,
+    body: StageAssigneeIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Назначить этап участнику бригады ведущего (или вернуть ведущему)."""
+    await require_project(db, project_id, user, write=True)
+    try:
+        result = await mutations.set_assignee(
+            db,
+            project_id=project_id,
+            stage_id=stage_id,
+            actor=user,
+            assignee_id=body.assignee_id,
+        )
+    except ValueError as error:
+        raise _mutation_error(error) from error
+    if result is None:
+        raise HTTPException(404, detail={"code": "stage_not_found"})
+    return await _stage_response(db, result)

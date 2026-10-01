@@ -94,6 +94,19 @@ def _require_execution_actor(project: Project, stage: Stage, actor: User) -> Non
         raise ValueError("stage_execution_actor_forbidden")
 
 
+async def is_team_executor(db: AsyncSession, project: Project, actor: User) -> bool:
+    """Owner/foreman of the lead contractor's team may execute any stage of the project.
+
+    `stage.assignee_id` is never set by any flow, so without this the foreman could
+    neither see nor start the lead's stages (STG-005/STG-006). A plain member only
+    executes stages explicitly assigned to them (`_executor_ids`); a viewer never does.
+    """
+    if actor.role != UserRole.contractor or not project.contractor_id:
+        return False
+    role = await team_service.team_role_for_project(db, actor, project)
+    return role in {"owner", "foreman"}
+
+
 def _normalize_room_ids(room_ids: list[str] | None) -> list[str]:
     normalized = [str(room_id).strip() for room_id in (room_ids or [])]
     if any(not room_id for room_id in normalized):
@@ -376,7 +389,8 @@ async def start_stage(
         await db.rollback()
         return None, {"code": "stage_not_found"}
     try:
-        _require_execution_actor(project, stage, actor)
+        if not await is_team_executor(db, project, actor):
+            _require_execution_actor(project, stage, actor)
     except ValueError:
         await db.rollback()
         raise
@@ -468,6 +482,9 @@ async def update_dates(
         await _require_schedule_actor(db, project=project, actor=actor)
         if await _confirmed_schedule_exists(db, project.id):
             raise ValueError("confirmed_schedule_controls_dates")
+        if stage.status == StageStatus.done:
+            # STG-008: dates of an accepted stage are history.
+            raise ValueError("stage_dates_locked_done")
         next_start = planned_start if planned_start is not None else stage.planned_start
         next_end = planned_end if planned_end is not None else stage.planned_end
         _validate_dates(project, planned_start=next_start, planned_end=next_end)
@@ -629,6 +646,274 @@ async def _assert_no_dependency_cycle(
         )
 
 
+WAIVED = "waived"
+
+
+async def _has_active_work_dependency(db: AsyncSession, stage_id: str) -> bool:
+    from app.models.entities import WorkDependency
+
+    return bool(
+        await db.scalar(
+            select(func.count())
+            .select_from(WorkDependency)
+            .where(
+                WorkDependency.stage_id == stage_id,
+                WorkDependency.dependency_type == "work",
+                WorkDependency.status != WAIVED,
+            )
+        )
+    )
+
+
+async def _waive_work_dependencies(db: AsyncSession, *, stage_id: str) -> int:
+    """Mark the stage's work dependencies waived (kept as history; `sync` will not recreate them)."""
+    from app.models.entities import WorkDependency
+
+    rows = (
+        await db.execute(
+            select(WorkDependency).where(
+                WorkDependency.stage_id == stage_id,
+                WorkDependency.dependency_type == "work",
+                WorkDependency.status != WAIVED,
+            )
+        )
+    ).scalars().all()
+    for row in rows:
+        row.status = WAIVED
+    return len(rows)
+
+
+async def _require_structure_actor(db: AsyncSession, *, project: Project, actor: User) -> None:
+    """Customer-owner or schedule actor (lead / foreman / self-managed customer)."""
+    if actor.id == project.customer_id and actor.role == UserRole.customer:
+        return
+    await _require_schedule_actor(db, project=project, actor=actor)
+
+
+async def remove_dependency(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    dependency_id: str,
+    actor: User,
+) -> dict | None:
+    """Waive one WorkDependency (stage or material) while its stage is not started."""
+    from app.models.entities import WorkDependency
+
+    project = await _locked_project(db, project_id)
+    if project is None:
+        await db.rollback()
+        return None
+    dependency = await db.get(WorkDependency, dependency_id)
+    if dependency is None or dependency.project_id != project.id:
+        await db.rollback()
+        return None
+    stage = await _locked_stage(db, project_id=project.id, stage_id=dependency.stage_id)
+    if stage is None:
+        await db.rollback()
+        return None
+    try:
+        await _require_structure_actor(db, project=project, actor=actor)
+        if _status(stage) != StageStatus.planned:
+            raise ValueError("stage_configuration_locked")
+        if dependency.status == WAIVED:
+            await db.commit()
+            return {"id": dependency.id, "stage_id": stage.id, "status": WAIVED, "replayed": True}
+        dependency.status = WAIVED
+        if (
+            dependency.dependency_type == "work"
+            and dependency.depends_on_stage_id
+            and stage.depends_on_stage_id == dependency.depends_on_stage_id
+        ):
+            stage.depends_on_stage_id = None
+        await _enqueue_activity(
+            db,
+            stage=stage,
+            actor_id=actor.id,
+            kind="StageDependencyRemoved",
+            title=f"Снята зависимость этапа: {stage.name}",
+        )
+        await db.commit()
+    except BaseException:
+        await db.rollback()
+        raise
+    await _dispatch(db, "stage.dependency.remove")
+    return {"id": dependency.id, "stage_id": stage.id, "status": WAIVED, "replayed": False}
+
+
+async def _stage_deletion_blockers(db: AsyncSession, stage: Stage) -> list[dict]:
+    from app.models.entities import (
+        Expense,
+        Payment,
+        ProjectIssue,
+        Receipt,
+        WorkAcceptance,
+        WorkOrder,
+    )
+
+    checks = [
+        ("stage_has_acceptances", "Есть записи приёмки", WorkAcceptance, []),
+        ("stage_has_payments", "Есть платежи по этапу", Payment, []),
+        ("stage_has_receipts", "Есть чеки по этапу", Receipt, []),
+        ("stage_has_expenses", "Есть расходы по этапу", Expense, [Expense.status != "deleted"]),
+        ("stage_has_issues", "Есть замечания по этапу", ProjectIssue, []),
+        ("stage_has_work_orders", "Есть работы по этапу", WorkOrder, []),
+    ]
+    blockers: list[dict] = []
+    for code, message, model, extra in checks:
+        count = int(
+            await db.scalar(
+                select(func.count()).select_from(model).where(model.stage_id == stage.id, *extra)
+            )
+            or 0
+        )
+        if count:
+            blockers.append({"code": code, "message": message, "count": count})
+    return blockers
+
+
+async def delete_stage(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    stage_id: str,
+    actor: User,
+) -> dict | None:
+    """Delete (cancel) a stage that has not started and holds no accepted work or money.
+
+    Без миграции нового статуса `cancelled` нет (StageStatus — enum в БД), поэтому
+    отмена не начатого этапа = удаление с записью в журнале активности. Этап,
+    который начат или за которым есть приёмки/платежи/чеки/расходы/замечания, не
+    удаляется: ValueError("stage_delete_blocked") с причинами в `.args[1]`.
+    """
+    from app.models.entities import WorkDependency
+    from app.models.work_schedule import ProjectWorkScheduleItem
+
+    project = await _locked_project(db, project_id)
+    if project is None:
+        await db.rollback()
+        return None
+    stage = await _locked_stage(db, project_id=project.id, stage_id=stage_id)
+    if stage is None:
+        await db.rollback()
+        return None
+    try:
+        await _require_structure_actor(db, project=project, actor=actor)
+        blockers: list[dict] = []
+        if _status(stage) != StageStatus.planned:
+            blockers.append(
+                {
+                    "code": "stage_already_started",
+                    "message": "Этап уже начат или завершён — отменить его нельзя",
+                    "status": _status(stage).value,
+                }
+            )
+        blockers.extend(await _stage_deletion_blockers(db, stage))
+        if blockers:
+            raise StageDeleteBlocked(blockers)
+        name = stage.name
+        # Зависимые этапы и записи графика освобождаем явно: на SQLite FK не
+        # всегда каскадят, а оставленная ссылка блокировала бы старт навсегда.
+        for dependent in (
+            await db.execute(
+                select(Stage).where(
+                    Stage.project_id == project.id,
+                    Stage.depends_on_stage_id == stage.id,
+                )
+            )
+        ).scalars().all():
+            dependent.depends_on_stage_id = None
+        for dep in (
+            await db.execute(
+                select(WorkDependency).where(
+                    (WorkDependency.stage_id == stage.id)
+                    | (WorkDependency.depends_on_stage_id == stage.id)
+                )
+            )
+        ).scalars().all():
+            await db.delete(dep)
+        for item in (
+            await db.execute(
+                select(ProjectWorkScheduleItem).where(ProjectWorkScheduleItem.stage_id == stage.id)
+            )
+        ).scalars().all():
+            item.stage_id = None
+        await _enqueue_activity(
+            db,
+            stage=stage,
+            actor_id=actor.id,
+            kind="StageCancelled",
+            title=f"Отменён этап: {name}",
+        )
+        await db.flush()
+        await db.delete(stage)
+        await db.commit()
+    except BaseException:
+        await db.rollback()
+        raise
+    await _dispatch(db, "stage.delete")
+    return {"ok": True, "id": stage_id, "name": name}
+
+
+class StageDeleteBlocked(ValueError):
+    def __init__(self, blockers: list[dict]):
+        super().__init__("stage_delete_blocked")
+        self.blockers = blockers
+
+
+async def set_assignee(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    stage_id: str,
+    actor: User,
+    assignee_id: str | None,
+) -> StageMutationResult | None:
+    """Назначить исполнителя этапа из бригады ведущего (или снять назначение).
+
+    Назначает ведущий/прораб (право расписания). Исполнитель — сам ведущий либо
+    участник его бригады, не наблюдатель. `None` возвращает этап ведущему.
+    """
+    project = await _locked_project(db, project_id)
+    if project is None:
+        await db.rollback()
+        return None
+    stage = await _locked_stage(db, project_id=project.id, stage_id=stage_id)
+    if stage is None:
+        await db.rollback()
+        return None
+    try:
+        await _require_schedule_actor(db, project=project, actor=actor)
+        if is_self_managed_project(project):
+            raise ValueError("stage_assignee_invalid")
+        if _status(stage) in {StageStatus.review, StageStatus.done}:
+            raise ValueError("stage_configuration_locked")
+        if assignee_id is not None and assignee_id != project.contractor_id:
+            membership = await team_service.project_team_membership(
+                db, user_id=assignee_id, contractor_id=project.contractor_id
+            )
+            if membership is None or membership.role not in {"owner", "foreman", "member"}:
+                raise ValueError("stage_assignee_invalid")
+        if stage.assignee_id == assignee_id:
+            await db.commit()
+            return StageMutationResult(stage, True)
+        stage.assignee_id = assignee_id
+        await _enqueue_activity(
+            db,
+            stage=stage,
+            actor_id=actor.id,
+            kind="StageAssigneeChanged",
+            title=f"Изменён исполнитель этапа: {stage.name}",
+        )
+        await db.commit()
+    except BaseException:
+        await db.rollback()
+        raise
+    await db.refresh(stage)
+    await _dispatch(db, "stage.assignee")
+    return StageMutationResult(stage, False)
+
+
 async def update_dependency(
     db: AsyncSession,
     *,
@@ -667,11 +952,17 @@ async def update_dependency(
                 stage_id=stage.id,
                 predecessor=predecessor,
             )
-        if stage.depends_on_stage_id == depends_on_stage_id:
+        if stage.depends_on_stage_id == depends_on_stage_id and not (
+            depends_on_stage_id is None and await _has_active_work_dependency(db, stage.id)
+        ):
             await db.commit()
             return StageMutationResult(stage, True)
         previous = stage.depends_on_stage_id
         stage.depends_on_stage_id = depends_on_stage_id
+        if depends_on_stage_id is None:
+            # Снять зависимость — значит снять и записи WorkDependency из `sync`:
+            # иначе старт продолжал бы отвечать `blocked` (STG-010).
+            await _waive_work_dependencies(db, stage_id=stage.id)
         await _enqueue_activity(
             db,
             stage=stage,

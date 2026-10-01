@@ -232,7 +232,10 @@ async def _prepare_stages(
             project_id=project.id,
             name=stage_name,
             sort_order=index,
-            status=StageStatus.active if index == 0 else StageStatus.planned,
+            # Этап не стартует сам (JRN-011): старт — действие исполнителя после
+            # договора (или заказчика в проекте без исполнителя). Иначе проект
+            # «рождается» с активным этапом и исполнителя нельзя заменить.
+            status=StageStatus.planned,
             percent_complete=0,
             payment_amount=amount,
             weight_coefficient=float(weight),

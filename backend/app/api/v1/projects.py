@@ -8,6 +8,7 @@ from app.models.entities import User, UserRole
 from app.models.entities import PaymentStatus
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectDetail, ProjectOut, EstimateLineOut, StageOut, RoomOut
 from app.services import project_service as svc
+from app.services import stage_status_service as stage_status_svc
 from app.services import project_profile_service as profile_svc
 from app.services.project_role_policy import require_project_owner
 from app.services.stage_service import parse_room_ids
@@ -30,6 +31,30 @@ def _filter_stages_for_user(p, user: User):
         if getattr(s, "assignee_id", None) == user.id
         or (getattr(s, "assignee_id", None) is None and p.contractor_id == user.id)
     ]
+
+
+async def visible_stages_for_user(db, p, user: User):
+    """Этапы, видимые пользователю в проекте.
+
+    Заказчик и всё, что не исполнитель, видят все этапы. Ведущий исполнитель и
+    прораб/владелец его бригады видят все этапы проекта: `assignee_id` не
+    выставляется ни одним потоком, и прежняя «только свои» выдача оставляла
+    прорабу 0 этапов (STG-005). Рядовой участник и наблюдатель бригады видят
+    свои и неназначенные этапы; чужой исполнитель — по прежнему правилу.
+    """
+    if user.role != UserRole.contractor:
+        return sorted(p.stages or [], key=lambda x: x.sort_order)
+    from app.services import team_service
+
+    role = await team_service.team_role_for_project(db, user, p)
+    if role in ("owner", "foreman"):
+        return sorted(p.stages or [], key=lambda x: x.sort_order)
+    if role in ("member", "viewer"):
+        return [
+            s for s in sorted(p.stages or [], key=lambda x: x.sort_order)
+            if getattr(s, "assignee_id", None) in (None, user.id)
+        ]
+    return _filter_stages_for_user(p, user)
 
 
 def _project_out(
@@ -56,7 +81,9 @@ def _project_out(
         budget_planned=0.0 if hide_money else p.budget_planned,
         budget_spent=0.0 if hide_money else p.budget_spent,
         customer_budget=float(customer_budget) if customer_budget is not None else None,
-        progress_percent=p.progress_percent,
+        # JRN-018: колонка projects.progress_percent никем не обновляется и всегда
+        # 0 — считаем по этапам тем же взвешенным методом, что и дашборд.
+        progress_percent=stage_status_svc.weighted_progress(list(p.stages or [])),
         vat_rate=float(getattr(p, "vat_rate", 0) or 0),
         rooms_count=len(p.rooms) if p.rooms else 0,
         stages_count=len(p.stages) if p.stages else 0,
@@ -136,7 +163,7 @@ async def _detail(db, p, user: User | None = None) -> ProjectDetail:
         else (
             [s for s in sorted(p.stages or [], key=lambda x: x.sort_order) if s.id in participant_stage_ids]
             if hide_money
-            else _filter_stages_for_user(p, user)
+            else await visible_stages_for_user(db, p, user)
         )
     )
     stages = [

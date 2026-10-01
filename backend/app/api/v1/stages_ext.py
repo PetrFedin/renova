@@ -79,21 +79,25 @@ async def stage_detail_capabilities(
     """
     can_schedule = await stage_schedule_capability(db, project=project, actor=actor)
 
-    can_execute = False
-    try:
-        stage_mutation_svc._require_execution_actor(project, stage, actor)
-        can_execute = True
-    except ValueError as exc:
-        if str(exc) != "stage_execution_actor_forbidden":
-            raise
+    team_executor = await stage_mutation_svc.is_team_executor(db, project, actor)
 
-    can_submit = False
-    try:
-        stage_review_svc._require_submit_actor(project, stage, actor)
-        can_submit = True
-    except ValueError as exc:
-        if str(exc) != "stage_submit_actor_forbidden":
-            raise
+    can_execute = team_executor
+    if not can_execute:
+        try:
+            stage_mutation_svc._require_execution_actor(project, stage, actor)
+            can_execute = True
+        except ValueError as exc:
+            if str(exc) != "stage_execution_actor_forbidden":
+                raise
+
+    can_submit = team_executor
+    if not can_submit:
+        try:
+            stage_review_svc._require_submit_actor(project, stage, actor)
+            can_submit = True
+        except ValueError as exc:
+            if str(exc) != "stage_submit_actor_forbidden":
+                raise
 
     status = stage.status if isinstance(stage.status, StageStatus) else StageStatus(str(stage.status))
     can_review = (
@@ -297,9 +301,9 @@ async def project_plan(
     db: AsyncSession = Depends(get_db),
 ):
     project = await require_project(db, project_id, user, write=False)
-    from app.api.v1.projects import _filter_stages_for_user
+    from app.api.v1.projects import visible_stages_for_user
 
-    stages = _filter_stages_for_user(project, user)
+    stages = await visible_stages_for_user(db, project, user)
     return {
         "project_id": project.id,
         "name": project.name,

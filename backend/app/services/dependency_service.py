@@ -79,6 +79,9 @@ async def evaluate_stage(
 
     dependencies = await list_dependencies(db, stage.project_id, stage.id)
     for dependency in dependencies:
+        if dependency.status == "waived":
+            # Снятая вручную зависимость (STG-010) не блокирует и не пересчитывается.
+            continue
         satisfied = await _is_satisfied(db, dependency)
         if persist_status:
             dependency.status = "satisfied" if satisfied else "pending"
@@ -246,6 +249,8 @@ async def on_material_delivered(
     )
     unlocked: list[str] = []
     for dependency in result.scalars().all():
+        if dependency.status == "waived":
+            continue
         satisfied = await _is_satisfied(db, dependency)
         dependency.status = "satisfied" if satisfied else "pending"
         stage = await db.get(Stage, dependency.stage_id)

@@ -256,7 +256,6 @@ async def test_08_replacing_contractor_needs_explicit_release(w):
         assert (await w.call(who, "DELETE", f"{B}/contractor")).status_code in (403, 404), who
 
 
-@pytest.mark.xfail(strict=True, reason="JRN-011: этап 1 создаётся уже active, поэтому снять исполнителя сразу после назначения нельзя (contractor_work_started) (волна 2)")
 async def test_08b_customer_can_release_and_replace_contractor(w):
     B = f"/projects/{w.s['bid']}"
     await w.call("cust", "DELETE", f"{B}/contractor", expect=200)
@@ -629,12 +628,10 @@ async def test_22_submit_return_resubmit_accept(w):
     assert [s["name"] for s in done] == ["Демонтаж"]
 
 
-@pytest.mark.xfail(strict=True, reason="JRN-029: повторная сдача после возврата переиспользует acceptance_id (волна 2)")
 async def test_22a_resubmit_creates_new_acceptance(w):
     assert w.s["acc_id_reused"] is False
 
 
-@pytest.mark.xfail(strict=True, reason="JRN-018: ProjectOut.progress_percent = 0 при принятом этапе, dashboard иначе (волна 2)")
 async def test_22b_progress_consistent(w):
     detail = (await w.call("cust", "GET", P(w), expect=200)).json()["progress_percent"]
     dash = (await w.call("cust", "GET", f"{P(w)}/dashboard", expect=200)).json()["progress_percent"]
