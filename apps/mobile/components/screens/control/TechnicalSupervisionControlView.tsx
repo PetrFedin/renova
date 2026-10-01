@@ -1,11 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { notifyAlert, notifyError } from '@/lib/notify';
+import { confirmAction, notifyAlert, notifyError } from '@/lib/notify';
+import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { EmptyActionState } from '@/components/ui/EmptyActionState';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
+import {
+  SEVERITY_CHOICES,
+  SUPERVISOR_ISSUE_STATUS_LABEL,
+  supervisorIssueActions,
+  validateSupervisorRemark,
+  type SupervisorIssueAction,
+} from '@/lib/domain/supervisorIssueActions';
 
 import { api, type ProjectIssue, type WorkAcceptance } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { reportError } from '@/lib/reportError';
+import { issueSeverityLabel } from '@/constants/labels';
 
 export function TechnicalSupervisionControlView() {
   const { activeProject, user } = useRenova();
@@ -17,6 +28,8 @@ export function TechnicalSupervisionControlView() {
   const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
   const [remark, setRemark] = useState('');
   const [busy, setBusy] = useState(false);
+  const [severity, setSeverity] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
+  const [issueBusyId, setIssueBusyId] = useState<string | null>(null);
 
   const projectId = activeProject?.id || '';
   const userId = user?.id || '';
@@ -26,6 +39,9 @@ export function TechnicalSupervisionControlView() {
   );
   const canIssue = capabilities.has('quality_issue_write');
   const canReturn = capabilities.has('quality_review');
+  const isSupervisor = activeProject?.access_mode === 'supervisor';
+  const capabilityList = useMemo(() => Array.from(capabilities), [capabilities]);
+  const workStages = (activeProject?.stages ?? []).filter((stage) => stage.status !== 'done');
 
   const load = useCallback(async (isRefresh = false) => {
     if (!userId || !projectId) return;
@@ -61,14 +77,19 @@ export function TechnicalSupervisionControlView() {
   }
 
   async function createRemark() {
-    if (!selectedStageId || !remark.trim() || !canIssue) return;
+    if (!canIssue) return;
+    const checked = validateSupervisorRemark({ stageId: selectedStageId, description: remark });
+    if (!checked.ok || !selectedStageId) {
+      notifyError('Замечание', undefined, checked.ok ? 'Выберите этап.' : checked.message);
+      return;
+    }
     setBusy(true);
     try {
       await api.createTechnicalQualityIssue(userId, projectId, {
         title: `Замечание: ${stageName(selectedStageId)}`,
-        description: remark.trim(),
+        description: checked.description,
         stage_id: selectedStageId,
-        severity: 'medium',
+        severity,
       });
       setRemark('');
       await load(true);
@@ -77,6 +98,26 @@ export function TechnicalSupervisionControlView() {
       notifyError('Замечание', cause, 'Не удалось сохранить замечание. Проверьте соединение и права доступа.');
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function transitionIssue(issue: ProjectIssue, action: SupervisorIssueAction) {
+    const yes = await confirmAction({
+      title: action.confirmTitle,
+      message: `${issue.title}. ${action.confirmMessage}`,
+      confirmLabel: action.target === 'closed' ? 'Закрыть' : 'Вернуть',
+      destructive: action.destructive,
+    });
+    if (!yes) return;
+    setIssueBusyId(issue.id);
+    try {
+      await api.transitionIssue(userId, projectId, issue.id, action.target);
+      await load(true);
+    } catch (cause) {
+      reportError('technicalSupervision.control.transition', cause, { projectId, issueId: issue.id });
+      notifyError('Замечание', cause, 'Не удалось изменить статус замечания. Обновите список и повторите.');
+    } finally {
+      setIssueBusyId(null);
     }
   }
 
@@ -112,10 +153,10 @@ export function TechnicalSupervisionControlView() {
   }
 
   if (!activeProject || !user) {
-    return <Text style={s.empty}>Выберите объект.</Text>;
+    return <EmptyActionState title="Выберите объект" hint="Контроль технадзора открывается для конкретного объекта." />;
   }
-  if (activeProject.access_mode !== 'supervisor') {
-    return <Text style={s.empty}>Технический надзор для этого объекта не активен.</Text>;
+  if (!isSupervisor) {
+    return <EmptyActionState title="Технадзор не назначен" hint="Действия технического надзора доступны только назначенному на этот объект представителю." />;
   }
 
   return (
@@ -132,20 +173,13 @@ export function TechnicalSupervisionControlView() {
       </View>
 
       {loading ? <Text style={s.muted}>Загрузка контроля…</Text> : null}
-      {error ? (
-        <View style={s.errorBox}>
-          <Text style={s.errorText}>{error}</Text>
-          <Pressable onPress={() => void load(false)}>
-            <Text style={s.retry}>Повторить</Text>
-          </Pressable>
-        </View>
-      ) : null}
+      {error ? <LoadErrorState title="Не удалось загрузить контроль объекта" hint="Действия временно недоступны. Это не пустой список." onRetry={() => void load(false)} /> : null}
 
       {!loading && !error ? (
         <>
           <Text style={s.sectionTitle}>На технической проверке</Text>
           {pending.length === 0 ? (
-            <Text style={s.muted}>Нет этапов, ожидающих технической проверки.</Text>
+            <EmptyActionState title="Нет этапов на проверке" hint="Когда исполнитель сдаст этап, он появится здесь. Замечание можно оставить и по любому этапу ниже." />
           ) : (
             pending.map((acceptance) => (
               <Pressable
@@ -163,9 +197,44 @@ export function TechnicalSupervisionControlView() {
             ))
           )}
 
-          {selectedStageId ? (
+          {canIssue || canReturn ? (
             <View style={s.reviewBox}>
-              <Text style={s.reviewTitle}>{stageName(selectedStageId)}</Text>
+              <Text style={s.reviewTitle}>Новое замечание</Text>
+              <Text style={s.muted}>Этап</Text>
+              <View style={s.chips}>
+                {workStages.map((stage) => (
+                  <Pressable
+                    key={stage.id}
+                    onPress={() => chooseStage(stage.id)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: selectedStageId === stage.id }}
+                    style={[s.chip, selectedStageId === stage.id && s.chipOn]}
+                  >
+                    <Text style={[s.chipText, selectedStageId === stage.id && s.chipTextOn]}>{stage.name}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              {canIssue ? (
+                <>
+                  <Text style={s.muted}>Серьёзность</Text>
+                  <View style={s.chips}>
+                    {SEVERITY_CHOICES.map((choice) => (
+                      <Pressable
+                        key={choice.value}
+                        onPress={() => setSeverity(choice.value)}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: severity === choice.value }}
+                        style={[s.chip, severity === choice.value && s.chipOn]}
+                      >
+                        <Text style={[s.chipText, severity === choice.value && s.chipTextOn]}>{choice.label}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  {severity === 'high' || severity === 'critical' ? (
+                    <Text style={s.muted}>Высокие и критичные замечания блокируют приёмку этапа, пока не будут закрыты.</Text>
+                  ) : null}
+                </>
+              ) : null}
               <TextInput
                 value={remark}
                 onChangeText={setRemark}
@@ -177,22 +246,23 @@ export function TechnicalSupervisionControlView() {
               />
               <View style={s.actions}>
                 {canIssue ? (
-                  <Pressable
+                  <PrimaryButton
+                    title="Зафиксировать замечание"
+                    variant="accent"
                     onPress={() => void createRemark()}
-                    disabled={busy || !remark.trim()}
-                    style={[s.secondaryButton, (busy || !remark.trim()) && s.disabled]}
-                  >
-                    <Text style={s.secondaryText}>Зафиксировать замечание</Text>
-                  </Pressable>
+                    loading={busy}
+                    disabled={busy || !selectedStageId || !remark.trim()}
+                    fullWidth
+                  />
                 ) : null}
                 {canReturn ? (
-                  <Pressable
+                  <PrimaryButton
+                    title="Вернуть этап на доработку"
+                    variant="dangerOutline"
                     onPress={returnForRework}
-                    disabled={busy || !remark.trim()}
-                    style={[s.dangerButton, (busy || !remark.trim()) && s.disabled]}
-                  >
-                    <Text style={s.dangerText}>Вернуть на доработку</Text>
-                  </Pressable>
+                    disabled={busy || !selectedStageId || !remark.trim()}
+                    fullWidth
+                  />
                 ) : null}
               </View>
             </View>
@@ -200,17 +270,35 @@ export function TechnicalSupervisionControlView() {
 
           <Text style={s.sectionTitle}>Замечания по объекту</Text>
           {issues.length === 0 ? (
-            <Text style={s.muted}>Замечаний пока нет.</Text>
+            <EmptyActionState title="Замечаний пока нет" hint="Зафиксированные замечания и их исправление будут видны здесь." />
           ) : (
-            issues.map((issue) => (
-              <View key={issue.id} style={s.issue}>
-                <View style={s.itemText}>
-                  <Text style={s.itemTitle}>{issue.title}</Text>
-                  <Text style={s.muted}>{issue.status} · {issue.severity}</Text>
-                  {issue.description ? <Text style={s.itemBody}>{issue.description}</Text> : null}
+            issues.map((issue) => {
+              const actions = supervisorIssueActions(issue, { isSupervisor, capabilities: capabilityList });
+              return (
+                <View key={issue.id} style={s.issue}>
+                  <View style={s.itemText}>
+                    <Text style={s.itemTitle}>{issue.title}</Text>
+                    <Text style={s.muted}>{SUPERVISOR_ISSUE_STATUS_LABEL[issue.status] ?? issue.status} · {issueSeverityLabel(issue.severity)}</Text>
+                    {issue.description ? <Text style={s.itemBody}>{issue.description}</Text> : null}
+                    {actions.length > 0 ? (
+                      <View style={s.actions}>
+                        {actions.map((action, index) => (
+                          <PrimaryButton
+                            key={`${issue.id}:${action.label}`}
+                            title={action.label}
+                            variant={index === 0 && action.target === 'closed' ? 'accent' : 'outline'}
+                            onPress={() => void transitionIssue(issue, action)}
+                            loading={issueBusyId === issue.id}
+                            disabled={issueBusyId !== null}
+                            fullWidth
+                          />
+                        ))}
+                      </View>
+                    ) : null}
+                  </View>
                 </View>
-              </View>
-            ))
+              );
+            })
           )}
         </>
       ) : null}
@@ -242,6 +330,11 @@ const s = StyleSheet.create({
   dangerButton: { minHeight: 44, borderWidth: 1, borderColor: RenovaTheme.colors.dangerBorder, backgroundColor: RenovaTheme.colors.dangerBg, borderRadius: RenovaTheme.radius.sm, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
   dangerText: { color: RenovaTheme.colors.dangerText, fontWeight: RenovaTheme.fontWeight.semibold },
   disabled: { opacity: 0.5 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6, marginBottom: 6 },
+  chip: { minHeight: 36, paddingHorizontal: 12, borderRadius: RenovaTheme.radius.sm, borderWidth: 1, borderColor: RenovaTheme.colors.border, backgroundColor: RenovaTheme.colors.surface, alignItems: 'center', justifyContent: 'center' },
+  chipOn: { borderColor: RenovaTheme.colors.primary, backgroundColor: RenovaTheme.colors.infoBg },
+  chipText: { color: RenovaTheme.colors.text, fontSize: RenovaTheme.fontSize.bodySmall },
+  chipTextOn: { color: RenovaTheme.colors.primary, fontWeight: RenovaTheme.fontWeight.semibold },
   issue: { ...card },
   errorBox: { ...card, borderColor: RenovaTheme.colors.dangerBorder, backgroundColor: RenovaTheme.colors.dangerBg },
   errorText: { color: RenovaTheme.colors.dangerText, fontSize: RenovaTheme.fontSize.bodySmall },
