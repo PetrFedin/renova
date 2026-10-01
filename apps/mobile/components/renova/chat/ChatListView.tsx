@@ -51,6 +51,9 @@ function ThreadCard({
       style={[s.card, thread.is_pinned && s.cardPinned]}
       onPress={onOpen}
       onLongPress={onLongPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${thread.title}${unread > 0 ? `, непрочитанные: ${unread}` : ''}${thread.is_pinned ? ', закреплён' : ''}. ${preview}`}
+      accessibilityHint="Нажмите, чтобы открыть. Долгое нажатие — действия с чатом."
     >
       <View style={s.cardHead}>
         <View style={{ flex: 1, minWidth: 0 }}>
@@ -232,16 +235,16 @@ export function ChatListView() {
   return (
     <ScrollView style={s.wrap} contentContainerStyle={{ padding: 16, paddingBottom: 24 }}>
       {folder === 'active' && (unreadFailed || loadError) && globalUnread === 0 && displayThreads.length > 0 ? (
-        <Pressable onPress={() => reload().catch(reportCatch('components.renova.chat.ChatListView.7'))}>
+        <Pressable onPress={() => reload().catch(reportCatch('components.renova.chat.ChatListView.7'))} accessibilityRole="button" accessibilityLabel="Повторить обновление чатов" style={{ minHeight: RenovaTheme.minTouch, justifyContent: 'center' }}>
           <Text style={s.unreadWarn}>Не удалось обновить — нажмите, чтобы повторить</Text>
         </Pressable>
       ) : null}
 
       <View style={s.toolbar}>
-        <Pressable style={[s.tab, folder === 'active' && s.tabOn]} onPress={() => setFolder('active')}>
+        <Pressable style={[s.tab, folder === 'active' && s.tabOn]} onPress={() => setFolder('active')} accessibilityRole="tab" accessibilityState={{ selected: folder === 'active' }} accessibilityLabel="Чаты">
           <Text style={[s.tabT, folder === 'active' && s.tabTOn]}>Чаты</Text>
         </Pressable>
-        <Pressable style={[s.tab, folder === 'archive' && s.tabOn]} onPress={() => setFolder('archive')}>
+        <Pressable style={[s.tab, folder === 'archive' && s.tabOn]} onPress={() => setFolder('archive')} accessibilityRole="tab" accessibilityState={{ selected: folder === 'archive' }} accessibilityLabel="Архив чатов">
           <Text style={[s.tabT, folder === 'archive' && s.tabTOn]}>Архив</Text>
         </Pressable>
       </View>
@@ -329,7 +332,7 @@ const s = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: RenovaTheme.colors.background },
   unreadWarn: { fontSize: 12, color: RenovaTheme.colors.warning, marginBottom: 8, textAlign: 'center' },
   toolbar: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12, alignItems: 'center' },
-  tab: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: RenovaTheme.colors.border, backgroundColor: RenovaTheme.colors.surface },
+  tab: { minHeight: RenovaTheme.minTouch, justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: RenovaTheme.colors.border, backgroundColor: RenovaTheme.colors.surface },
   tabOn: { borderColor: RenovaTheme.colors.accent, backgroundColor: RenovaTheme.colors.infoBg },
   tabT: { fontSize: 13, fontWeight: '600', color: RenovaTheme.colors.textMuted },
   tabTOn: { color: RenovaTheme.colors.accent },

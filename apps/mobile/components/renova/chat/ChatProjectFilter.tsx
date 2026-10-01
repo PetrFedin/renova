@@ -92,7 +92,7 @@ export function ChatProjectFilterDropdown({ projects, value, onChange, disabled 
             <Text style={s.menuTitle}>Объекты</Text>
             <ScrollView style={s.menuScroll} keyboardShouldPersistTaps="handled">
               {projects.length > 1 ? (
-                <Pressable style={[s.option, draftAll && s.optionOn]} onPress={toggleAll}>
+                <Pressable style={[s.option, draftAll && s.optionOn]} onPress={toggleAll} accessibilityRole="checkbox" accessibilityState={{ checked: draftAll }} accessibilityLabel="Все объекты">
                   <Text style={[s.optionText, draftAll && s.optionTextOn]}>Все объекты</Text>
                   {draftAll ? <Ionicons name="checkmark" size={18} color={RenovaTheme.colors.primary} /> : null}
                 </Pressable>
@@ -104,6 +104,9 @@ export function ChatProjectFilterDropdown({ projects, value, onChange, disabled 
                     key={p.id}
                     style={[s.option, checked && !draftAll && s.optionOn]}
                     onPress={() => toggleProject(p.id)}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: checked && !draftAll }}
+                    accessibilityLabel={p.name}
                   >
                     <Text style={[s.optionText, checked && !draftAll && s.optionTextOn]} numberOfLines={2}>
                       {p.name}
@@ -117,10 +120,10 @@ export function ChatProjectFilterDropdown({ projects, value, onChange, disabled 
                 );
               })}
             </ScrollView>
-            <Pressable style={s.apply} onPress={apply}>
+            <Pressable style={s.apply} onPress={apply} accessibilityRole="button" accessibilityLabel="Применить фильтр по объектам">
               <Text style={s.applyText}>Применить</Text>
             </Pressable>
-            <Pressable style={s.cancel} onPress={() => setOpen(false)}>
+            <Pressable style={s.cancel} onPress={() => setOpen(false)} accessibilityRole="button" accessibilityLabel="Закрыть список объектов">
               <Text style={s.cancelText}>Закрыть</Text>
             </Pressable>
           </Pressable>
@@ -190,6 +193,6 @@ const s = StyleSheet.create({
     backgroundColor: RenovaTheme.colors.infoBg,
   },
   applyText: { fontSize: 15, fontWeight: '800', color: RenovaTheme.colors.primary },
-  cancel: { paddingVertical: 12, alignItems: 'center' },
+  cancel: { minHeight: RenovaTheme.minTouch, justifyContent: 'center', paddingVertical: 12, alignItems: 'center' },
   cancelText: { fontSize: 14, fontWeight: '700', color: RenovaTheme.colors.textMuted },
 });

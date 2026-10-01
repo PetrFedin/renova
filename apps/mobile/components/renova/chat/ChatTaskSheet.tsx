@@ -1,9 +1,11 @@
 /** Форма задачи из чата — название, ответственный, срок */
 import { useCallback, useEffect, useState } from 'react';
-import { Modal, View, Text, TextInput, StyleSheet, Pressable, ScrollView } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { SheetSurface } from '@/components/renova/SheetSurface';
+import { notifyError } from '@/lib/notify';
 import { api } from '@/lib/api';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { reportError } from '@/lib/reportError';
@@ -15,11 +17,13 @@ const DUE_PRESETS = [
   { label: '2 недели', days: 14 },
 ];
 
-function stopPropagation(event: unknown): void {
-  if (typeof event !== 'object' || event === null || !('stopPropagation' in event)) return;
-  const stop = event.stopPropagation;
-  if (typeof stop === 'function') stop.call(event);
-}
+const ROLE_LABEL: Record<string, string> = {
+  owner: 'владелец',
+  foreman: 'прораб',
+  worker: 'рабочий',
+  field: 'рабочий',
+  viewer: 'наблюдатель',
+};
 
 export function ChatTaskSheet({
   visible,
@@ -55,61 +59,66 @@ export function ChatTaskSheet({
       const due_at = new Date(Date.now() + dueDays * 86400000).toISOString();
       await onSubmit({ title: title.trim(), assignee_id: assigneeId, due_at });
       onClose();
+    } catch (e) {
+      reportError('components.renova.chat.ChatTaskSheet.Submit', e);
+      notifyError('Не удалось создать задачу', e);
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={s.backdrop} onPress={onClose}>
-        <Pressable style={s.sheet} onPress={stopPropagation}>
-          <Text style={s.head}>Задача из сообщения</Text>
-          <TextInput style={s.inp} value={title} onChangeText={setTitle} placeholder="Название задачи" />
-          <Text style={s.label}>Срок</Text>
-          <View style={s.row}>
-            {DUE_PRESETS.map((p) => (
-              <PrimaryButton
-                key={p.days}
-                title={p.label}
-                compact
-                variant={dueDays === p.days ? 'primary' : 'outline'}
-                onPress={() => setDueDays(p.days)}
-              />
+    <SheetSurface
+      visible={visible}
+      onClose={onClose}
+      busy={busy}
+      title="Задача из сообщения"
+      footer={
+        <>
+          <PrimaryButton title={busy ? 'Создание…' : 'Создать задачу'} variant="accent" onPress={save} loading={busy} disabled={busy || !title.trim()} />
+          <PrimaryButton title="Отмена" variant="outline" onPress={onClose} disabled={busy} />
+        </>
+      }
+    >
+      <TextInput style={s.inp} value={title} onChangeText={setTitle} placeholder="Название задачи" accessibilityLabel="Название задачи" />
+      <Text style={s.label}>Срок</Text>
+      <View style={s.row}>
+        {DUE_PRESETS.map((p) => (
+          <PrimaryButton
+            key={p.days}
+            title={p.label}
+            compact
+            variant={dueDays === p.days ? 'primary' : 'outline'}
+            onPress={() => setDueDays(p.days)}
+          />
+        ))}
+      </View>
+      {members.length > 0 && (
+        <>
+          <Text style={s.label}>Ответственный</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.members}>
+            <Pressable style={[s.chip, !assigneeId && s.chipOn]} onPress={() => setAssigneeId(undefined)} accessibilityRole="button" accessibilityState={{ selected: !assigneeId }} accessibilityLabel="Не назначен">
+              <Text style={[s.chipT, !assigneeId && s.chipTOn]}>Не назначен</Text>
+            </Pressable>
+            {members.map((m) => (
+              <Pressable key={m.user_id} style={[s.chip, assigneeId === m.user_id && s.chipOn]} onPress={() => setAssigneeId(m.user_id)} accessibilityRole="button" accessibilityState={{ selected: assigneeId === m.user_id }} accessibilityLabel={`Ответственный: ${m.phone}`}>
+                <Text style={[s.chipT, assigneeId === m.user_id && s.chipTOn]}>{m.phone.slice(-4)} · {ROLE_LABEL[m.role] ?? 'участник'}</Text>
+              </Pressable>
             ))}
-          </View>
-          {members.length > 0 && (
-            <>
-              <Text style={s.label}>Ответственный</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.members}>
-                <Pressable style={[s.chip, !assigneeId && s.chipOn]} onPress={() => setAssigneeId(undefined)}>
-                  <Text style={s.chipT}>Не назначен</Text>
-                </Pressable>
-                {members.map((m) => (
-                  <Pressable key={m.user_id} style={[s.chip, assigneeId === m.user_id && s.chipOn]} onPress={() => setAssigneeId(m.user_id)}>
-                    <Text style={s.chipT}>{m.phone.slice(-4)} · {m.role}</Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
-            </>
-          )}
-          <PrimaryButton title={busy ? 'Создание…' : 'Создать задачу'} onPress={save} disabled={busy} />
-          <PrimaryButton title="Отмена" variant="outline" onPress={onClose} />
-        </Pressable>
-      </Pressable>
-    </Modal>
+          </ScrollView>
+        </>
+      )}
+    </SheetSurface>
   );
 }
 
 const s = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: RenovaTheme.colors.surface, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, paddingBottom: 28 },
-  head: { fontSize: 17, fontWeight: '800', marginBottom: 12 },
   inp: { borderWidth: 1, borderColor: RenovaTheme.colors.borderLight, borderRadius: 10, padding: 12, marginBottom: 12, fontSize: 15 },
   label: { ...screenTypography.section, marginTop: 0, marginBottom: 8 },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
   members: { gap: 6, marginBottom: 12 },
-  chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, backgroundColor: RenovaTheme.colors.border, marginRight: 6 },
+  chip: { minHeight: RenovaTheme.minTouch, justifyContent: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, backgroundColor: RenovaTheme.colors.border, marginRight: 6 },
   chipOn: { backgroundColor: RenovaTheme.colors.primary },
-  chipT: { fontSize: 12, fontWeight: '600' },
+  chipT: { fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.text },
+  chipTOn: { color: RenovaTheme.colors.inverseText },
 });
