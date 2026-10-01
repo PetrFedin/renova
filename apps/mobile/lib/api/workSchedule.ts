@@ -45,6 +45,10 @@ export type WorkSchedule = {
   description?: string | null;
   planned_start_date?: string | null;
   planned_finish_date?: string | null;
+  /** Номер версии графика; ревизия подтверждённого графика — предыдущая версия + 1. */
+  schedule_version?: number;
+  /** id подтверждённого графика, который заменяет эта ревизия. */
+  supersedes_id?: string | null;
   rejection_reason?: string | null;
   created_by: string;
   submitted_by?: string | null;

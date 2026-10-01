@@ -27,6 +27,7 @@ import { formatScheduleRange } from '@/lib/formatScheduleDate';
 import { buildScheduleExecutionStats } from '@/lib/domain/scheduleExecutionStats';
 import { ScheduleExecutionStrip } from '@/components/renova/schedule/ScheduleExecutionStrip';
 import { SchedulePlanItems } from '@/components/renova/schedule/SchedulePlanItems';
+import { ScheduleRevisionPanel } from '@/components/renova/schedule/ScheduleRevisionPanel';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
@@ -549,6 +550,20 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
 
             {role === 'customer' && planState.status === 'confirmed' ? (
               <Text style={s.planSub}>График согласован — сроки зафиксированы</Text>
+            ) : null}
+            {schedule && planState.status === 'confirmed' ? (
+              <ScheduleRevisionPanel
+                role={role}
+                userId={user.id}
+                projectId={activeProject.id}
+                active={schedule}
+                canManage={canManageSchedulePlan}
+                readOnly={readOnly}
+                onChanged={async () => {
+                  reload();
+                  await syncScheduleSideEffects();
+                }}
+              />
             ) : null}
             {schedule && (schedule.items?.length ?? 0) > 0 ? (
               <SchedulePlanItems
