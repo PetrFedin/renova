@@ -26,6 +26,7 @@ import {
   buildLeadFeedQuery,
   contractorLeadNote,
   hasActiveLeadFilters,
+  hasOwnQuote,
   hasMorePages,
   jobLeadActions,
   jobLeadStatusLabel,
@@ -49,6 +50,7 @@ type L = {
   description?: string | null;
   status: string;
   assigned_contractor_id?: string | null;
+  closed_reason?: string | null;
   quotes?: { id: string; contractor_id: string; pre_estimate: number }[];
 };
 
@@ -337,7 +339,17 @@ export function JobLeadsBoard({ userId, role }: { userId: string; role: string }
           ) : null}
           {l.pre_estimate ? <Text style={s.q}>Оценка: {formatRub(l.pre_estimate)}</Text> : null}
           {note ? <Text style={s.note}>{note}</Text> : null}
-          <LeadChat userId={userId} leadId={l.id} available={l.status !== 'open'} />
+          {l.status === 'closed' && l.closed_reason ? <Text style={s.note}>Причина закрытия: {l.closed_reason}</Text> : null}
+          <LeadChat
+            userId={userId}
+            leadId={l.id}
+            role={role === 'contractor' ? 'contractor' : 'customer'}
+            available={
+              role === 'contractor'
+                ? l.assigned_contractor_id === userId || hasOwnQuote(l, userId)
+                : (l.quotes?.length ?? 0) > 0 || Boolean(l.assigned_contractor_id)
+            }
+          />
           {act.canPickQuote && (l.quotes?.length ?? 0) > 0 ? (
             <View style={{ gap: 6, marginTop: 6 }}>
               <Text style={s.sub}>Выберите КП:</Text>

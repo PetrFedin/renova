@@ -16,32 +16,65 @@ function stamp(at: string): string {
   return date.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
+type Thread = { contractor_id: string; name: string; assigned: boolean; message_count: number };
+
 /**
- * Чат заявки (MKT-010). Backend открывает его заказчику и назначенному исполнителю,
- * поэтому до выбора исполнителя (`available=false`) честно говорим, когда он появится,
- * а не показываем поле, в которое нельзя писать.
+ * Чат заявки (MKT-010): приватные треды «заказчик ↔ откликнувшийся исполнитель».
+ * Заказчик выбирает собеседника из откликнувшихся и видит каждый тред отдельно;
+ * исполнитель видит один тред со своим заказчиком и пишет после отклика.
  */
-export function LeadChat({ userId, leadId, available = true }: { userId: string; leadId: string; available?: boolean }) {
+export function LeadChat({
+  userId,
+  leadId,
+  role,
+  available = true,
+}: {
+  userId: string;
+  leadId: string;
+  role: 'customer' | 'contractor';
+  /** Заказчик: есть отклики/назначенный. Исполнитель: отклик оставлен или он назначен. */
+  available?: boolean;
+}) {
   const { user, activeProject } = useRenova();
+  const isCustomer = role === 'customer';
+  const [threads, setThreads] = useState<Thread[]>([]);
+  const [peerId, setPeerId] = useState<string | null>(null);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
+
+  useEffect(() => {
+    if (!available || !isCustomer) return;
+    void (async () => {
+      try {
+        const list = await api.leadThreads(userId, leadId);
+        setThreads(list);
+        setPeerId((prev) => prev ?? list.find((t) => t.assigned)?.contractor_id ?? list[0]?.contractor_id ?? null);
+      } catch (error) {
+        reportError('components.renova.LeadChat.threads', error, { leadId });
+      }
+    })();
+  }, [available, isCustomer, userId, leadId]);
+
   const load = useCallback(async () => {
+    if (isCustomer && !peerId) return;
     try {
-      setMsgs(await api.leadMessages(userId, leadId));
+      setMsgs(await api.leadMessages(userId, leadId, isCustomer ? peerId ?? undefined : undefined));
       setLoadFailed(false);
     } catch (error) {
       reportError('components.renova.LeadChat.1', error, { leadId });
       setLoadFailed(true);
     }
-  }, [userId, leadId]);
+  }, [userId, leadId, isCustomer, peerId]);
   useEffect(() => { if (available) void load(); }, [available, load]);
 
   if (!available) {
     return (
       <View style={s.box}>
-        <Text style={s.hint}>Чат откроется, когда заказчик выберет исполнителя.</Text>
+        <Text style={s.hint}>
+          {isCustomer ? 'Чат откроется, когда придёт первый отклик исполнителя.' : 'Заказчик ответит после отклика.'}
+        </Text>
       </View>
     );
   }
@@ -51,7 +84,7 @@ export function LeadChat({ userId, leadId, available = true }: { userId: string;
     if (!value || busy) return;
     setBusy(true);
     try {
-      await api.postLeadMessage(userId, leadId, value);
+      await api.postLeadMessage(userId, leadId, value, isCustomer ? peerId ?? undefined : undefined);
     } catch (error) {
       reportError('components.renova.LeadChat.send', error, { leadId });
       notifyError('Сообщение не отправлено', error);
@@ -70,10 +103,23 @@ export function LeadChat({ userId, leadId, available = true }: { userId: string;
 
   return (
     <View style={s.box}>
+      {isCustomer && threads.length > 0 ? (
+        <View style={s.peers}>
+          {threads.map((t, i) => (
+            <PrimaryButton
+              key={t.contractor_id}
+              title={`${t.name === 'Исполнитель' ? `Исполнитель ${i + 1}` : t.name}${t.assigned ? ' · выбран' : ''}`}
+              compact
+              variant={peerId === t.contractor_id ? 'primary' : 'outline'}
+              onPress={() => setPeerId(t.contractor_id)}
+            />
+          ))}
+        </View>
+      ) : null}
       {loadFailed ? <Text style={s.hint}>Не удалось загрузить переписку. Показаны последние данные.</Text> : null}
       {msgs.map((m) => (
         <View key={m.id} style={s.msg}>
-          <Text style={s.who}>{m.user_id === userId ? 'Вы' : 'Собеседник'} · {stamp(m.at)}</Text>
+          <Text style={s.who}>{m.user_id === userId ? 'Вы' : isCustomer ? 'Исполнитель' : 'Заказчик'} · {stamp(m.at)}</Text>
           <Text style={s.m}>{m.text}</Text>
         </View>
       ))}
@@ -88,6 +134,7 @@ const s = StyleSheet.create({
   msg: { marginBottom: 6 },
   who: { fontSize: 11, color: RenovaTheme.colors.textMuted },
   m: { fontSize: 12 },
+  peers: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 6 },
   hint: { fontSize: 12, color: RenovaTheme.colors.textMuted },
   inp: { borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: 8, padding: 8, marginVertical: 6 },
 });

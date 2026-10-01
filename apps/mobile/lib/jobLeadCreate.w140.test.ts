@@ -133,8 +133,8 @@ must(wizard.includes('scopeRef.current === scopeKey') && wizard.includes('loadRe
   'account/lead changes must ignore stale responses');
 must(wizard.includes('<Card ') && !/#[0-9a-f]{3,8}\b/i.test(wizard),
   'wizard must use the shared card and theme tokens rather than local color literals');
-must(board.includes("available={l.status !== 'open'}"),
-  'lead chat must be gated on assignment instead of offering a dead input (MKT-010)');
+must(board.includes('hasOwnQuote(l, userId)') && board.includes('l.quotes?.length'),
+  'lead chat must be gated on a quote (private threads) instead of offering a dead input (MKT-010)');
 
 async function verifyWizardRecovery(): Promise<void> {
   const states: string[] = [];

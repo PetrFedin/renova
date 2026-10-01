@@ -2,7 +2,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, or_, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -20,6 +20,8 @@ from app.models.entities import (
 )
 import logging
 import re
+
+from app.core.timeutil import utc_now
 
 from app.services import marketplace_notifications
 from app.services.calc.estimate import RenovationType
@@ -114,6 +116,14 @@ def _lead_dict(lead: JobLead, viewer: User, quotes: list[JobLeadQuote] | None = 
         "quotes_count": len(quotes) if quotes is not None else 0,
         "has_my_quote": any(q.contractor_id == viewer.id for q in (quotes or [])),
     }
+    # MKT-005: причину закрытия видят владелец и откликнувшиеся/назначенный исполнитель.
+    if lead.status == JobLeadStatus.closed and (
+        is_owner
+        or lead.assigned_contractor_id == viewer.id
+        or any(q.contractor_id == viewer.id for q in (quotes or []))
+    ):
+        out["closed_reason"] = lead.closed_reason
+        out["closed_at"] = lead.closed_at.isoformat() if lead.closed_at else None
     if quotes is not None and is_owner:
         out["quotes"] = [
             {
@@ -145,16 +155,64 @@ def _public_name(contractor: User) -> str:
     return (contractor.full_name or "").strip() or ANONYMOUS_CONTRACTOR_NAME
 
 
-def _can_message_lead(lead: JobLead, user: User) -> bool:
-    """Чат заявки: заказчик-владелец и назначенный исполнитель.
+async def _resolve_lead_thread(
+    db: AsyncSession, lead: JobLead, user: User, contractor_id: str | None
+) -> str:
+    """MKT-010: id исполнителя-собеседника (`thread_contractor_id`) или 404/422.
 
-    Переписка исполнителей-конкурентов с заказчиком до выбора требует связи
-    «сообщение → адресат» (в `lead_messages` её нет — нужна миграция), поэтому
-    до назначения чат закрыт для всех, кроме владельца (MKT-010, см. LeadChat).
+    Заказчик-владелец видит каждый тред отдельно (`contractor_id`; по умолчанию —
+    назначенный исполнитель). Исполнитель — только свой тред, и только если оставил
+    отклик либо назначен; чужие треды и посторонние получают 404.
     """
     if user.role == UserRole.customer:
-        return lead.customer_id == user.id
-    return lead.assigned_contractor_id == user.id
+        if lead.customer_id != user.id:
+            raise HTTPException(404, "lead_not_found")
+        tid = contractor_id or lead.assigned_contractor_id
+        if not tid:
+            raise HTTPException(422, detail={
+                "code": "thread_contractor_required",
+                "message": "Выберите исполнителя, с которым хотите переписываться.",
+            })
+        if tid != lead.assigned_contractor_id:
+            quoted = (
+                await db.execute(
+                    select(JobLeadQuote.id).where(
+                        JobLeadQuote.lead_id == lead.id, JobLeadQuote.contractor_id == tid
+                    )
+                )
+            ).first()
+            if not quoted:
+                raise HTTPException(404, "thread_not_found")
+        return tid
+    if user.role != UserRole.contractor:
+        raise HTTPException(404, "lead_not_found")
+    if contractor_id and contractor_id != user.id:
+        raise HTTPException(404, "lead_not_found")
+    if lead.assigned_contractor_id:
+        # после назначения чат остаётся только у назначенного (проигравшие — как раньше, 404)
+        if lead.assigned_contractor_id != user.id:
+            raise HTTPException(404, "lead_not_found")
+        return user.id
+    quoted = (
+        await db.execute(
+            select(JobLeadQuote.id).where(
+                JobLeadQuote.lead_id == lead.id, JobLeadQuote.contractor_id == user.id
+            )
+        )
+    ).first()
+    if not quoted:
+        raise HTTPException(404, "lead_not_found")
+    return user.id
+
+
+def _thread_filter(lead: JobLead, tid: str):
+    """Сообщения треда; старые без thread_contractor_id — у назначенного исполнителя."""
+    if lead.assigned_contractor_id == tid:
+        return or_(
+            LeadMessage.thread_contractor_id == tid,
+            LeadMessage.thread_contractor_id.is_(None),
+        )
+    return LeadMessage.thread_contractor_id == tid
 
 
 async def _safe_notify(db: AsyncSession, call) -> None:
@@ -406,10 +464,21 @@ async def close_lead(
         raise HTTPException(404, "lead_not_found")
     if lead.status == JobLeadStatus.taken:
         raise HTTPException(409, "lead_already_converted")
-    if lead.status != JobLeadStatus.closed:
+    first_close = lead.status != JobLeadStatus.closed
+    if first_close:
+        reason = ((body.reason if body else None) or "").strip() or None
         lead.status = JobLeadStatus.closed
+        lead.closed_reason = reason
+        lead.closed_at = utc_now()
         await db.commit()
-    return {"ok": True, "status": lead.status.value, "reason": (body.reason if body else None)}
+        await _safe_notify(db, marketplace_notifications.notify_lead_closed(db, lead=lead))
+    return {
+        "ok": True,
+        "status": lead.status.value,
+        "reason": lead.closed_reason,
+        "closed_reason": lead.closed_reason,
+        "closed_at": lead.closed_at.isoformat() if lead.closed_at else None,
+    }
 
 
 @router.post("/job-leads/{lead_id}/decline-assignment")
@@ -580,24 +649,74 @@ async def add_portfolio(
     return {"ok": True, "id": photo.id}
 
 
-@router.get("/job-leads/{lead_id}/messages")
-async def lead_messages(
+@router.get("/job-leads/{lead_id}/threads")
+async def lead_threads(
     lead_id: str,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """MKT-010: заказчику — откликнувшиеся исполнители с их тредами (без телефонов и цен)."""
     lead = await db.get(JobLead, lead_id)
-    if not lead or not _can_message_lead(lead, user):
+    if not lead or user.role != UserRole.customer or lead.customer_id != user.id:
         raise HTTPException(404, "lead_not_found")
+    contractor_ids = list(
+        (await db.execute(select(JobLeadQuote.contractor_id).where(JobLeadQuote.lead_id == lead_id))).scalars().all()
+    )
+    if lead.assigned_contractor_id and lead.assigned_contractor_id not in contractor_ids:
+        contractor_ids.append(lead.assigned_contractor_id)
+    users = {
+        u.id: u
+        for u in (await db.execute(select(User).where(User.id.in_(contractor_ids)))).scalars().all()
+    } if contractor_ids else {}
+    stats = {}
+    if contractor_ids:
+        for tid, count, last_at in (
+            await db.execute(
+                select(LeadMessage.thread_contractor_id, func.count(LeadMessage.id), func.max(LeadMessage.created_at))
+                .where(LeadMessage.lead_id == lead_id, LeadMessage.thread_contractor_id.in_(contractor_ids))
+                .group_by(LeadMessage.thread_contractor_id)
+            )
+        ).all():
+            stats[tid] = (count, last_at)
+    out = []
+    for cid in contractor_ids:
+        count, last_at = stats.get(cid, (0, None))
+        out.append({
+            "contractor_id": cid,
+            "name": _public_name(users[cid]) if cid in users else ANONYMOUS_CONTRACTOR_NAME,
+            "assigned": cid == lead.assigned_contractor_id,
+            "message_count": count,
+            "last_message_at": last_at.isoformat() if last_at else None,
+        })
+    return out
+
+
+@router.get("/job-leads/{lead_id}/messages")
+async def lead_messages(
+    lead_id: str,
+    contractor_id: str | None = Query(default=None, max_length=36),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    lead = await db.get(JobLead, lead_id)
+    if not lead:
+        raise HTTPException(404, "lead_not_found")
+    tid = await _resolve_lead_thread(db, lead, user, contractor_id)
     rows = (
         await db.execute(
             select(LeadMessage)
-            .where(LeadMessage.lead_id == lead_id)
+            .where(LeadMessage.lead_id == lead_id, _thread_filter(lead, tid))
             .order_by(LeadMessage.created_at)
         )
     ).scalars().all()
     return [
-        {"id": message.id, "user_id": message.user_id, "text": message.text, "at": message.created_at.isoformat()}
+        {
+            "id": message.id,
+            "user_id": message.user_id,
+            "thread_contractor_id": tid,
+            "text": message.text,
+            "at": message.created_at.isoformat(),
+        }
         for message in rows
     ]
 
@@ -606,26 +725,31 @@ async def lead_messages(
 async def post_lead_msg(
     lead_id: str,
     body: LeadMsgIn,
+    contractor_id: str | None = Query(default=None, max_length=36),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     lead = await db.get(JobLead, lead_id)
-    if not lead or not _can_message_lead(lead, user):
+    if not lead:
         raise HTTPException(404, "lead_not_found")
-    if not lead.assigned_contractor_id:
-        # MKT-010: писать пока некому — не принимаем сообщение «в пустоту».
+    tid = await _resolve_lead_thread(db, lead, user, contractor_id)
+    if lead.assigned_contractor_id and tid != lead.assigned_contractor_id:
+        # после выбора исполнителя треды проигравших закрыты для записи (читать можно)
         raise HTTPException(409, detail={
-            "code": "lead_chat_not_available",
-            "message": "Чат заявки откроется, когда вы выберете исполнителя.",
+            "code": "lead_thread_closed",
+            "message": "Заказчик выбрал другого исполнителя — этот тред закрыт.",
         })
-    message = LeadMessage(lead_id=lead_id, user_id=user.id, text=body.text.strip())
+    message = LeadMessage(lead_id=lead_id, user_id=user.id, thread_contractor_id=tid, text=body.text.strip())
     db.add(message)
     await db.commit()
     await db.refresh(message)
     await _safe_notify(
-        db, marketplace_notifications.notify_lead_message(db, lead=lead, sender_id=user.id, text=message.text)
+        db,
+        marketplace_notifications.notify_lead_message(
+            db, lead=lead, sender_id=user.id, text=message.text, thread_contractor_id=tid
+        ),
     )
-    return {"ok": True, "id": message.id}
+    return {"ok": True, "id": message.id, "thread_contractor_id": tid}
 
 
 @router.post("/job-leads/{lead_id}/auto-assign")

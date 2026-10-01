@@ -72,7 +72,25 @@ export const marketApi = {
     req(`/api/v1/job-leads/${leadId}/quotes/${quoteId}/accept`, { method: 'POST' }, userId),
   convertJobLead: (userId: string, leadId: string, body?: { property_type?: string; rooms?: object[] }) =>
     req<{ project_id: string; name: string }>(`/api/v1/job-leads/${leadId}/convert`, { method: 'POST', body: JSON.stringify(body || {}) }, userId),
-  leadMessages: (userId: string, leadId: string) => req<{ id: string; user_id: string; text: string; at: string }[]>(`/api/v1/job-leads/${leadId}/messages`, {}, userId),
-  postLeadMessage: (userId: string, leadId: string, text: string) => req(`/api/v1/job-leads/${leadId}/messages`, { method: 'POST', body: JSON.stringify({ text }) }, userId),
+  /** MKT-010: тред заявки. Заказчик указывает `contractorId` (собеседник), исполнитель видит только свой тред. */
+  leadMessages: (userId: string, leadId: string, contractorId?: string) =>
+    req<{ id: string; user_id: string; text: string; at: string; thread_contractor_id?: string }[]>(
+      `/api/v1/job-leads/${leadId}/messages${contractorId ? `?contractor_id=${encodeURIComponent(contractorId)}` : ''}`,
+      {},
+      userId,
+    ),
+  postLeadMessage: (userId: string, leadId: string, text: string, contractorId?: string) =>
+    req(
+      `/api/v1/job-leads/${leadId}/messages${contractorId ? `?contractor_id=${encodeURIComponent(contractorId)}` : ''}`,
+      { method: 'POST', body: JSON.stringify({ text }) },
+      userId,
+    ),
+  /** Заказчику: откликнувшиеся исполнители с тредами (без телефонов и цен). */
+  leadThreads: (userId: string, leadId: string) =>
+    req<{ contractor_id: string; name: string; assigned: boolean; message_count: number; last_message_at: string | null }[]>(
+      `/api/v1/job-leads/${leadId}/threads`,
+      {},
+      userId,
+    ),
   autoAssignLead: (userId: string, leadId: string) => req(`/api/v1/job-leads/${leadId}/auto-assign`, { method: 'POST' }, userId),
 };

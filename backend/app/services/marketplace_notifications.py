@@ -115,12 +115,47 @@ async def notify_quote_decision(
     return sent
 
 
+async def notify_lead_closed(db: AsyncSession, *, lead: JobLead) -> int:
+    """Заявка закрыта заказчиком: откликнувшимся — причина (если указана), без цен и имён."""
+    contractor_ids = set(
+        (await db.execute(select(JobLeadQuote.contractor_id).where(JobLeadQuote.lead_id == lead.id))).scalars().all()
+    )
+    if lead.assigned_contractor_id:
+        contractor_ids.add(lead.assigned_contractor_id)
+    if not contractor_ids:
+        return 0
+    reason = (lead.closed_reason or "").strip()
+    if len(reason) > 200:
+        reason = reason[:197] + "…"
+    body = f"Заказчик закрыл заявку «{lead.title}»."
+    body += f" Причина: {reason}" if reason else " Причина не указана."
+    return await _send(
+        db,
+        lead_id=lead.id,
+        dedupe_key=f"lead-closed:{lead.id}",
+        user_ids=contractor_ids,
+        notification_type="other",
+        title="Заявка закрыта заказчиком",
+        body=body,
+    )
+
+
 async def notify_lead_message(
-    db: AsyncSession, *, lead: JobLead, sender_id: str, text: str
+    db: AsyncSession,
+    *,
+    lead: JobLead,
+    sender_id: str,
+    text: str,
+    thread_contractor_id: str | None = None,
 ) -> int:
-    """Сообщение в чате заявки — второй стороне (не чаще раза в 15 минут на заявку)."""
+    """Сообщение в треде заявки — второй стороне треда (не чаще раза в 15 минут на тред).
+
+    Тред — «заказчик ↔ исполнитель `thread_contractor_id`»: заказчику пишет тот самый
+    исполнитель, исполнителю — заказчик; другие исполнители не уведомляются.
+    """
+    thread = thread_contractor_id or lead.assigned_contractor_id
     if sender_id == lead.customer_id:
-        recipient = lead.assigned_contractor_id
+        recipient = thread
     else:
         recipient = lead.customer_id
     if not recipient or recipient == sender_id:
@@ -131,7 +166,7 @@ async def notify_lead_message(
     return await _send(
         db,
         lead_id=lead.id,
-        dedupe_key=f"lead-message:{lead.id}:{sender_id}:{bucket}",
+        dedupe_key=f"lead-message:{lead.id}:{thread or '-'}:{sender_id}:{bucket}",
         user_ids=[recipient],
         notification_type="chat_message",
         title=f"Сообщение по заявке «{lead.title}»",

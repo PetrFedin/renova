@@ -36,6 +36,7 @@ async def setup_db(tmp_path, monkeypatch):
         db.add(User(id="rival-contractor", phone="+70000000999", role=UserRole.contractor))
         # демо-исполнитель уже занят демо-объектом (лимит бесплатного тарифа исчерпан)
         db.add(User(id="fresh-contractor", phone="+70000000998", role=UserRole.contractor))
+        db.add(User(id="outsider-contractor", phone="+70000000997", role=UserRole.contractor))
         await db.commit()
     monkeypatch.setattr(config.settings, "contractor_free_project_limit", 1)
 
@@ -135,16 +136,71 @@ async def test_conversion_respects_free_tier_limit_with_neutral_customer_message
         assert len(mine) == 1 and "лимит бесплатного тарифа" in mine[0]["body"]
 
 
-async def test_pre_assignment_chat_is_closed_without_writing_into_void():
+async def test_pre_assignment_threads_are_private_per_responder():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        lead_id, _q, _c, _x, ch, xh, rh = await _world(client)
-        for headers in (xh, rh):
-            assert (await client.get(f"/api/v1/job-leads/{lead_id}/messages", headers=headers)).status_code == 404
-            assert (await client.post(f"/api/v1/job-leads/{lead_id}/messages", headers=headers, json={"text": "x"})).status_code == 404
-        owner_post = await client.post(f"/api/v1/job-leads/{lead_id}/messages", headers=ch, json={"text": "Здравствуйте"})
-        assert owner_post.status_code == 409
-        assert owner_post.json()["detail"]["code"] == "lead_chat_not_available"
-        assert (await client.get(f"/api/v1/job-leads/{lead_id}/messages", headers=ch)).json() == []
+        lead_id, _q, _c, ctr_id, ch, xh, rh = await _world(client)
+        url = f"/api/v1/job-leads/{lead_id}/messages"
+        # заказчику без выбора собеседника и без назначения — 422, а не общий чат конкурентов
+        no_pick = await client.post(url, headers=ch, json={"text": "Здравствуйте"})
+        assert no_pick.status_code == 422 and no_pick.json()["detail"]["code"] == "thread_contractor_required"
+        assert (await client.post(f"{url}?contractor_id={ctr_id}", headers=ch, json={"text": "Привет, A"})).status_code == 200
+        assert (await client.post(f"{url}?contractor_id=rival-contractor", headers=ch, json={"text": "Привет, B"})).status_code == 200
+        assert (await client.post(url, headers=xh, json={"text": "Я готов"})).status_code == 200
+        a_thread = (await client.get(url, headers=xh)).json()
+        assert [m["text"] for m in a_thread] == ["Привет, A", "Я готов"]
+        b_thread = (await client.get(url, headers=rh)).json()
+        assert [m["text"] for m in b_thread] == ["Привет, B"]
+        # исполнитель B не может заглянуть в тред A
+        assert (await client.get(f"{url}?contractor_id={ctr_id}", headers=rh)).status_code == 404
+        # заказчик видит оба треда отдельно
+        assert [m["text"] for m in (await client.get(f"{url}?contractor_id={ctr_id}", headers=ch)).json()] == ["Привет, A", "Я готов"]
+        assert [m["text"] for m in (await client.get(f"{url}?contractor_id=rival-contractor", headers=ch)).json()] == ["Привет, B"]
+        threads = (await client.get(f"/api/v1/job-leads/{lead_id}/threads", headers=ch)).json()
+        assert {t["contractor_id"]: t["message_count"] for t in threads} == {ctr_id: 2, "rival-contractor": 1}
+        assert "phone" not in json.dumps(threads)
+        assert (await client.get(f"/api/v1/job-leads/{lead_id}/threads", headers=xh)).status_code == 404
+        # без отклика (посторонний исполнитель) — 404 и на чтение, и на запись
+        outsider = {"X-User-Id": "outsider-contractor"}
+        assert (await client.get(url, headers=outsider)).status_code == 404
+        assert (await client.post(url, headers=outsider, json={"text": "x"})).status_code == 404
+        # заказчик не может писать тому, кто не откликался
+        assert (await client.post(f"{url}?contractor_id=outsider-contractor", headers=ch, json={"text": "x"})).status_code == 404
+
+
+async def test_thread_messages_notify_only_thread_counterpart():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        lead_id, _q, cust_id, ctr_id, ch, xh, rh = await _world(client)
+        url = f"/api/v1/job-leads/{lead_id}/messages"
+        base_a = len(_for(await _notifications(), ctr_id))
+        base_b = len(_for(await _notifications(), "rival-contractor"))
+        assert (await client.post(f"{url}?contractor_id={ctr_id}", headers=ch, json={"text": "Для A"})).status_code == 200
+        items = await _notifications()
+        assert len(_for(items, ctr_id)) == base_a + 1
+        assert len(_for(items, "rival-contractor")) == base_b
+        # второй тред того же заказчика уведомляется независимо
+        assert (await client.post(f"{url}?contractor_id=rival-contractor", headers=ch, json={"text": "Для B"})).status_code == 200
+        assert len(_for(await _notifications(), "rival-contractor")) == base_b + 1
+
+
+async def test_assigned_thread_keeps_legacy_messages_and_closes_losers_for_writing():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        lead_id, qid, _c, ctr_id, ch, xh, rh = await _world(client)
+        url = f"/api/v1/job-leads/{lead_id}/messages"
+        assert (await client.post(f"{url}?contractor_id=rival-contractor", headers=ch, json={"text": "Для B"})).status_code == 200
+        from app.db import session as sess
+        from app.models.entities import LeadMessage
+
+        async with sess.SessionLocal() as db:
+            db.add(LeadMessage(lead_id=lead_id, user_id=_c, text="старое сообщение"))  # без треда
+            await db.commit()
+        await _accept(client, lead_id, qid, ch)
+        # назначенный видит старое сообщение (его тред) и пишет как раньше, без параметра
+        assert [m["text"] for m in (await client.get(url, headers=xh)).json()] == ["старое сообщение"]
+        assert (await client.post(url, headers=ch, json={"text": "Когда начнём?"})).status_code == 200
+        # проигравший конкурент в чат не попадает; заказчик в его тред уже не пишет
+        assert (await client.get(url, headers=rh)).status_code == 404
+        closed = await client.post(f"{url}?contractor_id=rival-contractor", headers=ch, json={"text": "x"})
+        assert closed.status_code == 409 and closed.json()["detail"]["code"] == "lead_thread_closed"
 
 
 async def test_lifecycle_notifications_hide_winner_price_from_losers():
