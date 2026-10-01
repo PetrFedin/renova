@@ -25,11 +25,11 @@
 | `AGENTS.md` | `767d38e76d04209e609bbe7173a2c448cfc5fa00` | Engineering policy |
 | `backend/app/api/v1/router.py` | `292dd48b37b77cc408db9f0c215ad7a5007e6cd0` | Реальная composition маршрутов |
 | `backend/app/models/entities.py` | `a8261ef4e2485817ca975f0491fdbac2fcd55b12` | Базовые entities/enums |
-| `backend/app/main.py` | `c51ee19fc465a0562b7a190793b6bdf694f5c3ab` | API lifespan + middleware chain |
+| `backend/app/main.py` | `7f778fc54e7ff0a05b512791a8841615b24e33c1` | API lifespan + middleware chain |
 | `backend/app/services/seed_demo.py` | `c62ba920130a7ba7f6e2bd0a54e63feadce5c6cd` | Явный development seed |
 | `backend/scripts/verify_orm_schema_parity.py` | `ba08d0681df301f446b3adbf811ad9367eeb24b9` | Schema/ORM parity |
 | `backend/scripts/verify_current_migration_schema.py` | `13e63544564b41a13c52f9437b9bfbdfa290913b` | Enum/migration invariants |
-| `apps/mobile/lib/routeRegistry.ts` | `0c9a386486f61cd1a284d8bd7fc99368b557232f` | Канонические navigation entries |
+| `apps/mobile/lib/routeRegistry.ts` | `ec50835df6ca81a3175dafba8c1905d13b07e4dd` | Канонические navigation entries |
 | `apps/mobile/constants/Theme.ts` | `6e66c4bf0db8c9d1b8c4a2d0355311145ca43b20` | Theme/touch geometry |
 | `apps/mobile/constants/typography.ts` | `8a96b7f290944ac2c566c0f1791c1f60ab90c68a` | Typography |
 | `apps/mobile/constants/screenTypography.ts` | `f91c9a659a1ab8603ae4d82eb46d76754627b5bb` | Screen typography |
@@ -41,7 +41,7 @@
 | `apps/mobile/components/screens/OsBudgetHubScreen.tsx` | `4e0e8267d68b600cf0d8bdf716a4c8eddaa3bcbd` | Budget hub |
 | `apps/mobile/constants/budgetTabs.ts` | `d02c05560176535e130d76960c2b67691bcbb3b7` | Budget tab canon |
 | `.cursor/rules/renova-design-system.mdc` | `2f48e46f5b348b8cbc3a370615a5a5e93d93421f` | UI rules |
-| `package.json` | `a3f25db93d186f914a6f869548c516975cd2ef51` | Root commands/test entrypoints (+5 sessionFence tests wired into mobile:test) |
+| `package.json` | `0c7da3bba665884da86f9fe0b0cbe84d7f175485` | Root commands/test entrypoints (+5 sessionFence tests wired into mobile:test) |
 | `.github/workflows/local-runtime-integrity.yml` | `63831ec7622794843ca724319178e2de18cdb971` | Local runtime proof |
 | `backend/alembic/versions/w16legacystatus01_legacy_status_enum_parity.py` | `d2137f2b87c1ac6f679093331bd034aff17c8188` | Legacy status repair |
 | `backend/alembic/versions/w17chatmessageenum01_chat_message_enum_parity.py` | `0537268c85e26b7a607d36f967a3402b8bba53c4` | Chat enum repair |
@@ -158,6 +158,7 @@ Dock: Главная, Объект, Ремонт, Бюджет/Деньги, о�
 | checklist-templates | /checklist-templates |
 | guide | /guide |
 | activity | /activity |
+| notification-center | /notification-center, колокольчик в шапке, обе роли |
 | portal | /portal?token=, вход по ссылке |
 | reports | /reports |
 | project-analytics | redirect budget/deviations |

@@ -112,7 +112,7 @@ async def test_overdue_stage_reminder_on_tick():
 async def test_waste_reminders_manual_endpoint():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        pid, _, h_cust, _ = await _demo_project(client)
+        pid, _, h_cust, h_cont = await _demo_project(client)
         tomorrow = date.today() + timedelta(days=1)
         async with sess.SessionLocal() as db:
             db.add(
@@ -124,6 +124,9 @@ async def test_waste_reminders_manual_endpoint():
                 )
             )
             await db.commit()
-        r = await client.post("/api/v1/notifications/waste-reminders/check", headers=h_cust)
+        # COM-022: глобальное сканирование доступно только администратору платформы.
+        denied = await client.post("/api/v1/notifications/waste-reminders/check", headers=h_cust)
+        assert denied.status_code == 403
+        r = await client.post("/api/v1/notifications/waste-reminders/check", headers=h_cont)
         assert r.status_code == 200
         assert r.json()["sent"] >= 1
