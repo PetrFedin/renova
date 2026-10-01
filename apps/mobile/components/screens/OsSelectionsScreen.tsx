@@ -185,7 +185,7 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
         />
       ) : null}
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chips}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[s.chips, { flexGrow: 0 }]}>
         {CATEGORIES.map((c) => (
           <Pressable key={c.key} style={[s.chip, filter === c.key && s.chipOn]} onPress={() => setFilter(c.key)}>
             <Text style={[s.chipT, filter === c.key && s.chipTOn]}>{c.label}</Text>

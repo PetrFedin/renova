@@ -130,7 +130,7 @@ export function BudgetPlannerPanel({
       )}
 
       <Text style={s.label}>Регион</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips}>
+      <ScrollView horizontal style={{ flexGrow: 0 }} showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips}>
         {regions.map((r) => (
           <Pressable key={r.code} style={[s.chip, regionCode === r.code && s.chipOn]} onPress={() => onRegionChange(r.code)}>
             <Text style={[s.chipT, regionCode === r.code && s.chipTOn]}>{r.name}</Text>
@@ -252,7 +252,7 @@ const s = StyleSheet.create({
   chipTOn: { color: RenovaTheme.colors.accent },
   row: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   input: { borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: 8, padding: 8, backgroundColor: RenovaTheme.colors.surface },
-  summary: { ...listRowStyles.metricCell, alignItems: 'stretch', marginTop: 12, padding: 12 },
+  summary: { ...listRowStyles.metricCell, flex: 0, flexGrow: 0, flexShrink: 0, flexBasis: 'auto', alignItems: 'stretch', marginTop: 12, padding: 12 },
   total: { fontSize: 28, fontWeight: '800', color: RenovaTheme.colors.primary },
   sub: { ...screenTypography.listMeta },
   splitRow: { flexDirection: 'row', marginTop: 12, gap: 4, height: 48 },

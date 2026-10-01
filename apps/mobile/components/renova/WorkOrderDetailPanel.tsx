@@ -174,7 +174,7 @@ export function WorkOrderDetailPanel({
 
 const s = StyleSheet.create({
   /** Clarity K: list-row связи, sentence-case заголовки */
-  card: { ...listRowStyles.metricCell, alignItems: 'stretch', marginBottom: 12, padding: RenovaTheme.spacing.md },
+  card: { ...listRowStyles.metricCell, flex: 0, flexGrow: 0, flexShrink: 0, flexBasis: 'auto', alignItems: 'stretch', marginBottom: 12, padding: RenovaTheme.spacing.md },
   blockTitle: { ...screenTypography.section, marginTop: 0, marginBottom: 8 },
   row: { fontSize: 14, marginBottom: 6, color: RenovaTheme.colors.text },
   label: { fontWeight: '600', color: RenovaTheme.colors.textMuted },

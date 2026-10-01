@@ -12,7 +12,7 @@ export function ScheduleFilterChips({
   onChange: (key: string) => void;
 }) {
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={filterChipStyles.row}>
+    <ScrollView horizontal style={{ flexGrow: 0 }} showsHorizontalScrollIndicator={false} contentContainerStyle={filterChipStyles.row}>
       {items.map((f) => (
         <Pressable
           key={f.key}

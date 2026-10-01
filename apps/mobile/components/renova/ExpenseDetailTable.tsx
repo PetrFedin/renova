@@ -91,7 +91,7 @@ export function ExpenseDetailTable({
           <Text style={s.link}>Вся аналитика</Text>
         </Pressable>
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.modes}>
+      <ScrollView horizontal style={{ flexGrow: 0 }} showsHorizontalScrollIndicator={false} contentContainerStyle={s.modes}>
         {MODES.map((m) => (
           <Pressable key={m.id} style={[s.mode, mode === m.id && s.modeOn]} onPress={() => setMode(m.id)}>
             <Text style={[s.modeT, mode === m.id && s.modeTOn]}>{m.label}</Text>

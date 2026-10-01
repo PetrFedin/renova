@@ -8,7 +8,7 @@ export function WorkTypeFilter({ value, onChange }: { value?: string; onChange: 
   const [types, setTypes] = useState<{ code: string; name: string }[]>([]);
   useEffect(() => { api.listWorkTypes().then(setTypes).catch(reportCatch('components.renova.WorkTypeFilter.1')); }, []);
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.row}>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[s.row, { flexGrow: 0 }]}>
       <Pressable style={[s.ch, !value && s.on]} onPress={() => onChange(undefined)}><Text style={s.t}>Все</Text></Pressable>
       {types.map(t => <Pressable key={t.code} style={[s.ch, value===t.code && s.on]} onPress={() => onChange(t.code)}><Text style={s.t}>{t.name}</Text></Pressable>)}
     </ScrollView>

@@ -59,7 +59,7 @@ export function EstimateFilterBar({
       {showCategoryFilters && categories.length > 0 && (
         <>
           <Text style={s.label}>Статья</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.row}>
+          <ScrollView horizontal style={{ flexGrow: 0 }} showsHorizontalScrollIndicator={false} contentContainerStyle={s.row}>
             <Pressable style={[s.chip, !category && s.chipOn]} onPress={() => onCategory(null)}>
               <Text style={[s.chipT, !category && s.chipTOn]}>Все</Text>
             </Pressable>

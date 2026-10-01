@@ -26,5 +26,5 @@ const s = StyleSheet.create({
   wrap: { marginBottom: 12 },
   title: { ...screenTypography.section, marginTop: 0, marginBottom: 4 },
   hint: { ...formMetaText.caption, marginBottom: 6 },
-  body: { ...listRowStyles.metricCell, alignItems: 'stretch', padding: 12, gap: 8 },
+  body: { ...listRowStyles.metricCell, flex: 0, flexGrow: 0, flexShrink: 0, flexBasis: 'auto', alignItems: 'stretch', padding: 12, gap: 8 },
 });

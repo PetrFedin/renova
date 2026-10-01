@@ -96,7 +96,7 @@ export function ChatTaskSheet({
       {members.length > 0 && (
         <>
           <Text style={s.label}>Ответственный</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.members}>
+          <ScrollView horizontal style={{ flexGrow: 0 }} showsHorizontalScrollIndicator={false} contentContainerStyle={s.members}>
             <Pressable style={[s.chip, !assigneeId && s.chipOn]} onPress={() => setAssigneeId(undefined)} accessibilityRole="button" accessibilityState={{ selected: !assigneeId }} accessibilityLabel="Не назначен">
               <Text style={[s.chipT, !assigneeId && s.chipTOn]}>Не назначен</Text>
             </Pressable>

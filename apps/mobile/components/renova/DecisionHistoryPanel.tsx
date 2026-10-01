@@ -77,7 +77,7 @@ export function DecisionHistoryPanel({
       )}
 
       {showFilters && raw.length > 3 ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chips}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[s.chips, { flexGrow: 0 }]}>
           {DECISION_FILTER_CHIPS.map((c) => (
             <Pressable
               key={c.key}

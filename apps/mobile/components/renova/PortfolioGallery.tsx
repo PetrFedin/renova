@@ -11,7 +11,7 @@ export function PortfolioGallery({ userId, profileId }: { userId: string; profil
   if (!photos.length) return null;
   return (
     <View style={s.box}><Text style={s.head}>Портфолио</Text>
-      <ScrollView horizontal>{photos.map(p => <Image key={p.id} source={{ uri: `${BASE}${p.image_url}` }} style={s.img} />)}</ScrollView>
+      <ScrollView horizontal>{photos.map(p => <Image key={p.id} source={{ uri: `${BASE}${p.image_url}` }} style={[s.img, { flexGrow: 0 }]} />)}</ScrollView>
     </View>
   );
 }
