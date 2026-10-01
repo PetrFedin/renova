@@ -10,21 +10,21 @@
 |---|---|---|---|
 | 01 Роли и доступ | 2 / 0 / 0 | 11 / 0 / 0 | 13 |
 | 02 Этапы и приёмка | 1 / 0 / 0 | 9 / 0 / 0 | 10 |
-| 03 Деньги | 2 / 0 / 0 | 11 / 3 / 1 | 17 |
+| 03 Деньги | 2 / 0 / 0 | 12 / 2 / 1 | 17 |
 | 04 Смета и закупки | 1 / 0 / 0 | 16 / 1 / 0 | 18 |
 | 05 Документы и портал | 5 / 0 / 0 | 9 / 0 / 1 | 15 |
 | 06 Чаты и уведомления | — | 10 / 0 / 0 | 10 |
 | 07 Технадзор и комнаты | 1 / 0 / 0 | 4 / 1 / 0 | 6 |
 | 08 Биржа и команды | — | 14 / 3 / 0 | 17 |
-| 09 Перепись экранов | 6 / 0 / 0 | 21 / 6 / 13 | 46 |
+| 09 Перепись экранов | 6 / 0 / 0 | 37 / 2 / 1 | 46 |
 | 10 Компоненты и офлайн | — | 11 / 0 / 0 | 11 |
 | 11 Backend A | — | 6 / 1 / 0 | 7 |
-| 12 Backend B | 2 / 0 / 0 | 10 / 1 / 1 | 14 |
-| 13 Сквозной API-сценарий | 2 / 0 / 0 | 7 / 1 / 1 | 11 |
-| 14 Живой UI-обход | 2 / 0 / 0 | 2 / 2 / 0 | 6 |
-| **Итого** | **24 / 0 / 0** | **141 / 19 / 17** | **201** |
+| 12 Backend B | 2 / 0 / 0 | 11 / 1 / 0 | 14 |
+| 13 Сквозной API-сценарий | 2 / 0 / 0 | 8 / 1 / 0 | 11 |
+| 14 Живой UI-обход | 2 / 0 / 0 | 4 / 0 / 0 | 6 |
+| **Итого** | **24 / 0 / 0** | **162 / 12 / 3** | **201** |
 
-Итог: P0 — 24 из 24 закрыты. P1 — 141 закрыты, 19 частично, 17 открыты из 177. Записи в срезах дублируют друг друга (одна проблема найдена несколькими аудиторами), поэтому уникальных проблем меньше, чем строк.
+Итог: P0 — 24 из 24 закрыты. P1 — 162 закрыты, 12 частично, 3 открыты из 177. Записи в срезах дублируют друг друга (одна проблема найдена несколькими аудиторами), поэтому уникальных проблем меньше, чем строк.
 
 Оговорки по доказательствам: закрытия ниже, помеченные «(РК)», опираются на правки рабочей копии, которые на момент проверки ещё не были закоммичены другими агентами волны; после их коммита метка снимается. Записи со статусом ЗАКРЫТО, но с непустым «ост.» — закрыты по сути, остаточный риск описан.
 
@@ -70,13 +70,13 @@
 | MNY-001 | P0 | PATCH payment-plan без проверки роли и суммы | ЗАКРЫТО | 3063de32; stage_mutations.py:262 require_project_owner, Σ≤цены, 409 после review; tests/test_money_role_acl.py (прогнан, 32 passed) |
 | MNY-002 | P0 | Ручной чек подрядчика 1 ₽ подтверждает счёт 5000 ₽ | ЗАКРЫТО | 02fb4503; test_payment_lifecycle_wave1.py::test_one_ruble_receipt_does_not_confirm_5000_invoice, test_contractor_cannot_attach_receipt (прогнан) |
 | MNY-003 | P1 | Ручной расход подрядчика сразу confirmed в budget_spent | ОТКРЫТО | budget_service_legacy.py:185-205 MANUAL/manual_entry -> confirmed; receipts.py:329 manual_receipt write=True без роли — ост.: Не сделано: нет статуса «на согласовании» для расходов подрядчика (продуктовое решение) |
-| MNY-004 | P1 | member бригады выставляет счета/допработы (нет capability billing) | ЧАСТИЧНО | 3063de32: план оплат только заказчик; payments.py:157 и change_orders.py:51 по-прежнему write=True без capability — ост.: Остались счета, допработы: роль member/foreman не ограничена; capability billing не введена |
+| MNY-004 | P1 | member бригады выставляет счета/допработы (нет capability billing) | ЗАКРЫТО | team_service.require_capability("billing") (владелец/бригадир): create_payment для исполнителя и create_co; member и viewer получают 403; test_billing_capability.py (76dd845c) |
 | MNY-005 | P1 | Σ счетов этапа может превышать payment_amount | ЗАКРЫТО | 02fb4503; payment_service.py:553 stage_invoice_exceeds_stage_amount; test_sum_of_stage_invoices_cannot_exceed_stage_amount |
 | MNY-006 | P1 | Нет отмены/правки счёта | ЗАКРЫТО | 02fb4503; payments.py:452 cancel, :494 PATCH; test_contractor_cancels_and_customer_rejects_pending_invoice |
 | MNY-007 | P1 | После cancelled автосчёт не пересоздаётся | ЗАКРЫТО | 02fb4503; test_cancelled_invoice_frees_stage_amount_and_autoinvoice_is_recreated |
 | MNY-008 | P1 | Автосчёт не выставляет остаток после частичного | ЗАКРЫТО | 02fb4503; accept_orchestrator.py:81 remainder; test_autoinvoice_covers_only_remainder_after_partial_invoice |
 | MNY-009 | P1 | paid_unverified без выхода (нет очереди админа, чек нельзя прикрепить) | ЗАКРЫТО | 02fb4503, c66e36c9; test_covering_receipt_after_paid_unverified_confirms..., recipient-response payments.py:535 — ост.: Очередь ревью для админа не сделана; выход реализован иначе (чек/ответ получателя) |
-| MNY-010 | P1 | В dev любой подрядчик — админ evidence-review любого проекта | ЧАСТИЧНО | 43de275c: ENVIRONMENT по умолчанию production (fail-closed); admin_access.py:35 local fallback и payment_evidence.py:253 без членства в проекте остались — ост.: Остаётся только в development/test без ADMIN_USER_IDS; членство в проекте не проверяется |
+| MNY-010 | P1 | В dev любой подрядчик — админ evidence-review любого проекта | ЧАСТИЧНО | 43de275c: ENVIRONMENT по умолчанию production (fail-closed), в staging/production нужен ADMIN_USER_IDS — ост.: в development/test без ADMIN_USER_IDS сохранён осознанный локальный fallback «исполнитель = админ» (admin_access.py:35, test_admin_rbac_integrity.py); принято как dev-only, в рабочих средах недостижимо |
 | MNY-011 | P1 | Нет «Продолжить оплату» для processing | ЗАКРЫТО | c66e36c9; PaymentDetailSheet.tsx:197 canResumeCard, :915; BudgetPaymentsSection.tsx:169 |
 | MNY-014 | P1 | Оплата Оплачено, а budget_spent не растёт при непроверенном чеке | ЗАКРЫТО | 02fb4503; test_confirmed_by_unverified_receipt_reaches_fact, test_confirmed_stage_payment_is_in_budget_spent |
 | MNY-015 | P1 | Подрядчик не может подтвердить/оспорить получение, спор односторонний | ЗАКРЫТО | 02fb4503, 38e1a804; payments.py:535 recipient-response; test_recipient_*; test_payment_dispute_response_and_requisites.py |
@@ -152,7 +152,7 @@
 | QLT-003 | P1 | Самоуправляемый проект: замечание нельзя закрыть | ЗАКРЫТО | e1aeeab4: issue_service.py:320-332 SELF_MANAGED_CUSTOMER_EXTRA; issueLifecycle.ts:43; test_self_managed_customer_closes_issue_directly |
 | QLT-004 | P1 | Гарантия: исполнитель не может ответить, нет reopen/уведомления, close не идемпотентен | ЗАКРЫТО | e1aeeab4: warranty_claim_service respond/close/reopen + notify; issueLifecycle.warrantyActions; test_warranty_response_reopen_close_and_notifications |
 | QLT-006 | P1 | Гарантийное обращение создаётся без описания дефекта | ЗАКРЫТО | e1aeeab4: WarrantyTextModal.tsx (тема+описание), warrantyForm.ts(.test), подключён в DocumentsHub.tsx:893 — ост.: фото и комната в форме не добавлены |
-| QLT-007 | P1 | Нет создания замечания вне плана, план грузит только исполнитель, нет заявки на комнату | ЧАСТИЧНО | 21f15488 add-room заявка (test_room_add_request.py), c6f1941a UI; FloorPlanPanel.tsx:183,442 и QualityControlScreen.tsx без создания — ост.: не сделано: кнопка Добавить замечание в QC (описание/комната/этап/фото) и загрузка плана заказчиком в UI |
+| QLT-007 | P1 | Нет создания замечания вне плана, план грузит только исполнитель, нет заявки на комнату | ЧАСТИЧНО | 21f15488 заявка на комнату; c6a516f6 UI; новое: «Добавить замечание» на экране контроля качества (CreateIssueForm: название, описание, серьёзность, комната, этап; newIssueForm.test.ts) — ост.: фото к замечанию из этой формы и загрузка плана этажа заказчиком в UI не подтверждены |
 
 ### 08 Биржа и команды
 
@@ -188,35 +188,35 @@
 | REP-09 | P0 | POST purchases/{id}/status: любой с записью ставит paid и меняет факт бюджета | ЗАКРЫТО | 3063de32: карта статус→роль, PermissionError→403; tests/test_money_role_acl.py::test_purchase_* (passed) |
 | BUD-01 | P1 | Исполнитель не может подтвердить/оспорить получение денег | ЗАКРЫТО | 02fb4503 recipient-response (payments.py:535), c66e36c9 «Деньги получены/не получены», 38e1a804 ответ на спор |
 | BUD-02 | P1 | Подтверждение evidence только админом, счёт навсегда paid_unverified | ЗАКРЫТО | 02fb4503: выход без админа — позднее вложение чека автоподтверждает, исполнитель отвечает recipient-response; c66e36c9 UI — ост.: review по-прежнему admin-only, но не единственный выход |
-| BUD-03 | P1 | budget-planner PATCH budget_planned игнорируется, UI пишет «План обновлён» | ОТКРЫТО | budget-planner.tsx:50; schemas/project.py:37-46 ProjectUpdate без budget_planned; project_profile_service PROFILE_FIELDS — ост.: См. SCR-003: решение — убрать кнопку или реализовать |
+| BUD-03 | P1 | budget-planner PATCH budget_planned игнорируется, UI пишет «План обновлён» | ЗАКРЫТО | то же, что SCR-003 (d64835d3): решение — убрать кнопку, план проекта берётся из сметы |
 | BUD-04 | P1 | Импорт выписки (CSV от заказчика) подтверждает оплату без проверки банка | ОТКРЫТО | bank_statement_integrity.py:285-330 confirm_matches pending/processing/paid_unverified→confirmed по CSV заказчика — ост.: Продуктовое решение: источник доверия к выписке |
 | BUD-19 | P1 | Любой чек с payment_id подтверждает оплату | ЧАСТИЧНО | 02fb4503: payment_service.py:425-446 чек должен покрывать сумму, прикладывать может только плательщик-заказчик, отклонённые не считаются — ост.: saved_unverified чек (без ФНС) всё ещё подтверждает; проверка полей t,s,fn в scan-receipt не усилена |
-| BUD-25 | P1 | Отклонение графика с зашитой причиной, у исполнителя нет способа править план | ЧАСТИЧНО | 23bbdbbb: requestWorkScheduleRevision в lib/api/workSchedule.ts:184 + ScheduleRevisionPanel — ост.: UnifiedScheduleView.tsx:514-519 причина 'Нужна правка сроков' зашита, ссылки в чат нет |
-| BUD-31 | P1 | Кнопка «Подтвердить» у автора confirm-сообщения, сервер не проверял ACL | ЧАСТИЧНО | b8808a83: chat_message_mutation.py:266 cannot_confirm_own_request (403) — ост.: UI ChatThreadView.tsx:906 всё ещё показывает кнопку автору (получит 403) |
+| BUD-25 | P1 | Отклонение графика с зашитой причиной, у исполнителя нет способа править план | ЗАКРЫТО | 6244cb5e: причина отклонения графика вводится заказчиком (поле + подтверждение «Отклонить график?»), без зашитого текста; auditSliceChatBudget.test.ts |
+| BUD-31 | P1 | Кнопка «Подтвердить» у автора confirm-сообщения, сервер не проверял ACL | ЗАКРЫТО | сервер 403 cannot_confirm_own_request (b8808a83); UI ChatThreadView не показывает «Подтвердить» автору запроса; auditSliceChatBudget.test.ts |
 | BUD-32 | P1 | compressDataUrl обрезает base64 — битые фото в чате | ЗАКРЫТО | 22ca2f23: вложения чата идут через авторизованную загрузку; compressDataUrl нигде не вызывается (grep), мёртвый код в lib/compressImage.ts:3 |
-| BUD-33 | P1 | Таб чата без объектов показывает «Создайте объект», thread-only гость не видит чаты | ОТКРЫТО | app/(customer)/(tabs)/chat.tsx:12-14 !projects.length → ProjectEmptyState — ост.: Не исправлено (аналогично contractor-табу) |
+| BUD-33 | P1 | Таб чата без объектов показывает «Создайте объект», thread-only гость не видит чаты | ЗАКРЫТО | табы чата заказчика и исполнителя больше не прячут список за «Создайте объект»: ChatListView берёт глобальный inbox и сам показывает пустое состояние; гость только-тред видит свой чат |
 | HOM-01 | P1 | После SMS-входа роль берётся с экрана, а не из ответа сервера | ЗАКРЫТО | 79111cdb: role from server; lib/loginRole.ts resolveLoginRole + loginRole.test.ts; role.tsx:91 |
 | HOM-02 | P1 | Сбой после POST /projects → «Повторить» создаёт дубль объекта | ЗАКРЫТО | RenovaContext.tsx:625-690 шаги после создания обёрнуты в try/catch, confirm.tsx без патча budget_planned (рабочая копия) — ост.: Правка в рабочей копии, не закоммичена (РК) |
-| HOM-03 | P1 | Действия заказчика на /job-leads недостижимы из интерфейса | ОТКРЫТО | ссылки на /job-leads только у исполнителя: HomeScreenBody.tsx:125 (role==='contractor'), ProjectEmptyState, ContractorProfileScreen — ост.: Продуктовое решение: куда вести заказчика (меню/профиль) |
+| HOM-03 | P1 | Действия заказчика на /job-leads недостижимы из интерфейса | ЗАКРЫТО | CustomerProfileScreen.tsx:28 — пункт «Заявки на исполнителя» ведёт на /job-leads; у исполнителя — HomeScreenBody и профиль |
 | INB-04 | P1 | Портал-токен нельзя отозвать, виден в query/истории | ЗАКРЫТО | x07portallinks01 (portal_links, jti в токене), GET/DELETE /projects/{id}/portal-links, отзыв отсекает обмен токена и уже выданный portal-JWT (get_current_user), удаление аккаунта отзывает ссылки; PortalSharePanel: список и «Отозвать»; tests/test_portal_link_revocation.py (3), portalLinks.test.ts — ост.: Токены без jti (выданы до миграции) живут до exp (≤168 ч); токен остаётся в query-строке magic-link (не в fragment). |
 | INB-05 | P1 | Заявка на изменение комнаты: исполнитель не видит/не решает в «Согласованиях» | ЗАКРЫТО | app/approvals.tsx canDecide по allowed_actions сервера, подзаголовок для исполнителя (рабочая копия) — ост.: Не закоммичено |
 | INB-06 | P1 | Ошибки approve/reject (403/404/409) проглатываются | ЗАКРЫТО | app/approvals.tsx handleDecisionError: notifyError + load() при 404/409 (рабочая копия) — ост.: Не закоммичено |
 | INB-07 | P1 | Слияние конфликтов: выбор «Сервер» стирает поле из PATCH | ЗАКРЫТО | FieldMergePicker.tsx: mergeFieldChoices, без server возвращает null; OfflineDiffViewer.tsx (рабочая копия) — ост.: Не закоммичено |
 | INB-08 | P1 | ManagerDashboard: при загрузке/ошибке нет «Назад» и повтора | ЗАКРЫТО | ManagerDashboardScreen.tsx:101-128 BackHeader + LoadErrorState onRetry (рабочая копия) — ост.: Не закоммичено |
 | INB-09 | P1 | articles-admin затирает category/summary/tags, ошибки не видны | ЗАКРЫТО | 02fccb43: articles-admin.tsx kept{category,read_min}, getArticleAdmin, validateArticleForm, notifyError |
-| OBJ-01 | P1 | Запрос изменения комнаты шлёт payload {} → 422 room_patch_empty | ОТКРЫТО | OsRoomsScreen.tsx:582 onSubmit(message,{}); room_change_service.py:104-108 + room_service.py:88 validate_room_patch({})→room_patch_empty — ост.: Нужна форма полей или допуск message-only запроса |
+| OBJ-01 | P1 | Запрос изменения комнаты шлёт payload {} → 422 room_patch_empty | ЗАКРЫТО | fdea1f25: rooms.ts шлёт запрос без пустого payload — сервер принимает текстовый запрос комнаты |
 | OBJ-02 | P1 | lock_estimate при proposal_stale отдавал ok:true без фиксации | ЗАКРЫТО | a2f942fe: estimate.py:199-201 → 409 proposal_expired; tests/test_estimate_materials_audit_fixes.py |
 | OBJ-04 | P1 | Правка комнаты после фиксации сметы пересоздаёт строки и бюджет | ЗАКРЫТО | 6ec54ebc: room_service.sync_room_estimate_lines не пересчитывает при estimate_locked; tests/test_room_estimate_lock.py |
-| OBJ-05 | P1 | У исполнителя нет слоя «Изменения», CTA и пуши ведут в пустоту | ОТКРЫТО | ContractorEstimateView.tsx не читает estimateLayer; EstimateChangesLayer только в CustomerEstimateView.tsx:155; procurementNav.ts:52 по-прежнему ведёт И на changes — ост.: Не сделано |
-| OBJ-06 | P1 | Допсоглашение: демо-значения по умолчанию, ошибки не показываются | ЧАСТИЧНО | ContractorEstimateView.tsx:74-80 валидация названия/суммы добавлена (c221fa82); дефолты 'Доп. розетки'/'8500' (:38-39) остались, не-offline ошибка всё ещё throw без catch (:93) — ост.: Убрать предзаполнение и показывать ошибку API |
-| OBJ-07 | P1 | Импорт CSV в смету виден заказчику/гостю (403), поле предзаполнено демо | ОТКРЫТО | EstimateDocumentsLayer.tsx:43 демо-CSV, кнопка :206 без проверки роли; бэк estimate.py:30-31 403 для не-исполнителя — ост.: Ролевая видимость и пустое поле не сделаны (причина ошибки частично через notifyError) |
-| OBJ-08 | P1 | Поля строки сметы правятся при зафиксированной смете, ошибка проглатывается | ЧАСТИЧНО | a2f942fe/EstimateLineEditorCard.tsx:44-46 editable при !planLocked; estimate.py:76 факт/заметка разрешены — ост.: patchLine всё ещё бросает не-offline ошибки без catch (ContractorEstimateView.tsx:67) — unhandled rejection |
+| OBJ-05 | P1 | У исполнителя нет слоя «Изменения», CTA и пуши ведут в пустоту | ЗАКРЫТО | fdea1f25: исполнитель видит слой допсоглашений/изменений, навигация закупок не ведёт в пустоту |
+| OBJ-06 | P1 | Допсоглашение: демо-значения по умолчанию, ошибки не показываются | ЗАКРЫТО | fdea1f25 + c221fa82: поля допсоглашения пустые, ошибки API показываются (ContractorEstimateView.tsx:42,108-124) |
+| OBJ-07 | P1 | Импорт CSV в смету виден заказчику/гостю (403), поле предзаполнено демо | ЗАКРЫТО | fdea1f25: импорт CSV только исполнителю при незафиксированной смете (EstimateDocumentsLayer.tsx:207), поле начинается с заголовка, не с демо-данных |
+| OBJ-08 | P1 | Поля строки сметы правятся при зафиксированной смете, ошибка проглатывается | ЗАКРЫТО | fdea1f25 + a2f942fe: patchLine ловит ошибки (ContractorEstimateView.tsx:81-97), перезагрузка после сбоя |
 | OBJ-09 | P1 | Запятая в числах усекается (2,5→2), нельзя задать 0 | ЗАКРЫТО | c221fa82: parseLocaleNumber; EstimateLineEditorCard commitNumber с parsePositive/NonNegativeNumber |
-| OBJ-16 | P1 | Изображение плана этажа и PDF дизайн-пакета без Authorization не открываются | ОТКРЫТО | FloorPlanPanel.tsx:354 Image uri без заголовков; DesignPackageList.tsx:113 Linking.openURL; media.py требует Authorization — ост.: Нужна загрузка с токеном (blob/headers) или подписанная ссылка |
-| OBJ-32 | P1 | XLSX-экспорт: SpreadsheetML под именем .xlsx, НДС 20% зашит, XML без экранирования | ОТКРЫТО | backend/app/api/v1/export.py:178-200 (*0.2/*1.2, без escape, CSV без кавычек); lib/api/estimate.ts:164 'estimate.xlsx' — ост.: Не сделано |
-| REP-01 | P1 | Исполнитель не может отметить чек-лист, гейт сдачи требует 100% | ОТКРЫТО | StageDetailScreen.tsx:392 showAcceptance только customer+review; toggleStageChecklist вызывается только из StageDetailAcceptanceFold; fa9bfb5d даёт лишь список условий gate — ост.: Нужен UI чек-листа для исполнителя |
-| REP-02 | P1 | Заказчик в самоуправляемом проекте не может начать/сдать работу в UI | ОТКРЫТО | lib/domain/workLifecycle.ts:70-73 review/in_progress только contractor; бэк разрешает заказчика — ост.: Рассинхрон роли UI/backend не устранён |
-| REP-03 | P1 | acceptStage глотает offline_queued, UI показывает «Этап принят» | ОТКРЫТО | lib/context/RenovaContext.tsx:754-756 offline_queued → /*queued*/; StageDetailScreen.tsx runAcceptStage всё равно вызывает alertStageAccepted; b9ea4db2 ставит в очередь и 5xx — ост.: Пробросить offline_queued и не показывать «принят» |
+| OBJ-16 | P1 | Изображение плана этажа и PDF дизайн-пакета без Authorization не открываются | ЗАКРЫТО | fdea1f25: план этажа через AuthImage, файлы дизайн-пакета открываются с токеном (DesignPackageList.tsx:60) |
+| OBJ-32 | P1 | XLSX-экспорт: SpreadsheetML под именем .xlsx, НДС 20% зашит, XML без экранирования | ЗАКРЫТО | 51547512: экспорт сметы — НДС по ставке проекта, XML экранируется, CSV через csv.writer; формат Excel 2003 XML отдаётся как .xls |
+| REP-01 | P1 | Исполнитель не может отметить чек-лист, гейт сдачи требует 100% | ЗАКРЫТО | b3007897: StageDetailExecutorChecklist — исполнитель отмечает чек-лист этапа |
+| REP-02 | P1 | Заказчик в самоуправляемом проекте не может начать/сдать работу в UI | ЗАКРЫТО | 5b50ef1d: workLifecycle.customerCanExecuteWork — заказчик, исполняющий работу сам, стартует и сдаёт её |
+| REP-03 | P1 | acceptStage глотает offline_queued, UI показывает «Этап принят» | ЗАКРЫТО | b3007897: RenovaContext пробрасывает offline_queued, «Этап принят» не показывается для отложенной приёмки |
 | REP-04 | P1 | Ошибка приёмки (409 photos_required и др.) только в лог | ЗАКРЫТО | fa9bfb5d: StageDetailScreen.tsx runAcceptStage → showActionConfirm 'Этап не принят' с причиной; completionGate.ts |
 | REP-07 | P1 | «Закрыть» на каждом замечании, сервер допускает только fixed→closed (404) | ЗАКРЫТО | lib/domain/issueControlActions.ts customerIssueActions по статусу; e1aeeab4: os.py close → 409/403 с кодом (UI-часть в рабочей копии) — ост.: UI-часть не закоммичена (РК) |
 | REP-08 | P1 | Функции заказчика «Вернуть/Открыть снова/Спор/Гарантия» недоступны | ЧАСТИЧНО | CustomerControlView/issueControlActions.ts: «Вернуть на доработку» (рабочая копия); e1aeeab4: warranty respond/reopen — ост.: Гарантийные действия заказчика и «в спор» из хаба не подтверждены; кнопки QC всё ещё ремапятся в хаб |
@@ -224,7 +224,7 @@
 | REP-25 | P1 | Ошибочно созданную закупку нельзя отменить (UI только из delivered) | ЗАКРЫТО | c8ccd6c4; кнопка отмены закупки из draft/approved/ordered/paid/delivered (purchaseCancelLabel), подтверждение, роли; purchaseLifecycle.test.ts |
 | REP-30 | P1 | Перевод строки графика в submitted ставит этап в review без приёмки | ЗАКРЫТО | 8e3b64db: статус строки следует этапу, 409 schedule_item_status_follows_stage; sync_stage_from_item_status удалён |
 | SCR-001 | P1 | Alert.alert пустой на web — ошибки и подтверждения теряются | ЗАКРЫТО | 297b4dfd: lib/notify.ts + guard-тест lib/notifyGuard.test.ts; Alert.alert остался только в тестах |
-| SCR-003 | P1 | «Применить к плану» шлёт budget_planned, backend игнорирует, UI пишет успех | ОТКРЫТО | apps/mobile/app/_stack/budget-planner.tsx:50 всё ещё patchProject{budget_planned}; schemas/project.py ProjectUpdate без поля — ост.: Нужно решение: реализовать поле/эндпоинт или убрать кнопку; ложный успех остаётся (дубль BUD-03) |
+| SCR-003 | P1 | «Применить к плану» шлёт budget_planned, backend игнорирует, UI пишет успех | ЗАКРЫТО | d64835d3: экран «Планировщик бюджета» справочный, кнопки «Применить к плану» и записи budget_planned нет (текст: расчёт не попадает в учёт, план — из сметы); ложного успеха нет |
 | SCR-007 | P1 | «Новый проект» виден исполнителю, POST /projects даёт 403 | ЗАКРЫТО | OsProjectPicker.tsx:353 условие user?.role==='customer' (правка в рабочей копии, не закоммичена) — ост.: Не закоммичено (РК) |
 
 ### 10 Компоненты и офлайн
@@ -272,7 +272,7 @@
 | APIB-011 | P1 | paid_unverified не подтвердить: получателю нет ответа/спора, ревью только админ | ЧАСТИЧНО | 02fb4503: POST /payments/{id}/recipient-response + авто-confirm по чеку; 38e1a804: ответ исполнителя на спор; c66e36c9 (mobile); journey test_25f — ост.: Нет UI админ-ревью evidence и таймаутов/эскалации; админ-ревью остаётся только admin. |
 | APIB-012 | P1 | Waste-заказ: заказчик без подрядчика не может перевести draft->requested | ЗАКРЫТО | 6c3c13b2; в проекте без contractor_id заказчик заказывает (draft→requested) и закрывает вывоз (_is_self_managed_customer); тест test_self_managed_customer_runs_full_cycle_and_expense_created_once; UI: wasteActions(selfManaged) |
 | APIB-013 | P1 | rework-sla/extend: подрядчик бесконечно продлевает свой срок | ЗАКРЫТО | e63290b3/f4685109: подрядчик только просит, продлевает/отклоняет заказчик, лимит 14 дн (rework_sla.py:64-109); test_stage_lifecycle_wave2.py |
-| APIB-014 | P1 | Живая dev-БД не на голове Alembic, ревизия не проверяется в development | ОТКРЫТО | db/session.py:40-45 guard только staging/production; scripts/dev-runtime.sh без alembic upgrade; код не менялся — ост.: Состояние внешней dev-БД; guard для development и upgrade в dev-runtime не добавлены. |
+| APIB-014 | P1 | Живая dev-БД не на голове Alembic, ревизия не проверяется в development | ЗАКРЫТО | db/session.py _revision_guard_required: development + не SQLite + create_all выключен => проверка «БД на голове Alembic» при старте (как в staging/production); scripts/dev-runtime.sh уже делает compose run migrate и python -m app.db.migration_guard; test_database_revision_guard.py. Состояние чужой dev-БД — вне кода |
 
 ### 13 Сквозной API-сценарий
 
@@ -286,8 +286,8 @@
 | JRN-006 | P1 | budget_spent не учитывает платежи за этапы | ЗАКРЫТО | 02fb4503 (MNY-014): confirmed-платёж идёт в budget_spent, paid_unverified_total отдельно; journey test_25b/25h — ост.: paid_unverified намеренно не в факте (виден отдельно). |
 | JRN-007 | P1 | Платёж confirmed по любому чеку, приложенному самим получателем | ЗАКРЫТО | 02fb4503: чек только плательщик (403 receipt_payment_customer_only), покрытие суммы; journey test_25c/25d |
 | JRN-008 | P1 | Ошибочный счёт нельзя отменить; closeout требует подтвердить фиктивную оплату | ЗАКРЫТО | 02fb4503: POST /payments/{id}/cancel, отменённые не блокируют closeout; c66e36c9 (mobile); journey test_35/36 |
-| JRN-009 | P1 | Приглашённый в чат читает тред, но писать не может (POST messages 403) | ОТКРЫТО | technical_supervision_chat.py:21-33 подменяет _post_message: require_chat_access(write=False) без allow_participant + capability communication; проба -> 403 — ост.: Не сделано; реакции приглашённому исправлены (b8808a83), отправка сообщений нет. |
-| JRN-011 | P1 | Заказчик без исполнителя стартует этап и фиксирует смету; позже подключённый заперт | ЧАСТИЧНО | e63290b3: этап 1 больше не active с рождения; 185f8dd7: гейт по обеим подписям — ост.: estimate/lock без исполнителя всё ещё проходит (estimate_service.py:278-308), self-managed старт этапа разрешён; ловушка позднего исполнителя не снята. |
+| JRN-009 | P1 | Приглашённый в чат читает тред, но писать не может (POST messages 403) | ЗАКРЫТО | technical_supervision_chat.py: приглашённый участник треда (без доступа к проекту) пишет text/photo/file в свой тред, finance/confirm — 403, чужой тред — 403; гость по-прежнему 403; test_chat_money_visibility_and_participant_post.py |
+| JRN-011 | P1 | Заказчик без исполнителя стартует этап и фиксирует смету; позже подключённый заперт | ЧАСТИЧНО | e63290b3: этап 1 больше не active с рождения; 185f8dd7: гейт по обеим подписям — ост.: estimate/lock без исполнителя всё ещё проходит (estimate_service.py:278-308), self-managed старт этапа разрешён; ловушка позднего исполнителя не снята.; сейчас позднего исполнителя спасает путь допсоглашения (CO) по зафиксированной смете (продуктовое решение: разблокировать смету при подключении) |
 | JRN-024 | P1 | trash сбрасывает is_archived; purge стирает подписанное/платежи без удержания | ЗАКРЫТО | 6ec54ebc: trash сохраняет is_archived, purge блокируют financial_history_blocks_purge/legal_hold (project_service.py:495,524,642); journey test_40 — ост.: Уведомления контрагентам о purge нет (purge заблокирован при деньгах/подписях). |
 
 ### 14 Живой UI-обход
@@ -296,8 +296,8 @@
 |---|---|---|---|---|
 | UI-002 | P0 | Профиль: админ/шаблоны/подписка -> Maximum update depth, белый экран | ЗАКРЫТО | d78961a5: статические route-файлы + AdminGate; profileFabNavTargets.contract.test ok (запущен) — ост.: В браузере/симуляторе не воспроизводил. |
 | UI-003 | P0 | FAB «+» -> «В черновик»: Maximum update depth, белый экран | ЗАКРЫТО | d78961a5: app/scratchpad.tsx статический маршрут; profileFabNavTargets.contract.test ok — ост.: В рантайме не проверял. |
-| UI-001 | P1 | Фиктивные «Экономия/-100 %/маржа/прогноз» при факте 0 (бюджет, портфель) | ЧАСТИЧНО | b03f6ba6: buildBudgetSummaryView/BudgetSummarySection не показывают экономию и прогноз без факта; buildBudgetSummaryView.test ok — ост.: Портфель: portfolioProjects.ts:40-45 даёт status under/«Экономия» при нулевом факте; BudgetBreakdown.tsx:43 показывает прогноз без проверки факта. |
-| UI-007 | P1 | Менеджер-сводка: «+18407733 ₽» без разделителей, сырая категория «other» | ЧАСТИЧНО | b03f6ba6: formatRiskImpact, прогноз скрыт без факта; formatRiskImpact.test — ост.: Сырая категория в «Подбор: … \| other» (backend client_write_side_effects.py body=row.category) не локализована. |
+| UI-001 | P1 | Фиктивные «Экономия/-100 %/маржа/прогноз» при факте 0 (бюджет, портфель) | ЗАКРЫТО | b03f6ba6 (бюджет) + 6244cb5e: portfolioProjects без факта даёт on_track/0 % (нет «Экономия» и -100 %), BudgetBreakdown не показывает прогноз при нулевом факте; auditSliceChatBudget.test.ts |
+| UI-007 | P1 | Менеджер-сводка: «+18407733 ₽» без разделителей, сырая категория «other» | ЗАКРЫТО | b03f6ba6 (формат суммы, прогноз) + b1e33969: лента подбора показывает русскую категорию («Плитка», «Другое»), не код; test_selections.py |
 | UI-010 | P1 | /work-acceptance у исполнителя редиректит в кабинет заказчика с кнопками «Принять» | ЗАКРЫТО | fa9bfb5d: роль из сессии, без редиректа до загрузки (work-acceptance.tsx); acceptanceActions.test ok |
 | UI-027 | P1 | Админские пункты профиля видны обычным заказчику/исполнителю | ЗАКРЫТО | d78961a5: useAdminAccess (probe /admin/stats), AdminHubLink и «Журнал аудита» только при granted; contract test ok — ост.: «Экспорт данных» — выгрузка собственных данных (exportMyData), не админ-функция; эта часть записи устарела. |
 
@@ -306,53 +306,33 @@
 ### Требует продуктового решения
 
 - **APIA-008** (ЧАСТИЧНО) — verify-me/регистрация подтверждают НПД без доказательства владения ИНН. Нужна внешняя проверка (Госуслуги/Мой налог OAuth) — продуктовое решение
-- **BUD-03** (ОТКРЫТО) — budget-planner PATCH budget_planned игнорируется, UI пишет «План обновлён». См. SCR-003: решение — убрать кнопку или реализовать
 - **BUD-04** (ОТКРЫТО) — Импорт выписки (CSV от заказчика) подтверждает оплату без проверки банка. Продуктовое решение: источник доверия к выписке
 - **EST-013** (ЧАСТИЧНО) — Подбор создаёт MaterialPick qty=1 шт. Сделано без миграции: источник по умолчанию для проекта без исполнителя и ввод количества/ед. при согласовании. Ост.: хранение qty/unit в SelectionItem — нужна миграция (не создавалась).
-- **HOM-03** (ОТКРЫТО) — Действия заказчика на /job-leads недостижимы из интерфейса. Продуктовое решение: куда вести заказчика (меню/профиль)
 - **MKT-012** (ЧАСТИЧНО) — Бригада: нет удаления/выхода/отзыва инвайтов, доступ ко всем проектам. Отзыв инвайтов владельцем на бэкенде есть (GET/DELETE /teams/invites), UI нет; членство по-прежнему даёт доступ ко всем объектам владельца (team_service.py:533-541), viewer лишь read-only — продуктовое решение
 - **MNY-003** (ОТКРЫТО) — Ручной расход подрядчика сразу confirmed в budget_spent. Не сделано: нет статуса «на согласовании» для расходов подрядчика (продуктовое решение)
 - **MNY-029** (ЧАСТИЧНО) — Нет чека самозанятого, verify-me ставит npd_verified любому. Не сделано; внешняя интеграция (Мой налог) / продуктовое решение «вне продукта»
-- **SCR-003** (ОТКРЫТО) — «Применить к плану» шлёт budget_planned, backend игнорирует, UI пишет успех. Нужно решение: реализовать поле/эндпоинт или убрать кнопку; ложный успех остаётся (дубль BUD-03)
 
 ### Требует миграции или внешней системы
 
-- **APIB-014** (ОТКРЫТО) — Живая dev-БД не на голове Alembic, ревизия не проверяется в development. Состояние внешней dev-БД; guard для development и upgrade в dev-runtime не добавлены.
 - **DOC-014** (ОТКРЫТО) — Внешняя подпись зависает в submitting/pending, отмены нет. не сделано: таймаут/expired, dead-letter->failed, ручка отмены
 
 ### Не сделано (чистая доработка кода/UI)
 
 - **APIB-011** (ЧАСТИЧНО) — paid_unverified не подтвердить: получателю нет ответа/спора, ревью только админ. Нет UI админ-ревью evidence и таймаутов/эскалации; админ-ревью остаётся только admin.
 - **BUD-19** (ЧАСТИЧНО) — Любой чек с payment_id подтверждает оплату. saved_unverified чек (без ФНС) всё ещё подтверждает; проверка полей t,s,fn в scan-receipt не усилена
-- **BUD-25** (ЧАСТИЧНО) — Отклонение графика с зашитой причиной, у исполнителя нет способа править план. UnifiedScheduleView.tsx:514-519 причина 'Нужна правка сроков' зашита, ссылки в чат нет
-- **BUD-31** (ЧАСТИЧНО) — Кнопка «Подтвердить» у автора confirm-сообщения, сервер не проверял ACL. UI ChatThreadView.tsx:906 всё ещё показывает кнопку автору (получит 403)
-- **BUD-33** (ОТКРЫТО) — Таб чата без объектов показывает «Создайте объект», thread-only гость не видит чаты. Не исправлено (аналогично contractor-табу)
-- **JRN-009** (ОТКРЫТО) — Приглашённый в чат читает тред, но писать не может (POST messages 403). Не сделано; реакции приглашённому исправлены (b8808a83), отправка сообщений нет.
 - **JRN-011** (ЧАСТИЧНО) — Заказчик без исполнителя стартует этап и фиксирует смету; позже подключённый заперт. estimate/lock без исполнителя всё ещё проходит (estimate_service.py:278-308), self-managed старт этапа разрешён; ловушка позднего исполнителя не снята.
 - **MKT-003** (ЧАСТИЧНО) — Сохранение реквизитов затирает specialties/city/bio. В UI профиля исполнителя по-прежнему нет полей специализаций/города/био/visible (нет в ContractorProfileScreen) — не сделано; бэкенд защищён (null не стирает, длины ограничены)
 - **MKT-009** (ЧАСТИЧНО) — Каталог исполнителей линкует по profile.id (404); подбор хардкод. ContractorDirectory.tsx:62 по-прежнему matchContractors(userId,'capital','tiling') — параметры не из проекта
-- **MNY-004** (ЧАСТИЧНО) — member бригады выставляет счета/допработы (нет capability billing). Остались счета, допработы: роль member/foreman не ограничена; capability billing не введена
-- **MNY-010** (ЧАСТИЧНО) — В dev любой подрядчик — админ evidence-review любого проекта. Остаётся только в development/test без ADMIN_USER_IDS; членство в проекте не проверяется
-- **OBJ-01** (ОТКРЫТО) — Запрос изменения комнаты шлёт payload {} → 422 room_patch_empty. Нужна форма полей или допуск message-only запроса
-- **OBJ-05** (ОТКРЫТО) — У исполнителя нет слоя «Изменения», CTA и пуши ведут в пустоту. Не сделано
-- **OBJ-06** (ЧАСТИЧНО) — Допсоглашение: демо-значения по умолчанию, ошибки не показываются. Убрать предзаполнение и показывать ошибку API
-- **OBJ-07** (ОТКРЫТО) — Импорт CSV в смету виден заказчику/гостю (403), поле предзаполнено демо. Ролевая видимость и пустое поле не сделаны (причина ошибки частично через notifyError)
-- **OBJ-08** (ЧАСТИЧНО) — Поля строки сметы правятся при зафиксированной смете, ошибка проглатывается. patchLine всё ещё бросает не-offline ошибки без catch (ContractorEstimateView.tsx:67) — unhandled rejection
-- **OBJ-16** (ОТКРЫТО) — Изображение плана этажа и PDF дизайн-пакета без Authorization не открываются. Нужна загрузка с токеном (blob/headers) или подписанная ссылка
-- **OBJ-32** (ОТКРЫТО) — XLSX-экспорт: SpreadsheetML под именем .xlsx, НДС 20% зашит, XML без экранирования. Не сделано
-- **QLT-007** (ЧАСТИЧНО) — Нет создания замечания вне плана, план грузит только исполнитель, нет заявки на комнату. не сделано: кнопка Добавить замечание в QC (описание/комната/этап/фото) и загрузка плана заказчиком в UI
-- **REP-01** (ОТКРЫТО) — Исполнитель не может отметить чек-лист, гейт сдачи требует 100%. Нужен UI чек-листа для исполнителя
-- **REP-02** (ОТКРЫТО) — Заказчик в самоуправляемом проекте не может начать/сдать работу в UI. Рассинхрон роли UI/backend не устранён
-- **REP-03** (ОТКРЫТО) — acceptStage глотает offline_queued, UI показывает «Этап принят». Пробросить offline_queued и не показывать «принят»
+- **MNY-010** (ЧАСТИЧНО) — admin evidence-review: в development/test без ADMIN_USER_IDS остаётся локальный fallback (осознанно, dev-only).
+- **QLT-007** (ЧАСТИЧНО) — Нет создания замечания вне плана. Сделано: форма в контроле качества. Не подтверждено: фото в форме, загрузка плана заказчиком.
 - **REP-08** (ЧАСТИЧНО) — Функции заказчика «Вернуть/Открыть снова/Спор/Гарантия» недоступны. Гарантийные действия заказчика и «в спор» из хаба не подтверждены; кнопки QC всё ещё ремапятся в хаб
-- **UI-001** (ЧАСТИЧНО) — Фиктивные «Экономия/-100 %/маржа/прогноз» при факте 0 (бюджет, портфель). Портфель: portfolioProjects.ts:40-45 даёт status under/«Экономия» при нулевом факте; BudgetBreakdown.tsx:43 показывает прогноз без проверки факта.
-- **UI-007** (ЧАСТИЧНО) — Менеджер-сводка: «+18407733 ₽» без разделителей, сырая категория «other». Сырая категория в «Подбор: … | other» (backend client_write_side_effects.py body=row.category) не локализована.
 
 Крупнейшие кластеры: (а) [закрыто] удаление аккаунта (ROLE-016, APIA-006); (б) [закрыто, кроме EST-013: qty в SelectionItem — миграция] закупки/материалы (EST-010/011/013/025/026, REP-13/25); (в) [закрыто] вывоз мусора (EST-015/016, APIB-012); (г) проверка самозанятости/НПД (MNY-029, APIA-008) — внешняя интеграция; (д) бюджет-планировщик (SCR-003/BUD-03) — ложный успех; (е) [закрыто] отзыв портал-токена (INB-04, миграция x07); (ж) UI исполнителя (REP-01/02/03, OBJ-05/07/16/32).
 
 ## 4. Новые находки проверки (нет в аудите)
 
-- `apps/mobile/lib/compressImage.ts:3` — `compressDataUrl` (обрезка base64) больше нигде не вызывается, но остаётся экспортируемой ловушкой; удалить после проверки зависимостей.
+- `apps/mobile/lib/compressImage.ts` — `compressDataUrl` (обрезка base64) удалён: grep по apps/backend/scripts/e2e не нашёл ни одного вызова, кроме самого объявления; auditSliceChatBudget.test.ts следит, что он не вернётся.
+- COM-036 (P2, решение пользователя «по умолчанию»): гости и read-only участники бригады (viewer) не видят тредов с деньгами. Тред считается денежным, если его topic — payment/payments/finance/budget/invoice/estimate (или префиксы payment:/invoice:/finance:/budget:) либо в нём есть сообщение типа invoice/payment. Для таких тредов список, inbox, счётчики непрочитанного, поиск и прямое открытие (GET тред, PDF, медиа) недоступны гостю и viewer (403; приглашённый в этот тред по-прежнему видит свой тред). Заказчик, исполнитель, бригадир и member видят всё. Реализация: chat_acl.must_hide_money_threads / money_thread_ids; тесты test_chat_money_visibility_and_participant_post.py. Ограничение: текстовые упоминания денег в обычных тредах не фильтруются.
 - Остаточный риск APIB-001/002 (закрыты): magic-link портала по-прежнему stateless, без nonce/отзыва (INB-04); явный `ENVIRONMENT=development` с нелокальным URL/Postgres не блокируется; MKT-016 — в development остаётся fallback «исполнитель = админ».
 - UI-027 частично устарела: «Экспорт данных» оказался выгрузкой собственных данных пользователя, а не админ-функцией.
 
