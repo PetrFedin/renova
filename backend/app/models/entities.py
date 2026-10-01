@@ -92,7 +92,7 @@ class Project(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
-    trashed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    trashed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     estimate_locked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # W57: исполнитель предлагает фиксацию; заказчик подтверждает → estimate_locked_at
     estimate_lock_proposed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -275,7 +275,7 @@ class Receipt(Base):
     expense_category: Mapped[str] = mapped_column(String(32), default="materials")
     room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id"), nullable=True)
     stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id"), nullable=True)
-    payment_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("payments.id", ondelete="SET NULL"), nullable=True)
+    payment_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("payments.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     project: Mapped["Project"] = relationship(back_populates="receipts")
@@ -799,9 +799,11 @@ class DesignPackage(Base):
 
 class ContractorProfile(Base):
     __tablename__ = "contractor_profiles"
+    # Migrations created a unique constraint plus a plain index (APIB-039); mirror them.
+    __table_args__ = (UniqueConstraint("user_id", name="contractor_profiles_user_id_key"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), unique=True, index=True)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
     company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     specialties: Mapped[str | None] = mapped_column(String(512), nullable=True)
     rating: Mapped[float] = mapped_column(Float, default=5.0)
