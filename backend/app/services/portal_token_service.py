@@ -14,7 +14,14 @@ def _sign(body: str) -> str:
     return hmac.new(settings.secret_key.encode(), body.encode(), hashlib.sha256).hexdigest()
 
 
-def create_portal_token(*, project_id: str, user_id: str, ttl_hours: int = 168, scopes: list[str] | None = None) -> str:
+def create_portal_token(
+    *,
+    project_id: str,
+    user_id: str,
+    ttl_hours: int = 168,
+    scopes: list[str] | None = None,
+    jti: str | None = None,
+) -> str:
     now = int(time.time())
     payload = {
         "sub": user_id,
@@ -28,6 +35,8 @@ def create_portal_token(*, project_id: str, user_id: str, ttl_hours: int = 168, 
         "iat": now,
         "exp": now + ttl_hours * 3600,
     }
+    if jti:
+        payload["jti"] = jti
     body = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode()).decode().rstrip("=")
     return f"{body}.{_sign(body)}"
 
@@ -52,6 +61,7 @@ def verify_portal_token(token: str) -> dict:
         "project_id": str(payload["project_id"]),
         "read_only": bool(payload.get("read_only", True)),
         "scopes": list(payload.get("scopes") or ["read"]),
+        "jti": str(payload["jti"]) if payload.get("jti") else None,
     }
 
 

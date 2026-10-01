@@ -6,6 +6,7 @@ from app.api.v1.chats import MessageCreate, attachment_http_error
 from app.db.session import get_db
 from app.models.entities import User
 from app.services import chat_message_mutation as chat_message_svc
+from app.services import chat_participant_service
 from app.services import chat_service as chat_svc
 from app.services.chat_acl import require_chat_access
 from app.services import technical_supervision_action_service as actions
@@ -29,25 +30,31 @@ async def post_operational_message(
         thread_id,
         user,
         write=False,
+        allow_participant=True,
     )
-    actor_mode = await supervision.require_capability(
-        db,
-        user=user,
-        project=project,
-        capability="communication",
-    )
-    if actor_mode == "supervisor" and body.message_type not in {"text", "photo", "file"}:
+    if await chat_participant_service.is_thread_only_participant(db, project=project, thread=thread, user=user):
+        # JRN-009: an invited participant (no project access) may write into the
+        # exact thread they were invited to; finance/system types stay forbidden.
+        actor_mode = "participant"
+    else:
+        actor_mode = await supervision.require_capability(
+            db,
+            user=user,
+            project=project,
+            capability="communication",
+        )
+    if actor_mode in {"supervisor", "participant"} and body.message_type not in {"text", "photo", "file"}:
         raise HTTPException(
             403,
             detail={
                 "code": "technical_supervision_chat_type_forbidden",
-                "message": "Технадзор может отправлять обычные сообщения и вложения, но не финансовые/системные действия.",
+                "message": "Технадзор и приглашённые участники могут отправлять обычные сообщения и вложения, но не финансовые/системные действия.",
             },
         )
 
     supervisor_id = await actions.active_supervisor_user_id(db, project.id)
     extra_recipients = {supervisor_id} if supervisor_id else set()
-    author_role = "supervisor" if actor_mode == "supervisor" else user.role.value
+    author_role = "supervisor" if actor_mode == "supervisor" else user.role.value  # participant keeps own role
     try:
         msg = await chat_message_svc.send_client_message(
             db,

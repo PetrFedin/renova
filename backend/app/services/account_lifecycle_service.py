@@ -6,12 +6,65 @@ from datetime import timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timeutil import utc_now
-from sqlalchemy import delete
+from sqlalchemy import delete, func, or_, select
 
-from app.models.entities import PushToken, User
-from app.services import session_service
+from app.models.entities import Payment, PaymentStatus, Project, PushToken, User
+from app.services import portal_link_service, session_service
 
 RETENTION_DAYS = 30
+
+
+# Деньги, которые ещё не доведены до конечного состояния.
+UNSETTLED_PAYMENT_STATUSES = (
+    PaymentStatus.pending,
+    PaymentStatus.processing,
+    PaymentStatus.paid_unverified,
+    PaymentStatus.disputed,
+)
+
+
+class AccountDeletionBlocked(Exception):
+    """ROLE-016: удаление запрещено, пока есть активные проекты или незавершённые деньги."""
+
+    def __init__(self, blockers: list[dict[str, object]]):
+        super().__init__("account_deletion_blocked")
+        self.blockers = blockers
+
+
+async def account_deletion_blockers(db: AsyncSession, user: User) -> list[dict[str, object]]:
+    """Список причин, по которым аккаунт нельзя удалить (пусто = можно)."""
+    blockers: list[dict[str, object]] = []
+    in_project = or_(Project.customer_id == user.id, Project.contractor_id == user.id)
+
+    # Активный проект с контрагентом: заказчик с исполнителем либо исполнитель на объекте.
+    active = (
+        await db.execute(
+            select(func.count())
+            .select_from(Project)
+            .where(
+                Project.is_archived.is_(False),
+                Project.trashed_at.is_(None),
+                or_(
+                    (Project.customer_id == user.id) & Project.contractor_id.is_not(None),
+                    Project.contractor_id == user.id,
+                ),
+            )
+        )
+    ).scalar_one()
+    if active:
+        blockers.append({"code": "active_projects", "count": int(active)})
+
+    unsettled = (
+        await db.execute(
+            select(func.count())
+            .select_from(Payment)
+            .join(Project, Project.id == Payment.project_id)
+            .where(in_project, Payment.status.in_(UNSETTLED_PAYMENT_STATUSES))
+        )
+    ).scalar_one()
+    if unsettled:
+        blockers.append({"code": "unsettled_payments", "count": int(unsettled)})
+    return blockers
 
 
 def anonymized_phone(user_id: str) -> str:
@@ -21,6 +74,10 @@ def anonymized_phone(user_id: str) -> str:
 
 async def soft_delete_account(db: AsyncSession, user: User) -> dict[str, object]:
     """Anonymize the account and revoke refresh/access sessions in one transaction."""
+    if user.deleted_at is None:
+        blockers = await account_deletion_blockers(db, user)
+        if blockers:
+            raise AccountDeletionBlocked(blockers)
     now = utc_now()
     if user.deleted_at is not None:
         deleted_at = user.deleted_at
@@ -49,6 +106,8 @@ async def soft_delete_account(db: AsyncSession, user: User) -> dict[str, object]
         )
         # COM-017: a deleted account must not keep receiving push on its devices.
         await db.execute(delete(PushToken).where(PushToken.user_id == user.id))
+        # INB-04: ссылки, выданные удалённым аккаунтом или ведущие на него, больше не работают.
+        await portal_link_service.revoke_links_for_user(db, user.id)
         await db.commit()
     except Exception:
         await db.rollback()

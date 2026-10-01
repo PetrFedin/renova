@@ -13,12 +13,14 @@ from app.services import team_service
 WASTE_ORDER_CREATE_SCOPE = "waste_order.create"
 
 _ALLOWED: dict[WasteOrderStatus, set[WasteOrderStatus]] = {
-    WasteOrderStatus.draft: {WasteOrderStatus.requested},
+    # EST-015: ошибочно заведённую заявку можно отменить из draft/scheduled,
+    # а не только отклонить из requested.
+    WasteOrderStatus.draft: {WasteOrderStatus.requested, WasteOrderStatus.cancelled},
     WasteOrderStatus.requested: {
         WasteOrderStatus.scheduled,
         WasteOrderStatus.cancelled,
     },
-    WasteOrderStatus.scheduled: {WasteOrderStatus.done},
+    WasteOrderStatus.scheduled: {WasteOrderStatus.done, WasteOrderStatus.cancelled},
     WasteOrderStatus.done: set(),
     WasteOrderStatus.cancelled: set(),
 }
@@ -28,8 +30,17 @@ def _status_value(status: WasteOrderStatus | str) -> str:
     return status.value if hasattr(status, "value") else str(status)
 
 
+def _is_self_managed_customer(project: Project, user_id: str) -> bool:
+    """APIB-012: в проекте без исполнителя заказчик сам заказывает и закрывает вывоз."""
+    return project.contractor_id is None and user_id == project.customer_id
+
+
 def _is_assigned_executor(project: Project, user_id: str, team_role: str | None = None) -> bool:
-    return user_id == project.contractor_id or team_role in {"owner", "foreman"}
+    return (
+        user_id == project.contractor_id
+        or team_role in {"owner", "foreman"}
+        or _is_self_managed_customer(project, user_id)
+    )
 
 
 def validate_transition(
@@ -44,7 +55,17 @@ def validate_transition(
         raise ValueError(
             f"invalid_waste_order_transition:{current.value}:{target.value}"
         )
-    if target in {WasteOrderStatus.scheduled, WasteOrderStatus.cancelled}:
+    if target == WasteOrderStatus.cancelled:
+        # Заказчик отменяет/отклоняет на любом шаге; исполнитель может отозвать
+        # свою заявку, пока она не согласована.
+        if actor.id == project.customer_id:
+            return
+        if current in {WasteOrderStatus.draft, WasteOrderStatus.requested} and _is_assigned_executor(
+            project, actor.id, actor_team_role
+        ):
+            return
+        raise ValueError("waste_order_actor_forbidden")
+    if target == WasteOrderStatus.scheduled:
         if actor.id != project.customer_id:
             raise ValueError("waste_order_actor_forbidden")
         return
@@ -88,6 +109,44 @@ async def _reload_project(
     return fresh
 
 
+WASTE_EXPENSE_MARKER = "[waste:{id}]"
+
+
+def waste_total(order: WasteOrder) -> float:
+    """EST-016: price — цена за 1 м³, итог заявки = объём x цена."""
+    return round(float(order.volume_m3 or 0) * float(order.price or 0), 2)
+
+
+async def _record_expense_on_done(db: AsyncSession, *, project: Project, order: WasteOrder) -> None:
+    """EST-016: завершённый вывоз признаётся расходом ровно один раз (маркер в comment)."""
+    from app.models.entities import Expense
+
+    amount = waste_total(order)
+    if amount <= 0:
+        return
+    marker = WASTE_EXPENSE_MARKER.format(id=order.id)
+    existing = await db.scalar(
+        select(Expense.id).where(Expense.project_id == project.id, Expense.comment == marker)
+    )
+    if existing:
+        return
+    db.add(
+        Expense(
+            project_id=project.id,
+            room_id=order.room_id,
+            title=f"Вывоз мусора: {order.volume_m3:g} м³",
+            category="other",
+            amount=amount,
+            status="confirmed",
+            comment=marker,
+        )
+    )
+    await db.flush()
+    from app.services import budget_service
+
+    await budget_service.refresh_budget_facts(db, project.id)
+
+
 def _activity_copy(
     order: WasteOrder,
     target: WasteOrderStatus,
@@ -98,7 +157,7 @@ def _activity_copy(
     if target == WasteOrderStatus.scheduled:
         return "WasteApproved", f"Вывоз мусора согласован: {volume}", order.notes
     if target == WasteOrderStatus.cancelled:
-        return "WasteRejected", f"Вывоз мусора отклонён: {volume}", order.notes
+        return "WasteRejected", f"Вывоз мусора отменён: {volume}", order.notes
     if target == WasteOrderStatus.done:
         return "WasteCompleted", f"Вывоз мусора завершён: {volume}", order.notes
     return "WasteUpdated", f"Статус вывоза: {target.value}", order.notes
@@ -126,8 +185,8 @@ def _notification_copy(
     if target == WasteOrderStatus.cancelled:
         return (
             "approval",
-            f"Вывоз мусора отклонён: {volume}",
-            order.notes or "Заказчик отклонил заявку на вывоз.",
+            f"Вывоз мусора отменён: {volume}",
+            order.notes or "Заявка на вывоз отменена.",
         )
     return (
         "other",
@@ -143,6 +202,9 @@ def _notification_targets(
 ) -> list[str]:
     if target in {WasteOrderStatus.requested, WasteOrderStatus.done}:
         candidates = {project.customer_id}
+    elif target == WasteOrderStatus.cancelled:
+        # Уведомляем вторую сторону.
+        candidates = {project.contractor_id if actor_id == project.customer_id else project.customer_id}
     else:
         candidates = {project.contractor_id}
     return sorted(user_id for user_id in candidates if user_id and user_id != actor_id)
@@ -340,6 +402,8 @@ async def transition_order(
 
     order.status = target
     try:
+        if target == WasteOrderStatus.done:
+            await _record_expense_on_done(db, project=project, order=order)
         await _prepare_effects(
             db,
             project=project,

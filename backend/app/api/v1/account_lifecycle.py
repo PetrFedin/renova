@@ -13,7 +13,11 @@ from app.core.timeutil import utc_now
 from app.db.session import get_db
 from app.models.entities import User
 from app.services import session_service
-from app.services.account_lifecycle_service import soft_delete_account
+from app.services.account_lifecycle_service import (
+    AccountDeletionBlocked,
+    account_deletion_blockers,
+    soft_delete_account,
+)
 from app.services.account_purge_guard import (
     AccountPurgeForbidden,
     AccountPurgeUnavailable,
@@ -29,13 +33,32 @@ class AccountPurgeRequest(BaseModel):
     older_than_days: int = Field(default=30, ge=30, le=3650)
 
 
+async def _delete_or_409(db: AsyncSession, user: User) -> dict[str, object]:
+    try:
+        return await soft_delete_account(db, user)
+    except AccountDeletionBlocked as exc:
+        raise HTTPException(
+            409, detail={"code": "account_deletion_blocked", "blockers": exc.blockers}
+        ) from None
+
+
+@router.get("/me/deletion-check")
+async def deletion_check(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Можно ли удалить аккаунт прямо сейчас и что мешает (ROLE-016)."""
+    blockers = await account_deletion_blockers(db, user)
+    return {"can_delete": not blockers, "blockers": blockers}
+
+
 @router.post("/anonymize")
 async def anonymize_me(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Compatibility route: anonymization is a real soft-delete, not a live zombie account."""
-    return await soft_delete_account(db, user)
+    return await _delete_or_409(db, user)
 
 
 @router.delete("/me")
@@ -43,7 +66,7 @@ async def delete_me(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await soft_delete_account(db, user)
+    return await _delete_or_409(db, user)
 
 
 @router.post("/sessions/revoke-all")

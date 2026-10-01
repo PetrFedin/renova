@@ -174,8 +174,8 @@ async def last_messages_for_threads(db: AsyncSession, thread_ids: list[str]) -> 
     return {m.thread_id: m for m in rows.scalars().all()}
 
 
-async def count_unread_project(db: AsyncSession, project_id: str, user_id: str) -> int:
-    threads = await list_threads(db, project_id)
+async def count_unread_project(db: AsyncSession, project_id: str, user_id: str, *, hide_money: bool = False) -> int:
+    threads = await list_threads(db, project_id, hide_money=hide_money)
     ids = [t.id for t in threads]
     if not ids:
         return 0
@@ -191,18 +191,26 @@ async def count_unread_project(db: AsyncSession, project_id: str, user_id: str) 
     return sum(counts.values())
 
 
-async def count_unread_all(db: AsyncSession, user_id: str, project_ids: list[str]) -> int:
+async def count_unread_all(
+    db: AsyncSession, user_id: str, project_ids: list[str], *, hide_money_projects: frozenset[str] | set[str] = frozenset()
+) -> int:
     total = 0
     for pid in project_ids:
-        total += await count_unread_project(db, pid, user_id)
+        total += await count_unread_project(db, pid, user_id, hide_money=pid in hide_money_projects)
     return total
 
 
-async def list_threads(db: AsyncSession, project_id: str) -> list[ChatThread]:
+async def list_threads(db: AsyncSession, project_id: str, *, hide_money: bool = False) -> list[ChatThread]:
     r = await db.execute(
         select(ChatThread).where(ChatThread.project_id == project_id).order_by(ChatThread.updated_at.desc())
     )
-    return list(r.scalars().all())
+    threads = list(r.scalars().all())
+    if hide_money:
+        from app.services.chat_acl import money_thread_ids
+
+        hidden = await money_thread_ids(db, project_id)
+        threads = [t for t in threads if t.id not in hidden]
+    return threads
 
 
 def _desc(value: str | None) -> tuple:
@@ -222,12 +230,12 @@ def _thread_order_key(x: dict) -> tuple:
     )
 
 
-async def list_threads_enriched(db: AsyncSession, project_id: str, user_id: str) -> list[dict]:
+async def list_threads_enriched(db: AsyncSession, project_id: str, user_id: str, *, hide_money: bool = False) -> list[dict]:
     """Thread list with last message and unread via aggregate queries (COM-024).
 
     Never loads a thread's message history: three queries regardless of thread count.
     """
-    threads = await list_threads(db, project_id)
+    threads = await list_threads(db, project_id, hide_money=hide_money)
     ids = [t.id for t in threads]
     lasts = await last_messages_for_threads(db, ids)
     unread = await unread_counts_for_threads(db, ids, user_id)
@@ -256,11 +264,17 @@ async def list_threads_enriched(db: AsyncSession, project_id: str, user_id: str)
     return out
 
 
-async def list_inbox(db: AsyncSession, user_id: str, project_ids: list[tuple[str, str]]) -> list[dict]:
+async def list_inbox(
+    db: AsyncSession,
+    user_id: str,
+    project_ids: list[tuple[str, str]],
+    *,
+    hide_money_projects: frozenset[str] | set[str] = frozenset(),
+) -> list[dict]:
     """project_ids: [(id, name), ...]"""
     inbox = []
     for pid, pname in project_ids:
-        for th in await list_threads_enriched(db, pid, user_id):
+        for th in await list_threads_enriched(db, pid, user_id, hide_money=pid in hide_money_projects):
             th["project_name"] = pname
             inbox.append(th)
     inbox.sort(key=_thread_order_key)
@@ -590,7 +604,9 @@ def _escape_like(q: str) -> str:
     return q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-async def search_thread_messages(db: AsyncSession, project_id: str, user_id: str, q: str, limit: int = 30) -> list[dict]:
+async def search_thread_messages(
+    db: AsyncSession, project_id: str, user_id: str, q: str, limit: int = 30, *, hide_money: bool = False
+) -> list[dict]:
     """Project-wide text search: newest first, literal match, no system/archived/deleted."""
     needle = (q or "").strip()
     if not needle:
@@ -610,6 +626,10 @@ async def search_thread_messages(db: AsyncSession, project_id: str, user_id: str
         .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
         .limit(max(1, min(int(limit), 100)))
     )
+    if hide_money:
+        from app.services.chat_acl import _money_thread_condition
+
+        stmt = stmt.where(~_money_thread_condition())
     # Soft-deleted messages carry ``deleted_at`` in meta_json (see msg_dict).
     stmt = stmt.where(or_(ChatMessage.meta_json.is_(None), ~ChatMessage.meta_json.contains('"deleted_at"')))
     rows = (await db.execute(stmt)).all()

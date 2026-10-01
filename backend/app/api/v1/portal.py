@@ -8,6 +8,7 @@ from app.api.deps import get_current_user, require_project
 from app.core.security import create_access_token
 from app.db.session import get_db
 from app.models.entities import Project, User, UserRole
+from app.services import portal_link_service as portal_links
 from app.services import portal_token_service as portal_tok
 from app.services import project_role_policy
 from app.services import team_service as team_svc
@@ -30,6 +31,7 @@ class PortalLinkCreate(BaseModel):
 
 
 class PortalLinkOut(BaseModel):
+    id: str | None = None
     token: str
     url: str
     expires_hours: int = 168
@@ -45,8 +47,11 @@ async def portal_session(body: PortalSessionIn, db: AsyncSession = Depends(get_d
 
     from sqlalchemy import select
 
+    if not await portal_links.link_is_usable(db, claims.get("jti")):
+        raise HTTPException(401, "portal_link_revoked")
+
     user = await db.get(User, claims["user_id"])
-    if not user:
+    if not user or user.deleted_at is not None:
         raise HTTPException(401, "user_not_found")
     project = await db.get(Project, claims["project_id"])
     if not project:
@@ -66,6 +71,7 @@ async def portal_session(body: PortalSessionIn, db: AsyncSession = Depends(get_d
             "portal": True,
             "project_id": project.id,
             "scopes": list(claims.get("scopes") or ["read"]),
+            **({"portal_link_id": claims["jti"]} if claims.get("jti") else {}),
         },
         expires_minutes=PORTAL_ACCESS_TTL_MINUTES,
     )
@@ -123,8 +129,10 @@ async def create_viewer_portal_link(
             raise HTTPException(403, "pay_only_for_customer")
         if "pay" not in scopes:
             scopes.append("pay")
-    token = portal_tok.create_portal_token(project_id=project_id, user_id=viewer_user_id, scopes=scopes)
-    return PortalLinkOut(token=token, url=portal_tok.portal_url(token))
+    link, token = await portal_links.issue_link(
+        db, project_id=project_id, user_id=viewer_user_id, issued_by=user.id, scopes=scopes
+    )
+    return PortalLinkOut(id=link.id, token=token, url=portal_tok.portal_url(token))
 
 
 
@@ -159,10 +167,47 @@ async def create_customer_portal_link(
         scopes.extend(["accept_stage", "sign_document"])
     if body.allow_pay and "pay" not in scopes:
         scopes.append("pay")
-    token = portal_tok.create_portal_token(
-        project_id=project_id, user_id=target_user_id, scopes=scopes
+    link, token = await portal_links.issue_link(
+        db, project_id=project_id, user_id=target_user_id, issued_by=user.id, scopes=scopes
     )
-    return PortalLinkOut(token=token, url=portal_tok.portal_url(token))
+    return PortalLinkOut(id=link.id, token=token, url=portal_tok.portal_url(token))
+
+
+@router.get("/projects/{project_id}/portal-links")
+async def list_portal_links(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Активные ссылки: заказчик видит все, исполнитель — только выданные им (INB-04)."""
+    p = await require_project(db, project_id, user, write=True)
+    if user.id == p.customer_id:
+        rows = await portal_links.list_active_links(db, project_id)
+    elif p.contractor_id and user.id == p.contractor_id:
+        rows = await portal_links.list_active_links(db, project_id, issued_by=user.id)
+    else:
+        raise HTTPException(403, "portal_link_customer_or_contractor_only")
+    return {"items": [portal_links.link_dict(r) for r in rows]}
+
+
+@router.delete("/projects/{project_id}/portal-links/{link_id}")
+async def revoke_portal_link(
+    project_id: str,
+    link_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Отозвать ссылку: заказчик — любую по проекту, исполнитель — только свою (INB-04)."""
+    from app.models.entities import PortalLink
+
+    p = await require_project(db, project_id, user, write=True)
+    link = await db.get(PortalLink, link_id)
+    if not link or link.project_id != project_id:
+        raise HTTPException(404, "portal_link_not_found")
+    if user.id != p.customer_id and link.issued_by != user.id:
+        raise HTTPException(403, "portal_link_revoke_forbidden")
+    await portal_links.revoke_link(db, link)
+    return {"ok": True, "id": link.id, "revoked": True}
 
 
 @router.get("/portal/projects/{project_id}/snapshot")

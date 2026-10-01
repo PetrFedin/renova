@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_project, require_project_dep
-from app.services.chat_acl import require_chat_access, require_chat_message
+from app.services.chat_acl import must_hide_money_threads, require_chat_access, require_chat_message
 from app.db.session import get_db
 from app.models.entities import User
 from app.services import chat_participant_service as chat_participant_svc
@@ -47,7 +47,7 @@ async def _project_unread_for_actor(
 ) -> int:
     """Do not leak sibling-chat unread counts to thread-only participants."""
     try:
-        await require_project(db, project_id, user, write=False)
+        project = await require_project(db, project_id, user, write=False)
     except HTTPException as exc:
         if exc.status_code != 403:
             raise
@@ -57,7 +57,9 @@ async def _project_unread_for_actor(
             exclude_project_ids=set(),
             project_id=project_id,
         )
-    return await chat_svc.count_unread_project(db, project_id, user.id)
+    return await chat_svc.count_unread_project(
+        db, project_id, user.id, hide_money=await must_hide_money_threads(db, project, user)
+    )
 
 
 async def _chat_capabilities(
@@ -190,8 +192,9 @@ class PaymentFromChat(BaseModel):
 
 @router.get("/{project_id}/chats")
 async def list_chats(project_id: str, archived: bool = False, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await require_project(db, project_id, user, write=False)
-    threads = await chat_svc.list_threads_enriched(db, project_id, user.id)
+    project = await require_project(db, project_id, user, write=False)
+    hide_money = await must_hide_money_threads(db, project, user)
+    threads = await chat_svc.list_threads_enriched(db, project_id, user.id, hide_money=hide_money)
     if archived:
         return [t for t in threads if t.get("is_archived")]
     return [t for t in threads if not t.get("is_archived")]
@@ -217,15 +220,18 @@ async def create_chat(project_id: str, body: ThreadCreate, user: User = Depends(
 # Static chat collection/resource routes must be registered before /{thread_id}.
 @router.get("/{project_id}/chats/unread-count")
 async def unread_count(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await require_project(db, project_id, user, write=False)
-    count = await chat_svc.count_unread_project(db, project_id, user.id)
+    project = await require_project(db, project_id, user, write=False)
+    hide_money = await must_hide_money_threads(db, project, user)
+    count = await chat_svc.count_unread_project(db, project_id, user.id, hide_money=hide_money)
     return {"count": count}
 
 
 @router.get("/{project_id}/chats/search")
 async def search_messages(project_id: str, q: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db), _=Depends(require_project_dep())):
     """Newest first, literal match (LIKE wildcards escaped), message id included (COM-037)."""
-    return await chat_svc.search_thread_messages(db, project_id, user.id, q, limit=30)
+    project = await require_project(db, project_id, user, write=False)
+    hide_money = await must_hide_money_threads(db, project, user)
+    return await chat_svc.search_thread_messages(db, project_id, user.id, q, limit=30, hide_money=hide_money)
 
 
 @router.get("/{project_id}/chats/{thread_id}.pdf")

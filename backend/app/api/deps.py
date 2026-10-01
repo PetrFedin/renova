@@ -141,6 +141,18 @@ async def get_current_user(
     if getattr(user, "deleted_at", None):
         raise HTTPException(401, "account_deleted")
 
+    if authorization:
+        # INB-04: portal-JWT, выпущенный из отозванной ссылки, перестаёт работать сразу.
+        try:
+            link_id = decode_access_token(_bearer_token(authorization)).get("portal_link_id")
+        except Exception:
+            link_id = None
+        if link_id:
+            from app.services import portal_link_service
+
+            if not await portal_link_service.link_is_usable(db, link_id):
+                raise HTTPException(401, "portal_link_revoked")
+
     cutoff = getattr(user, "tokens_invalid_before", None)
     if cutoff is not None and authorization:
         _validate_access_session(

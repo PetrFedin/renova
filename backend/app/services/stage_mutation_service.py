@@ -5,10 +5,10 @@ from dataclasses import dataclass
 from datetime import date
 import json
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import Project, Room, Stage, StageStatus, User, UserRole
+from app.models.entities import Project, Receipt, Room, Stage, StageStatus, User, UserRole
 from app.models.work_schedule import ProjectWorkSchedule, WorkScheduleStatus
 from app.services import outbox_service as outbox
 from app.services import team_service
@@ -845,6 +845,7 @@ async def delete_stage(
             )
         ).scalars().all():
             item.stage_id = None
+        await db.execute(update(Receipt).where(Receipt.stage_id == stage.id).values(stage_id=None))
         await _enqueue_activity(
             db,
             stage=stage,

@@ -291,6 +291,21 @@ class ProjectViewer(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
+class PortalLink(Base):
+    """INB-04: реестр выданных портал-ссылок (jti токена) — позволяет отозвать ссылку."""
+
+    __tablename__ = "portal_links"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
+    issued_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
+    scopes: Mapped[str] = mapped_column(String(255), default="read")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class RoomChangeStatus(str, enum.Enum):
     pending = "pending"
     approved = "approved"

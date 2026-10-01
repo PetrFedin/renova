@@ -11,6 +11,7 @@ from app.services import team_service as team_svc
 from app.services import technical_supervision_service as supervision
 from app.services import chat_participant_service as participant_svc
 from app.services import chat_service as chat_svc
+from app.services.chat_acl import must_hide_money_threads
 
 router = APIRouter(prefix="/chats", tags=["chats-inbox"])
 
@@ -54,6 +55,16 @@ async def _user_projects(db: AsyncSession, user: User) -> list[tuple[str, str]]:
     return out
 
 
+async def _money_hidden_projects(db: AsyncSession, user: User, projects: list[tuple[str, str]]) -> set[str]:
+    """COM-036: projects where the viewer is a guest/read-only team viewer (money threads hidden)."""
+    hidden: set[str] = set()
+    for project_id, _name in projects:
+        project = await db.get(Project, project_id)
+        if project is not None and await must_hide_money_threads(db, project, user):
+            hidden.add(project_id)
+    return hidden
+
+
 def _sort_inbox(items: list[dict]) -> list[dict]:
     items.sort(
         key=lambda item: (
@@ -70,7 +81,8 @@ def _sort_inbox(items: list[dict]) -> list[dict]:
 async def inbox(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     projects = await _user_projects(db, user)
     member_project_ids = {project_id for project_id, _name in projects}
-    member_items = await chat_svc.list_inbox(db, user.id, projects)
+    hide_money = await _money_hidden_projects(db, user, projects)
+    member_items = await chat_svc.list_inbox(db, user.id, projects, hide_money_projects=hide_money)
     participant_items = await participant_svc.participant_inbox(
         db,
         user_id=user.id,
@@ -83,7 +95,8 @@ async def inbox(user: User = Depends(get_current_user), db: AsyncSession = Depen
 async def unread_total(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     projects = await _user_projects(db, user)
     ids = [project_id for project_id, _name in projects]
-    count = await chat_svc.count_unread_all(db, user.id, ids)
+    hide_money = await _money_hidden_projects(db, user, projects)
+    count = await chat_svc.count_unread_all(db, user.id, ids, hide_money_projects=hide_money)
     count += await participant_svc.participant_unread_total(
         db,
         user_id=user.id,

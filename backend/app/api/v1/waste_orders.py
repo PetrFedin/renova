@@ -46,6 +46,8 @@ def _out(waste_order: WasteOrder, *, replayed: bool | None = None) -> dict:
         "status": status,
         "price": waste_order.price,
         "notes": waste_order.notes,
+        # EST-016: price — цена за 1 м³; total = volume_m3 x price.
+        "price_unit": "per_m3",
         "total": (
             round(waste_order.volume_m3 * waste_order.price, 2)
             if waste_order.price
@@ -212,6 +214,23 @@ async def reject_waste(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    return await _transition(
+        project_id=project_id,
+        order_id=order_id,
+        target=WasteOrderStatus.cancelled,
+        user=user,
+        db=db,
+    )
+
+
+@router.post("/{project_id}/waste-orders/{order_id}/cancel")
+async def cancel_waste(
+    project_id: str,
+    order_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """EST-015: отмена draft/requested/scheduled (заказчик — всегда, исполнитель — до согласования)."""
     return await _transition(
         project_id=project_id,
         order_id=order_id,
