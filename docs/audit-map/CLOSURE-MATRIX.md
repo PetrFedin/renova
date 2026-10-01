@@ -11,20 +11,20 @@
 | 01 Роли и доступ | 2 / 0 / 0 | 11 / 0 / 0 | 13 |
 | 02 Этапы и приёмка | 1 / 0 / 0 | 9 / 0 / 0 | 10 |
 | 03 Деньги | 2 / 0 / 0 | 11 / 3 / 1 | 17 |
-| 04 Смета и закупки | 1 / 0 / 0 | 10 / 0 / 7 | 18 |
+| 04 Смета и закупки | 1 / 0 / 0 | 16 / 1 / 0 | 18 |
 | 05 Документы и портал | 5 / 0 / 0 | 9 / 0 / 1 | 15 |
 | 06 Чаты и уведомления | — | 10 / 0 / 0 | 10 |
 | 07 Технадзор и комнаты | 1 / 0 / 0 | 4 / 1 / 0 | 6 |
 | 08 Биржа и команды | — | 14 / 3 / 0 | 17 |
-| 09 Перепись экранов | 6 / 0 / 0 | 19 / 6 / 15 | 46 |
+| 09 Перепись экранов | 6 / 0 / 0 | 21 / 6 / 13 | 46 |
 | 10 Компоненты и офлайн | — | 11 / 0 / 0 | 11 |
 | 11 Backend A | — | 6 / 1 / 0 | 7 |
-| 12 Backend B | 2 / 0 / 0 | 9 / 1 / 2 | 14 |
+| 12 Backend B | 2 / 0 / 0 | 10 / 1 / 1 | 14 |
 | 13 Сквозной API-сценарий | 2 / 0 / 0 | 7 / 1 / 1 | 11 |
 | 14 Живой UI-обход | 2 / 0 / 0 | 2 / 2 / 0 | 6 |
-| **Итого** | **24 / 0 / 0** | **132 / 18 / 27** | **201** |
+| **Итого** | **24 / 0 / 0** | **141 / 19 / 17** | **201** |
 
-Итог: P0 — 24 из 24 закрыты. P1 — 132 закрыты, 18 частично, 27 открыты из 177. Записи в срезах дублируют друг друга (одна проблема найдена несколькими аудиторами), поэтому уникальных проблем меньше, чем строк.
+Итог: P0 — 24 из 24 закрыты. P1 — 141 закрыты, 19 частично, 17 открыты из 177. Записи в срезах дублируют друг друга (одна проблема найдена несколькими аудиторами), поэтому уникальных проблем меньше, чем строк.
 
 Оговорки по доказательствам: закрытия ниже, помеченные «(РК)», опираются на правки рабочей копии, которые на момент проверки ещё не были закоммичены другими агентами волны; после их коммита метка снимается. Записи со статусом ЗАКРЫТО, но с непустым «ост.» — закрыты по сути, остаточный риск описан.
 
@@ -98,15 +98,15 @@
 | EST-007 | P1 | Три несовместимых факта материалов | ЗАКРЫТО | a2f942fe; analytics.py:103-107 единое определение; test_materials_fact_single_definition; CALCULATION-REGISTRY.md |
 | EST-008 | P1 | parseFloat режет «12,5», нельзя ввести 0 | ЗАКРЫТО | c221fa82; lib/parseLocaleNumber.ts; EstimateLineEditorCard.tsx:78, MaterialPickList.tsx:109, OsSelectionsScreen.tsx:102; parseLocaleNumberWired.test.ts |
 | EST-009 | P1 | calc-materials падает AttributeError floor_sq_m | ЗАКРЫТО | a2f942fe; os.py:289 room_dimensions_incomplete; test_calc_materials_typical_room_and_incomplete_dimensions |
-| EST-010 | P1 | Нельзя отменить закупку до delivered (UI) | ОТКРЫТО | purchaseLifecycle.ts:19-21 purchaseCancelStatus только delivered; PurchaseList.tsx:35 — ост.: Не сделано: кнопка отмены для draft/ordered/paid и возврат |
-| EST-011 | P1 | OsMaterialsScreen: любой сбой = «Проверьте сеть», готовые позиции без фильтра цены | ОТКРЫТО | OsMaterialsScreen.tsx:155,175,207 тексты без detail.message; procurementNextAction.ts:35-47 без price_actionable — ост.: Не сделано |
+| EST-010 | P1 | Нельзя отменить закупку до delivered (UI) | ЗАКРЫТО | c8ccd6c4; purchaseLifecycle.ts purchaseCancelStatus для draft/approved/ordered/paid/delivered, роли purchaseRoleMayCancel; PurchaseList.tsx, purchase/[id].tsx; purchaseLifecycle.test.ts |
+| EST-011 | P1 | OsMaterialsScreen: любой сбой = «Проверьте сеть», готовые позиции без фильтра цены | ЗАКРЫТО | c8ccd6c4 + dc67e6d1; OsMaterialsScreen показывает writeResultMessage(detail.message); бэк /material-picks отдаёт price_actionable, readyPickIds исключает позиции с непроверенной ценой, шаг confirm_price; procurementNextAction.test.ts |
 | EST-012 | P1 | Любой участник ставит закупке paid/delivered, растёт budget_spent | ЗАКРЫТО | 3063de32; purchases.py роль+PURCHASE_TRANSITION_ROLES; test_money_role_acl.py::test_purchase_* |
-| EST-013 | P1 | Подбор создаёт MaterialPick qty=1 шт, источник contractor_to_buy | ОТКРЫТО | selection_service.py:19-20 qty=1, unit=шт; supply_source не задаётся — ост.: Не сделано: у SelectionItem нет количества (нужна миграция/продуктовое решение) |
-| EST-015 | P1 | Вывоз мусора: draft->requested только исполнителю, нет отмены draft/scheduled | ОТКРЫТО | waste_order_service.py:15-24,50-57 без изменений — ост.: Не сделано |
-| EST-016 | P1 | Вывоз: цена 4500 x 8 м3 = 36000, Expense не создаётся | ОТКРЫТО | WasteOrderList.tsx:68,101 без изменений; analytics.py:112 volume*price — ост.: Не сделано: семантика price и Expense при done |
+| EST-013 | P1 | Подбор создаёт MaterialPick qty=1 шт, источник contractor_to_buy | ЧАСТИЧНО | c8ccd6c4 (REP-28: без исполнителя источник customer_to_buy) + 44f09aae/dc67e6d1: количество и ед. задаются при согласовании (POST /selections/{id}/approve {qty,unit}, QuantitySheet) — ост.: у SelectionItem по-прежнему нет qty/unit (хранение у предлагающего требует миграции); без ввода остаётся 1 шт |
+| EST-015 | P1 | Вывоз мусора: draft->requested только исполнителю, нет отмены draft/scheduled | ЗАКРЫТО | 6c3c13b2; waste_order_service: отмена draft/requested/scheduled (POST /waste-orders/{id}/cancel), исполнитель отзывает до согласования; WasteOrderList «Отменить вывоз»; test_waste_order_self_managed_expense.py |
+| EST-016 | P1 | Вывоз: цена 4500 x 8 м3 = 36000, Expense не создаётся | ЗАКРЫТО | 6c3c13b2 + dc67e6d1 + 7ec5df1a; price — цена за м³ (price_unit=per_m3, total=объём×цена), форма с итогом до отправки; при done один Expense (маркер [waste:id], category other) + refresh_budget_facts; факт в alerts только done; тесты бэка и wasteOrderPolicy.test.ts |
 | EST-021 | P1 | IDOR версий шаблонов чек-листов | ЗАКРЫТО | a2f942fe; checklist_templates.py, project_checklists.py; test_checklist_template_versions_acl |
-| EST-025 | P1 | Нет PATCH/DELETE MaterialPick, отзыв согласования | ОТКРЫТО | grep: в materials.py только PATCH supply/price; require_editable_pick не вызывается — ост.: Не сделано |
-| EST-026 | P1 | Ручной материал без количества/ед., нет формы у заказчика | ОТКРЫТО | MaterialPickList.tsx:337-338 qty:1, unit:'шт' — ост.: Не сделано |
+| EST-025 | P1 | Нет PATCH/DELETE MaterialPick, отзыв согласования | ЗАКРЫТО | 44f09aae + dc67e6d1; PATCH /material-picks/{id} (draft/pending, pending→draft), DELETE (draft/pending без истории закупок/аналогов), POST /revoke (approved→draft, заказчик, не при активной закупке); кросс-проектно 404; офлайн-очередь; test_material_pick_edit_revoke.py, materialPickEdit.test.ts |
+| EST-026 | P1 | Ручной материал без количества/ед., нет формы у заказчика | ЗАКРЫТО | dc67e6d1; MaterialPickList: поля количество/ед./цена, форма и у заказчика (источник по умолчанию customer_to_buy), parseMaterialForm; materialPickEdit.test.ts |
 
 ### 05 Документы и портал
 
@@ -220,8 +220,8 @@
 | REP-04 | P1 | Ошибка приёмки (409 photos_required и др.) только в лог | ЗАКРЫТО | fa9bfb5d: StageDetailScreen.tsx runAcceptStage → showActionConfirm 'Этап не принят' с причиной; completionGate.ts |
 | REP-07 | P1 | «Закрыть» на каждом замечании, сервер допускает только fixed→closed (404) | ЗАКРЫТО | lib/domain/issueControlActions.ts customerIssueActions по статусу; e1aeeab4: os.py close → 409/403 с кодом (UI-часть в рабочей копии) — ост.: UI-часть не закоммичена (РК) |
 | REP-08 | P1 | Функции заказчика «Вернуть/Открыть снова/Спор/Гарантия» недоступны | ЧАСТИЧНО | CustomerControlView/issueControlActions.ts: «Вернуть на доработку» (рабочая копия); e1aeeab4: warranty respond/reopen — ост.: Гарантийные действия заказчика и «в спор» из хаба не подтверждены; кнопки QC всё ещё ремапятся в хаб |
-| REP-13 | P1 | Экран закупки при ошибке/неверном id — вечная «Загрузка…» без «назад» | ОТКРЫТО | app/purchase/[id].tsx:41 return <Загрузка…> без BackHeader; reload при ошибке ставит null — ост.: Состояния loading/error/not-found не добавлены |
-| REP-25 | P1 | Ошибочно созданную закупку нельзя отменить (UI только из delivered) | ОТКРЫТО | lib/domain/purchaseLifecycle.ts:20 purchaseCancelStatus только delivered; бэк purchase_service.py:70-79 допускает cancel из draft/ordered — ост.: Кнопка отмены в UI не добавлена |
+| REP-13 | P1 | Экран закупки при ошибке/неверном id — вечная «Загрузка…» без «назад» | ЗАКРЫТО | c8ccd6c4; app/purchase/[id].tsx: BackHeader всегда, LoadingState/LoadErrorState/EmptyActionState «не найдено» |
+| REP-25 | P1 | Ошибочно созданную закупку нельзя отменить (UI только из delivered) | ЗАКРЫТО | c8ccd6c4; кнопка отмены закупки из draft/approved/ordered/paid/delivered (purchaseCancelLabel), подтверждение, роли; purchaseLifecycle.test.ts |
 | REP-30 | P1 | Перевод строки графика в submitted ставит этап в review без приёмки | ЗАКРЫТО | 8e3b64db: статус строки следует этапу, 409 schedule_item_status_follows_stage; sync_stage_from_item_status удалён |
 | SCR-001 | P1 | Alert.alert пустой на web — ошибки и подтверждения теряются | ЗАКРЫТО | 297b4dfd: lib/notify.ts + guard-тест lib/notifyGuard.test.ts; Alert.alert остался только в тестах |
 | SCR-003 | P1 | «Применить к плану» шлёт budget_planned, backend игнорирует, UI пишет успех | ОТКРЫТО | apps/mobile/app/_stack/budget-planner.tsx:50 всё ещё patchProject{budget_planned}; schemas/project.py ProjectUpdate без поля — ост.: Нужно решение: реализовать поле/эндпоинт или убрать кнопку; ложный успех остаётся (дубль BUD-03) |
@@ -270,7 +270,7 @@
 | APIB-009 | P1 | PATCH /projects и customer_budget доступны любому writer | ЗАКРЫТО | 3063de32: PATCH только заказчик-владелец, customer_budget скрыт у остальных; test_money_role_acl.py |
 | APIB-010 | P1 | Подрядчик сам проводит закупку paid/delivered и накручивает budget_spent | ЗАКРЫТО | 3063de32: PURCHASE_TRANSITION_ROLES, paid/откат только заказчик, перескоки 409 (purchase_service.py:66); test_money_role_acl.py — ост.: Цена позиции (material_price_sync) по-прежнему правится исполнителем без переутверждения, но на факт не влияет. |
 | APIB-011 | P1 | paid_unverified не подтвердить: получателю нет ответа/спора, ревью только админ | ЧАСТИЧНО | 02fb4503: POST /payments/{id}/recipient-response + авто-confirm по чеку; 38e1a804: ответ исполнителя на спор; c66e36c9 (mobile); journey test_25f — ост.: Нет UI админ-ревью evidence и таймаутов/эскалации; админ-ревью остаётся только admin. |
-| APIB-012 | P1 | Waste-заказ: заказчик без подрядчика не может перевести draft->requested | ОТКРЫТО | waste_order_service.py:validate_transition без изменений с аудита (git log пуст); нет is_self_managed — ост.: Не сделано: нужно продуктовое решение (заказчик как исполнитель в self-managed проекте). |
+| APIB-012 | P1 | Waste-заказ: заказчик без подрядчика не может перевести draft->requested | ЗАКРЫТО | 6c3c13b2; в проекте без contractor_id заказчик заказывает (draft→requested) и закрывает вывоз (_is_self_managed_customer); тест test_self_managed_customer_runs_full_cycle_and_expense_created_once; UI: wasteActions(selfManaged) |
 | APIB-013 | P1 | rework-sla/extend: подрядчик бесконечно продлевает свой срок | ЗАКРЫТО | e63290b3/f4685109: подрядчик только просит, продлевает/отклоняет заказчик, лимит 14 дн (rework_sla.py:64-109); test_stage_lifecycle_wave2.py |
 | APIB-014 | P1 | Живая dev-БД не на голове Alembic, ревизия не проверяется в development | ОТКРЫТО | db/session.py:40-45 guard только staging/production; scripts/dev-runtime.sh без alembic upgrade; код не менялся — ост.: Состояние внешней dev-БД; guard для development и upgrade в dev-runtime не добавлены. |
 
@@ -306,10 +306,9 @@
 ### Требует продуктового решения
 
 - **APIA-008** (ЧАСТИЧНО) — verify-me/регистрация подтверждают НПД без доказательства владения ИНН. Нужна внешняя проверка (Госуслуги/Мой налог OAuth) — продуктовое решение
-- **APIB-012** (ОТКРЫТО) — Waste-заказ: заказчик без подрядчика не может перевести draft->requested. Не сделано: нужно продуктовое решение (заказчик как исполнитель в self-managed проекте).
 - **BUD-03** (ОТКРЫТО) — budget-planner PATCH budget_planned игнорируется, UI пишет «План обновлён». См. SCR-003: решение — убрать кнопку или реализовать
 - **BUD-04** (ОТКРЫТО) — Импорт выписки (CSV от заказчика) подтверждает оплату без проверки банка. Продуктовое решение: источник доверия к выписке
-- **EST-013** (ОТКРЫТО) — Подбор создаёт MaterialPick qty=1 шт, источник contractor_to_buy. Не сделано: у SelectionItem нет количества (нужна миграция/продуктовое решение)
+- **EST-013** (ЧАСТИЧНО) — Подбор создаёт MaterialPick qty=1 шт. Сделано без миграции: источник по умолчанию для проекта без исполнителя и ввод количества/ед. при согласовании. Ост.: хранение qty/unit в SelectionItem — нужна миграция (не создавалась).
 - **HOM-03** (ОТКРЫТО) — Действия заказчика на /job-leads недостижимы из интерфейса. Продуктовое решение: куда вести заказчика (меню/профиль)
 - **MKT-012** (ЧАСТИЧНО) — Бригада: нет удаления/выхода/отзыва инвайтов, доступ ко всем проектам. Отзыв инвайтов владельцем на бэкенде есть (GET/DELETE /teams/invites), UI нет; членство по-прежнему даёт доступ ко всем объектам владельца (team_service.py:533-541), viewer лишь read-only — продуктовое решение
 - **MNY-003** (ОТКРЫТО) — Ручной расход подрядчика сразу confirmed в budget_spent. Не сделано: нет статуса «на согласовании» для расходов подрядчика (продуктовое решение)
@@ -328,12 +327,6 @@
 - **BUD-25** (ЧАСТИЧНО) — Отклонение графика с зашитой причиной, у исполнителя нет способа править план. UnifiedScheduleView.tsx:514-519 причина 'Нужна правка сроков' зашита, ссылки в чат нет
 - **BUD-31** (ЧАСТИЧНО) — Кнопка «Подтвердить» у автора confirm-сообщения, сервер не проверял ACL. UI ChatThreadView.tsx:906 всё ещё показывает кнопку автору (получит 403)
 - **BUD-33** (ОТКРЫТО) — Таб чата без объектов показывает «Создайте объект», thread-only гость не видит чаты. Не исправлено (аналогично contractor-табу)
-- **EST-010** (ОТКРЫТО) — Нельзя отменить закупку до delivered (UI). Не сделано: кнопка отмены для draft/ordered/paid и возврат
-- **EST-011** (ОТКРЫТО) — OsMaterialsScreen: любой сбой = «Проверьте сеть», готовые позиции без фильтра цены. Не сделано
-- **EST-015** (ОТКРЫТО) — Вывоз мусора: draft->requested только исполнителю, нет отмены draft/scheduled. Не сделано
-- **EST-016** (ОТКРЫТО) — Вывоз: цена 4500 x 8 м3 = 36000, Expense не создаётся. Не сделано: семантика price и Expense при done
-- **EST-025** (ОТКРЫТО) — Нет PATCH/DELETE MaterialPick, отзыв согласования. Не сделано
-- **EST-026** (ОТКРЫТО) — Ручной материал без количества/ед., нет формы у заказчика. Не сделано
 - **JRN-009** (ОТКРЫТО) — Приглашённый в чат читает тред, но писать не может (POST messages 403). Не сделано; реакции приглашённому исправлены (b8808a83), отправка сообщений нет.
 - **JRN-011** (ЧАСТИЧНО) — Заказчик без исполнителя стартует этап и фиксирует смету; позже подключённый заперт. estimate/lock без исполнителя всё ещё проходит (estimate_service.py:278-308), self-managed старт этапа разрешён; ловушка позднего исполнителя не снята.
 - **MKT-003** (ЧАСТИЧНО) — Сохранение реквизитов затирает specialties/city/bio. В UI профиля исполнителя по-прежнему нет полей специализаций/города/био/visible (нет в ContractorProfileScreen) — не сделано; бэкенд защищён (null не стирает, длины ограничены)
@@ -352,12 +345,10 @@
 - **REP-02** (ОТКРЫТО) — Заказчик в самоуправляемом проекте не может начать/сдать работу в UI. Рассинхрон роли UI/backend не устранён
 - **REP-03** (ОТКРЫТО) — acceptStage глотает offline_queued, UI показывает «Этап принят». Пробросить offline_queued и не показывать «принят»
 - **REP-08** (ЧАСТИЧНО) — Функции заказчика «Вернуть/Открыть снова/Спор/Гарантия» недоступны. Гарантийные действия заказчика и «в спор» из хаба не подтверждены; кнопки QC всё ещё ремапятся в хаб
-- **REP-13** (ОТКРЫТО) — Экран закупки при ошибке/неверном id — вечная «Загрузка…» без «назад». Состояния loading/error/not-found не добавлены
-- **REP-25** (ОТКРЫТО) — Ошибочно созданную закупку нельзя отменить (UI только из delivered). Кнопка отмены в UI не добавлена
 - **UI-001** (ЧАСТИЧНО) — Фиктивные «Экономия/-100 %/маржа/прогноз» при факте 0 (бюджет, портфель). Портфель: portfolioProjects.ts:40-45 даёт status under/«Экономия» при нулевом факте; BudgetBreakdown.tsx:43 показывает прогноз без проверки факта.
 - **UI-007** (ЧАСТИЧНО) — Менеджер-сводка: «+18407733 ₽» без разделителей, сырая категория «other». Сырая категория в «Подбор: … | other» (backend client_write_side_effects.py body=row.category) не локализована.
 
-Крупнейшие кластеры: (а) [закрыто] удаление аккаунта (ROLE-016, APIA-006); (б) закупки/материалы (EST-010/011/013/025/026, REP-13/25) — нет отмены, правки и честных состояний; (в) вывоз мусора (EST-015/016, APIB-012); (г) проверка самозанятости/НПД (MNY-029, APIA-008) — внешняя интеграция; (д) бюджет-планировщик (SCR-003/BUD-03) — ложный успех; (е) [закрыто] отзыв портал-токена (INB-04, миграция x07); (ж) UI исполнителя (REP-01/02/03, OBJ-05/07/16/32).
+Крупнейшие кластеры: (а) [закрыто] удаление аккаунта (ROLE-016, APIA-006); (б) [закрыто, кроме EST-013: qty в SelectionItem — миграция] закупки/материалы (EST-010/011/013/025/026, REP-13/25); (в) [закрыто] вывоз мусора (EST-015/016, APIB-012); (г) проверка самозанятости/НПД (MNY-029, APIA-008) — внешняя интеграция; (д) бюджет-планировщик (SCR-003/BUD-03) — ложный успех; (е) [закрыто] отзыв портал-токена (INB-04, миграция x07); (ж) UI исполнителя (REP-01/02/03, OBJ-05/07/16/32).
 
 ## 4. Новые находки проверки (нет в аудите)
 
