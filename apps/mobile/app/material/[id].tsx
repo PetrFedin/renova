@@ -17,6 +17,7 @@ import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { repairTabRoute } from '@/constants/osSections';
 import { findDeliveredPurchaseForPick } from '@/lib/domain/findPurchaseForPick';
 import { purchaseAdvanceLabel, purchaseCancelStatus } from '@/lib/domain/purchaseLifecycle';
+import { writeResultMessage } from '@/lib/offlineResultMessage';
 
 const ST: Record<string, string> = {
   draft: 'Черновик', pending: 'На согласовании', approved: 'Согласовано', purchased: 'Куплено', rejected: 'Отклонено',
@@ -132,7 +133,7 @@ export default function MaterialDetailScreen() {
       reportError('material.detail.setPrice', e, { projectId: activeProject.id, materialId: pick.id });
       showActionConfirm({
         title: 'Цена не сохранена',
-        message: e instanceof Error ? e.message : 'Проверьте данные и повторите.',
+        message: writeResultMessage(e, 'Проверьте данные и повторите.'),
       });
     } finally {
       setPriceBusy(false);
@@ -157,7 +158,7 @@ export default function MaterialDetailScreen() {
       reportError('material.detail.verifyPrice', e, { projectId: activeProject.id, materialId: pick.id });
       showActionConfirm({
         title: 'Цена не проверена',
-        message: e instanceof Error ? e.message : 'Не удалось проверить цену поставщика.',
+        message: writeResultMessage(e, 'Не удалось проверить цену поставщика.'),
       });
     } finally {
       setPriceBusy(false);
@@ -228,7 +229,7 @@ export default function MaterialDetailScreen() {
                     reportError('material.detail.updatePurchase', e, { projectId: activeProject.id, materialId: pick.id, purchaseId: deliveredPurchase.id });
                     showActionConfirm({
                       title: 'Ошибка',
-                      message: e instanceof Error ? e.message : 'Не удалось обновить закупку',
+                      message: writeResultMessage(e, 'Не удалось обновить закупку'),
                     });
                   }
                 })();
@@ -255,7 +256,7 @@ export default function MaterialDetailScreen() {
                     reportError('material.detail.approve', e, { projectId: activeProject.id, materialId: pick.id });
                     showActionConfirm({
                       title: 'Ошибка',
-                      message: e instanceof Error ? e.message : 'Не удалось согласовать',
+                      message: writeResultMessage(e, 'Не удалось согласовать'),
                     });
                   }
                 })();
@@ -276,7 +277,7 @@ export default function MaterialDetailScreen() {
               reportError('material.detail.submit', e, { projectId: activeProject.id, materialId: pick.id });
               showActionConfirm({
                 title: 'Не отправлено',
-                message: e instanceof Error ? e.message : 'Не удалось отправить материал на согласование.',
+                message: writeResultMessage(e, 'Не удалось отправить материал на согласование.'),
               });
             }
           }} />

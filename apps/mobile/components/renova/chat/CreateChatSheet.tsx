@@ -17,6 +17,7 @@ import { createProjectChat, type ChatParticipantInvite } from '@/lib/createProje
 import type { ChatThread } from '@/lib/api';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { useRenova } from '@/lib/context/RenovaContext';
+import { writeResultMessage } from '@/lib/offlineResultMessage';
 
 const CHAT_TOPICS = [
   { value: 'general', label: 'Общий' },
@@ -168,7 +169,7 @@ export function CreateChatSheet({
     } catch (e: unknown) {
       showActionConfirm({
         title: 'Не удалось создать чат',
-        message: e instanceof Error ? e.message : 'Попробуйте ещё раз',
+        message: writeResultMessage(e, 'Попробуйте ещё раз'),
         primaryLabel: 'Понятно',
         onPrimary: () => undefined,
       });

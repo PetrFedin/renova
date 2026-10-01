@@ -28,6 +28,7 @@ import {
   type IssueTransitionAction,
   type WarrantyAction,
 } from '@/lib/domain/issueLifecycle';
+import { writeResultMessage } from '@/lib/offlineResultMessage';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
 
@@ -268,7 +269,7 @@ export function QualityControlScreen() {
       }
       showActionConfirm({
         title: 'Статус не изменён',
-        message: error instanceof Error ? error.message : 'Повторите операцию ещё раз.',
+        message: writeResultMessage(error, 'Повторите операцию ещё раз.'),
       });
       return false;
     } finally {

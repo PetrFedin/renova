@@ -12,6 +12,7 @@ import { pushOsNav } from '@/lib/pushOsNav';
 import { alertChangeOrderApproved } from '@/lib/procurementNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { reportError } from '@/lib/reportError';
+import { writeResultMessage } from '@/lib/offlineResultMessage';
 
 type Props = {
   userId: string;
@@ -103,7 +104,7 @@ export function EstimateChangesLayer({
                         reportError('components.screens.estimate.EstimateChangesLayer.Approve.Mutation', error, { projectId, orderId: o.id });
                         showActionConfirm({
                           title: 'Не удалось согласовать',
-                          message: error instanceof Error ? error.message : 'Повторите попытку.',
+                          message: writeResultMessage(error, 'Повторите попытку.'),
                         });
                       }
                       return;
@@ -139,7 +140,7 @@ export function EstimateChangesLayer({
                         reportError('components.screens.estimate.EstimateChangesLayer.Reject.Mutation', error, { projectId, orderId: o.id });
                         showActionConfirm({
                           title: 'Не удалось отклонить',
-                          message: error instanceof Error ? error.message : 'Повторите попытку.',
+                          message: writeResultMessage(error, 'Повторите попытку.'),
                         });
                       }
                       return;

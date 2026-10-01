@@ -18,6 +18,7 @@ import { purchaseAdvanceLabel, purchaseCancelStatus } from '@/lib/domain/purchas
 import { alertMaterialPickApproved, alertMaterialPickSubmitted } from '@/lib/procurementNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { resolveSafeDocumentUrl } from '@/lib/documentUrl';
+import { writeResultMessage } from '@/lib/offlineResultMessage';
 
 export function MaterialPickDetailSheet({
   pick,
@@ -124,7 +125,7 @@ export function MaterialPickDetailSheet({
           } catch (error: unknown) {
             showActionConfirm({
               title: 'Материал не согласован',
-              message: error instanceof Error ? error.message : 'Повторите операцию.',
+              message: writeResultMessage(error, 'Повторите операцию.'),
               primaryLabel: 'Понятно',
               onPrimary: () => undefined,
             });
@@ -155,7 +156,7 @@ export function MaterialPickDetailSheet({
           } catch (error: unknown) {
             showActionConfirm({
               title: 'Не отправлено',
-              message: error instanceof Error ? error.message : 'Повторите операцию.',
+              message: writeResultMessage(error, 'Повторите операцию.'),
               primaryLabel: 'Понятно',
               onPrimary: () => undefined,
             });
@@ -186,7 +187,7 @@ export function MaterialPickDetailSheet({
           } catch (error: unknown) {
             showActionConfirm({
               title: 'Закупка не изменена',
-              message: error instanceof Error ? error.message : 'Повторите операцию.',
+              message: writeResultMessage(error, 'Повторите операцию.'),
               primaryLabel: 'Понятно',
               onPrimary: () => undefined,
             });

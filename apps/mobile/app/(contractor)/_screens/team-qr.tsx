@@ -15,6 +15,7 @@ import { reportError } from '@/lib/reportError';
 import { RenovaTheme } from '@/constants/Theme';
 import { QrCodeImage } from '@/components/renova/QrCodeImage';
 import { parseTeamInviteToken, requireSuccessfulTeamJoin, teamJoinErrorMessage } from '@/lib/teamJoinFlow';
+import { writeResultMessage } from '@/lib/offlineResultMessage';
 
 const ROLES = [
   { id: 'member', label: 'Рабочий', hint: 'Этапы, чеки, снабжение' },
@@ -42,7 +43,7 @@ export default function TeamQrScreen() {
       const l = await api.createTeamInviteLink(user.id, role);
       setLink(l.link);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Создайте бригаду в профиле';
+      const msg = writeResultMessage(e, 'Создайте бригаду в профиле');
       // W67 #35
       // Clarity T: Pro gate / error через sheet с CTA
       const isPro = /402|pro|подписк/i.test(msg);

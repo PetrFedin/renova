@@ -22,6 +22,7 @@ import { useNavFromHere } from '@/lib/navigation';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { writeResultMessage } from '@/lib/offlineResultMessage';
 
 export function ContractorControlView() {
   const pathname = usePathname();
@@ -125,7 +126,7 @@ export function ContractorControlView() {
                           reportError('control.markFixed', e);
                           showActionConfirm({
                             title: 'Ошибка',
-                            message: e instanceof Error ? e.message : 'Не удалось отметить',
+                            message: writeResultMessage(e, 'Не удалось отметить'),
                           });
                         }
                       }

@@ -29,6 +29,7 @@ import {
   filterEstimateLines,
   type EstimateLineTypeFilter,
 } from '@/lib/domain/estimateFilters';
+import { writeResultMessage } from '@/lib/offlineResultMessage';
 
 export function ContractorEstimateView() {
   const pathname = usePathname();
@@ -162,7 +163,7 @@ export function ContractorEstimateView() {
                         } catch (e: unknown) {
                           showActionConfirm({
                             title: 'Не удалось',
-                            message: e instanceof Error ? e.message : 'Ошибка отзыва',
+                            message: writeResultMessage(e, 'Ошибка отзыва'),
                           });
                         }
                       })();

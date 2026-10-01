@@ -11,6 +11,7 @@ import type { OsRole } from '@/constants/osSections';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { reportCatch } from '@/lib/reportError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { writeResultMessage } from '@/lib/offlineResultMessage';
 
 /** W114: UI офлайн для вывоза мусора (API уже в offlineQueue) */
 async function runWasteAction(
@@ -29,7 +30,7 @@ async function runWasteAction(
     }
     showActionConfirm({
       title: 'Ошибка',
-      message: e instanceof Error ? e.message : 'Не удалось выполнить действие',
+      message: writeResultMessage(e, 'Не удалось выполнить действие'),
     });
   }
 }

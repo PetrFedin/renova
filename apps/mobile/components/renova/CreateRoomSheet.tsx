@@ -1,4 +1,5 @@
 /** Создание комнаты — исполнитель (Объект → Комнаты) */
+import { OFFLINE_SAVED_MESSAGE, isQueuedResult } from '@/lib/offlineResultMessage';
 import { useEffect, useState } from 'react';
 import { Text, StyleSheet } from 'react-native';
 import { notifyAlert, notifyError } from '@/lib/notify';
@@ -139,7 +140,12 @@ export function CreateRoomSheet({
       // W133: комната → план / смета (запрос комнаты подтверждает вызывающий экран)
       if (!requestMode) alertRoomCreated(role);
     } catch (e) {
-      if (isRateLimitError(e)) {
+      if (isQueuedResult(e)) {
+        // CMP-006: поставлено в очередь (ключ идемпотентности уже в теле) — это не ошибка.
+        resetForm();
+        onClose();
+        notifyAlert(requestMode ? 'Запрос комнаты' : 'Комната', OFFLINE_SAVED_MESSAGE);
+      } else if (isRateLimitError(e)) {
         notifyAlert('Подождите', 'Слишком много запросов. Повторите через несколько секунд.');
       } else {
         notifyError('Ошибка', e, requestMode ? 'Не удалось отправить запрос' : 'Не удалось создать комнату');

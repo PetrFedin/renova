@@ -17,6 +17,7 @@ import { tabsRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
+import { writeResultMessage } from '@/lib/offlineResultMessage';
 
 type DP = { id: string; title: string; version: number; file_url?: string | null; status: string };
 
@@ -133,7 +134,7 @@ export function DesignPackageList({
                         } catch (e: unknown) {
                           showActionConfirm({
                             title: 'Не удалось',
-                            message: e instanceof Error ? e.message : 'Ошибка согласования',
+                            message: writeResultMessage(e, 'Ошибка согласования'),
                           });
                         }
                       })();

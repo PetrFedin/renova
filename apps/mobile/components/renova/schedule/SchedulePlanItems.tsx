@@ -18,6 +18,7 @@ import { reportError } from '@/lib/reportError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { pushStageDetail } from '@/lib/navigation';
 import { pushOsNav } from '@/lib/pushOsNav';
+import { writeResultMessage } from '@/lib/offlineResultMessage';
 
 type Props = {
   schedule: WorkSchedule;
@@ -89,7 +90,7 @@ export function SchedulePlanItems({
         reportError('schedule.planItem.status', e);
         showActionConfirm({
           title: 'Ошибка',
-          message: e instanceof Error ? e.message : 'Не удалось сменить статус',
+          message: writeResultMessage(e, 'Не удалось сменить статус'),
         });
       }
     } finally {

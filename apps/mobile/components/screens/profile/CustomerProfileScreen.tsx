@@ -20,6 +20,7 @@ import { profileScreenStyles as ps } from './profileScreenStyles';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { reportCatch } from '@/lib/reportError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { writeResultMessage } from '@/lib/offlineResultMessage';
 
 const EXTRA_BASIC = [
   { label: 'Помощь', href: '/guide' },
@@ -140,7 +141,7 @@ export function CustomerProfileScreen() {
                 const r = await api.revokeAllSessions(user.id);
                 showActionConfirm({ title: 'Готово', message: `Сессий закрыто: ${r.revoked}. Войдите снова на других устройствах.` });
               } catch (e) {
-                showActionConfirm({ title: 'Ошибка', message: e instanceof Error ? e.message : 'Не удалось' });
+                showActionConfirm({ title: 'Ошибка', message: writeResultMessage(e, 'Не удалось') });
               }
             }}
           />

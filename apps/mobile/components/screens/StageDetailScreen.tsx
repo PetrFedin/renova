@@ -31,6 +31,8 @@ import { repairTabRoute, objectTabHref } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { alertStageAccepted } from '@/lib/acceptanceNav';
 import { notifyOfflineQueued, isOfflineQueued } from '@/lib/offlineUi';
+import { OFFLINE_UPLOAD_BLOCKED } from '@/lib/offlineErrors';
+import { isQueueableWriteError } from '@/lib/api/queueableError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { STAGE_STATUS_LABEL } from '@/constants/labels';
 import { reportError, reportCatch } from '@/lib/reportError';
@@ -318,17 +320,39 @@ export function StageDetailScreen() {
           throw new Error(`Compressed image read failed with status ${compressedResponse.status}`);
         }
         const blob = await compressedResponse.blob();
-        const up = await api.getUploadUrl(user.id, activeProject.id, 'image/jpeg');
-        if (up.upload_url) {
-          const uploadResponse = await fetch(up.upload_url, {
-            method: 'PUT',
-            body: blob,
-            headers: { 'Content-Type': 'image/jpeg' },
-          });
-          if (!uploadResponse.ok) {
-            throw new Error(`Stage photo upload failed with status ${uploadResponse.status}`);
+        let up: { key: string; upload_url: string | null; public_url: string } | null = null;
+        try {
+          up = await api.getUploadUrl(user.id, activeProject.id, 'image/jpeg');
+        } catch (uploadUrlError) {
+          // CMP-027: нет сети на получении upload-url — фото уходит в очередь
+          // inline-base64 (addStagePhoto ставит его сам и бросает offline_queued).
+          if (!isQueueableWriteError(uploadUrlError)) throw uploadUrlError;
+          if (!asset.base64) throw new Error(OFFLINE_UPLOAD_BLOCKED);
+          await api.addStagePhoto(user.id, activeProject.id, stage.id, `data:image/jpeg;base64,${asset.base64}`, label);
+        }
+        if (up === null) {
+          // фото уже отправлено/поставлено в очередь веткой выше
+        } else if (up.upload_url) {
+          let uploaded = false;
+          try {
+            const uploadResponse = await fetch(up.upload_url, {
+              method: 'PUT',
+              body: blob,
+              headers: { 'Content-Type': 'image/jpeg' },
+            });
+            if (!uploadResponse.ok) {
+              throw new Error(`Stage photo upload failed with status ${uploadResponse.status}`);
+            }
+            uploaded = true;
+          } catch (putError) {
+            // Обрыв во время PUT (fetch бросает TypeError) — тот же офлайн-путь.
+            if (!(putError instanceof TypeError) || !asset.base64) throw putError;
           }
-          await api.addStagePhoto(user.id, activeProject.id, stage.id, undefined, label, up.key, up.public_url);
+          if (uploaded) {
+            await api.addStagePhoto(user.id, activeProject.id, stage.id, undefined, label, up.key, up.public_url);
+          } else {
+            await api.addStagePhoto(user.id, activeProject.id, stage.id, `data:image/jpeg;base64,${asset.base64}`, label);
+          }
         } else if (asset.base64) {
           await api.addStagePhoto(user.id, activeProject.id, stage.id, `data:image/jpeg;base64,${asset.base64}`, label);
         } else {

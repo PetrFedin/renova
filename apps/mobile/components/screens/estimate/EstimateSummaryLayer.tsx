@@ -9,6 +9,7 @@ import { pushOsNav } from '@/lib/pushOsNav';
 import type { ProjectDetail } from '@/lib/api';
 import { estimateTotals } from '@/lib/domain/estimateFilters';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { writeResultMessage } from '@/lib/offlineResultMessage';
 
 type Props = {
   project: ProjectDetail;
@@ -120,7 +121,7 @@ export function EstimateSummaryLayer({
                       || (e as { code?: string })?.code === 'estimate_changed_since_proposal'
                       ? 'Смета не зафиксирована'
                       : 'Не удалось',
-                    message: e instanceof Error ? e.message : 'Ошибка фиксации сметы',
+                    message: writeResultMessage(e, 'Ошибка фиксации сметы'),
                   });
                 });
               },
@@ -144,7 +145,7 @@ export function EstimateSummaryLayer({
                 void onRejectProposal().catch((e: unknown) => {
                   showActionConfirm({
                     title: 'Не удалось',
-                    message: e instanceof Error ? e.message : 'Ошибка отклонения',
+                    message: writeResultMessage(e, 'Ошибка отклонения'),
                   });
                 });
               },
@@ -168,7 +169,7 @@ export function EstimateSummaryLayer({
                 void onWithdrawProposal().catch((e: unknown) => {
                   showActionConfirm({
                     title: 'Не удалось',
-                    message: e instanceof Error ? e.message : 'Ошибка отзыва',
+                    message: writeResultMessage(e, 'Ошибка отзыва'),
                   });
                 });
               },

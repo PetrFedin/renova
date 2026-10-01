@@ -29,6 +29,7 @@ import { reportCatch, reportError } from '@/lib/reportError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { InfoBanner } from '@/components/ui/InfoBanner';
 import { alertEstimateFrozen, isEstimateFrozen, ESTIMATE_FROZEN_MESSAGE, ESTIMATE_FROZEN_ACTION } from '@/lib/estimateFrozenHint';
+import { writeResultMessage } from '@/lib/offlineResultMessage';
 
 type RoomMutation = 'archive' | 'save' | 'materials';
 type RoomLoadState = 'loading' | 'ready' | 'error';
@@ -168,7 +169,7 @@ export function RoomDetailScreen() {
             else {
               showActionConfirm({
                 title: 'Ошибка',
-                message: error instanceof Error ? error.message : 'Не удалось изменить архив',
+                message: writeResultMessage(error, 'Не удалось изменить архив'),
               });
             }
             return;
@@ -197,7 +198,7 @@ export function RoomDetailScreen() {
         } else {
           showActionConfirm({
             title: 'Не удалось сохранить комнату',
-            message: error instanceof Error ? error.message : 'Повторите попытку.',
+            message: writeResultMessage(error, 'Повторите попытку.'),
           });
         }
         return;

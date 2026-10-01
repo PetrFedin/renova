@@ -40,6 +40,7 @@ import {
   alertScheduleSubmitted,
 } from '@/lib/scheduleCloseoutNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { writeResultMessage } from '@/lib/offlineResultMessage';
 
 const KIND: Record<string, string> = {
   stage_period: 'Этап',
@@ -424,7 +425,7 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
                     } else {
                       showActionConfirm({
                         title: 'Не удалось создать план',
-                        message: e instanceof Error ? e.message : 'Повторите попытку после обновления',
+                        message: writeResultMessage(e, 'Повторите попытку после обновления'),
                       });
                     }
                   } finally {
@@ -484,7 +485,7 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
                             else {
                               showActionConfirm({
                                 title: 'Ошибка',
-                                message: e instanceof Error ? e.message : 'Не удалось согласовать',
+                                message: writeResultMessage(e, 'Не удалось согласовать'),
                               });
                             }
                           } finally {
@@ -527,7 +528,7 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
                               else {
                                 showActionConfirm({
                                   title: 'Ошибка',
-                                  message: e instanceof Error ? e.message : 'Не удалось отклонить',
+                                  message: writeResultMessage(e, 'Не удалось отклонить'),
                                 });
                               }
                             } finally {

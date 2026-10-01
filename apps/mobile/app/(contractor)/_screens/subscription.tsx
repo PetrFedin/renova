@@ -10,6 +10,7 @@ import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api } from '@/lib/api';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { writeResultMessage } from '@/lib/offlineResultMessage';
 
 type Sub = Awaited<ReturnType<typeof api.getSubscription>>;
 
@@ -48,7 +49,7 @@ export default function SubscriptionScreen() {
         message: '14 дней открыты. Оформите оплату до конца trial — иначе вернётесь на бесплатный лимит.',
       });
     } catch (e: unknown) {
-      showActionConfirm({ title: 'Trial', message: e instanceof Error ? e.message : 'Пробный период недоступен' });
+      showActionConfirm({ title: 'Trial', message: writeResultMessage(e, 'Пробный период недоступен') });
     } finally {
       setBusy(false);
     }
@@ -71,7 +72,7 @@ export default function SubscriptionScreen() {
       }
       await reload();
     } catch (e: unknown) {
-      showActionConfirm({ title: 'Оплата', message: e instanceof Error ? e.message : 'Не удалось начать оплату' });
+      showActionConfirm({ title: 'Оплата', message: writeResultMessage(e, 'Не удалось начать оплату') });
     } finally {
       setBusy(false);
     }

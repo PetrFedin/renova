@@ -23,6 +23,7 @@ import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { objectTabRoute } from '@/constants/osSections';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { writeResultMessage } from '@/lib/offlineResultMessage';
 
 export function CustomerControlView() {
   const pathname = usePathname();
@@ -188,7 +189,7 @@ export function CustomerControlView() {
                           reportError('control.customerClose', e);
                           showActionConfirm({
                             title: 'Ошибка',
-                            message: e instanceof Error ? e.message : 'Не удалось обновить',
+                            message: writeResultMessage(e, 'Не удалось обновить'),
                           });
                         }
                       }

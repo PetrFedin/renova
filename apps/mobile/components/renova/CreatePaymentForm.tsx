@@ -90,9 +90,9 @@ export function CreatePaymentForm({
       });
       created = true;
     } catch (error: unknown) {
-      const offlineBlocked = error instanceof Error && error.message === OFFLINE_PAYMENT_CREATE_BLOCKED;
-      const message = offlineBlocked
-        ? OFFLINE_MESSAGES[OFFLINE_PAYMENT_CREATE_BLOCKED]
+      const offlineCode = error instanceof Error && error.message in OFFLINE_MESSAGES ? error.message : null;
+      const message = offlineCode
+        ? OFFLINE_MESSAGES[offlineCode]
         : apiErrorMessage(error, 'Не удалось создать счёт');
       showActionConfirm({
         title: 'Не удалось создать счёт',
