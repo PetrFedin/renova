@@ -9,6 +9,7 @@ import { BackHeader } from '@/components/renova/BackHeader';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api } from '@/lib/api';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { reportError } from '@/lib/reportError';
 
 type Tpl = { id: string; name: string; items: string[] };
@@ -19,16 +20,21 @@ export default function ChecklistTemplatesScreen() {
   const [items, setItems] = useState<Tpl[]>([]);
   const [name, setName] = useState('');
   const [lines, setLines] = useState('');
+  const [loadError, setLoadError] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const reload = useCallback(() => {
     if (!user) return;
-    api.listChecklistTemplates(user.id).then(setItems).catch((e) => { reportError('app._stack.checklist-templates.Items', e); setItems([]); });
+    api.listChecklistTemplates(user.id)
+      .then((list) => { setItems(list); setLoadError(false); })
+      .catch((e) => { reportError('app._stack.checklist-templates.Items', e); setLoadError(true); });
   }, [user?.id]);
 
   useFocusEffect(useCallback(() => { reload(); }, [reload]));
   useProjectDataReload(reload);
 
   async function save() {
+    if (saving) return;
     if (!user || !name.trim()) {
       notifyAlert('Шаблон', 'Введите название');
       return;
@@ -38,6 +44,7 @@ export default function ChecklistTemplatesScreen() {
       notifyAlert('Шаблон', 'Добавьте пункты чеклиста (по одному на строку)');
       return;
     }
+    setSaving(true);
     try {
       await api.saveChecklistTemplate(user.id, name.trim(), parsed);
       setName('');
@@ -45,12 +52,15 @@ export default function ChecklistTemplatesScreen() {
       reload();
     } catch (err) {
       notifyError('Ошибка', err, 'Не удалось сохранить шаблон');
+    } finally {
+      setSaving(false);
     }
   }
 
   return (
+    <>
+    <BackHeader title="Шаблоны чеклиста" returnTo={returnTo} />
     <ScrollView style={s.wrap} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
-      <BackHeader title="Шаблоны чеклиста" />
       {!user ? <Text style={s.muted}>Войдите в аккаунт</Text> : (
         <>
           <Text style={s.hint}>Пункты для приёмки этапов. Один пункт — одна строка.</Text>
@@ -62,9 +72,10 @@ export default function ChecklistTemplatesScreen() {
             onChangeText={setLines}
             multiline
           />
-          <PrimaryButton title="Сохранить шаблон" onPress={save} />
+          <PrimaryButton title="Сохранить шаблон" variant="accent" loading={saving} onPress={save} />
           <Text style={s.section}>Сохранённые ({items.length})</Text>
-          {!items.length && <Text style={s.muted}>Пока нет шаблонов</Text>}
+          {loadError ? <LoadErrorState title="Не удалось загрузить шаблоны" onRetry={reload} /> : null}
+          {!loadError && !items.length && <Text style={s.muted}>Пока нет шаблонов</Text>}
           {items.map((t) => (
             <View key={t.id} style={s.card}>
               <Text style={s.title}>{t.name}</Text>
@@ -76,6 +87,7 @@ export default function ChecklistTemplatesScreen() {
         </>
       )}
     </ScrollView>
+    </>
   );
 }
 

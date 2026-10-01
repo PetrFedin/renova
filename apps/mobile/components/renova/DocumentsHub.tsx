@@ -2,7 +2,7 @@ import { reportError, reportCatch } from '@/lib/reportError';
 /** Документы проекта — по разделам + единый индекс Document Center */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, ActivityIndicator, Platform, Linking } from 'react-native';
-import { notifyError } from '@/lib/notify';
+import { notifyError, confirmAction } from '@/lib/notify';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
@@ -47,6 +47,8 @@ type DocRow = {
   run?: () => Promise<void>;
   /** PDF — по нажатию меню: открыть / скачать / поделиться */
   pdf?: boolean;
+  /** Меняет данные объекта — скрывается при режиме «только просмотр» (INB-10) */
+  write?: boolean;
 };
 
 type DocSection = {
@@ -96,7 +98,7 @@ export function DocumentsHub({
   projectId: string;
   projectName?: string;
 }) {
-  const { user, activeProject, loadProject } = useRenova();
+  const { user, activeProject, loadProject, readOnly } = useRenova();
   const isContractor = user?.role === 'contractor';
   const isArchived = Boolean(activeProject?.is_archived);
   const [busy, setBusy] = useState<string | null>(null);
@@ -111,7 +113,7 @@ export function DocumentsHub({
   const [konturAvailable, setKonturAvailable] = useState(false);
   const [konturMode, setKonturMode] = useState<'off' | 'sandbox' | 'live' | string>('off');
   // OCR в Document Center — локальная heuristic-классификация, не remote ML demo.
-  const ocrModeLabel = 'LOCAL';
+  const ocrModeLabel = 'на устройстве';
   const contextRef = useRef({ userId: user?.id ?? null, projectId: activeProject?.id ?? null });
   contextRef.current = { userId: user?.id ?? null, projectId: activeProject?.id ?? null };
 
@@ -273,6 +275,7 @@ export function DocumentsHub({
         label: 'Импорт выписки',
         desc: 'CSV банка → сопоставление → подтверждение оплат (после приёмки этапа)',
         format: 'CSV',
+        write: true,
         run: async () => {
           setBankImportOpen(true);
         },
@@ -280,17 +283,24 @@ export function DocumentsHub({
       weeklyDigest: {
         id: 'digest',
         label: 'Недельный дайджест',
-        desc: 'Push + KPI PDF · rule-based (Ollama опционально)',
-        format: 'Push',
+        desc: 'Сводка недели всем участникам объекта + PDF с показателями',
+        format: 'Рассылка',
+        write: true,
         run: async () => {
+          // INB-11: рассылка уведомлений и новый документ — только после подтверждения
+          const ok = await confirmAction({
+            title: 'Отправить недельный дайджест?',
+            message: 'Все участники объекта получат уведомление, а в документах появится новый файл «Дайджест». Это действие нельзя отменить.',
+            confirmLabel: 'Отправить',
+          });
+          if (!ok) return;
           const res = await api.pushWeeklyDigest(userId, projectId);
-          const modeLabel =
-            res.source === 'ollama' ? 'Текст: Ollama' : 'Текст: rule-based (без LLM)';
+          const modeLabel = 'Сводка составлена автоматически';
           const role = (isContractor ? 'contractor' : 'customer') as OsRole;
           // Clarity I: sheet вместо Alert после дайджеста
           showActionConfirm({
             title: 'Дайджест отправлен',
-            message: `${modeLabel}\nУведомлений: ${res.notified}\n\n${(res.body || '').slice(0, 220)}`,
+            message: `${modeLabel}\nПолучили уведомление: ${res.notified}\n\n${(res.body || '').slice(0, 220)}`,
             primaryLabel: 'Входящие',
             onPrimary: () => pushOsNav('/inbox', undefined, role),
             secondaryLabel: 'KPI PDF',
@@ -304,8 +314,9 @@ export function DocumentsHub({
       portalShare: {
         id: 'portal',
         label: isContractor ? 'Портал заказчику' : 'Мой клиентский портал',
-        desc: isContractor ? 'Magic-link: только просмотр' : 'Magic-link: просмотр (права — в профиле)',
-        format: 'Link',
+        desc: isContractor ? 'Ссылка для заказчика: только просмотр' : 'Ссылка для просмотра без входа (права — в профиле)',
+        format: 'Ссылка',
+        write: true,
         run: async () => {
           // Безопасный дефолт: ссылка только на просмотр. Приёмка/подпись/оплата
           // включаются явно заказчиком в PortalSharePanel (исполнителю недоступны).
@@ -319,9 +330,10 @@ export function DocumentsHub({
       },
       warrantyClaim: {
         id: 'warranty',
+        write: true,
         label: isArchived ? 'Гарантия после сдачи' : 'Гарантийное обращение',
         desc: isArchived
-          ? (isContractor ? 'Post-closeout тикет → QC (SLA 14 дней)' : 'После сдачи объекта — SLA 14 дней')
+          ? (isContractor ? 'Обращение после сдачи → контроль качества (ответ в течение 14 дней)' : 'После сдачи объекта — ответ в течение 14 дней')
           : isContractor
             ? 'Тикет → QC исполнителя'
             : 'Создать / закрыть открытые (нужно для closeout)',
@@ -376,12 +388,13 @@ export function DocumentsHub({
         desc: isContractor
           ? 'Статус готовности (завершает только заказчик)'
           : 'Чеклист этапов / оплат / гарантии',
-        format: 'Closeout',
+        format: 'Завершение',
+        write: true,
         run: async () => {
           const snap = await api.closeoutChecklist(userId, projectId);
           if (snap.archived) {
             showActionConfirm({
-              title: 'Closeout',
+              title: 'Завершение объекта',
               message: 'Объект уже в архиве',
               primaryLabel: 'Понятно',
               onPrimary: () => undefined,
@@ -391,8 +404,8 @@ export function DocumentsHub({
           const body = [
             snap.next_action,
             `Этапы: ${snap.all_stages_done ? 'все сданы' : 'есть открытые'}`,
-            `Оплаты pending: ${snap.pending_payments}`,
-            `Гарантия open: ${snap.warranty_open}${snap.warranty_overdue ? ` (просрочено: ${snap.warranty_overdue})` : ''}`,
+            `Оплаты в ожидании: ${snap.pending_payments}`,
+            `Открытые гарантийные обращения: ${snap.warranty_open}${snap.warranty_overdue ? ` (просрочено: ${snap.warranty_overdue})` : ''}`,
             `Акты: ${snap.acceptance_acts_active}`,
           ].join('\n');
           // W61: исполнитель видит чеклист, архивирует только заказчик
@@ -515,12 +528,12 @@ export function DocumentsHub({
       {
         title: 'Главное',
         hint: 'То, что чаще всего нужно заказчику',
-        rows: [rows.estimatePdf, rows.projectPdf, rows.expensesCsv, rows.portalShare],
+        rows: [rows.estimatePdf, rows.projectPdf, rows.expensesCsv, rows.portalShare].filter((row) => !(readOnly && (row as DocRow).write)),
       },
       {
         title: 'Учёт RU',
-        hint: 'W67: 1С/банк — файлы для ручного импорта, не live API',
-        rows: [rows.onecCsv, rows.onecXml, rows.onecCml, rows.bankCsv, rows.bankImport, rows.weeklyDigest, rows.warrantyClaim, rows.closeout],
+        hint: '1С и банк — файлы для ручного импорта, без прямой связи с сервисами',
+        rows: [rows.onecCsv, rows.onecXml, rows.onecCml, rows.bankCsv, rows.bankImport, rows.weeklyDigest, rows.warrantyClaim, rows.closeout].filter((row) => !(readOnly && (row as DocRow).write)),
       },
       {
         title: 'Архив и сроки',
@@ -535,7 +548,7 @@ export function DocumentsHub({
         rows: [rows.dossierPdf, rows.gdpr],
       },
     ];
-  }, [userId, projectId, user?.role, isArchived, reconcileProjectAfterCommit]);
+  }, [userId, projectId, user?.role, isArchived, readOnly, reconcileProjectAfterCommit]);
 
   async function withBusy(id: string, fn: () => Promise<void>) {
     setBusy(id);
@@ -691,21 +704,35 @@ export function DocumentsHub({
     // Wave 3d: действия Document Center для канонических документов
     const role = (user?.role === 'contractor' ? 'contractor' : 'customer') as OsRole;
     const section = documentSectionTarget(role, doc);
-    const actions: { text: string; onPress?: () => void; style?: 'cancel' | 'destructive' }[] = [
+    const readActions: { text: string; onPress?: () => void }[] = [
       { text: 'Открыть', onPress: openFile },
       {
         text: section.label,
         onPress: () => pushOsNav(section.route, undefined, role),
       },
+    ];
+    // INB-10: наблюдатель только смотрит — действия, которые сервер всё равно отклонит, не показываем
+    const writeActions: { text: string; onPress?: () => void }[] = readOnly ? [] : [
       {
         text: 'Подписать в приложении',
-        onPress: () => withBusy(`sign-${doc.id}`, async () => {
-          await api.signProjectDocument(userId, projectId, doc.id, { provider: 'in_app' });
-          await reloadIndex();
-          void reconcileProjectAfterCommit('SignInApp');
-          // W132: подпись → документы / график
-          alertDocumentSigned(role, 'in_app');
-        }),
+        onPress: () => {
+          // INB-13: подпись — юридически значимое действие, поэтому явное подтверждение с названием и версией
+          void (async () => {
+            const ok = await confirmAction({
+              title: 'Подписать документ?',
+              message: `Вы подписываете «${doc.title}»${doc.version != null ? ` (версия ${doc.version})` : ''}. Это простая электронная подпись в приложении, не квалифицированная. После подписи документ изменить нельзя.`,
+              confirmLabel: 'Подписать',
+            });
+            if (!ok) return;
+            await withBusy(`sign-${doc.id}`, async () => {
+              await api.signProjectDocument(userId, projectId, doc.id, { provider: 'in_app' });
+              await reloadIndex();
+              void reconcileProjectAfterCommit('SignInApp');
+              // W132: подпись → документы / график
+              alertDocumentSigned(role, 'in_app');
+            });
+          })();
+        },
       },
       ...(konturAvailable ? [{
         text: 'Подписать через Контур',
@@ -743,7 +770,7 @@ export function DocumentsHub({
         }),
       }] : []),
       {
-        text: 'Распознать тип (OCR)',
+        text: 'Распознать тип документа',
         onPress: () => withBusy(`ocr-${doc.id}`, async () => {
           await api.runDocumentOcr(userId, projectId, doc.id, true);
           await reloadIndex();
@@ -752,20 +779,35 @@ export function DocumentsHub({
         }),
       },
       {
-        text: doc.meta?.legal_hold ? 'Снять legal hold' : 'Legal hold',
+        text: doc.meta?.legal_hold ? 'Снять защиту от удаления' : 'Защитить от удаления',
         onPress: () => withBusy(`hold-${doc.id}`, async () => {
           await api.setDocumentLegalHold(userId, projectId, doc.id, !doc.meta?.legal_hold);
           await reloadIndex();
         }),
       },
       {
-        text: 'Архив',
-        onPress: () => withBusy(`arch-${doc.id}`, async () => {
-          await api.archiveProjectDocument(userId, projectId, doc.id);
-          await reloadIndex();
-        }),
+        text: 'В архив',
+        onPress: () => {
+          // INB-12: архивация убирает документ из рабочего списка — только после подтверждения
+          void (async () => {
+            const ok = await confirmAction({
+              title: 'Отправить документ в архив?',
+              message: doc.status === 'active' || doc.status === 'signed'
+                ? `«${doc.title}» уже подписан. После архивации он пропадёт из рабочего списка документов.`
+                : `«${doc.title}» пропадёт из рабочего списка документов.`,
+              confirmLabel: 'В архив',
+              destructive: true,
+            });
+            if (!ok) return;
+            await withBusy(`arch-${doc.id}`, async () => {
+              await api.archiveProjectDocument(userId, projectId, doc.id);
+              await reloadIndex();
+            });
+          })();
+        },
       },
     ];
+    const actions = [...readActions, ...writeActions];
     showActionConfirm({
       title: doc.title,
       message: formatDocMeta(doc),
@@ -875,7 +917,7 @@ export function DocumentsHub({
             variant="accent"
             compact
             loading={contractCreating}
-            disabled={isArchived}
+            disabled={isArchived || readOnly}
             onPress={() => { void createContract(); }}
           />
         </View>
@@ -912,11 +954,11 @@ export function DocumentsHub({
       ) : null}
 
       <View style={s.modeRow} accessibilityLabel="Режимы интеграций документов">
-        <Text style={[s.modeChip, s.modeWarn]}>OCR: {ocrModeLabel}</Text>
+        <Text style={[s.modeChip, s.modeWarn]}>Распознавание: {ocrModeLabel}</Text>
         <Text style={[s.modeChip, konturMode === 'live' ? s.modeOk : s.modeWarn]}>
-          Kontur: {(konturMode || 'off').toUpperCase()}{konturAvailable ? '' : ' · UNAVAILABLE'}
+          {konturAvailable ? `Контур.Подпись: ${konturMode === 'live' ? 'работает' : 'тестовый режим'}` : 'Контур.Подпись: недоступен'}
         </Text>
-        <Text style={[s.modeChip, s.modeWarn]}>Подпись: {konturAvailable ? 'PROVIDER' : 'IN_APP / LOCAL'}</Text>
+        <Text style={[s.modeChip, s.modeWarn]}>Подпись: {konturAvailable ? 'через Контур или в приложении' : 'только в приложении'}</Text>
       </View>
 
       <View style={s.indexCard}>
@@ -927,7 +969,7 @@ export function DocumentsHub({
           </View>
           <View style={{ alignItems: 'flex-end', gap: 8 }}>
             {indexLoading ? <ActivityIndicator size="small" color={RenovaTheme.colors.primary} /> : null}
-            <Pressable
+            {readOnly ? null : <Pressable
               onPress={() => { void uploadCanonicalDocument(); }}
               disabled={Boolean(busy)}
               style={s.uploadBtn}
@@ -935,7 +977,7 @@ export function DocumentsHub({
               accessibilityLabel="Загрузить документ"
             >
               <Text style={s.uploadBtnText}>{busy === 'upload' ? '…' : '+ Файл'}</Text>
-            </Pressable>
+            </Pressable>}
           </View>
         </View>
         {docIndex ? (
@@ -1057,7 +1099,7 @@ const s = StyleSheet.create({
   indexCard: { marginBottom: 18, gap: 10 },
   indexHeader: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' },
   indexTitle: { ...screenTypography.listTitle, fontSize: 16 },
-  uploadBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: RenovaTheme.colors.primary },
+  uploadBtn: { minHeight: RenovaTheme.minTouch, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10, backgroundColor: RenovaTheme.colors.primary },
   uploadBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   indexHint: { ...screenTypography.listMeta, marginTop: 3 },
   indexEmpty: { ...screenTypography.empty },

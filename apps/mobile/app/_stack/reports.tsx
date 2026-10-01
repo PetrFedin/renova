@@ -2,7 +2,7 @@
  * JSON preview sources are independent and must never turn load failure into fake loading/empty truth. */
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, ScrollView, View, Text, StyleSheet } from 'react-native';
-import { notifyAlert, notifyError } from '@/lib/notify';
+import { notifyAlert, notifyError, confirmAction } from '@/lib/notify';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
@@ -201,12 +201,16 @@ export default function ReportsScreen() {
           <HomeLinkRow
             title="Отправить недельный дайджест"
             onPress={async () => {
+              // INB-11: рассылка всем участникам и новый документ — только после подтверждения
+              const ok = await confirmAction({
+                title: 'Отправить недельный дайджест?',
+                message: 'Все участники объекта получат уведомление, а в документах появится новый файл «Дайджест».',
+                confirmLabel: 'Отправить',
+              });
+              if (!ok) return;
               try {
                 const res = await api.pushWeeklyDigest(user.id, activeProject.id);
-                notifyAlert(
-                  'Дайджест',
-                  `${res.source === 'ollama' ? 'Ollama' : 'Rule-based'} · уведомлений ${res.notified}`,
-                );
+                notifyAlert('Дайджест отправлен', `Получили уведомление: ${res.notified}`);
               } catch (e: unknown) {
                 notifyError('Дайджест', e, 'Не удалось отправить');
               }
