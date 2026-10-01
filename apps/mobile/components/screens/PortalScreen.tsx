@@ -7,6 +7,7 @@ import {
   Share,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
@@ -16,6 +17,8 @@ import * as WebBrowser from 'expo-web-browser';
 
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { PaymentDetailSheet } from '@/components/renova/PaymentDetailSheet';
+import { SheetSurface, sheetContentStyles } from '@/components/renova/SheetSurface';
+import { portalLoadErrorMessage } from '@/lib/domain/portalErrors';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { PAYMENT_BLOCKED_ACCEPTANCE_MSG } from '@/constants/labels';
 import { listRowStyles, screenTypography } from '@/constants/screenTypography';
@@ -130,6 +133,18 @@ export default function PortalScreen() {
   const documentsY = useRef(0);
   const [sheetPayment, setSheetPayment] = useState<Payment | null>(null);
   const [sheetStages, setSheetStages] = useState<Stage[]>([]);
+  // INB-19: гость/заказчик сам называет причину отказа — исполнитель получает содержательную задачу
+  const [reasonAsk, setReasonAsk] = useState<{
+    key: string;
+    title: string;
+    hint: string;
+    submitLabel: string;
+    intent: PortalActionIntent;
+    errorTitle: string;
+    task: (reason: string) => Promise<unknown>;
+    onSuccess: () => void;
+  } | null>(null);
+  const [reasonText, setReasonText] = useState('');
 
   const refreshPortalSnapshot = useCallback(async (currentSession: PortalSession) => {
     const next = await api.portalSnapshot(currentSession.user_id, currentSession.project_id);
@@ -285,7 +300,7 @@ export default function PortalScreen() {
         }
       } catch (error) {
         if (!cancelled) {
-          setErrorMessage(apiErrorMessage(error, 'Ссылка недействительна, истекла или объект недоступен.'));
+          setErrorMessage(portalLoadErrorMessage(error));
           setLoadState('error');
         }
       }
@@ -399,17 +414,16 @@ export default function PortalScreen() {
   };
 
   const returnStage = (acceptance: PortalAcceptance) => {
-    confirmMutation({
+    setReasonText('');
+    setReasonAsk({
       key: portalMutationKey('acceptance:return', acceptance.id),
       title: 'Вернуть этап на доработку?',
-      message: `«${acceptance.stage_name || 'Работы'}» вернутся исполнителю с задачей исправить результат.`,
-      primaryLabel: 'Вернуть',
+      hint: `«${acceptance.stage_name || 'Этап'}» вернётся исполнителю. Опишите, что нужно исправить — он увидит это в задаче.`,
+      submitLabel: 'Вернуть',
       intent: 'destructive',
-      task: () => api.portalReturnStage(session.project_id, acceptance.id, portalToken, 'Нужна доработка'),
       errorTitle: 'Не удалось вернуть этап',
-      onSuccess: () => {
-        showActionConfirm({ title: 'Возвращено', message: 'Исполнитель получил задачу на доработку.' });
-      },
+      task: (reason) => api.portalReturnStage(session.project_id, acceptance.id, portalToken, reason),
+      onSuccess: () => showActionConfirm({ title: 'Возвращено', message: 'Исполнитель получил задачу на доработку.' }),
     });
   };
 
@@ -436,6 +450,20 @@ export default function PortalScreen() {
 
   const decideEstimate = (decision: 'lock' | 'reject') => {
     const locking = decision === 'lock';
+    if (!locking) {
+      setReasonText('');
+      setReasonAsk({
+        key: portalMutationKey('estimate:reject'),
+        title: 'Отклонить смету?',
+        hint: 'Что нужно поправить в смете? Исполнитель получит ваш комментарий.',
+        submitLabel: 'Отклонить',
+        intent: 'destructive',
+        errorTitle: 'Не удалось отклонить смету',
+        task: (reason) => api.portalRejectEstimate(session.project_id, portalToken, reason),
+        onSuccess: () => showActionConfirm({ title: 'Смета возвращена', message: 'Исполнитель получил уведомление.' }),
+      });
+      return;
+    }
     confirmMutation({
       key: portalMutationKey(`estimate:${decision}`),
       title: locking ? 'Зафиксировать смету?' : 'Отклонить смету?',
@@ -667,22 +695,20 @@ export default function PortalScreen() {
                   compact
                   loading={mutationKey === portalMutationKey('schedule:reject', snapshot.pending_work_schedule.id)}
                   disabled={busy}
-                  onPress={() => confirmMutation({
-                    key: portalMutationKey('schedule:reject', snapshot.pending_work_schedule!.id),
-                    title: 'Отклонить график?',
-                    message: 'Исполнитель получит задачу скорректировать сроки.',
-                    primaryLabel: 'Отклонить',
-                    intent: 'destructive',
-                    task: () => api.portalRejectSchedule(
-                      session.user_id,
-                      session.project_id,
-                      snapshot.pending_work_schedule!.id,
-                      portalToken,
-                      'Нужна правка сроков',
-                    ),
-                    errorTitle: 'Не удалось отклонить график',
-                    onSuccess: () => showActionConfirm({ title: 'График возвращён', message: 'Исполнитель получил задачу на правку.' }),
-                  })}
+                  onPress={() => {
+                    const scheduleId = snapshot.pending_work_schedule!.id;
+                    setReasonText('');
+                    setReasonAsk({
+                      key: portalMutationKey('schedule:reject', scheduleId),
+                      title: 'Отклонить график?',
+                      hint: 'Какие сроки нужно изменить? Исполнитель получит ваш комментарий.',
+                      submitLabel: 'Отклонить',
+                      intent: 'destructive',
+                      errorTitle: 'Не удалось отклонить график',
+                      task: (reason) => api.portalRejectSchedule(session.user_id, session.project_id, scheduleId, portalToken, reason),
+                      onSuccess: () => showActionConfirm({ title: 'График возвращён', message: 'Исполнитель получил задачу на правку.' }),
+                    });
+                  }}
                 />
               </PortalActionRow>
             ) : <Text style={styles.meta}>Ожидает решения пользователя с правом согласования.</Text>}
@@ -902,6 +928,41 @@ export default function PortalScreen() {
           ))}
         </PortalSection>
       </ScrollView>
+
+      <SheetSurface
+        visible={Boolean(reasonAsk)}
+        onClose={() => { if (!busy) setReasonAsk(null); }}
+        busy={busy}
+        title={reasonAsk?.title ?? ''}
+        footer={
+          <>
+            <PrimaryButton
+              title={reasonAsk?.submitLabel ?? 'Отправить'}
+              variant={portalActionVariant(reasonAsk?.intent ?? 'primary')}
+              disabled={!reasonText.trim() || busy}
+              onPress={() => {
+                const ask = reasonAsk;
+                const reason = reasonText.trim();
+                if (!ask || !reason) return;
+                setReasonAsk(null);
+                void runPortalMutation(ask.key, () => ask.task(reason), { errorTitle: ask.errorTitle, onSuccess: ask.onSuccess });
+              }}
+            />
+            <PrimaryButton title="Отмена" variant="ghost" disabled={busy} onPress={() => setReasonAsk(null)} />
+          </>
+        }
+      >
+        <Text style={styles.meta}>{reasonAsk?.hint}</Text>
+        <TextInput
+          style={[sheetContentStyles.input, { minHeight: 80, textAlignVertical: 'top' }]}
+          placeholder="Причина (обязательно)…"
+          accessibilityLabel="Причина"
+          value={reasonText}
+          onChangeText={setReasonText}
+          multiline
+          editable={!busy}
+        />
+      </SheetSurface>
 
       <PaymentDetailSheet
         payment={sheetPayment}
