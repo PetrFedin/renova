@@ -474,6 +474,9 @@ async def update_dates(
         if next_start == stage.planned_start and next_end == stage.planned_end:
             await db.commit()
             return StageMutationResult(stage, True)
+        if stage.status == StageStatus.done:
+            # STG-008: dates of an accepted stage are history.
+            raise ValueError("stage_dates_locked_done")
         stage.planned_start = next_start
         stage.planned_end = next_end
         if not stage.ical_uid:
@@ -482,9 +485,6 @@ async def update_dates(
             db,
             stage=stage,
             actor_id=actor.id,
-        if stage.status == StageStatus.done:
-            # STG-008: dates of an accepted stage are history.
-            raise ValueError("stage_dates_locked_done")
             kind="StageDatesChanged",
             title=f"Изменены даты этапа: {stage.name}",
             body=(
