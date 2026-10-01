@@ -173,7 +173,7 @@ export function ContractorProfileScreen() {
 
       {user ? (
         <ProfileSection title="Уведомления">
-          <Text style={ps.userMeta}>Задачи, упоминания и уведомления собраны в едином Inbox.</Text>
+          <Text style={ps.userMeta}>Задачи, упоминания и уведомления собраны в разделе «Входящие».</Text>
           <PrimaryButton title="Открыть входящие" variant="outline" onPress={() => pushOsNav('/inbox', nav.from, 'contractor')} />
         </ProfileSection>
       ) : null}

@@ -95,7 +95,7 @@ export function ContractorInvitePanel({
             }}
           />
           <Text style={s.gapHint}>
-            Нет native WhatsApp API — только системное «Поделиться». Чат объекта — внутри Renova.
+            Прямой отправки в WhatsApp нет — только системное «Поделиться». Чат объекта — внутри Renova.
           </Text>
         </>
       )}
