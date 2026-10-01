@@ -159,6 +159,10 @@ async def create_payment(
         raise HTTPException(403, "Заказчик создаёт аванс/финал")
     if user.role == UserRole.contractor and body.payment_type not in ("stage", "material"):
         raise HTTPException(403, "Исполнитель создаёт оплату этапа/материалов")
+    if user.role == UserRole.contractor:
+        from app.services import team_service as team_svc
+
+        await team_svc.require_capability(db, user, project, "billing")  # MNY-004
 
     stage = None
     if body.payment_type == PaymentType.stage.value:

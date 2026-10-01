@@ -615,6 +615,12 @@ async def require_capability(
         if effective in ("owner", "foreman"):
             return effective
         raise HTTPException(403, "schedule_foreman_or_owner_only")
+    if capability == "billing":
+        # MNY-004: invoices and change orders commit the customer's money; a plain
+        # team member (field worker) must not issue them.
+        if effective in ("owner", "foreman"):
+            return effective
+        raise HTTPException(403, "billing_foreman_or_owner_only")
     if capability == "estimate_lock":
         if effective == "owner":
             return effective

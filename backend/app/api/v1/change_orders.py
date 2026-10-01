@@ -48,9 +48,12 @@ async def list_co(project_id: str, user: User = Depends(get_current_user), db: A
 
 @router.post("")
 async def create_co(project_id: str, body: ChangeOrderCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await require_project(db, project_id, user, write=True)
+    project = await require_project(db, project_id, user, write=True)
     if user.role != UserRole.contractor:
         raise HTTPException(403)
+    from app.services import team_service as team_svc
+
+    await team_svc.require_capability(db, user, project, "billing")  # MNY-004
 
     from app.services.change_order_create_service import prepare_order
     from app.services.client_write_idempotency import (
