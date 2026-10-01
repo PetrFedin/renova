@@ -1,6 +1,6 @@
 /** Подключение исполнителя к объекту */
 import { useState } from 'react';
-import { View, Text, StyleSheet, Share } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { notifyError } from '@/lib/notify';
 import { AssignmentRequestsCard } from '@/components/renova/AssignmentRequestsCard';
 import { api } from '@/lib/api';
@@ -11,6 +11,7 @@ import { RenovaTheme } from '@/constants/Theme';
 import { StatusPill } from '@/components/ui/StatusPill';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { messengerShareMessage } from '@/lib/messengerGap';
+import { shareText } from '@/lib/messengerShare';
 
 type Props = {
   userId: string;
@@ -90,7 +91,7 @@ export function ContractorInvitePanel({
                 `Код объекта Renova: ${code}`,
                 'приглашение исполнителя',
               );
-              void Share.share({ message, title: 'Renova' });
+              void shareText(message, 'Renova');
             }}
           />
           <Text style={s.gapHint}>
