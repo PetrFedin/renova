@@ -476,6 +476,11 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
 
         if (!uid) return;
 
+        // Холодный старт: метка сессии должна знать userId ДО api.me(uid), иначе
+        // authHeaders() (#315) не приложит Bearer к запросу с чужим/пустым userId
+        // и восстановление сессии заканчивается 401 → выходом.
+        if (storedTok) beginSession(uid);
+
         const expectedRole = storedRole === 'customer' || storedRole === 'contractor' ? storedRole : null;
         const snapshot = parseSessionUserSnapshot(storedSnapshot, { id: uid, role: expectedRole });
 
