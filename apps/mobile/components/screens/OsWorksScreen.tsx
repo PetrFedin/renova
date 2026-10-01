@@ -36,6 +36,7 @@ import { tabsRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { screenLayout } from '@/constants/screenLayout';
 import { reportCatch, reportError } from '@/lib/reportError';
+import { todayIso } from '@/lib/localDate';
 
 const FILTERS = [
   { key: 'all', label: WORKS_FILTER_LABEL.all },
@@ -138,7 +139,7 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
 
   const stages = useMemo(() => {
     if (!activeProject) return [];
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayIso();
     const base = [...activeProject.stages]
       .sort((a, b) => {
         if (a.needs_rework && !b.needs_rework) return -1;
@@ -165,7 +166,7 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
 
   const customerFilterCounts = useMemo(() => {
     if (!isCustomer || !activeProject) return null;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayIso();
     return countStagesForCustomerFilters(activeProject.stages || [], blockedMap, today);
   }, [isCustomer, activeProject, blockedMap]);
 

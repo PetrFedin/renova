@@ -4,10 +4,11 @@ import { RenovaTheme } from '@/constants/Theme';
 import { Stage } from '@/lib/api';
 import { stageStatusLabel } from '@/constants/labels';
 import { pushStageDetail } from '@/lib/navigation';
+import { todayIso } from '@/lib/localDate';
 
 export function TodayWidget({ stages, role }: { stages: Stage[]; role: 'customer' | 'contractor' }) {
   const pathname = usePathname();
-  const today = new Date().toISOString().slice(0,10);
+  const today = todayIso();
   const items = stages.filter(s => {
     if (s.status === 'review' && role === 'customer') return true;
     if (s.status === 'active' && role === 'contractor' && !s.contractor_ready) return true;

@@ -5,6 +5,7 @@ import { budgetTabHref, calendarTabHref, objectTabHref, repairTabHref, type OsRo
 import { reportError } from '@/lib/reportError';
 import { buildCloseoutInboxItem } from './closeoutHome';
 import { navigationTargetHref, warrantyRoute } from '@/lib/navigation/navigationPolicy';
+import { todayIso } from '@/lib/localDate';
 
 export type InboxItem =
   | { id: string; title: string; sub?: string; href: string; kind: string; priority: number }
@@ -63,7 +64,7 @@ async function loadInboxSource<T>(
 }
 
 function overdueStages(stages: Stage[]) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
   return stages.filter((s) => s.planned_end && s.planned_end < today && s.status !== 'done');
 }
 

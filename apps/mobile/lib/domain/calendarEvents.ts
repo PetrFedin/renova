@@ -1,11 +1,13 @@
 /** Периоды этапов и задач в календаре — без дублей «Старт/Финиш». */
 import type { CalendarEvent } from '@/lib/api';
+import { localIsoDate } from '@/lib/localDate';
 import { formatScheduleDayShort, formatScheduleWorkSpan } from '@/lib/formatScheduleDate';
 
 const PERIOD_KINDS = new Set(['stage_period', 'work_period']);
 
 export function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  // По местному времени: у Date из `new Date(y, m, d)` UTC-дата в UTC+3 «уезжает» на сутки назад.
+  return localIsoDate(d);
 }
 
 export function addDays(base: Date, n: number): Date {

@@ -964,7 +964,7 @@ export function DocumentsHub({
 
       <View style={s.indexCard}>
         <View style={s.indexHeader}>
-          <View>
+          <View style={s.indexHeaderText}>
             <Text style={s.indexTitle}>Единый индекс</Text>
             <Text style={s.indexHint}>Дизайн, чеки, акты, OCR и подпись — в одном месте</Text>
           </View>
@@ -1099,6 +1099,8 @@ const s = StyleSheet.create({
   // Clarity W: index без Theme.card / 800
   indexCard: { marginBottom: 18, gap: 10 },
   indexHeader: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' },
+  // flex:1 + minWidth:0 — длинная подсказка переносится и не выталкивает «+ Файл» за край экрана.
+  indexHeaderText: { flex: 1, minWidth: 0 },
   indexTitle: { ...screenTypography.listTitle, fontSize: 16 },
   uploadBtn: { minHeight: RenovaTheme.minTouch, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10, backgroundColor: RenovaTheme.colors.primary },
   uploadBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },

@@ -42,6 +42,7 @@ import {
 } from '@/lib/scheduleCloseoutNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { writeResultMessage } from '@/lib/offlineResultMessage';
+import { todayIso } from '@/lib/localDate';
 
 const KIND: Record<string, string> = {
   stage_period: 'Этап',
@@ -183,13 +184,13 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
       setDayDetailOpen(true);
       return;
     }
-    const t = new Date().toISOString().slice(0, 10);
+    const t = todayIso();
     setSelectedDate(t);
     setDayDetailOpen(true);
   }, [dateParam]);
 
-  const today = new Date().toISOString().slice(0, 10);
-  const weekEnd = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+  const today = todayIso();
+  const weekEnd = todayIso(7);
   const inWeek = (e: CalendarEvent) => calendarEventInRange(e, today, weekEnd);
   const canManageWorks = role === 'contractor' && !readOnly;
   const canAddTask = !readOnly;

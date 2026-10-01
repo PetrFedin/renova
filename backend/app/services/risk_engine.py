@@ -26,6 +26,18 @@ def _rid(kind: str, key: str) -> str:
     return f"{kind}-{key}"
 
 
+def forecast_overrun(planned: float, spent: float, progress: float) -> float:
+    """Прогноз перерасхода по темпу (EAC = факт / доля выполненного), ₽; <= 0 — укладываемся.
+
+    Без факта расходов или при прогрессе < 5 % прогноз не строим: деление на почти нулевой
+    прогресс раздувало бюджет в 100 раз («+13 641 042 ₽ к смете» при факте 0 ₽).
+    """
+    if planned <= 0 or spent <= 0 or progress < 5:
+        return 0.0
+    forecast = spent * 100 / progress if progress < 100 else spent
+    return forecast - planned
+
+
 async def compute_project_risks(db: AsyncSession, project: Project) -> list[dict]:
     """Возвращает до 10 рисков с причиной, влиянием и действием."""
     today = date.today()
@@ -38,8 +50,7 @@ async def compute_project_risks(db: AsyncSession, project: Project) -> list[dict
     planned = project.budget_planned or 0
     spent = project.budget_spent or 0
     if planned > 0:
-        forecast = spent + (planned - spent) * max(0, (100 - progress) / max(progress, 1)) if progress < 100 else spent
-        overrun = forecast - planned
+        overrun = forecast_overrun(planned, spent, progress)
         if spent >= planned * 0.9 and progress < 85:
             risks.append({
                 "id": _rid("budget", "pace"),

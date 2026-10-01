@@ -10,6 +10,7 @@ import { useOsNavFromHere } from '@/lib/navigation';
 import type { OsRole } from '@/constants/osSections';
 import { reportError } from '@/lib/reportError';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
+import { todayIso } from '@/lib/localDate';
 
 type DayGroup = { date: string; label: string; count: number; sample: string };
 
@@ -42,8 +43,8 @@ export function WeekScheduleStrip({ userId, projectId, role, embedded }: Props) 
 
   const reload = useCallback(() => {
     api.getCalendar(userId, projectId).then((c: CalendarData) => {
-      const from = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-      const to = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+      const from = todayIso(-1);
+      const to = todayIso(7);
       const week = filterCalendarEventsForRole(c.events, role).filter((e) => calendarEventInRange(e, from, to));
       setEvents(week);
       setLoadError(false);

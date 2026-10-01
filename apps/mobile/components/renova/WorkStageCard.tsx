@@ -4,6 +4,7 @@ import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { WORK_CARD_STATUS_LABEL } from '@/constants/labels';
+import { todayIso } from '@/lib/localDate';
 
 type StageLike = {
   id: string; name: string; status: string; planned_end?: string | null; payment_amount?: number;
@@ -31,7 +32,7 @@ type Props = {
 export function WorkStageCard({ stage, roomLabel, onOpen, onPrimary, primaryLabel, readOnly, blocked, blockedReason, selected, onLongPress }: Props) {
   // Прогресс — реальный процент выполнения этапа с сервера, а не выдуманные 40/90/100 по статусу.
   const progress = stage.status === 'done' ? 100 : Math.max(0, Math.min(100, stage.percent_complete ?? stage.checklist_progress ?? 0));
-  const overdue = stage.planned_end && stage.planned_end < new Date().toISOString().slice(0, 10) && stage.status !== 'done';
+  const overdue = stage.planned_end && stage.planned_end < todayIso() && stage.status !== 'done';
   return (
     <Pressable
       style={[

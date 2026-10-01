@@ -1,12 +1,13 @@
 import { ProjectDetail } from '@/lib/api';
 import { tabsRoute } from '@/constants/osSections';
 import type { OsNavHref } from '@/lib/pushOsNav';
+import { todayIso } from '@/lib/localDate';
 
 export type AttentionItem = { id: string; title: string; subtitle: string; href: OsNavHref; kind: 'review' | 'deadline' | 'payment' | 'chat' };
 
 export function buildAttention(project: ProjectDetail, role: 'customer' | 'contractor'): AttentionItem[] {
   const items: AttentionItem[] = [];
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
   for (const s of project.stages) {
     if (s.status === 'review' && role === 'customer') {
       items.push({ id: `rev-${s.id}`, title: `Приёмка: ${s.name}`, subtitle: 'Исполнитель ждёт подтверждения', href: `/stage/${s.id}`, kind: 'review' });

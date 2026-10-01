@@ -21,6 +21,7 @@ import type { OsRole } from '@/constants/osSections';
 import { reportError } from '@/lib/reportError';
 import { SheetSurface } from '@/components/renova/SheetSurface';
 import { checkDateRange, parseDateInput } from '@/lib/validateDate';
+import { todayIso } from '@/lib/localDate';
 
 type Props = {
   visible: boolean;
@@ -69,8 +70,8 @@ export function CreateWorkSheet({
   const [category, setCategory] = useState('engineering');
   const [customTitle, setCustomTitle] = useState('');
   const [roomId, setRoomId] = useState<string | undefined>(defaultRoomId);
-  const [plannedStart, setPlannedStart] = useState(defaultDate || new Date().toISOString().slice(0, 10));
-  const [plannedEnd, setPlannedEnd] = useState(defaultDate || new Date().toISOString().slice(0, 10));
+  const [plannedStart, setPlannedStart] = useState(defaultDate || todayIso());
+  const [plannedEnd, setPlannedEnd] = useState(defaultDate || todayIso());
   const [budget, setBudget] = useState('');
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);

@@ -9,6 +9,7 @@ import { sanitizeRiskImpact } from './sanitizeRiskImpact';
 import { resolveProjectProgress } from './resolveProjectProgress';
 import { repairTabRoute, budgetTabRoute, calendarTabRoute, objectTabRoute, customerProfileTabHref } from '@/constants/osSections';
 import { closeoutNextActionTitle } from './closeoutHome';
+import { todayIso } from '@/lib/localDate';
 
 /**
  * Подсказки для nextAction (W55 schedule + W76 очередь приёмки/ДО/подписи/гарантии).
@@ -66,7 +67,7 @@ export function buildProjectOsSnapshot(
   pendingPaymentTotal = 0,
   workSchedule?: WorkScheduleHint | null,
 ): ProjectOsSnapshot {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
   const stages = project.stages || [];
   const overdue = stages.filter((s) => s.planned_end && s.planned_end < today && s.status !== 'done');
   const review = stages.filter((s) => s.status === 'review');

@@ -2,11 +2,11 @@ import { View, Text, StyleSheet } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { Stage } from '@/lib/api';
+import { todayIso } from '@/lib/localDate';
 
 export function WeekTimeline({ stages }: { stages: Stage[] }) {
   const days = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(); d.setDate(d.getDate() + i);
-    return d.toISOString().slice(0, 10);
+    return todayIso(i);
   });
   return (
     <View style={s.box}>

@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { dayTaskCount, filterCalendarEventsForRole } from '@/lib/domain/calendarEvents';
 import type { OsRole } from '@/constants/osSections';
 import { reportCatch } from '@/lib/reportError';
+import { todayIso } from '@/lib/localDate';
 
 export function useTodayTaskCount(userId?: string, projectId?: string, role: OsRole = 'customer') {
   const [count, setCount] = useState(0);
@@ -14,7 +15,7 @@ export function useTodayTaskCount(userId?: string, projectId?: string, role: OsR
       setCount(0);
       return;
     }
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayIso();
     try {
       const cal = await api.getCalendar(userId, projectId);
       const events = filterCalendarEventsForRole(cal.events, role).filter(
