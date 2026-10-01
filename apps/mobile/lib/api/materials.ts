@@ -61,6 +61,55 @@ export const materialsApi = {
       throw new Error('offline_queued');
     }
   },
+  /** EST-025: правка draft/pending (PATCH идемпотентен — повтор тех же значений no-op). */
+  patchMaterialPick: async (
+    userId: string,
+    projectId: string,
+    id: string,
+    patch: { name?: string; qty?: number; unit?: string; room_id?: string | null; notes?: string | null },
+  ) => {
+    const body = JSON.stringify(patch);
+    const path = `/api/v1/projects/${projectId}/material-picks/${id}`;
+    try {
+      const result = await req<MaterialPick>(path, { method: 'PATCH', body }, userId);
+      await invalidateCachedGet(`/api/v1/projects/${projectId}/material-picks`, userId);
+      return result;
+    } catch (e) {
+      if (!isQueueableWriteError(e)) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path, method: 'PATCH', body, userId });
+      throw new Error('offline_queued');
+    }
+  },
+  /** EST-025: удалить ошибочный draft/pending; повторный DELETE после успеха = 404, очередь это переживает. */
+  deleteMaterialPick: async (userId: string, projectId: string, id: string) => {
+    const path = `/api/v1/projects/${projectId}/material-picks/${id}`;
+    try {
+      const result = await req(path, { method: 'DELETE' }, userId);
+      await invalidateCachedGet(`/api/v1/projects/${projectId}/material-picks`, userId);
+      return result;
+    } catch (e) {
+      if (!isQueueableWriteError(e)) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path, method: 'DELETE', body: '{}', userId });
+      throw new Error('offline_queued');
+    }
+  },
+  /** EST-025: заказчик отзывает согласование (approved -> draft). */
+  revokeMaterialPick: async (userId: string, projectId: string, id: string, reason?: string) => {
+    const body = JSON.stringify({ reason: reason || null });
+    const path = `/api/v1/projects/${projectId}/material-picks/${id}/revoke`;
+    try {
+      const result = await req(path, { method: 'POST', body }, userId);
+      await invalidateCachedGet(`/api/v1/projects/${projectId}/material-picks`, userId);
+      return result;
+    } catch (e) {
+      if (!isQueueableWriteError(e)) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path, method: 'POST', body, userId });
+      throw new Error('offline_queued');
+    }
+  },
   updateMaterialSupply: (
     userId: string,
     projectId: string,

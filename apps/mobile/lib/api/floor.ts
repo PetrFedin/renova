@@ -133,6 +133,17 @@ export const floorApi = {
       throw new Error('offline_queued');
     }
   },
+  /** EST-015: отмена draft/requested/scheduled (заказчик — всегда, исполнитель — до согласования). */
+  cancelWasteOrder: async (userId: string, projectId: string, id: string) => {
+    try {
+      return await req(`/api/v1/projects/${projectId}/waste-orders/${id}/cancel`, { method: 'POST' }, userId);
+    } catch (e) {
+      if (!isQueueableWriteError(e)) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path: `/api/v1/projects/${projectId}/waste-orders/${id}/cancel`, method: 'POST', body: '{}', userId });
+      throw new Error('offline_queued');
+    }
+  },
   approveWasteOrder: async (userId: string, projectId: string, id: string) => {
     try {
       return await req(`/api/v1/projects/${projectId}/waste-orders/${id}/approve`, { method: 'POST' }, userId);

@@ -15,6 +15,7 @@ import { api, type SelectionItem } from '@/lib/api';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { LoadingState } from '@/components/ui/LoadingState';
+import { QuantitySheet } from '@/components/renova/QuantitySheet';
 import { ReasonSheet } from '@/components/renova/ReasonSheet';
 import { canProposeSelection, selectionApproveMessage } from '@/lib/domain/selectionPolicy';
 import { writeResultMessage } from '@/lib/offlineResultMessage';
@@ -61,6 +62,7 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
   const selfManaged = !activeProject?.contractor_id;
   const canWrite = canProposeSelection({ role, readOnly: !!readOnly, selfManaged });
   const [rejectTarget, setRejectTarget] = useState<SelectionItem | null>(null);
+  const [approveTarget, setApproveTarget] = useState<SelectionItem | null>(null);
 
   const reload = useCallback(() => {
     if (!user || !activeProject) return;
@@ -260,40 +262,44 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
 
           {isCustomer && !readOnly && item.status === 'proposed' && (
             <View style={s.actions}>
-              <PrimaryButton title="Согласовать" compact onPress={() => {
-                // Clarity V: зеркало reject — confirm перед approve
-                showActionConfirm({
-                  title: 'Согласовать подбор?',
-                  message: selectionApproveMessage({
-                    title: item.title,
-                    selfManaged,
-                    price: item.price,
-                    allowance: item.allowance,
-                    overAllowance: item.over_allowance,
-                    formatMoney: formatRub,
-                  }),
-                  primaryLabel: 'Согласовать',
-                  onPrimary: () => {
-                    void (async () => {
-                      try {
-                        await api.approveSelection(user.id, activeProject.id, item.id);
-                        await syncProjectSideEffects({ user, project: activeProject });
-                        reload();
-                        alertSelectionApproved(role);
-                      } catch (e: unknown) {
-                        failWrite(e, 'Согласование', 'Не удалось согласовать', 'components.screens.OsSelectionsScreen.Approve');
-                      }
-                    })();
-                  },
-                  secondaryLabel: 'Отмена',
-                  onSecondary: () => undefined,
-                });
-              }} />
+              <PrimaryButton title="Согласовать" compact onPress={() => setApproveTarget(item)} />
               <PrimaryButton title="Отклонить" variant="outline" compact onPress={() => setRejectTarget(item)} />
             </View>
           )}
         </View>
       ))}
+      <QuantitySheet
+        visible={approveTarget !== null}
+        title={`Согласовать: ${approveTarget?.title || 'подбор'}`}
+        hint={approveTarget ? selectionApproveMessage({
+          title: approveTarget.title,
+          selfManaged,
+          price: approveTarget.price,
+          allowance: approveTarget.allowance,
+          overAllowance: approveTarget.over_allowance,
+          formatMoney: formatRub,
+        }) : ''}
+        confirmLabel="Согласовать"
+        onClose={() => setApproveTarget(null)}
+        onConfirm={async (qty, unit) => {
+          const target = approveTarget;
+          if (!target) return true;
+          try {
+            await api.approveSelection(user.id, activeProject.id, target.id, { qty, unit });
+            await syncProjectSideEffects({ user, project: activeProject });
+            reload();
+            alertSelectionApproved(role);
+            return true;
+          } catch (e: unknown) {
+            if (isOfflineQueued(e)) {
+              notifyOfflineQueued('Согласование', role);
+              return true;
+            }
+            failWrite(e, 'Согласование', 'Не удалось согласовать', 'components.screens.OsSelectionsScreen.Approve');
+            return false;
+          }
+        }}
+      />
       <ReasonSheet
         visible={rejectTarget !== null}
         title={`Отклонить: ${rejectTarget?.title || 'позиция'}`}

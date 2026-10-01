@@ -31,6 +31,8 @@ import { useBusyAction } from '@/lib/hooks/useBusyAction';
 import { writeResultMessage } from '@/lib/offlineResultMessage';
 import { resolveSafeDocumentUrl } from '@/lib/documentUrl';
 import { notifyError } from '@/lib/notify';
+import { materialEditPolicy, parseMaterialForm } from '@/lib/domain/materialPickEdit';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 
 const fmtQty = (value: number) => Number(value.toFixed(3)).toLocaleString('ru-RU');
 
@@ -59,16 +61,23 @@ export function MaterialPickList({
   const [wt, setWt] = useState<string | undefined>();
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
+  const [qtyText, setQtyText] = useState('1');
+  const [unitText, setUnitText] = useState('шт');
   const [roomId, setRoomId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [createSource, setCreateSource] = useState<MaterialSupplySource>('contractor_to_buy');
+  const [createSource, setCreateSource] = useState<MaterialSupplySource>(role === 'customer' ? 'customer_to_buy' : 'contractor_to_buy');
   const [createAvailable, setCreateAvailable] = useState('0');
   const [editingSupplyId, setEditingSupplyId] = useState<string | null>(null);
   const [editSource, setEditSource] = useState<MaterialSupplySource>('contractor_to_buy');
   const [editAvailable, setEditAvailable] = useState('0');
   const [supplyBusyId, setSupplyBusyId] = useState<string | null>(null);
+  const [editingPickId, setEditingPickId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editQty, setEditQty] = useState('');
+  const [editUnit, setEditUnit] = useState('');
   const submitAction = useBusyAction();
   const createAction = useBusyAction();
+  const editAction = useBusyAction();
 
   const load = useCallback(() => {
     api.listMaterialPicks(userId, projectId, wt).then(setItems).catch(reportCatch('components.renova.MaterialPickList.1'));
@@ -133,6 +142,64 @@ export function MaterialPickList({
     } finally {
       setSupplyBusyId(null);
     }
+  };
+
+  const runPickWrite = async (label: string, action: () => Promise<unknown>) => {
+    try {
+      await action();
+      await syncAfter();
+      await refresh();
+    } catch (error) {
+      if (isOfflineQueued(error)) {
+        notifyOfflineQueued(label, role);
+        return;
+      }
+      showActionConfirm({ title: 'Не удалось выполнить', message: writeResultMessage(error, 'Проверьте данные и повторите.') });
+    }
+  };
+
+  const openPickEditor = (pick: MaterialPick) => {
+    setEditingPickId(pick.id);
+    setEditName(pick.name);
+    setEditQty(String(requiredQty(pick)));
+    setEditUnit(pick.unit);
+  };
+
+  const savePickEdit = (pick: MaterialPick) => {
+    const parsed = parseMaterialForm({ name: editName, qty: editQty, unit: editUnit });
+    if (!parsed.ok) {
+      showActionConfirm({ title: parsed.title, message: parsed.message });
+      return;
+    }
+    void editAction.run(async () => {
+      await api.patchMaterialPick(userId, projectId, pick.id, { name: parsed.name, qty: parsed.qty, unit: parsed.unit });
+      setEditingPickId(null);
+      await syncAfter();
+      await refresh();
+    }, 'Материал не изменён');
+  };
+
+  const confirmDelete = (pick: MaterialPick) => {
+    showActionConfirm({
+      title: 'Удалить материал?',
+      message: `«${pick.name}» будет удалён. Если материал уже входил в закупку, сервер не даст его удалить.`,
+      primaryLabel: 'Удалить',
+      primaryDestructive: true,
+      onPrimary: () => { void runPickWrite('Удаление материала', () => api.deleteMaterialPick(userId, projectId, pick.id)); },
+      secondaryLabel: 'Назад',
+      onSecondary: () => undefined,
+    });
+  };
+
+  const confirmRevoke = (pick: MaterialPick) => {
+    showActionConfirm({
+      title: 'Отозвать согласование?',
+      message: `«${pick.name}» вернётся в черновик — исполнитель сможет поправить его и отправить заново. Если по материалу уже есть закупка, сначала отмените её.`,
+      primaryLabel: 'Отозвать',
+      onPrimary: () => { void runPickWrite('Отзыв согласования', () => api.revokeMaterialPick(userId, projectId, pick.id)); },
+      secondaryLabel: 'Назад',
+      onSecondary: () => undefined,
+    });
   };
 
   return (
@@ -219,6 +286,44 @@ export function MaterialPickList({
               </View>
             ) : null}
 
+            {(() => {
+              const policy = materialEditPolicy(p.status, role, readOnly);
+              if (!policy.canEdit && !policy.canRevoke) return null;
+              if (editingPickId === p.id) {
+                return (
+                  <View style={s.supplyEditor}>
+                    <TextInput accessibilityLabel={`Название: ${p.name}`} style={s.inp} placeholder="Название" value={editName} onChangeText={setEditName} />
+                    <View style={s.qtyRow}>
+                      <TextInput accessibilityLabel={`Количество: ${p.name}`} style={[s.inp, s.qtyInp]} placeholder="Кол-во" value={editQty} onChangeText={setEditQty} keyboardType="decimal-pad" />
+                      <TextInput accessibilityLabel={`Единица: ${p.name}`} style={[s.inp, s.unitInp]} placeholder="Ед." value={editUnit} onChangeText={setEditUnit} />
+                    </View>
+                    {p.status === 'pending' ? <Text style={s.reapprovalHint}>Материал вернётся с согласования в черновик и его нужно отправить заново.</Text> : null}
+                    <PrimaryButton title="Сохранить" loading={editAction.busy} onPress={() => savePickEdit(p)} fullWidth />
+                    <PrimaryButton title="Отмена" variant="outline" onPress={() => setEditingPickId(null)} fullWidth />
+                  </View>
+                );
+              }
+              return (
+                <View style={s.actionRow}>
+                  {policy.canEdit ? (
+                    <Pressable accessibilityRole="button" accessibilityLabel={`Изменить материал: ${p.name}`} style={s.supplyToggle} onPress={() => openPickEditor(p)}>
+                      <Text style={s.link}>Изменить</Text>
+                    </Pressable>
+                  ) : null}
+                  {policy.canDelete ? (
+                    <Pressable accessibilityRole="button" accessibilityLabel={`Удалить материал: ${p.name}`} style={s.supplyToggle} onPress={() => confirmDelete(p)}>
+                      <Text style={s.linkDanger}>Удалить</Text>
+                    </Pressable>
+                  ) : null}
+                  {policy.canRevoke ? (
+                    <Pressable accessibilityRole="button" accessibilityLabel={`Отозвать согласование: ${p.name}`} style={s.supplyToggle} onPress={() => confirmRevoke(p)}>
+                      <Text style={s.link}>Отозвать согласование</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              );
+            })()}
+
             {p.shop_url && role === 'contractor' && (
               <PrimaryButton
                 title="↻ цена"
@@ -293,10 +398,14 @@ export function MaterialPickList({
           </View>
         );
       })}
-      {role === 'contractor' && showForm && (
+      {!readOnly && showForm && (
         <View style={s.form}>
-          <TextInput style={s.inp} placeholder="Название" value={name} onChangeText={setName} />
-          <TextInput style={s.inp} placeholder="Цена" value={price} onChangeText={setPrice} keyboardType="numeric" />
+          <TextInput accessibilityLabel="Название материала" style={s.inp} placeholder="Название" value={name} onChangeText={setName} />
+          <View style={s.qtyRow}>
+            <TextInput accessibilityLabel="Количество нового материала" style={[s.inp, s.qtyInp]} placeholder="Количество" value={qtyText} onChangeText={setQtyText} keyboardType="decimal-pad" />
+            <TextInput accessibilityLabel="Единица измерения" style={[s.inp, s.unitInp]} placeholder="Ед." value={unitText} onChangeText={setUnitText} />
+          </View>
+          <TextInput accessibilityLabel="Цена за единицу" style={s.inp} placeholder="Цена за единицу, ₽" value={price} onChangeText={setPrice} keyboardType="numeric" />
           {rooms.length > 0 && <RoomPickerChips rooms={rooms} value={roomId} onChange={setRoomId} optional={false} />}
           <Text style={s.editorLabel}>Источник</Text>
           <View style={filterChipStyles.row}>
@@ -309,10 +418,7 @@ export function MaterialPickList({
                   accessibilityLabel={`Источник нового материала: ${option.label}`}
                   accessibilityState={{ selected }}
                   style={[filterChipStyles.chip, selected && filterChipStyles.chipOn]}
-                  onPress={() => {
-                    setCreateSource(option.value);
-                    if (option.value === 'customer_on_hand') setCreateAvailable('1');
-                  }}
+                  onPress={() => setCreateSource(option.value)}
                 >
                   <Text style={[filterChipStyles.chipT, selected && filterChipStyles.chipTOn]}>{option.label}</Text>
                 </Pressable>
@@ -323,38 +429,42 @@ export function MaterialPickList({
             <TextInput
               style={s.inp}
               accessibilityLabel="Доступное количество нового материала"
-              placeholder="Доступно, шт"
+              placeholder={`Уже доступно, ${unitText || 'ед.'}`}
               value={createAvailable}
               onChangeText={setCreateAvailable}
               keyboardType="decimal-pad"
             />
           ) : null}
           <PrimaryButton title="Сохранить" loading={createAction.busy} onPress={() => {
-            const available = createSource === 'customer_on_hand' ? 1 : (createAvailable.trim() ? parseNonNegativeNumber(createAvailable) : 0);
-            const priceNum = price.trim() ? parseNonNegativeNumber(price) : 0;
-            if (priceNum === null) {
-              showActionConfirm({ title: 'Цена материала', message: 'Введите цену числом от 0, например 1 250,50.' });
-              return;
-            }
-            if (available === null || available > 1) {
-              showActionConfirm({ title: 'Доступное количество', message: 'Введите число от 0 до 1 (количество нового материала — 1 шт).' });
+            const parsed = parseMaterialForm({
+              name,
+              qty: qtyText,
+              unit: unitText,
+              price,
+              allInStock: createSource === 'customer_on_hand',
+              availableText: createAvailable,
+            });
+            if (!parsed.ok) {
+              showActionConfirm({ title: parsed.title, message: parsed.message });
               return;
             }
             void createAction.run(async () => {
               await api.createMaterialPick(userId, projectId, {
-                name: name || 'Материал',
-                price: priceNum,
-                qty: 1,
-                unit: 'шт',
+                name: parsed.name,
+                price: parsed.price,
+                qty: parsed.qty,
+                unit: parsed.unit,
                 work_type: wt,
                 room_id: roomId,
                 supply_source: createSource,
-                qty_available: available,
+                qty_available: parsed.available,
               });
               setName('');
               setPrice('');
+              setQtyText('1');
+              setUnitText('шт');
               setRoomId(null);
-              setCreateSource('contractor_to_buy');
+              setCreateSource(role === 'customer' ? 'customer_to_buy' : 'contractor_to_buy');
               setCreateAvailable('0');
               setShowForm(false);
               await syncAfter();
@@ -363,7 +473,7 @@ export function MaterialPickList({
           }} />
         </View>
       )}
-      {role === 'contractor' && !showForm && !readOnly && (
+      {!showForm && !readOnly && (
         <PrimaryButton title="+ Материал" variant="outline" onPress={() => setShowForm(true)} />
       )}
     </View>
@@ -391,4 +501,9 @@ const s = StyleSheet.create({
   editorLabel: { ...screenTypography.listMeta, color: RenovaTheme.colors.text },
   reapprovalHint: { ...screenTypography.listMeta, color: RenovaTheme.colors.warningText },
   link: { ...screenTypography.listLink },
+  linkDanger: { ...screenTypography.listLink, color: RenovaTheme.colors.danger },
+  actionRow: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 16 },
+  qtyRow: { flexDirection: 'row', gap: 8 },
+  qtyInp: { flex: 2 },
+  unitInp: { flex: 1 },
 });

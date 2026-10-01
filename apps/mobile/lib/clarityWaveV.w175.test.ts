@@ -12,7 +12,8 @@ if (!stage.includes("title: emptyChecklist ? 'Принять без чеклис
 }
 
 const sel = src('components/screens/OsSelectionsScreen.tsx');
-if (!sel.includes("title: 'Согласовать подбор?'")) throw new Error('selection approve confirm');
+// EST-013: согласование идёт через лист количества (QuantitySheet), а не голый confirm
+if (!sel.includes('<QuantitySheet') || !sel.includes('api.approveSelection(user.id, activeProject.id, target.id, { qty, unit })')) throw new Error('selection approve confirm');
 
 const rooms = src('components/screens/OsRoomsScreen.tsx');
 if (!rooms.includes("title: 'Согласовать запрос?'" ) || !rooms.includes("title: archived ? 'В архив?'")) {

@@ -17,7 +17,9 @@ export type WasteOrder = {
   waste_type: string;
   scheduled_date?: string | null;
   status: string;
+  /** Цена за 1 м³; итог заявки = volume_m3 x price (EST-016). */
   price: number;
+  price_unit?: 'per_m3';
   notes?: string | null;
   total: number;
 };

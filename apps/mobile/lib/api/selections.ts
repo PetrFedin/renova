@@ -90,18 +90,21 @@ export const selectionsApi = {
       '{}',
       userId,
     ),
-  approveSelection: (userId: string, projectId: string, id: string) =>
-    withOffline(
+  /** EST-013: qty/unit — необязательные; без них закупка создаётся на 1 шт. */
+  approveSelection: (userId: string, projectId: string, id: string, quantity?: { qty: number; unit: string }) => {
+    const approveBody = JSON.stringify(quantity ? { qty: quantity.qty, unit: quantity.unit } : {});
+    return withOffline(
       async () => {
-        const updated = await req<SelectionItem>(`/api/v1/projects/${projectId}/selections/${id}/approve`, { method: 'POST', body: '{}' }, userId);
+        const updated = await req<SelectionItem>(`/api/v1/projects/${projectId}/selections/${id}/approve`, { method: 'POST', body: approveBody }, userId);
         await invalidateCachedGet(`/api/v1/projects/${projectId}/selections/pending-count`, userId);
         return updated;
       },
       `/api/v1/projects/${projectId}/selections/${id}/approve`,
       'POST',
-      '{}',
+      approveBody,
       userId,
-    ),
+    );
+  },
   rejectSelection: (userId: string, projectId: string, id: string, reason?: string) => {
     const body = JSON.stringify({ reason: reason || null });
     return withOffline(

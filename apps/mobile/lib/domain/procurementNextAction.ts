@@ -10,13 +10,13 @@ import {
 } from './materialSupply';
 
 export type ProcurementNextAction = {
-  id: 'generate' | 'approve_picks' | 'create_purchase' | 'confirm_supply' | 'advance_purchase' | 'scan_receipt' | 'done';
+  id: 'generate' | 'approve_picks' | 'create_purchase' | 'confirm_price' | 'confirm_supply' | 'advance_purchase' | 'scan_receipt' | 'done';
   title: string;
   subtab: 'picks' | 'purchases' | 'receipts';
   cta: string;
 };
 
-type PickLike = MaterialSupplyTruth & { id: string; status: string };
+type PickLike = MaterialSupplyTruth & { id: string; status: string; price_actionable?: boolean };
 type PurchaseLike = { id: string; status: string; items: { material_pick_id?: string | null }[] };
 type ReceiptLike = { verified?: boolean };
 
@@ -43,6 +43,25 @@ export function readyPickIds(
     .filter((p) => roleOwnsPurchase(p.supply_source, role))
     .filter((p) => quantityToBuy(p) > 0)
     .filter((p) => !inPurchase.has(p.id))
+    // EST-011: сервер создаёт закупку всё-или-ничего — позиция с непроверенной ценой
+    // (price_actionable=false) заблокировала бы всю пачку, поэтому не считаем её готовой.
+    .filter((p) => p.price_actionable !== false)
+    .map((p) => p.id);
+}
+
+/** Согласованные, нужные к покупке позиции, у которых цена не подтверждена. */
+export function pickIdsNeedingPrice(
+  picks: PickLike[],
+  purchases: PurchaseLike[],
+  role: ProcurementRole,
+): string[] {
+  const inPurchase = pickIdsInActivePurchases(purchases);
+  return picks
+    .filter((p) => p.status === 'approved')
+    .filter((p) => roleOwnsPurchase(p.supply_source, role))
+    .filter((p) => quantityToBuy(p) > 0)
+    .filter((p) => !inPurchase.has(p.id))
+    .filter((p) => p.price_actionable === false)
     .map((p) => p.id);
 }
 
@@ -76,6 +95,15 @@ export function procurementNextAction(
       title: `Создайте закупку: ${ready.length} поз. готовы`,
       subtab: 'purchases',
       cta: 'Создать закупку',
+    };
+  }
+  const needPrice = pickIdsNeedingPrice(picks, purchases, role).length;
+  if (needPrice > 0) {
+    return {
+      id: 'confirm_price',
+      title: `${needPrice} материал(ов) без подтверждённой цены — укажите цену, чтобы создать закупку`,
+      subtab: 'picks',
+      cta: 'К материалам',
     };
   }
   const missingExternal = picks.filter((p) => needsAvailabilityUpdate(p)).length;

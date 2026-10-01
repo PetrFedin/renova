@@ -11,10 +11,13 @@ const backend = new Set([...block![1].matchAll(/^\s+(\w+) = "/gm)].map((m) => m[
 must(backend.has('scheduled') && backend.has('done'), 'backend enum parsed');
 
 const ui = readFileSync(join(__dirname, '../components/renova/WasteOrderList.tsx'), 'utf8');
-const used = [...ui.matchAll(/\bw\.status\s*===\s*'(\w+)'/g)].map((m) => m[1]);
-must(used.length > 0, 'WasteOrderList compares statuses');
+const policySrc = readFileSync(join(__dirname, 'domain/wasteOrderPolicy.ts'), 'utf8');
+const used = [...policySrc.matchAll(/\bstatus\s*===\s*'(\w+)'/g)].map((m) => m[1]);
+must(used.length > 0, 'wasteOrderPolicy compares statuses');
 for (const s of used) must(backend.has(s), `WasteOrderList uses unknown waste status '${s}'`);
-// «Вывезено» доступно подрядчику только у назначенного (scheduled) заказа.
-must(/contractor' && w\.status === 'scheduled'/.test(ui), 'complete button gated on scheduled');
+// «Вывезено» — только по wasteActions (исполнитель/self-managed заказчик, статус scheduled).
+must(/act\.complete/.test(ui), 'complete button gated by wasteActions');
+const policy = policySrc;
+must(/complete: executor && status === 'scheduled'/.test(policy), 'complete only from scheduled');
 
 console.log('wasteOrderStatus.test.ts ok');
