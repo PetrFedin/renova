@@ -25,8 +25,7 @@ Code: `backend/app/models/entities.py`, `backend/app/models/outbox_runtime.py`. 
 
 ## Closed by migration `x08schemadrift01` (39 -> 0)
 
-Down revision is `x06coinvoicelink01` (the x07 portal-link revision was not yet in origin/main when x08 was written;
-the main session must re-point `down_revision` to x07 once it lands, keeping a single head).
+Down revision is `x07portallinks01` (single head).
 
 * 32 `NOT NULL`: NULLs backfilled with the model default (timestamps -> UTC now, qty -> 1, prices/totals/budgets/attempts/qty_delivered -> 0,
   unit -> `шт`, material pick status -> `draft`, acceptance status -> `not_requested`), then `alter_column(nullable=False)`.

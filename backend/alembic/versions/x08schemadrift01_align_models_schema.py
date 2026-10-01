@@ -15,14 +15,14 @@ Downgrade drops the indexes/FKs and relaxes NOT NULL again; backfilled values st
 (they are valid data and cannot be told from the originals).
 
 Revision ID: x08schemadrift01
-Revises: x06coinvoicelink01
+Revises: x07portallinks01
 """
 from alembic import op
 import sqlalchemy as sa
 
 
 revision = "x08schemadrift01"
-down_revision = "x06coinvoicelink01"
+down_revision = "x07portallinks01"
 branch_labels = None
 depends_on = None
 
