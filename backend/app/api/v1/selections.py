@@ -60,6 +60,8 @@ class SelectionIn(BaseModel):
     price: float = Field(default=0, ge=0, le=10_000_000)
     shop_url: str | None = None
     shop_name: str | None = None
+    qty: float | None = Field(default=None, gt=0, le=1_000_000)
+    unit: str | None = Field(default=None, min_length=1, max_length=16)
     notes: str | None = None
     client_request_id: str | None = Field(default=None, min_length=8, max_length=80)
 
@@ -87,6 +89,8 @@ def _out(row: SelectionItem) -> dict:
         "price": row.price,
         "shop_url": row.shop_url,
         "shop_name": row.shop_name,
+        "qty": row.qty,
+        "unit": row.unit,
         "status": row.status.value if hasattr(row.status, "value") else row.status,
         "notes": row.notes,
         "proposed_by_id": row.proposed_by_id,
@@ -173,6 +177,8 @@ async def create_selection(
         price=body.price,
         shop_url=body.shop_url,
         shop_name=body.shop_name,
+        qty=body.qty,
+        unit=body.unit,
         notes=body.notes,
         proposed_by_id=user.id,
         status=SelectionStatus.draft,
@@ -269,7 +275,8 @@ async def approve_selection(
     from app.services.selection_service import material_pick_from_selection
 
     pick = await material_pick_from_selection(
-        db, row, qty=body.qty if body else None, unit=body.unit if body else None
+        db, row, qty=(body.qty if body and body.qty else None) or row.qty,
+        unit=(body.unit if body and body.unit else None) or row.unit,
     )
     await db.commit()
     await act.log_event(

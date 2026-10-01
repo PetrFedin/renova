@@ -712,6 +712,8 @@ class SelectionItem(Base):
     price: Mapped[float] = mapped_column(Float, default=0)
     shop_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     shop_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    qty: Mapped[float | None] = mapped_column(Float, nullable=True)
+    unit: Mapped[str | None] = mapped_column(String(16), nullable=True)
     status: Mapped[SelectionStatus] = mapped_column(Enum(SelectionStatus), default=SelectionStatus.draft)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     proposed_by_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)

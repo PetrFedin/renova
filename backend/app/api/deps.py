@@ -147,8 +147,8 @@ async def get_current_user(
         # INB-04: portal-JWT, выпущенный из отозванной ссылки, перестаёт работать сразу.
         try:
             link_id = decode_access_token(_bearer_token(authorization)).get("portal_link_id")
-        except Exception:
-            link_id = None
+        except JWTError:
+            raise HTTPException(401, "invalid_token")
         if link_id:
             from app.services import portal_link_service
 
