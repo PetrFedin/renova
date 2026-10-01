@@ -39,3 +39,31 @@ for (const role of ['customer', 'contractor'] as const) {
     });
   }
 }
+
+/** Устаревшие алиасы при холодной загрузке: роль ещё неизвестна, но канон и параметры не теряются. */
+const ALIASES: Array<[string, string]> = [
+  ['/finance-center', '/budget?openPayment=1&tab=payments'],
+  ['/control', '/repair?tab=control'],
+  ['/design', '/object?tab=plan&sub=design'],
+  ['/project-analytics', '/budget?tab=deviations'],
+];
+
+for (const role of ['customer', 'contractor'] as const) {
+  for (const [alias, canon] of ALIASES) {
+    test(`cold legacy alias ${alias} keeps its canonical target for ${role}`, async ({ page, request }) => {
+      test.skip(!(await apiReachable()) || !(await webReachable()), 'Need API :8100 and web :8081');
+      const user = (await (await request.post(`${API}/api/v1/auth/demo`, { data: { role } })).json()) as DemoUser;
+      const projects = (await (await request.get(`${API}/api/v1/projects`, { headers: authHeaders(user) })).json()) as DemoProject[];
+      const project = pickPrimaryDemoProject(projects);
+      if (role === 'customer') await seedDemoCustomerSession(page, user.id, project.id, user.access_token);
+      else await seedDemoContractorSession(page, user.id, project.id, user.access_token);
+
+      await page.goto(alias, { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(7_000);
+      const now = new URL(page.url());
+      const want = new URL(canon, 'http://x');
+      expect(now.pathname).toBe(want.pathname);
+      for (const [k, v] of want.searchParams) expect(now.searchParams.get(k), `${role}: ${alias} → ${k}`).toBe(v);
+    });
+  }
+}

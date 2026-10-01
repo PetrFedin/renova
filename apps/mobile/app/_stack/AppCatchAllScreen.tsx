@@ -1,7 +1,8 @@
 import type { ComponentType } from 'react';
 import { Redirect, Stack, useLocalSearchParams } from 'expo-router';
-import { StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Text } from '@/components/Themed';
+import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { type OsRole } from '@/constants/osSections';
@@ -58,11 +59,21 @@ export function AppCatchAllScreen() {
   const params = useLocalSearchParams<{ slug?: string; tool?: string; returnTo?: string }>();
   const seg = (Array.isArray(params.slug) ? params.slug[0] : params.slug)
     || (Array.isArray(params.tool) ? params.tool[0] : params.tool);
-  const { user } = useRenova();
+  const { user, loading } = useRenova();
   const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
   const rt = Array.isArray(params.returnTo) ? params.returnTo[0] : params.returnTo;
 
   const resolved = resolveCatchAllSlug(seg, role, STACK_KEYS);
+
+  // Пока сессия восстанавливается, роли ещё нет: редирект «по умолчанию для заказчика» уводил
+  // исполнителя в чужую группу, а страж терял вкладку и параметры (/finance-center → /budget?tab=summary).
+  if (loading && resolved.kind === 'redirect') {
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator color={RenovaTheme.colors.primary} size="large" />
+      </View>
+    );
+  }
 
   if (resolved.kind === 'stack' && seg && STACK[seg]) {
     const Comp = STACK[seg];
