@@ -39,7 +39,7 @@ export function BudgetBreakdown({ userId, projectId }: { userId: string; project
       {alerts.length > 0 && lvl !== 'brief' && alerts.map((a) => (
         <Text key={a.category} style={s.warn}>⚠ {a.category}: +{a.over_pct}%</Text>
       ))}
-      {fc && lvl !== 'brief' ? (
+      {fc && lvl !== 'brief' && (d.budget_spent ?? 0) > 0 ? (
         <Text style={s.sub}>Прогноз: {formatRub(fc.forecast_total)}{fc.risk === 'high' ? ' ⚠' : ''}</Text>
       ) : null}
       {lvl === 'detailed' ? (

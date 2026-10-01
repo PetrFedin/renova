@@ -37,8 +37,10 @@ export function buildPortfolioProjectRows(
   return projects.map((p) => {
     const planned = p.budget_planned || 0;
     const spent = p.budget_spent || 0;
-    const variance = spent - planned;
-    const variancePct = planned > 0 ? Math.round((variance / planned) * 100) : 0;
+    // UI-001: without any recorded fact there is nothing to compare — no «Экономия»/-100 %.
+    const hasFact = spent > 0;
+    const variance = hasFact ? spent - planned : 0;
+    const variancePct = hasFact && planned > 0 ? Math.round((variance / planned) * 100) : 0;
     let status: PortfolioProjectRow['status'] = 'on_track';
     if (variancePct > 2) status = 'over';
     else if (variancePct < -2) status = 'under';

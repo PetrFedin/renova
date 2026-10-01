@@ -1,7 +1,7 @@
 /** W71: канонический hub сроков (календарь + work-schedule + confirm/reject).
  * Единый календарь: компактный календарь + план работ */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ScrollView, View, Text, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
+import { ScrollView, View, Text, TextInput, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
 import { notifyError } from '@/lib/notify';
 import { useLocalSearchParams } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
@@ -140,6 +140,9 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
   const [viewMode, setViewMode] = useState<CalendarViewMode>('month');
   const [cursor, setCursor] = useState(() => new Date());
   const [planBusy, setPlanBusy] = useState(false);
+  // BUD-25: the rejection reason is typed by the customer, not hard-coded.
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
   const [planExpanded, setPlanExpanded] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
@@ -505,45 +508,74 @@ export function UnifiedScheduleView({ role }: { role: OsRole }) {
                   <Pressable
                     style={s.planCta}
                     disabled={planBusy}
-                    onPress={() => {
-                      showActionConfirm({
-                        title: 'Отклонить график?',
-                        message: 'Исполнитель получит уведомление. Причину можно уточнить в чате.',
-                        primaryLabel: 'Отклонить',
-                        onPrimary: () => {
-                          void (async () => {
-                            setPlanBusy(true);
-                            try {
-                              const next = await api.rejectWorkSchedule(
-                                user.id,
-                                activeProject.id,
-                                schedule.id,
-                                'Нужна правка сроков',
-                              );
-                              setSchedule(next);
-                              reload();
-                              await syncScheduleSideEffects();
-                              alertScheduleRejected(role);
-                            } catch (e: unknown) {
-                              if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение графика');
-                              else {
-                                showActionConfirm({
-                                  title: 'Ошибка',
-                                  message: writeResultMessage(e, 'Не удалось отклонить'),
-                                });
-                              }
-                            } finally {
-                              setPlanBusy(false);
-                            }
-                          })();
-                        },
-                        secondaryLabel: 'Отмена',
-                        onSecondary: () => undefined,
-                      });
-                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Отклонить график"
+                    onPress={() => setRejectOpen((open) => !open)}
                   >
-                    <Text style={s.planCtaT}>Отклонить</Text>
+                    <Text style={s.planCtaT}>{rejectOpen ? 'Не отклонять' : 'Отклонить'}</Text>
                   </Pressable>
+                ) : null}
+                {planActions.canReject && rejectOpen ? (
+                  <View style={s.rejectBox}>
+                    <Text style={s.planSub}>Что нужно поправить в сроках? Исполнитель увидит это в уведомлении.</Text>
+                    <TextInput
+                      style={s.rejectInput}
+                      value={rejectReason}
+                      onChangeText={setRejectReason}
+                      placeholder="Например: сдвинуть электрику на неделю позже"
+                      placeholderTextColor={RenovaTheme.colors.textMuted}
+                      multiline
+                      maxLength={500}
+                      editable={!planBusy}
+                      accessibilityLabel="Причина отклонения графика"
+                    />
+                    <Pressable
+                      style={s.planCta}
+                      disabled={planBusy}
+                      accessibilityRole="button"
+                      accessibilityLabel="Отправить отклонение графика"
+                      onPress={() => {
+                        const reason = rejectReason.trim();
+                        if (reason.length < 3) {
+                          showActionConfirm({ title: 'Укажите причину', message: 'Напишите, что поправить в сроках — хотя бы несколько слов.' });
+                          return;
+                        }
+                        showActionConfirm({
+                          title: 'Отклонить график?',
+                          message: 'Исполнитель получит уведомление с вашей причиной.',
+                          primaryLabel: 'Отклонить',
+                          onPrimary: () => {
+                            void (async () => {
+                              setPlanBusy(true);
+                              try {
+                                const next = await api.rejectWorkSchedule(user.id, activeProject.id, schedule.id, reason);
+                                setSchedule(next);
+                                setRejectOpen(false);
+                                setRejectReason('');
+                                reload();
+                                await syncScheduleSideEffects();
+                                alertScheduleRejected(role);
+                              } catch (e: unknown) {
+                                if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение графика');
+                                else {
+                                  showActionConfirm({
+                                    title: 'Ошибка',
+                                    message: writeResultMessage(e, 'Не удалось отклонить'),
+                                  });
+                                }
+                              } finally {
+                                setPlanBusy(false);
+                              }
+                            })();
+                          },
+                          secondaryLabel: 'Отмена',
+                          onSecondary: () => undefined,
+                        });
+                      }}
+                    >
+                      <Text style={s.planCtaT}>{planBusy ? '…' : 'Отправить отклонение'}</Text>
+                    </Pressable>
+                  </View>
                 ) : null}
               </View>
             ) : null}
@@ -737,6 +769,8 @@ const s = StyleSheet.create({
   agreeConfirm: { backgroundColor: 'rgba(34,140,80,0.12)' },
   planCta: { marginTop: 8, marginBottom: 4, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, backgroundColor: RenovaTheme.colors.surfaceMuted, borderWidth: 1, borderColor: RenovaTheme.colors.border },
   planCtaT: { fontSize: 14, fontWeight: '600', color: RenovaTheme.colors.accent },
+  rejectBox: { marginTop: 8 },
+  rejectInput: { minHeight: 64, borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: 10, padding: 10, fontSize: 14, color: RenovaTheme.colors.text, backgroundColor: RenovaTheme.colors.surface, textAlignVertical: 'top' },
   planTitle: { fontSize: 17, fontWeight: '800', color: RenovaTheme.colors.text },
   planSub: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginTop: 2, marginBottom: 10 },
   sectionHead: { marginBottom: 8 },
