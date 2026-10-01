@@ -123,7 +123,7 @@ Tabs:
 
 # 4. Repair hub
 
-**Source:** `OsRepairHubScreen.tsx` blob `5fe0e6229ad4cc82462ea4cfc1f7d213c7687305`.
+**Source:** `OsRepairHubScreen.tsx` blob `62060329592176b8d42591b92fe197aaa52e59d7`.
 
 Tabs:
 
@@ -295,7 +295,7 @@ Receipt QR scan → receipt evidence/reconcile flow; факт нельзя сч�
 
 # 6. Selections screen
 
-**VERIFIED. Source:** `OsSelectionsScreen.tsx` blob `269bdd0e7b32b506759b8bc9b2f18d452556bef7`.
+**VERIFIED. Source:** `OsSelectionsScreen.tsx` blob `f2e220d292b717f3d903c64dc265337b00a02953`.
 
 Business flow:
 
@@ -413,7 +413,7 @@ else:
 
 # 8. Customer Control view
 
-**VERIFIED. Source:** `CustomerControlView.tsx` blob `22be4e32fffd1e93099cc8b5edfce3a58c4891d1`.
+**VERIFIED. Source:** `CustomerControlView.tsx` blob `1a26c543d050225e8ae09179313fc552b9fc00af`.
 
 Loads concurrently:
 
@@ -470,7 +470,7 @@ Rework stages are listed separately and link to stage details.
 
 # 9. Contractor Control view
 
-**VERIFIED. Source:** `ContractorControlView.tsx` blob `0b05707e415afce2d61dfc6f81bf721e88163bec`.
+**VERIFIED. Source:** `ContractorControlView.tsx` blob `6c5cd6b869f38502caf180b2e77b2dfa598958dd`.
 
 Loads:
 
@@ -505,7 +505,7 @@ Rework stages link to stage detail.
 
 # 10. Technical Supervision Control view
 
-**VERIFIED. Source:** `TechnicalSupervisionControlView.tsx` blob `0378f2c0e952e907ede7d2ccbb0423eb030e2e91`.
+**VERIFIED. Source:** `TechnicalSupervisionControlView.tsx` blob `c0d8856adeb78bdbd856ea8612a244b852af87c9`.
 
 Access condition:
 

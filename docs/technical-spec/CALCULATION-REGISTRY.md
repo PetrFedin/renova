@@ -195,7 +195,7 @@ Current row semantics: works→(works, `works_fact` от backend `quantity_actua
 
 ## 16. Материалы — актуальная количественная семантика
 
-Source `apps/mobile/components/screens/OsMaterialsScreen.tsx`, blob `f39ac1fc3a6b06fa027b0e32d8cd55d2f8031b04`; helpers `lib/domain/materialSupply.ts` и `procurementNextAction.ts`.
+Source `apps/mobile/components/screens/OsMaterialsScreen.tsx`, blob `ecd2bfed4ee90389987d3833eb30379ae9400fab`; helpers `lib/domain/materialSupply.ts` и `procurementNextAction.ts`.
 
 ```text
 needBuy = count(quantityToBuy(pick) > 0)
@@ -213,7 +213,7 @@ readyCount = readyPickIds(picks, purchases, role).length
 
 ## 17. Selection pending count
 
-Source `OsSelectionsScreen.tsx`, blob `269bdd0e7b32b506759b8bc9b2f18d452556bef7`.
+Source `OsSelectionsScreen.tsx`, blob `f2e220d292b717f3d903c64dc265337b00a02953`.
 
 ```text
 pending = count(SelectionItem.status == proposed)
