@@ -151,6 +151,8 @@ export function OfflineSyncStatus({
           style={({ pressed }: PressState) => [styles.button, pressed && styles.pressed]}
           onPress={() => { void refresh(); }}
           disabled={syncing}
+          accessibilityRole="button"
+          accessibilityLabel="Повторить проверку очереди"
         >
           <Text style={styles.buttonText}>Повторить проверку</Text>
         </Pressable>
@@ -159,6 +161,9 @@ export function OfflineSyncStatus({
           style={({ pressed }: PressState) => [styles.button, pressed && styles.pressed]}
           onPress={() => { void runSync(); }}
           disabled={syncing}
+          accessibilityRole="button"
+          accessibilityLabel="Синхронизировать изменения"
+          accessibilityState={{ busy: syncing, disabled: syncing }}
         >
           {syncing ? <ActivityIndicator size="small" color={RenovaTheme.colors.primary} /> : <Text style={styles.buttonText}>Синхронизировать</Text>}
         </Pressable>
@@ -168,6 +173,8 @@ export function OfflineSyncStatus({
         <Pressable
           style={({ pressed }: PressState) => [styles.button, pressed && styles.pressed]}
           onPress={() => pushOsNav('/conflicts', undefined, (user?.role === 'contractor' ? 'contractor' : 'customer'))}
+          accessibilityRole="button"
+          accessibilityLabel={readError ? 'Открыть очередь синхронизации' : conflicts > 0 ? 'Открыть конфликты синхронизации' : 'Открыть очередь синхронизации'}
         >
           <Text style={styles.buttonText}>
             {readError ? 'Открыть очередь' : conflicts > 0 ? 'Открыть конфликты' : 'Открыть очередь'}
@@ -185,7 +192,7 @@ const styles = StyleSheet.create({
   textWrap: { flex: 1, minWidth: 0 },
   title: { fontSize: 14, fontWeight: '800', color: RenovaTheme.colors.text },
   hint: { marginTop: 2, fontSize: 12, lineHeight: 16, color: RenovaTheme.colors.textMuted },
-  button: { alignSelf: 'flex-start', borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: RenovaTheme.colors.surface },
+  button: { alignSelf: 'flex-start', minHeight: RenovaTheme.minTouch, justifyContent: 'center', borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: RenovaTheme.colors.surface },
   pressed: { opacity: 0.85 },
   buttonText: { fontSize: 12, fontWeight: '800', color: RenovaTheme.colors.primary },
 });
