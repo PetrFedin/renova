@@ -1,0 +1,77 @@
+name: Worker runtime heartbeat integrity
+
+# APIB-027: the compose graph contains `worker`; assert that it is alive and
+# processes the outbox, not merely that the container started.
+# Kept separate from local-runtime-integrity.yml because that file is a
+# blob-SHA-tracked source of docs/RENOVA-TECHNICAL-SPECIFICATION.md.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/app/worker_main.py"
+      - "backend/app/runtime_healthcheck.py"
+      - "backend/app/services/runtime_topology.py"
+      - "docker-compose.yml"
+      - "env.local.example"
+      - "scripts/dev-runtime.sh"
+      - ".github/workflows/worker-runtime-integrity.yml"
+  pull_request:
+    paths:
+      - "backend/app/worker_main.py"
+      - "backend/app/runtime_healthcheck.py"
+      - "backend/app/services/runtime_topology.py"
+      - "docker-compose.yml"
+      - "env.local.example"
+      - "scripts/dev-runtime.sh"
+      - ".github/workflows/worker-runtime-integrity.yml"
+
+concurrency:
+  group: worker-runtime-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  worker-heartbeat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.13"
+      - name: Install exact Poetry tool prerequisite
+        run: python -m pip install --disable-pip-version-check "poetry==2.4.1"
+      - name: Materialize canonical local profile
+        run: cp env.local.example .env.local
+      - name: Bootstrap locked dependencies
+        run: bash scripts/dev-runtime.sh bootstrap
+      - name: Start API + worker and verify heartbeats
+        env:
+          RENOVA_DEV_NO_EXPO: "1"
+        run: |
+          set -euo pipefail
+          bash scripts/dev-runtime.sh start
+          bash scripts/dev-runtime.sh check
+      - name: Worker processes outbox without external sinks
+        run: |
+          set -euo pipefail
+          logs="$(docker compose --project-name renova-local --env-file .env.local -f docker-compose.yml logs --no-color worker)"
+          grep -q 'renova worker started tasks=domain_outbox' <<<"$logs"
+          if grep -E 'Traceback|worker task crashed' <<<"$logs"; then
+            echo "worker logged a crash" >&2
+            exit 1
+          fi
+      - name: Capture runtime diagnostics
+        if: failure()
+        run: docker compose --project-name renova-local --env-file .env.local -f docker-compose.yml logs --no-color --tail=200 api worker || true
+      - name: Teardown
+        if: always()
+        run: bash scripts/dev-runtime.sh stop || true

@@ -18,9 +18,15 @@ jobs:
           cache: npm
       - name: Install workspace dependencies
         run: npm ci
-      - name: Mobile TypeScript integrity
-        run: npm run typecheck:mobile
-      - name: Mobile domain and UI contracts
+      - name: Mobile TypeScript integrity (ratchet real=0)
+        env:
+          TYPECHECK_BASELINE_REAL: "0"
+        run: |
+          npm run typecheck:mobile
+          node --test scripts/typecheck-mobile-report.test.mjs
+      - name: Calc-engine package tests
+        run: npm run calc:test
+      - name: Mobile domain and UI contracts (includes calc-engine call)
         run: npm run mobile:test
       - name: Mobile runtime and persistence contracts
         run: |
@@ -308,6 +314,37 @@ jobs:
           ALLOW_CREATE_ALL: "false"
           ALLOW_DEMO_SEED: "false"
         run: poetry run python -m alembic upgrade head
+      - name: Schema drift ratchet (models vs alembic head)
+        working-directory: backend
+        env:
+          POSTGRES_TEST_URL: postgresql://renova:renova@127.0.0.1:5433/postgres
+        run: poetry run pytest -q tests/test_schema_drift_ratchet.py
+
+  journey-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ENVIRONMENT: test
+      DATABASE_URL: sqlite+aiosqlite:///./ci-journey.db
+      PUBLIC_BASE_URL: http://127.0.0.1:8100
+      SECRET_KEY: ci-secret-key-at-least-16
+      ALLOW_CREATE_ALL: "true"
+      ALLOW_DEMO_SEED: "true"
+      PYTHONHASHSEED: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.13"
+      - name: Install locked backend dependencies
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "poetry==2.4.1"
+          poetry sync --no-interaction
+      - name: Lifecycle regression
+        working-directory: backend
+        run: poetry run pytest -q tests/test_journey_regression.py
 
   playwright-api-and-ui:
     runs-on: ubuntu-latest
