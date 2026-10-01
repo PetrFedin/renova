@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { RenovaTheme } from '@/constants/Theme';
 import { TextInput, View, Text, Pressable, StyleSheet } from 'react-native';
 import { HighlightText } from '@/components/renova/HighlightText';
@@ -10,20 +10,44 @@ export function ChatInThreadSearch({
   messages,
   onJump,
   onQueryChange,
+  fetchRemote,
 }: {
   messages: SearchableMessage[];
   onJump: (id: string) => void;
   onQueryChange?: (q: string) => void;
+  /** Серверный поиск по всей истории (в окне загружена только её часть). */
+  fetchRemote?: (q: string) => Promise<SearchHit[]>;
 }) {
   const [q, setQ] = useState('');
+  const [remote, setRemote] = useState<SearchHit[]>([]);
   const normalizedQuery = q.trim().toLowerCase();
+
+  useEffect(() => {
+    if (!fetchRemote || !normalizedQuery) {
+      setRemote([]);
+      return undefined;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      fetchRemote(q.trim())
+        .then((rows) => { if (!cancelled) setRemote(rows); })
+        .catch(() => { if (!cancelled) setRemote([]); });
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [normalizedQuery, fetchRemote]);
+
+  const local: SearchHit[] = normalizedQuery
+    ? messages.filter((message): message is SearchHit => (
+      typeof message.text === 'string'
+      && message.text.toLowerCase().includes(normalizedQuery)
+    ))
+    : [];
+  const seen = new Set<string>();
   const hits: SearchHit[] = normalizedQuery
-    ? messages
-      .filter((message): message is SearchHit => (
-        typeof message.text === 'string'
-        && message.text.toLowerCase().includes(normalizedQuery)
-      ))
-      .slice(0, 5)
+    ? [...remote, ...local].filter((h) => (seen.has(h.id) ? false : (seen.add(h.id), true))).slice(0, 5)
     : [];
 
   return (

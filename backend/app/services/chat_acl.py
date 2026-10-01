@@ -18,6 +18,7 @@ async def require_chat_access(
     *,
     write: bool = False,
     allow_participant: bool = False,
+    load_messages: bool = True,
 ) -> tuple[Project, ChatThread]:
     """Authorize project authority or an explicitly allowed active participant.
 
@@ -29,8 +30,12 @@ async def require_chat_access(
     read paths serialize ``thread.messages``. This prevents implicit relationship
     I/O from escaping SQLAlchemy's greenlet context and keeps authorization plus
     serialization deterministic for both SQLite E2E and PostgreSQL runtime.
+
+    ``load_messages=False`` skips that eager load for paginated reads (COM-024):
+    the caller must then query the page itself and never touch ``thread.messages``.
     """
-    thread = await db.get(ChatThread, thread_id, options=(selectinload(ChatThread.messages),))
+    options = (selectinload(ChatThread.messages),) if load_messages else ()
+    thread = await db.get(ChatThread, thread_id, options=options)
     if not thread or thread.project_id != project_id:
         raise HTTPException(404, "chat_not_found")
 

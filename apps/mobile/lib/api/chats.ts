@@ -1,5 +1,6 @@
 /** API: chats */
 import {req, cachedGet, API_BASE, ApiError, authHeaders} from './client';
+import { parseChatSearchHits, type ChatSearchHit } from '../chatSearch';
 import { isQueueableWriteError } from './queueableError';
 import type { ChatDetail, ChatMessage, ChatThread, User } from './types';
 import { isAmbiguousWriteFailure } from './failurePolicy';
@@ -236,24 +237,48 @@ export const chatsApi = {
       throw new Error('offline_queued');
     }
   },
+  /** Экспорт треда в PDF: web — скачивание, native — временный файл + share sheet (COM-031). */
   exportChatPdf: async (userId: string, projectId: string, threadId: string) => {
-    const base = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
-    const r = await fetch(`${base}/api/v1/projects/${projectId}/chats/${threadId}.pdf`, { headers: authHeaders(userId) });
-    if (!r.ok) throw new Error('PDF error');
-    const blob = await r.blob();
-    if (typeof window !== 'undefined') {
-      const u = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = u;
-      a.download = `chat-${threadId.slice(0, 8)}.pdf`;
-      a.click();
-      URL.revokeObjectURL(u);
-    }
+    const { downloadProjectPdf } = await import('@/lib/pdfOpen');
+    await downloadProjectPdf(
+      userId,
+      `/api/v1/projects/${projectId}/chats/${threadId}.pdf`,
+      `chat-${threadId.slice(0, 8)}.pdf`,
+    );
   },
-  getChat: (userId: string, projectId: string, threadId: string) =>
-    req<ChatDetail>(`/api/v1/projects/${projectId}/chats/${threadId}`, {}, userId),
+  /** Окно истории: по умолчанию последние 50; `before` — более ранние; `around` — окно вокруг сообщения (COM-024). */
+  getChat: (
+    userId: string,
+    projectId: string,
+    threadId: string,
+    opts: { limit?: number; before?: string; around?: string } = {},
+  ) => {
+    const qs = new URLSearchParams();
+    if (opts.limit) qs.set('limit', String(opts.limit));
+    if (opts.before) qs.set('before', opts.before);
+    if (opts.around) qs.set('around', opts.around);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return req<ChatDetail>(`/api/v1/projects/${projectId}/chats/${threadId}${suffix}`, {}, userId);
+  },
   unreadChats: (userId: string, projectId: string) => req<{ count: number }>(`/api/v1/projects/${projectId}/chats/unread-count`, {}, userId),
-  searchChatMessages: (userId: string, projectId: string, q: string) => req<{ thread_id: string; text: string }[]>(`/api/v1/projects/${projectId}/chats/search?q=${encodeURIComponent(q)}`, {}, userId),
+  searchChatMessages: async (userId: string, projectId: string, q: string): Promise<ChatSearchHit[]> =>
+    parseChatSearchHits(
+      await req<unknown>(`/api/v1/projects/${projectId}/chats/search?q=${encodeURIComponent(q)}`, {}, userId),
+    ),
+  /** COM-006: автор правит своё текстовое сообщение (окно 24 ч, иначе 409 edit_window_expired). */
+  editChatMessage: (userId: string, projectId: string, threadId: string, messageId: string, text: string) =>
+    req<ChatMessage>(
+      `/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}`,
+      { method: 'PATCH', body: JSON.stringify({ text }) },
+      userId,
+    ),
+  /** COM-006: мягкое удаление своего сообщения (идемпотентно; сервер возвращает deleted=true). */
+  deleteChatMessage: (userId: string, projectId: string, threadId: string, messageId: string) =>
+    req<ChatMessage>(
+      `/api/v1/projects/${projectId}/chats/${threadId}/messages/${messageId}`,
+      { method: 'DELETE' },
+      userId,
+    ),
   /** W114: подтверждение из чата — очередь офлайн */
   confirmChatMessage: async (userId: string, projectId: string, threadId: string, messageId: string) => {
     try {

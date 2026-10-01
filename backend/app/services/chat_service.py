@@ -7,7 +7,7 @@ import secrets
 import uuid
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -132,15 +132,63 @@ async def count_unread_in_thread(db: AsyncSession, thread_id: str, user_id: str)
     return (await db.execute(q)).scalar() or 0
 
 
+async def unread_counts_for_threads(
+    db: AsyncSession,
+    thread_ids: list[str],
+    user_id: str,
+) -> dict[str, int]:
+    """Unread per thread in ONE grouped query (COM-024), same rule as ``count_unread_in_thread``."""
+    if not thread_ids:
+        return {}
+    since = func.coalesce(ChatThreadRead.last_read_at, datetime(1970, 1, 1))
+    q = (
+        select(ChatMessage.thread_id, func.count())
+        .select_from(ChatMessage)
+        .outerjoin(
+            ChatThreadRead,
+            and_(ChatThreadRead.thread_id == ChatMessage.thread_id, ChatThreadRead.user_id == user_id),
+        )
+        .where(
+            ChatMessage.thread_id.in_(thread_ids),
+            ChatMessage.user_id != user_id,
+            ChatMessage.created_at > since,
+            ChatMessage.message_type != ChatMessageType.system,
+        )
+        .group_by(ChatMessage.thread_id)
+    )
+    return {tid: int(n) for tid, n in (await db.execute(q)).all()}
+
+
+async def last_messages_for_threads(db: AsyncSession, thread_ids: list[str]) -> dict[str, ChatMessage]:
+    """Latest message per thread without loading history (window function)."""
+    if not thread_ids:
+        return {}
+    rn = func.row_number().over(
+        partition_by=ChatMessage.thread_id,
+        order_by=(ChatMessage.created_at.desc(), ChatMessage.id.desc()),
+    ).label("rn")
+    ranked = select(ChatMessage.id.label("mid"), rn).where(ChatMessage.thread_id.in_(thread_ids)).subquery()
+    rows = await db.execute(
+        select(ChatMessage).join(ranked, ranked.c.mid == ChatMessage.id).where(ranked.c.rn == 1)
+    )
+    return {m.thread_id: m for m in rows.scalars().all()}
+
+
 async def count_unread_project(db: AsyncSession, project_id: str, user_id: str) -> int:
     threads = await list_threads(db, project_id)
-    total = 0
-    for t in threads:
-        state = await get_thread_read_state(db, t.id, user_id)
-        if state and state.is_archived:
-            continue
-        total += await count_unread_in_thread(db, t.id, user_id)
-    return total
+    ids = [t.id for t in threads]
+    if not ids:
+        return 0
+    reads = await db.execute(
+        select(ChatThreadRead.thread_id).where(
+            ChatThreadRead.thread_id.in_(ids),
+            ChatThreadRead.user_id == user_id,
+            ChatThreadRead.is_archived == True,  # noqa: E712
+        )
+    )
+    archived = set(reads.scalars().all())
+    counts = await unread_counts_for_threads(db, [i for i in ids if i not in archived], user_id)
+    return sum(counts.values())
 
 
 async def count_unread_all(db: AsyncSession, user_id: str, project_ids: list[str]) -> int:
@@ -175,18 +223,30 @@ def _thread_order_key(x: dict) -> tuple:
 
 
 async def list_threads_enriched(db: AsyncSession, project_id: str, user_id: str) -> list[dict]:
+    """Thread list with last message and unread via aggregate queries (COM-024).
+
+    Never loads a thread's message history: three queries regardless of thread count.
+    """
     threads = await list_threads(db, project_id)
+    ids = [t.id for t in threads]
+    lasts = await last_messages_for_threads(db, ids)
+    unread = await unread_counts_for_threads(db, ids, user_id)
+    states: dict[str, ChatThreadRead] = {}
+    if ids:
+        rows = await db.execute(
+            select(ChatThreadRead)
+            .where(ChatThreadRead.thread_id.in_(ids), ChatThreadRead.user_id == user_id)
+            .execution_options(populate_existing=True)
+        )
+        states = {r.thread_id: r for r in rows.scalars().all()}
     out = []
     for t in threads:
-        full = await get_thread(db, t.id)
-        last = sorted(full.messages, key=lambda m: m.created_at)[-1] if full and full.messages else None
-        state = await get_thread_read_state(db, t.id, user_id)
-        unread = await count_unread_in_thread(db, t.id, user_id)
+        state = states.get(t.id)
         out.append(
             thread_dict(
                 t,
-                last,
-                unread=unread,
+                lasts.get(t.id),
+                unread=unread.get(t.id, 0),
                 is_pinned=bool(state and state.is_pinned),
                 is_archived=bool(state and state.is_archived),
                 pinned_at=state.pinned_at if state else None,
@@ -411,11 +471,18 @@ def thread_dict(
     }
 
 
-def msg_dict(m: ChatMessage, read_by_other: bool = False) -> dict:
+def msg_dict(
+    m: ChatMessage,
+    read_by_other: bool = False,
+    author_names: dict[str, str | None] | None = None,
+) -> dict:
     meta = _parse_meta(m.meta_json)
     deleted = bool(meta.get("deleted_at"))
     return {
         "id": m.id,
+        "author_id": m.user_id,
+        # Display name only (never the phone); None when the profile has no name.
+        "author_name": (author_names or {}).get(m.user_id),
         "author_role": m.author_role,
         "message_type": m.message_type.value,
         "text": None if deleted else m.text,
@@ -438,6 +505,125 @@ def msg_dict(m: ChatMessage, read_by_other: bool = False) -> dict:
         "assignee_id": meta.get("assignee_id"),
         "due_at": meta.get("due_at"),
     }
+
+
+async def author_name_map(db: AsyncSession, user_ids: set[str]) -> dict[str, str | None]:
+    """user id -> display name (full_name only; the phone is never exposed)."""
+    ids = [u for u in user_ids if u]
+    if not ids:
+        return {}
+    rows = await db.execute(select(User.id, User.full_name).where(User.id.in_(ids)))
+    return {uid: ((name or "").strip() or None) for uid, name in rows.all()}
+
+
+def _before_cursor(msg: ChatMessage):
+    return or_(
+        ChatMessage.created_at < msg.created_at,
+        and_(ChatMessage.created_at == msg.created_at, ChatMessage.id < msg.id),
+    )
+
+
+def _after_cursor(msg: ChatMessage):
+    return or_(
+        ChatMessage.created_at > msg.created_at,
+        and_(ChatMessage.created_at == msg.created_at, ChatMessage.id > msg.id),
+    )
+
+
+async def page_messages(
+    db: AsyncSession,
+    thread_id: str,
+    *,
+    limit: int = 50,
+    before_id: str | None = None,
+    around_id: str | None = None,
+) -> tuple[list[ChatMessage], bool, bool]:
+    """History window: (messages ascending, has_more_before, has_more_after).
+
+    Default = the latest ``limit`` messages. ``before_id`` = the ``limit`` messages
+    strictly older than that message. ``around_id`` = a window centred on it.
+    Raises ``LookupError("message_not_found")`` for a cursor outside the thread.
+    """
+    limit = max(1, int(limit))
+    base = select(ChatMessage).where(ChatMessage.thread_id == thread_id)
+    desc = (ChatMessage.created_at.desc(), ChatMessage.id.desc())
+    asc = (ChatMessage.created_at.asc(), ChatMessage.id.asc())
+
+    async def _cursor(mid: str) -> ChatMessage:
+        row = await db.get(ChatMessage, mid)
+        if row is None or row.thread_id != thread_id:
+            raise LookupError("message_not_found")
+        return row
+
+    if around_id:
+        target = await _cursor(around_id)
+        half = max(1, limit // 2)
+        older = (await db.execute(
+            base.where(or_(_before_cursor(target), ChatMessage.id == target.id)).order_by(*desc).limit(half + 2)
+        )).scalars().all()
+        newer = (await db.execute(
+            base.where(_after_cursor(target)).order_by(*asc).limit(half + 1)
+        )).scalars().all()
+        has_before = len(older) > half + 1
+        has_after = len(newer) > half
+        window = list(reversed(older[: half + 1])) + list(newer[:half])
+        return window, has_before, has_after
+
+    stmt = base
+    if before_id:
+        stmt = stmt.where(_before_cursor(await _cursor(before_id)))
+    rows = (await db.execute(stmt.order_by(*desc).limit(limit + 1))).scalars().all()
+    has_before = len(rows) > limit
+    return list(reversed(rows[:limit])), has_before, False
+
+
+async def pinned_messages(db: AsyncSession, thread_id: str) -> list[ChatMessage]:
+    rows = await db.execute(
+        select(ChatMessage)
+        .where(ChatMessage.thread_id == thread_id, ChatMessage.is_pinned == True)  # noqa: E712
+        .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
+    )
+    return list(rows.scalars().all())
+
+
+def _escape_like(q: str) -> str:
+    return q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+async def search_thread_messages(db: AsyncSession, project_id: str, user_id: str, q: str, limit: int = 30) -> list[dict]:
+    """Project-wide text search: newest first, literal match, no system/archived/deleted."""
+    needle = (q or "").strip()
+    if not needle:
+        return []
+    archived_threads = select(ChatThreadRead.thread_id).where(
+        ChatThreadRead.user_id == user_id, ChatThreadRead.is_archived == True  # noqa: E712
+    )
+    stmt = (
+        select(ChatMessage, ChatThread.title)
+        .join(ChatThread, ChatThread.id == ChatMessage.thread_id)
+        .where(
+            ChatThread.project_id == project_id,
+            ChatThread.id.not_in(archived_threads),
+            ChatMessage.message_type != ChatMessageType.system,
+            ChatMessage.text.ilike(f"%{_escape_like(needle)}%", escape="\\"),
+        )
+        .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
+        .limit(max(1, min(int(limit), 100)))
+    )
+    # Soft-deleted messages carry ``deleted_at`` in meta_json (see msg_dict).
+    stmt = stmt.where(or_(ChatMessage.meta_json.is_(None), ~ChatMessage.meta_json.contains('"deleted_at"')))
+    rows = (await db.execute(stmt)).all()
+    return [
+        {
+            "id": m.id,
+            "thread_id": m.thread_id,
+            "thread_title": title,
+            "author_role": m.author_role,
+            "text": m.text,
+            "created_at": m.created_at.isoformat(),
+        }
+        for m, title in rows
+    ]
 
 
 async def _resolve_read_cursor(

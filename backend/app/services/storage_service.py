@@ -231,6 +231,10 @@ async def save_image(base64_or_data_url: str, *, folder: str = "photos") -> tupl
     client = _s3_client()
     if client is not None:
         await _put_s3(client, key=key, data=data, content_type=content_type)
+        # Chat attachments are private (thread ACL): never hand out a public S3 URL
+        # that bypasses `chat_media_acl`; the API URL authorizes and then redirects.
+        if key.startswith("chat-media/"):
+            return key, _local_url(key)
         return key, _s3_public_url(key)
     await _write_local(key, data)
     return key, _local_url(key)

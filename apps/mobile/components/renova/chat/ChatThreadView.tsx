@@ -1,7 +1,7 @@
 /** Экран треда: реакции, закрепление, задачи, счета, участники, файлы */
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { AppState, ScrollView, View, Text, TextInput, StyleSheet, Image, Pressable, Modal } from 'react-native';
-import { notifyError } from '@/lib/notify';
+import { AppState, ScrollView, View, Text, TextInput, StyleSheet, Pressable, Modal } from 'react-native';
+import { notifyError, notifyInfo } from '@/lib/notify';
 import { useFocusEffect, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -15,7 +15,12 @@ import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGua
 import { reportError, reportCatch } from '@/lib/reportError';
 import { api, ChatDetail, ChatMessage } from '@/lib/api';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
-import { compressDataUrl } from '@/lib/compressImage';
+import { ChatImage } from '@/components/renova/chat/ChatImage';
+import { chatAttachmentDataUrl, guessAttachmentMime, validateChatAttachment } from '@/lib/chatAttachment';
+import { authorLabel, authorRoleLabel, isMineMessage } from '@/lib/chatMessageAuthor';
+import { canLoadEarlier, CHAT_PAGE_SIZE, prependEarlier, reloadWindowSize } from '@/lib/chatHistory';
+import { hitsForThread, jumpPlan } from '@/lib/chatSearch';
+import { classifyChatFrame } from '@/lib/chatWsFrames';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
@@ -88,9 +93,13 @@ function MessageBubble({
   onPay,
   repliedTo,
   onOpenReplied,
+  userId,
+  onLayoutY,
 }: {
   m: ChatMessage;
   mine: boolean;
+  userId: string;
+  onLayoutY?: (y: number) => void;
   highlight?: boolean;
   query?: string;
   returnTo?: string;
@@ -105,12 +114,13 @@ function MessageBubble({
   repliedTo?: ChatMessage | null;
   onOpenReplied?: () => void;
 }) {
-  const roleLabel = m.author_role === 'customer' ? 'Заказчик' : m.author_role === 'contractor' ? 'Исполнитель' : 'Система';
+  // COM-028: имя автора из профиля (если задано) + роль; свои — «Вы».
+  const roleLabel = authorLabel(m, mine);
   const isSystem = m.author_role === 'system' || m.message_type === 'system';
 
   if (isSystem) {
     return (
-      <View style={s.systemWrap}>
+      <View style={s.systemWrap} onLayout={(e: { nativeEvent: { layout: { y: number } } }) => onLayoutY?.(e.nativeEvent.layout.y)}>
         <Text style={s.systemText}>{m.text}</Text>
         <Text style={s.systemTime}>{m.created_at.slice(11, 16)}</Text>
       </View>
@@ -120,6 +130,7 @@ function MessageBubble({
   return (
     <Pressable
       style={[s.msg, mine ? s.me : s.them, highlight && s.highlight, m.is_pinned && s.pinnedMsg]}
+      onLayout={(e: { nativeEvent: { layout: { y: number } } }) => onLayoutY?.(e.nativeEvent.layout.y)}
       onLongPress={() => {
         showActionConfirm({
           title: 'Сообщение',
@@ -145,7 +156,7 @@ function MessageBubble({
           style={s.quote}
         >
           <Text style={s.quoteRole}>
-            {repliedTo.author_role === 'customer' ? 'Заказчик' : repliedTo.author_role === 'contractor' ? 'Исполнитель' : 'Система'}
+            {authorRoleLabel(repliedTo.author_role)}
           </Text>
           <Text style={s.quoteText} numberOfLines={2}>
             {repliedTo.text || 'Вложение'}
@@ -175,7 +186,7 @@ function MessageBubble({
           <Text style={s.link}>Открыть задачу →</Text>
         </Pressable>
       )}
-      {m.image_url && <Image source={{ uri: m.image_url }} style={s.img} />}
+      {m.image_url ? <ChatImage uri={m.image_url} userId={userId} /> : null}
       {m.file_name ? <Text style={s.file}>📎 {m.file_name}</Text> : null}
       {m.reactions && Object.keys(m.reactions).length > 0 && (
         <View style={s.reactions}>
@@ -252,6 +263,17 @@ export function ChatThreadView({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const loadGenerationRef = useRef(0);
+  // COM-024: окно истории. null = последние сообщения; id = окно вокруг найденного сообщения.
+  const anchorIdRef = useRef<string | null>(null);
+  const loadedCountRef = useRef(0);
+  const layoutYRef = useRef<Record<string, number>>({});
+  const stickToBottomRef = useRef(true);
+  const restoreScrollToRef = useRef<string | null>(null);
+  const jumpRequestedRef = useRef<string | null>(null);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
+  const [earlierFailed, setEarlierFailed] = useState(false);
+  const [jumpFailed, setJumpFailed] = useState(false);
+  const [isOffLatest, setIsOffLatest] = useState(false);
   const hasProjectScope = chat?.capabilities?.access_scope === 'project';
   const canViewProjectActions = hasProjectScope && chat?.capabilities?.can_view_project_actions === true;
   const canManageParticipants = hasProjectScope && chat?.capabilities?.can_manage_participants === true;
@@ -262,14 +284,19 @@ export function ChatThreadView({
     if (!user || !threadId || !projectId) return;
     const generation = ++loadGenerationRef.current;
     try {
-      const detail = await api.getChat(user.id, projectId, threadId);
+      const detail = await api.getChat(user.id, projectId, threadId, {
+        limit: reloadWindowSize(loadedCountRef.current),
+        ...(anchorIdRef.current ? { around: anchorIdRef.current } : {}),
+      });
       if (generation !== loadGenerationRef.current) return;
+      loadedCountRef.current = detail.messages.length;
       if (detail.capabilities?.access_scope === 'project' && activeProject?.id !== projectId) {
         await loadProject(projectId).catch((error) => reportError('chat.loadProject', error, { projectId }));
         if (generation !== loadGenerationRef.current) return;
       }
       setRenderedReadCursor(null);
       setChat(detail);
+      setIsOffLatest(!!anchorIdRef.current && detail.has_more_after === true);
       setLoadFailed(false);
     } catch (error) {
       if (generation !== loadGenerationRef.current) return;
@@ -293,6 +320,8 @@ export function ChatThreadView({
     }
   }, [user, threadId, projectId, syncAfterRead]);
 
+  const chatRef = useRef<ChatDetail | null>(null);
+  chatRef.current = chat;
   const loadMessagesRef = useRef(loadMessages);
   const markThreadReadRef = useRef(markThreadRead);
   loadMessagesRef.current = loadMessages;
@@ -363,25 +392,125 @@ export function ChatThreadView({
     markThreadReadRef.current(renderedReadCursor).catch(reportCatch('chat.markRead.visible'));
   }, [screenFocused, appState, overlayBlocking, renderedReadCursor, loadFailed, threadId]);
 
-  useEffect(() => {
-    if (highlightId && chat?.messages.length) {
-      const idx = chat.messages.findIndex((m) => m.id === highlightId);
-      if (idx >= 0) setTimeout(() => scrollRef.current?.scrollTo({ y: idx * 72, animated: true }), 400);
+  const scrollToMessage = useCallback((id: string, attempt = 0) => {
+    stickToBottomRef.current = false;
+    const y = layoutYRef.current[id];
+    if (y == null) {
+      // Вёрстка ещё не измерена (окно только что подгружено) — повторить чуть позже.
+      if (attempt < 8) setTimeout(() => scrollToMessage(id, attempt + 1), 150);
+      return;
     }
+    scrollRef.current?.scrollTo({ y: Math.max(0, y - 24), animated: true });
+  }, []);
+
+  /** Переход к сообщению: в загруженном окне — прокрутка; иначе подгружаем окно `around` (COM-037). */
+  const jumpToMessage = useCallback(async (id: string) => {
+    if (!user || !threadId || !projectId) return;
+    setJumpFailed(false);
+    router.setParams({ highlightId: id });
+    const loaded = (chatRef.current?.messages ?? []).map((m) => m.id);
+    if (jumpPlan(loaded, id) === 'scroll') {
+      scrollToMessage(id);
+      return;
+    }
+    const generation = ++loadGenerationRef.current;
+    try {
+      const detail = await api.getChat(user.id, projectId, threadId, { around: id, limit: CHAT_PAGE_SIZE });
+      if (generation !== loadGenerationRef.current) return;
+      anchorIdRef.current = id;
+      loadedCountRef.current = detail.messages.length;
+      setChat(detail);
+      setIsOffLatest(detail.has_more_after === true);
+      scrollToMessage(id);
+    } catch (error) {
+      if (generation !== loadGenerationRef.current) return;
+      reportError('chat.jumpToMessage', error, { threadId, projectId, messageId: id });
+      setJumpFailed(true);
+    }
+  }, [user, threadId, projectId, scrollToMessage]);
+
+  useEffect(() => {
+    if (!highlightId || !chat) return;
+    if (jumpPlan(chat.messages.map((m) => m.id), highlightId) === 'scroll') {
+      scrollToMessage(highlightId);
+      return;
+    }
+    if (jumpRequestedRef.current === highlightId) return;
+    jumpRequestedRef.current = highlightId;
+    void jumpToMessage(highlightId);
   }, [highlightId, chat?.messages.length]);
+
+  /** Подгрузка более ранней истории («Загрузить ранние»). */
+  const loadEarlier = useCallback(async () => {
+    const current = chatRef.current;
+    if (!user || !current || loadingEarlier || !current.messages.length) return;
+    setLoadingEarlier(true);
+    setEarlierFailed(false);
+    try {
+      const firstId = current.messages[0].id;
+      const page = await api.getChat(user.id, projectId, threadId, { before: firstId, limit: CHAT_PAGE_SIZE });
+      restoreScrollToRef.current = firstId;
+      stickToBottomRef.current = false;
+      setChat((prev) => {
+        if (!prev) return prev;
+        const messages = prependEarlier(prev.messages, page.messages);
+        loadedCountRef.current = messages.length;
+        return { ...prev, messages, has_more_before: page.has_more_before };
+      });
+    } catch (error) {
+      reportError('chat.loadEarlier', error, { threadId, projectId });
+      setEarlierFailed(true);
+    } finally {
+      setLoadingEarlier(false);
+    }
+  }, [user, projectId, threadId, loadingEarlier]);
+
+  const backToLatest = useCallback(() => {
+    anchorIdRef.current = null;
+    loadedCountRef.current = 0;
+    setIsOffLatest(false);
+    stickToBottomRef.current = true;
+    router.setParams({ highlightId: '' });
+    loadMessagesRef.current().catch(reportCatch('chat.backToLatest'));
+  }, []);
+
+  const searchInThread = useCallback(async (q: string) => {
+    if (!user) return [];
+    const hits = await api.searchChatMessages(user.id, projectId, q);
+    return hitsForThread(hits, threadId).map((h) => ({ id: h.id, text: h.text }));
+  }, [user, projectId, threadId]);
 
   const reload = useCallback(() => loadMessages().catch(reportCatch('chat.reload')), [loadMessages]);
   useProjectDataReload(reload);
 
-  const { send: wsSend, connected: wsConnected } = useChatWebSocket(threadId, !!user && !!projectId, (payload) => {
-    if (payload.type === 'typing') {
-      setTyping(true);
-      setTimeout(() => setTyping(false), 2000);
-      return;
-    }
-    // Delivery is not reading. Reload first; visibility+render gate decides later.
-    reload();
-  });
+  // Кадры часто идут пачкой (сообщение + реакция + прочтение) — один reload на пачку.
+  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleReload = useCallback(() => {
+    if (reloadTimerRef.current) return;
+    reloadTimerRef.current = setTimeout(() => {
+      reloadTimerRef.current = null;
+      reload();
+    }, 300);
+  }, [reload]);
+  useEffect(() => () => {
+    if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
+  }, []);
+
+  const { send: wsSend, connected: wsConnected } = useChatWebSocket(threadId, !!user && !!projectId,
+    (payload) => {
+      const action = classifyChatFrame(payload);
+      if (action === 'typing') {
+        setTyping(true);
+        setTimeout(() => setTyping(false), 2000);
+        return;
+      }
+      // Delivery is not reading. Reload first; visibility+render gate decides later.
+      // Прочтение, pin, подтверждение, правка, удаление — тоже перезагрузка, без ручного перезахода.
+      if (action === 'reload') scheduleReload();
+    },
+    // После переподключения кадры, пришедшие пока сокет был закрыт, потеряны — догружаем.
+    () => { reload(); },
+  );
 
   useChatFallbackPoll(!wsConnected && !!threadId && !!user, 15000, reload);
 
@@ -460,6 +589,10 @@ export function ChatThreadView({
       throw e;
     }
     setReplyTo(null);
+    // Отправили из окна «вокруг найденного» — возвращаемся к последним, чтобы увидеть своё сообщение.
+    anchorIdRef.current = null;
+    setIsOffLatest(false);
+    stickToBottomRef.current = true;
     await reconcileCommittedChatMutation('SendMessage');
   };
 
@@ -492,14 +625,61 @@ export function ChatThreadView({
           <Text style={s.topLink}>{chat.is_pinned ? 'Открепить чат' : 'Закрепить чат'}</Text>
         </Pressable>
       </View>
-      <ChatInThreadSearch messages={chat.messages} onJump={(id) => router.setParams({ highlightId: id })} onQueryChange={setChatQuery} />
+      <ChatInThreadSearch
+        messages={chat.messages}
+        onJump={(id) => { void jumpToMessage(id); }}
+        onQueryChange={setChatQuery}
+        fetchRemote={searchInThread}
+      />
+      {jumpFailed ? <Text style={s.wsHint}>Не удалось открыть найденное сообщение. Попробуйте ещё раз.</Text> : null}
       <ReadOnlyBanner />
-      <ScrollView ref={scrollRef} style={s.wrap} contentContainerStyle={{ padding: 16 }}>
+      <ScrollView
+        ref={scrollRef}
+        style={s.wrap}
+        contentContainerStyle={{ padding: 16 }}
+        scrollEventThrottle={100}
+        onScroll={(e: {
+          nativeEvent: {
+            contentOffset: { y: number };
+            contentSize: { height: number };
+            layoutMeasurement: { height: number };
+          };
+        }) => {
+          const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+          stickToBottomRef.current = contentSize.height - (contentOffset.y + layoutMeasurement.height) < 160;
+        }}
+        onContentSizeChange={() => {
+          const restoreId = restoreScrollToRef.current;
+          if (restoreId) {
+            // Подгрузили ранние: остаёмся на сообщении, которое было первым.
+            restoreScrollToRef.current = null;
+            setTimeout(() => {
+              const y = layoutYRef.current[restoreId];
+              if (y != null) scrollRef.current?.scrollTo({ y: Math.max(0, y - 8), animated: false });
+            }, 60);
+            return;
+          }
+          if (stickToBottomRef.current && !anchorIdRef.current) scrollRef.current?.scrollToEnd({ animated: false });
+        }}
+      >
+        {canLoadEarlier(chat.has_more_before, chat.messages) ? (
+          <View style={s.earlierWrap}>
+            <PrimaryButton
+              title={loadingEarlier ? 'Загрузка…' : earlierFailed ? 'Не удалось загрузить — повторить' : 'Загрузить ранние'}
+              variant="outline"
+              compact
+              disabled={loadingEarlier}
+              onPress={() => { void loadEarlier(); }}
+            />
+          </View>
+        ) : null}
         {chat.messages.filter((m) => !isChatCreationSystemMessage(m)).map((m) => (
           <MessageBubble
             key={m.id}
             m={m}
-            mine={m.author_role === user.role}
+            userId={user.id}
+            onLayoutY={(y) => { layoutYRef.current[m.id] = y; }}
+            mine={isMineMessage(m, user)}
             highlight={highlightId === m.id}
             query={chatQuery.trim() || undefined}
             returnTo={returnTo || `/chat/${threadId}`}
@@ -557,6 +737,11 @@ export function ChatThreadView({
             } : undefined}
           />
         ))}
+        {isOffLatest ? (
+          <View style={s.earlierWrap}>
+            <PrimaryButton title="К последним сообщениям" variant="outline" compact onPress={backToLatest} />
+          </View>
+        ) : null}
       </ScrollView>
 
       {replyTo && (
@@ -567,6 +752,7 @@ export function ChatThreadView({
       )}
 
       <View style={s.composer}>
+        {chat?.no_other_recipients && <Text style={s.wsHint}>Исполнитель ещё не подключён — сообщение увидят, когда он появится</Text>}
         {!wsConnected && <Text style={s.wsHint}>Нет live-соединения — обновление каждые 15 с (не «онлайн»)</Text>}
         {typing && <Text style={s.typing}>печатает…</Text>}
         <TextInput
@@ -590,28 +776,32 @@ export function ChatThreadView({
               notifyError('Ошибка', error, 'Не удалось отправить сообщение');
             }
           }} />
-          <Pressable disabled={!canWrite} onPress={async () => {
-            const pick = await ImagePicker.launchImageLibraryAsync({ base64: true, quality: 0.6 });
-            if (pick.canceled || !pick.assets[0]?.base64) return;
-            try {
-              await sendText('Фото', 'photo', compressDataUrl(`data:image/jpeg;base64,${pick.assets[0].base64}`));
-            } catch (error) {
-              reportError('ChatThreadView.SendPhoto.Mutation', error, { threadId, projectId });
-              notifyError('Ошибка', error, 'Не удалось отправить фото');
-            }
-          }}><Text style={s.toolBtn}>📷</Text></Pressable>
-          <Pressable disabled={!canWrite} onPress={async () => {
-            const pick = await ImagePicker.launchImageLibraryAsync({ base64: true, quality: 0.8, mediaTypes: ImagePicker.MediaTypeOptions.All });
-            if (pick.canceled || !pick.assets[0]?.base64) return;
-            const a = pick.assets[0];
-            const isPhoto = (a.mimeType || '').startsWith('image/');
-            try {
-              await sendText(a.fileName || (isPhoto ? 'Фото' : 'Файл'), isPhoto ? 'photo' : 'file', compressDataUrl(`data:${a.mimeType || 'image/jpeg'};base64,${a.base64}`));
-            } catch (error) {
-              reportError('ChatThreadView.SendAttachment.Mutation', error, { threadId, projectId });
-              notifyError('Ошибка', error, 'Не удалось отправить файл');
-            }
-          }}><Text style={s.toolBtn}>📎</Text></Pressable>
+          <Pressable
+            disabled={!canWrite}
+            accessibilityRole="button"
+            accessibilityLabel="Прикрепить изображение: JPEG, PNG или WebP, до 10 МБ"
+            onPress={async () => {
+              // COM-004: только то, что принимает backend (JPEG/PNG/WebP ≤ 10 МБ); PDF/видео не предлагаем.
+              const pick = await ImagePicker.launchImageLibraryAsync({ base64: true, quality: 0.8, mediaTypes: ['images'] });
+              if (pick.canceled || !pick.assets[0]) return;
+              const a = pick.assets[0];
+              const check = validateChatAttachment({
+                mimeType: guessAttachmentMime(a),
+                base64: a.base64,
+                fileSize: a.fileSize,
+              });
+              if (!check.ok) {
+                notifyInfo('Файл не отправлен', check.message);
+                return;
+              }
+              try {
+                await sendText('Фото', 'photo', chatAttachmentDataUrl(check.mimeType, a.base64 as string));
+              } catch (error) {
+                reportError('ChatThreadView.SendAttachment.Mutation', error, { threadId, projectId });
+                notifyError('Ошибка', error, 'Не удалось отправить изображение');
+              }
+            }}
+          ><Text style={s.toolBtn}>📷</Text></Pressable>
           {user.role === 'contractor' && (
             <>
               <Pressable disabled={!canWrite} onPress={() => {
@@ -752,7 +942,6 @@ export function ChatThreadView({
     </View>
   );
 }
-        {chat?.no_other_recipients && <Text style={s.wsHint}>Исполнитель ещё не подключён — сообщение увидят, когда он появится</Text>}
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: RenovaTheme.colors.background },
@@ -775,7 +964,7 @@ const s = StyleSheet.create({
   ok: { color: 'green', fontWeight: '600', marginTop: 4 },
   link: { color: RenovaTheme.colors.accent, fontWeight: '600', marginTop: 4 },
   file: { fontSize: 12, marginTop: 4, color: RenovaTheme.colors.text },
-  img: { width: 200, height: 140, borderRadius: 8, marginTop: 6 },
+  earlierWrap: { alignItems: 'center', marginBottom: 12 },
   msgActions: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 6 },
   timeInRow: { flex: 1, marginTop: 0 },
   msgAction: { minWidth: 28, minHeight: 28, alignItems: 'center', justifyContent: 'center' },

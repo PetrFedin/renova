@@ -57,7 +57,7 @@ export function GlobalSearchBar({
   useEffect(() => {
     if (!q.trim()) { setChatHits([]); return; }
     searchChats(q).then(setChatHits);
-    if (userId) api.searchChatMessages(userId, project.id, q).then(ms => setChatHits(h => [...h, ...ms.map(m => ({ id: m.thread_id, title: 'Чат', text: m.text, href: `/chat/${m.thread_id}` }))])).catch(reportCatch('components.renova.GlobalSearchBar.1'));
+    if (userId) api.searchChatMessages(userId, project.id, q).then(ms => setChatHits(h => [...h, ...ms.map(m => ({ id: m.thread_id, msgId: m.id, title: m.thread_title || 'Чат', text: m.text, href: `/chat/${m.thread_id}` }))])).catch(reportCatch('components.renova.GlobalSearchBar.1'));
   }, [q, userId, project.id]);
   const hits = [...searchProject(project, q, chatTitles), ...chatHits.map(c => ({ id: c.id, type: 'chat' as const, title: c.title, sub: c.text, href: `/chat/${c.id}`, msgId: c.msgId }))];
   const onSearch = (s: string) => { setQ(s); pushSearch(s).then(() => getSearchHistory().then(setHist)); };
@@ -87,7 +87,7 @@ export function GlobalSearchBar({
         </View>
       )}
       {all.map((h: any) => (
-        <Pressable key={h.id || h.href} style={s.hit} onPress={() => openSearchHit(h, returnTo, role)}>
+        <Pressable key={`${h.id || h.href}:${h.msgId ?? ''}`} style={s.hit} onPress={() => openSearchHit(h, returnTo, role)}>
           <Text style={s.title}>{h.title}</Text><Text style={s.sub}>{h.sub}</Text>
         </Pressable>
       ))}

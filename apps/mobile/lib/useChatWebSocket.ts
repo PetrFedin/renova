@@ -1,16 +1,22 @@
 /** WebSocket чата — reconnect с backoff, fallback polling когда offline */
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { buildWsAuthQuery } from '@/lib/wsAuthQuery';
+import { isPollingPaused, pollingResumesInMs } from '@/lib/api/client';
+import { classifyWsTicketFailure, nextWsDelayMs, wsReconnectDelayMs } from '@/lib/chatWsBackoff';
 
-type ChatWsPayload = { type?: string; message?: unknown };
+type ChatWsPayload = { type?: string; message?: unknown; message_id?: unknown; [key: string]: unknown };
 
 export function useChatWebSocket(
   threadId: string | undefined,
   enabled: boolean,
   onEvent: (payload: ChatWsPayload) => void,
+  /** Вызывается при ПЕРЕподключении: пока сокет был закрыт, кадры могли пропасть — догрузить историю. */
+  onReconnect?: () => void,
 ) {
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
+  const onReconnectRef = useRef(onReconnect);
+  onReconnectRef.current = onReconnect;
   const wsRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
 
@@ -23,9 +29,19 @@ export function useChatWebSocket(
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let attempt = 0;
+    let everConnected = false;
+
+    const schedule = (delayMs: number) => {
+      if (alive) timer = setTimeout(connect, delayMs);
+    };
 
     const connect = () => {
       if (!alive) return;
+      // Общая пауза после 429: не бить в /auth/ws-ticket, пока сервер просит подождать.
+      if (isPollingPaused()) {
+        schedule(pollingResumesInMs() + wsReconnectDelayMs(1));
+        return;
+      }
       const base = (process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100').replace(/^http/, 'ws');
       void (async () => {
         try {
@@ -35,7 +51,10 @@ export function useChatWebSocket(
           wsRef.current = ws;
           ws.onopen = () => {
             attempt = 0;
-            if (alive) setConnected(true);
+            if (!alive) return;
+            setConnected(true);
+            if (everConnected) onReconnectRef.current?.();
+            everConnected = true;
           };
           ws.onmessage = (e) => {
             try {
@@ -50,13 +69,15 @@ export function useChatWebSocket(
             if (alive) setConnected(false);
             if (!alive) return;
             attempt += 1;
-            const delay = Math.min(30000, 2000 * 2 ** Math.min(attempt - 1, 4));
-            timer = setTimeout(connect, delay);
+            schedule(nextWsDelayMs(attempt, isPollingPaused() ? pollingResumesInMs() : 0));
           };
-        } catch {
+        } catch (error) {
           if (alive) setConnected(false);
+          // Сессия истекла/нет токена: переподключение не поможет, дальше работает опрос
+          // (его 401 обрабатывает общий транспорт) — не долбим /auth/ws-ticket.
+          if (classifyWsTicketFailure(error) === 'stop') return;
           attempt += 1;
-          timer = setTimeout(connect, 4000);
+          schedule(nextWsDelayMs(attempt, isPollingPaused() ? pollingResumesInMs() : 0));
         }
       })();
     };

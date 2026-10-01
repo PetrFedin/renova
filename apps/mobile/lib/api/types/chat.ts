@@ -1,6 +1,10 @@
 /** Чаты проекта */
 export type ChatMessage = {
   id: string;
+  /** id автора: «моё» определяется по нему, а не по роли (COM-028). */
+  author_id?: string | null;
+  /** Имя автора из профиля (без телефона); null — имя не заполнено. */
+  author_name?: string | null;
   author_role: string;
   message_type: string;
   text: string | null;
@@ -56,8 +60,13 @@ export type ChatCapabilities = {
  */
 export type ChatDetail = ChatThread & {
   messages: ChatMessage[];
+  /** Есть более ранние сообщения (грузятся `before=<id первого>`). */
+  has_more_before?: boolean;
+  /** Окно `around` не доходит до конца истории. */
+  has_more_after?: boolean;
+  pinned_messages?: ChatMessage[];
   participants?: ChatParticipant[];
   capabilities?: ChatCapabilities;
-};
   /** true, если никто, кроме автора, не получит сообщение (исполнитель ещё не подключён) */
   no_other_recipients?: boolean;
+};

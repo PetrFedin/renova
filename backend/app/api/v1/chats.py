@@ -29,10 +29,11 @@ def _author_role_label(author_role: str | None) -> str:
 
 async def _msgs_with_read(db, thread_id, messages):
     reads = await chat_svc.read_map(db, thread_id)
+    names = await chat_svc.author_name_map(db, {m.user_id for m in messages})
     out = []
-    for m in sorted(messages, key=lambda x: x.created_at):
+    for m in sorted(messages, key=lambda x: (x.created_at, x.id)):
         other_read = any(uid != m.user_id and ts >= m.created_at for uid, ts in reads.items())
-        out.append(chat_svc.msg_dict(m, read_by_other=other_read))
+        out.append(chat_svc.msg_dict(m, read_by_other=other_read, author_names=names))
     # Pinned messages stay in their chronological place; the pinned subset is
     # exposed separately (see get_chat -> pinned_messages), never removed here.
     return out
@@ -90,6 +91,26 @@ async def _chat_capabilities(
         "can_create_task": project_write,
         "can_create_invoice": project_write and user.role.value == "contractor",
     }
+
+
+# COM-004: unsupported/oversized attachments are client errors, never a 500.
+_ATTACHMENT_ERRORS: dict[str, tuple[int, str]] = {
+    "unsupported_image_type": (415, "Поддерживаются только изображения JPEG, PNG и WebP"),
+    "image_too_large": (413, "Файл слишком большой: максимум 10 МБ"),
+    "empty_image_payload": (422, "Файл пустой"),
+    "invalid_image_base64": (422, "Файл повреждён и не может быть прочитан"),
+    "invalid_image_data_url": (422, "Файл повреждён и не может быть прочитан"),
+    "image_data_url_must_be_base64": (422, "Файл повреждён и не может быть прочитан"),
+}
+
+
+def attachment_http_error(code: str) -> HTTPException | None:
+    """HTTP error for a rejected attachment (shared with the technical-supervision message route)."""
+    known = _ATTACHMENT_ERRORS.get(code)
+    if known is None:
+        return None
+    status, message = known
+    return HTTPException(status, detail={"code": code, "message": message})
 
 
 class ThreadCreate(BaseModel):
@@ -203,10 +224,8 @@ async def unread_count(project_id: str, user: User = Depends(get_current_user), 
 
 @router.get("/{project_id}/chats/search")
 async def search_messages(project_id: str, q: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db), _=Depends(require_project_dep())):
-    from sqlalchemy import select
-    from app.models.entities import ChatMessage, ChatThread
-    r = await db.execute(select(ChatMessage).join(ChatThread).where(ChatThread.project_id == project_id, ChatMessage.text.ilike(f"%{q}%")).limit(30))
-    return [{"thread_id": m.thread_id, "text": m.text, "created_at": m.created_at.isoformat()} for m in r.scalars().all()]
+    """Newest first, literal match (LIKE wildcards escaped), message id included (COM-037)."""
+    return await chat_svc.search_thread_messages(db, project_id, user.id, q, limit=30)
 
 
 @router.get("/{project_id}/chats/{thread_id}.pdf")
@@ -262,13 +281,29 @@ async def mark_read(project_id: str, thread_id: str, body: ReadBody, user: User 
 
 
 @router.get("/{project_id}/chats/{thread_id}")
-async def get_chat(project_id: str, thread_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def get_chat(
+    project_id: str,
+    thread_id: str,
+    limit: int = Query(50, ge=1, le=200),
+    before: str | None = Query(None, max_length=36, description="id сообщения: отдать более ранние"),
+    around: str | None = Query(None, max_length=36, description="id сообщения: окно вокруг него"),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Тред с окном истории (по умолчанию последние 50). ``pinned_messages`` — всегда целиком."""
     _p, t = await require_chat_access(
-        db, project_id, thread_id, user, write=False, allow_participant=True,
+        db, project_id, thread_id, user, write=False, allow_participant=True, load_messages=False,
     )
     state = await chat_svc.get_thread_read_state(db, thread_id, user.id)
     unread = await chat_svc.count_unread_in_thread(db, thread_id, user.id)
-    msgs = await _msgs_with_read(db, thread_id, t.messages)
+    try:
+        page, has_before, has_after = await chat_svc.page_messages(
+            db, thread_id, limit=limit, before_id=before, around_id=around,
+        )
+    except LookupError as exc:
+        raise HTTPException(404, "message_not_found") from exc
+    msgs = await _msgs_with_read(db, thread_id, page)
+    pinned = await _msgs_with_read(db, thread_id, await chat_svc.pinned_messages(db, thread_id))
     return {
         **chat_svc.thread_dict(
             t,
@@ -278,7 +313,9 @@ async def get_chat(project_id: str, thread_id: str, user: User = Depends(get_cur
             pinned_at=state.pinned_at if state else None,
         ),
         "messages": msgs,
-        "pinned_messages": [m for m in msgs if m.get("is_pinned")],
+        "has_more_before": has_before,
+        "has_more_after": has_after,
+        "pinned_messages": pinned,
         "participants": await chat_svc.list_participants(db, thread_id, user),
         "capabilities": await _chat_capabilities(db, project_id=project_id, user=user),
     }
@@ -362,8 +399,13 @@ async def _post_message(project_id: str, thread_id: str, body: MessageCreate, us
             raise HTTPException(409, code) from exc
         if code == "invalid_message_type":
             raise HTTPException(422, code) from exc
+        attachment_error = attachment_http_error(code)
+        if attachment_error is not None:
+            raise attachment_error from exc
         raise
-    return chat_svc.msg_dict(msg)
+    out = chat_svc.msg_dict(msg)
+    out["no_recipients"] = not await chat_message_svc.thread_has_other_recipients(db, thread_id=thread_id, sender_id=user.id)
+    return out
 
 
 @router.post("/{project_id}/chats/{thread_id}/messages/{message_id}/confirm")
@@ -423,9 +465,7 @@ async def delete_message(project_id: str, thread_id: str, message_id: str, user:
         msg = await chat_message_svc.delete_own_message(db, thread=t, message_id=message_id, user_id=user.id)
     except chat_message_svc.MessageMutationError as exc:
         raise HTTPException(exc.status, exc.code) from exc
-    out = chat_svc.msg_dict(msg)
-    out["no_recipients"] = not await chat_message_svc.thread_has_other_recipients(db, thread_id=thread_id, sender_id=user.id)
-    return out
+    return chat_svc.msg_dict(msg)
 
 
 @router.patch("/{project_id}/chats/{thread_id}")
