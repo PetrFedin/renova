@@ -264,3 +264,60 @@ Do not:
 11. RENOVA-INT-10 Contractor/Supplier scorecards.
 
 **Implementation instruction:** strengthen the existing execution graph; do not import foreign authorities merely because an external project contains more features.
+
+## Additional wave — secure file admission and privileged access
+
+### ClamAV document/media admission — ADOPT/SIDECAR
+
+Reference: https://github.com/Cisco-Talos/clamav
+
+Renova already accepts project documents/evidence and has OCR. Add malware admission **before** OCR/document processing:
+
+`upload -> temporary quarantine -> ClamAV -> checksum/type validation -> object storage admission -> OCR/preview/index`
+
+A scanner outage is fail-closed for untrusted external uploads in production. Existing trusted/generated internal artefacts may use a separately documented path.
+
+Never send quarantined files into OCR, PDF preview or downstream AI/indexing.
+
+### Passkeys / step-up authentication — ADOPT
+
+Reference: https://github.com/MasterKale/SimpleWebAuthn
+
+Add passkeys to high-risk roles and actions:
+
+- contractor/customer account security;
+- project admin;
+- acceptance/rejection;
+- payment/invoice approval;
+- team-access changes;
+- export/signature operations.
+
+Passkeys are attached to the current Renova identity. They do not create another account system.
+
+For irreversible/high-value actions, support recent-auth/step-up checks rather than assuming a long-lived mobile session is sufficient.
+
+### Sentry React Native mobile observability — ADOPT
+
+Reference: https://github.com/getsentry/sentry-react-native
+
+Backend already has Sentry/OpenTelemetry dependencies. Extend release-aware crash/performance telemetry to the Expo/React Native client.
+
+Correlate:
+
+- mobile release/build;
+- route;
+- API correlation ID;
+- offline queue state class;
+- failed domain action class.
+
+Do not capture project photos, document contents, payment data or chat message text by default.
+
+### Additional acceptance
+
+- malicious upload cannot reach OCR/document indexing;
+- passkey recovery and lost-device flow are tested;
+- mobile crash events resolve to exact app/backend release;
+- telemetry redaction rules are covered by tests/review.
+
+**Sequencing:** ClamAV can precede Site Diary expansion; passkeys should follow stable identity/session flows; mobile Sentry can be introduced independently but must use privacy-safe defaults.
+
