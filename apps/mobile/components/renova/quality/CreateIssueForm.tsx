@@ -1,5 +1,8 @@
 /** QLT-007: замечание вне плана этажа — описание, серьёзность, комната и этап. */
 import { useState } from 'react';
+import * as ImagePicker from 'expo-image-picker';
+import { uploadMediaBlob } from '@/lib/mediaUpload';
+import { reportError } from '@/lib/reportError';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RenovaTheme } from '@/constants/Theme';
@@ -33,12 +36,16 @@ export function CreateIssueForm({
   rooms,
   stages,
   busy,
+  userId,
+  projectId,
   onSubmit,
   onCancel,
 }: {
   rooms: Option[];
   stages: Option[];
   busy: boolean;
+  userId: string;
+  projectId: string;
   onSubmit: (body: NewIssueBody) => Promise<boolean>;
   onCancel: () => void;
 }) {
@@ -48,6 +55,35 @@ export function CreateIssueForm({
   const [roomId, setRoomId] = useState<string | null>(null);
   const [stageId, setStageId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [photoKey, setPhotoKey] = useState<string | null>(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
+
+  // Камера, иначе галерея; фото необязательно — сбой не блокирует отправку замечания.
+  const attachPhoto = async () => {
+    setPhotoBusy(true);
+    setError(null);
+    try {
+      let uri: string | undefined;
+      try {
+        const cam = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.85 });
+        if (!cam.canceled && cam.assets[0]) uri = cam.assets[0].uri;
+      } catch (e) {
+        reportError('components.renova.quality.CreateIssueForm.camera', e);
+      }
+      if (!uri) {
+        const lib = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85 });
+        if (!lib.canceled && lib.assets[0]) uri = lib.assets[0].uri;
+      }
+      if (!uri) return;
+      const blob = await (await fetch(uri)).blob();
+      setPhotoKey(await uploadMediaBlob(userId, projectId, blob, blob.type || 'image/jpeg'));
+    } catch (e) {
+      reportError('components.renova.quality.CreateIssueForm.photo', e);
+      setError('Не удалось прикрепить фото. Можно добавить замечание без него и приложить фото позже.');
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
 
   const submit = async () => {
     const problem = validateNewIssue(title);
@@ -56,12 +92,13 @@ export function CreateIssueForm({
       return;
     }
     setError(null);
-    const ok = await onSubmit(buildNewIssueBody({ title, description, severity, roomId, stageId }));
+    const ok = await onSubmit(buildNewIssueBody({ title, description, severity, roomId, stageId, photoKey }));
     if (ok) {
       setTitle('');
       setDescription('');
       setRoomId(null);
       setStageId(null);
+      setPhotoKey(null);
     }
   };
 
@@ -103,9 +140,20 @@ export function CreateIssueForm({
           <Chips options={stages} value={stageId} onChange={setStageId} empty="Не указан" />
         </>
       ) : null}
+      <View style={s.actions}>
+        <PrimaryButton
+          title={photoBusy ? 'Загружаем фото…' : photoKey ? 'Заменить фото' : 'Добавить фото'}
+          variant="outline"
+          compact
+          disabled={busy || photoBusy}
+          onPress={() => { void attachPhoto(); }}
+        />
+        {photoKey ? <PrimaryButton title="Убрать фото" variant="ghost" compact disabled={busy || photoBusy} onPress={() => setPhotoKey(null)} /> : null}
+      </View>
+      {photoKey ? <Text style={s.label}>Фото прикреплено</Text> : null}
       {error ? <Text style={s.error}>{error}</Text> : null}
       <View style={s.actions}>
-        <PrimaryButton title={busy ? 'Сохраняем…' : 'Добавить замечание'} compact disabled={busy} onPress={() => { void submit(); }} />
+        <PrimaryButton title={busy ? 'Сохраняем…' : 'Добавить замечание'} compact disabled={busy || photoBusy} onPress={() => { void submit(); }} />
         <PrimaryButton title="Отмена" variant="outline" compact disabled={busy} onPress={onCancel} />
       </View>
     </View>

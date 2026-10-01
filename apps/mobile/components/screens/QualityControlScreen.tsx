@@ -483,6 +483,8 @@ export function QualityControlScreen() {
               rooms={(activeProject.rooms ?? []).map((r) => ({ id: r.id, name: r.name }))}
               stages={(activeProject.stages ?? []).map((st) => ({ id: st.id, name: st.name }))}
               busy={busy}
+              userId={user.id}
+              projectId={activeProject.id}
               onSubmit={createNewIssue}
               onCancel={() => setCreateOpen(false)}
             />

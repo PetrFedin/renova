@@ -422,24 +422,18 @@ export function FloorPlanPanel({
             hint={
               role === 'contractor'
                 ? 'Загрузите чертёж этажа, сверьте комнаты, затем отмечайте замечания на плане.'
-                : 'Подрядчик ещё не загрузил чертёж. Когда появится — «Замечания на плане» → фото дефекта.'
+                : 'Загрузите чертёж этажа — на нём можно отмечать замечания с фото. Исполнитель сможет заменить план позже.'
             }
-            actionLabel={
-              role === 'contractor'
-                ? '+ Загрузить план'
-                : 'Написать подрядчику'
-            }
-            onAction={
-              role === 'contractor'
-                ? () => { void uploadPlan(); }
-                : () => pushOsNav(tabsRoute('customer', 'chat'), pathname, 'customer')
-            }
+            actionLabel={'+ Загрузить план'}
+            onAction={() => { void uploadPlan(); }}
+            secondaryLabel={role === 'contractor' ? undefined : 'Написать подрядчику'}
+            onSecondary={role === 'contractor' ? undefined : () => pushOsNav(tabsRoute('customer', 'chat'), pathname, 'customer')}
           />
         </View>
       )}
       {plan && <FurnitureLayer userId={userId} projectId={projectId} planId={plan.id} role={role} />}
       {/* Clarity G: upload в empty — primary; outline только для замены */}
-      {role === 'contractor' && plan ? (
+      {canPunch && plan ? (
         <PrimaryButton
           title={uploading ? 'Загрузка…' : 'Заменить план этажа'}
           variant="outline"

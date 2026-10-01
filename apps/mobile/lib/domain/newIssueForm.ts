@@ -5,6 +5,7 @@ export type NewIssueBody = {
   severity: 'low' | 'medium' | 'high' | 'critical';
   room_id?: string;
   stage_id?: string;
+  photo_key?: string;
 };
 
 export function validateNewIssue(title: string): string | null {
@@ -17,6 +18,7 @@ export function buildNewIssueBody(input: {
   severity: NewIssueBody['severity'];
   roomId: string | null;
   stageId: string | null;
+  photoKey?: string | null;
 }): NewIssueBody {
   const description = input.description.trim();
   return {
@@ -25,6 +27,7 @@ export function buildNewIssueBody(input: {
     severity: input.severity,
     ...(input.roomId ? { room_id: input.roomId } : {}),
     ...(input.stageId ? { stage_id: input.stageId } : {}),
+    ...(input.photoKey ? { photo_key: input.photoKey } : {}),
   };
 }
 

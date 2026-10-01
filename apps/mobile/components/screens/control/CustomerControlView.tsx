@@ -19,7 +19,8 @@ import { LoadingState } from '@/components/ui/LoadingState';
 import { screenLayout } from '@/constants/screenLayout';
 import { issueSeverityLabel, issueStatusLabel } from '@/constants/labels';
 import { useNavFromHere } from '@/lib/navigation';
-import { openQcIssue } from '@/lib/qcNav';
+import { WarrantyTextModal } from '@/components/renova/WarrantyTextModal';
+import { warrantyActions, warrantyWaitingHint, type WarrantyAction } from '@/lib/domain/issueLifecycle';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { objectTabRoute } from '@/constants/osSections';
@@ -37,6 +38,8 @@ export function CustomerControlView() {
   const [acceptances, setAcceptances] = useState<WorkAcceptance[]>([]);
   const [warrantyItems, setWarrantyItems] = useState<{ id: string; title: string; status: string; overdue?: boolean }[]>([]);
   const [warrantyOpen, setWarrantyOpen] = useState(0);
+  const [warrantyPrompt, setWarrantyPrompt] = useState<{ id: string; title: string; action: WarrantyAction } | null>(null);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
   const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'error'>('loading');
 
   const reload = useCallback(() => {
@@ -97,6 +100,7 @@ export function CustomerControlView() {
     : openIssues;
   const summary = controlSummary(openIssues, pendingCount);
   const openWarranty = warrantyItems.filter((w) => w.status !== 'closed');
+  const closedWarranty = warrantyItems.filter((w) => w.status === 'closed').slice(0, 3);
 
   const confirmIssueAction = (iss: ProjectIssue, action: IssueAction) => {
     showActionConfirm({
@@ -139,27 +143,136 @@ export function CustomerControlView() {
     });
   };
 
-  const warrantyBlock = (warrantyOpen > 0 || focusWarranty) ? (
+  // REP-08: гарантийные действия и «в спор» — прямо в хабе приёмки. Для заказчика
+  // /quality-control ремапится сюда (pushLinks), поэтому отдельного экрана с кнопками у него нет.
+  const runHubMutation = async (key: string, label: string, call: () => Promise<unknown>) => {
+    if (busyKey) return;
+    setBusyKey(key);
+    try {
+      await call();
+      await syncProjectSideEffects({ user, project: activeProject });
+      reload();
+    } catch (e) {
+      if (isOfflineQueued(e)) {
+        notifyOfflineQueued(label);
+      } else {
+        reportError('control.hubMutation', e);
+        showActionConfirm({
+          title: 'Не удалось выполнить действие',
+          message: writeResultMessage(e, 'Повторите попытку.'),
+          primaryLabel: 'Понятно',
+          onPrimary: () => undefined,
+        });
+      }
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const runWarrantyAction = (id: string, action: WarrantyAction, comment?: string) =>
+    runHubMutation(`${id}:warranty-${action.kind}`, 'Гарантийное обращение', () => {
+      if (action.kind === 'close') return api.closeWarrantyClaim(user.id, activeProject.id, id);
+      if (action.kind === 'reopen') return api.reopenWarrantyClaim(user.id, activeProject.id, id, { comment });
+      return api.respondWarrantyClaim(user.id, activeProject.id, id, { decision: action.kind, comment });
+    });
+
+  const onWarrantyAction = (w: { id: string; title: string }, action: WarrantyAction) => {
+    if (readOnly || busyKey) return;
+    if (action.comment !== 'none') {
+      setWarrantyPrompt({ id: w.id, title: w.title, action });
+      return;
+    }
+    showActionConfirm({
+      title: `${action.label}?`,
+      message: `«${w.title}»`,
+      primaryLabel: action.label,
+      onPrimary: () => { void runWarrantyAction(w.id, action); },
+      secondaryLabel: 'Отмена',
+      onSecondary: () => undefined,
+    });
+  };
+
+  const escalate = (id: string, title: string) => {
+    if (readOnly || busyKey) return;
+    showActionConfirm({
+      title: 'Эскалировать в спор?',
+      message: `«${title}». Стороны получат уведомление.`,
+      primaryLabel: 'В спор',
+      onPrimary: () => { void runHubMutation(`${id}:escalate`, 'Эскалация', () => api.escalateIssue(user.id, activeProject.id, id)); },
+      secondaryLabel: 'Отмена',
+      onSecondary: () => undefined,
+    });
+  };
+
+  const warrantyBlock = (warrantyOpen > 0 || focusWarranty || closedWarranty.length > 0) ? (
     <>
       <Text style={[s.section, focusWarranty && s.sectionFocus]}>Гарантия{warrantyOpen ? ` · ${warrantyOpen}` : ''}</Text>
       {!openWarranty.length && focusWarranty ? (
         <Text style={s.empty}>Нет открытых гарантийных обращений</Text>
       ) : null}
       {openWarranty.map((w) => (
-        <Pressable
-          key={w.id}
-          style={[s.row, focusWarranty && s.rowFocus]}
-          onPress={() => openQcIssue(w.id, pathname, 'customer')}
-        >
+        <View key={w.id} style={[s.row, focusWarranty && s.rowFocus]}>
           <Text style={s.title}>{w.title}{w.overdue ? ' · просрочено' : ''}</Text>
           <Text style={s.meta}>{issueStatusLabel(w.status)}</Text>
-        </Pressable>
+          {!readOnly ? warrantyActions(w.status, 'customer').map((action) => (
+            <PrimaryButton
+              key={action.kind}
+              title={action.label}
+              compact
+              variant={action.intent === 'secondary' ? 'outline' : 'primary'}
+              loading={busyKey === `${w.id}:warranty-${action.kind}`}
+              disabled={!!busyKey && busyKey !== `${w.id}:warranty-${action.kind}`}
+              onPress={() => onWarrantyAction(w, action)}
+            />
+          )) : null}
+          {!readOnly && warrantyWaitingHint(w.status, 'customer') ? <Text style={s.meta}>{warrantyWaitingHint(w.status, 'customer')}</Text> : null}
+          {!readOnly && !w.title.startsWith('[Спор]') ? (
+            <PrimaryButton
+              title="В спор"
+              compact
+              variant="ghost"
+              loading={busyKey === `${w.id}:escalate`}
+              disabled={!!busyKey && busyKey !== `${w.id}:escalate`}
+              onPress={() => escalate(w.id, w.title)}
+            />
+          ) : null}
+        </View>
+      ))}
+      {closedWarranty.map((w) => (
+        <View key={w.id} style={s.row}>
+          <Text style={s.title}>{w.title}</Text>
+          <Text style={s.meta}>{issueStatusLabel(w.status)}</Text>
+          {!readOnly ? warrantyActions(w.status, 'customer').map((action) => (
+            <PrimaryButton
+              key={action.kind}
+              title={action.label}
+              compact
+              variant="outline"
+              loading={busyKey === `${w.id}:warranty-${action.kind}`}
+              disabled={!!busyKey && busyKey !== `${w.id}:warranty-${action.kind}`}
+              onPress={() => onWarrantyAction(w, action)}
+            />
+          )) : null}
+        </View>
       ))}
     </>
   ) : null;
 
   return (
     <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
+      <WarrantyTextModal
+        mode="comment"
+        visible={warrantyPrompt !== null}
+        heading={warrantyPrompt ? `${warrantyPrompt.action.label}: ${warrantyPrompt.title}` : ''}
+        confirmLabel={warrantyPrompt?.action.label ?? 'Готово'}
+        required={warrantyPrompt?.action.comment === 'required'}
+        onClose={() => setWarrantyPrompt(null)}
+        onConfirm={(comment) => {
+          const pending = warrantyPrompt;
+          setWarrantyPrompt(null);
+          if (pending) void runWarrantyAction(pending.id, pending.action, comment);
+        }}
+      />
       <ReadOnlyBanner />
       <View style={s.summary}>
         <View style={s.cell}><Text style={s.n}>{summary.pendingAcceptance}</Text><Text style={s.l}>Приёмка</Text></View>
@@ -212,6 +325,16 @@ export function CustomerControlView() {
                 onPress={() => confirmIssueAction(iss, action)}
               />
             ))
+          ) : null}
+          {!readOnly && !(iss.title || '').startsWith('[Спор]') ? (
+            <PrimaryButton
+              title="В спор"
+              compact
+              variant="ghost"
+              loading={busyKey === `${iss.id}:escalate`}
+              disabled={!!busyKey && busyKey !== `${iss.id}:escalate`}
+              onPress={() => escalate(iss.id, iss.title)}
+            />
           ) : null}
           {!readOnly && customerIssueWaitingHint(iss.status, selfManaged) ? (
             <Text style={s.meta}>{customerIssueWaitingHint(iss.status, selfManaged)}</Text>

@@ -9,3 +9,10 @@ if (full.title !== 'Трещина' || full.description !== 'у окна' || ful
 const bare = buildNewIssueBody({ title: 'Течь', description: '  ', severity: 'medium', roomId: null, stageId: null });
 if ('description' in bare || 'room_id' in bare || 'stage_id' in bare) throw new Error('empty optional fields must be omitted');
 console.log('newIssueForm ok');
+
+// QLT-007: фото прикрепляется ключом загруженного медиа и только когда оно есть
+{
+  const base = { title: 'Трещина', description: '', severity: 'low' as const, roomId: null, stageId: null };
+  if ('photo_key' in buildNewIssueBody(base)) throw new Error('без фото photo_key не отправляется');
+  if (buildNewIssueBody({ ...base, photoKey: 'k1' }).photo_key !== 'k1') throw new Error('photo_key уходит в тело');
+}
