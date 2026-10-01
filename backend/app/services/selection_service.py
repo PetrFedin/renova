@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import MaterialPick, MaterialPickStatus, SelectionItem
+from app.models.entities import MaterialPick, MaterialPickStatus, Project, SelectionItem
 
 
 async def material_pick_from_selection(db: AsyncSession, row: SelectionItem) -> MaterialPick:
@@ -11,6 +11,10 @@ async def material_pick_from_selection(db: AsyncSession, row: SelectionItem) -> 
     notes = row.notes or ""
     if row.sku:
         notes = f"SKU: {row.sku}\n{notes}".strip()
+    # REP-28: без исполнителя в проекте закупку может оформить только заказчик —
+    # дефолт «покупает исполнитель» оставил бы согласованную позицию без покупателя.
+    project = await db.get(Project, row.project_id)
+    extra = {"supply_source": "customer_to_buy"} if project is not None and project.contractor_id is None else {}
     pick = MaterialPick(
         project_id=row.project_id,
         room_id=row.room_id,
@@ -25,6 +29,7 @@ async def material_pick_from_selection(db: AsyncSession, row: SelectionItem) -> 
         category=row.category,
         status=MaterialPickStatus.approved,
         notes=notes or None,
+        **extra,
     )
     db.add(pick)
     await db.flush()

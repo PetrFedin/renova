@@ -98,3 +98,11 @@ const externalNext = procurementNextAction([includedMissing], [], [], 'contracto
 assert.equal(externalNext.id, 'confirm_supply');
 
 console.log('materialSupply domain tests passed');
+
+// REP-26/43: плательщик определяется источником, а не зашит «подрядчик»
+import { approvedPurchaseHint, payerLabel } from './materialSupply';
+console.assert(payerLabel('customer_to_buy') === 'Заказчик', 'customer pays');
+console.assert(payerLabel('contractor_to_buy') === 'Исполнитель', 'contractor pays');
+console.assert(!/подрядчик/i.test(approvedPurchaseHint('customer_to_buy')), 'no hard-coded contractor');
+console.assert(approvedPurchaseHint('customer_to_buy').includes('заказчик'), 'customer purchase hint');
+console.assert(approvedPurchaseHint(undefined).includes('источник'), 'unknown source hint');

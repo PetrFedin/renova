@@ -14,6 +14,10 @@ import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, type SelectionItem } from '@/lib/api';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
+import { LoadingState } from '@/components/ui/LoadingState';
+import { ReasonSheet } from '@/components/renova/ReasonSheet';
+import { canProposeSelection, selectionApproveMessage } from '@/lib/domain/selectionPolicy';
+import { writeResultMessage } from '@/lib/offlineResultMessage';
 import { EmptyActionState } from '@/components/ui/EmptyActionState';
 import { screenLayout } from '@/constants/screenLayout';
 import { repairTabRoute, tabsRoute, type OsRole } from '@/constants/osSections';
@@ -54,7 +58,9 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
   const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'error'>('loading');
 
   const isCustomer = role === 'customer';
-  const canWrite = !readOnly && !isCustomer;
+  const selfManaged = !activeProject?.contractor_id;
+  const canWrite = canProposeSelection({ role, readOnly: !!readOnly, selfManaged });
+  const [rejectTarget, setRejectTarget] = useState<SelectionItem | null>(null);
 
   const reload = useCallback(() => {
     if (!user || !activeProject) return;
@@ -90,6 +96,29 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
       </ScrollView>
     );
   }
+
+  if (loadState === 'loading' && !items.length) {
+    return (
+      <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
+        <LoadingState title="Загружаем подбор…" />
+      </ScrollView>
+    );
+  }
+
+  /** Единая обработка сбоя записи: офлайн-очередь или причина от сервера (REP-27). */
+  const failWrite = (e: unknown, offlineLabel: string, title: string, key: string) => {
+    if (isOfflineQueued(e)) {
+      notifyOfflineQueued(offlineLabel, role);
+      return;
+    }
+    reportError(key, e);
+    showActionConfirm({
+      title,
+      message: writeResultMessage(e, 'Повторите попытку.'),
+      primaryLabel: 'Понятно',
+      onPrimary: () => undefined,
+    });
+  };
 
   const roomName = (roomId: string | null) =>
     activeProject.rooms?.find((r) => r.id === roomId)?.name || 'Общее';
@@ -139,7 +168,7 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
   return (
     <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
       <Text style={s.hint}>
-        Подбор чистовых материалов: исполнитель предлагает → заказчик согласует. Лимит — allowance.
+        Подбор чистовых материалов: исполнитель предлагает — заказчик согласует. Лимит — предельная цена позиции.
       </Text>
 
       {pending > 0 && isCustomer ? (
@@ -167,7 +196,7 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
           <View style={s.addBox}>
             <TextInput style={s.inp} placeholder="Название / SKU" value={title} onChangeText={setTitle} />
             <TextInput style={s.inp} placeholder="Цена, ₽" value={price} onChangeText={setPrice} keyboardType="numeric" />
-            <TextInput style={s.inp} placeholder="Лимит (allowance), ₽" value={allowance} onChangeText={setAllowance} keyboardType="numeric" />
+            <TextInput style={s.inp} placeholder="Предельная цена (лимит), ₽" value={allowance} onChangeText={setAllowance} keyboardType="numeric" />
             <PrimaryButton title={busy ? '…' : 'Сохранить'} onPress={createItem} disabled={busy} />
             <PrimaryButton title="Отмена" variant="ghost" onPress={() => setShowAdd(false)} />
           </View>
@@ -179,7 +208,7 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
       {!filtered.length ? (
         <EmptyActionState
           title="Подбор пуст"
-          hint="Исполнитель добавляет варианты плитки, сантехники, света и т.д."
+          hint={selfManaged ? 'Добавьте варианты плитки, сантехники, света и т.д. — после согласования они попадут в закупки.' : 'Исполнитель добавляет варианты плитки, сантехники, света и т.д.'}
           actionLabel={canWrite ? 'Предложить позицию' : isCustomer ? 'Написать в чат' : undefined}
           onAction={
             canWrite
@@ -200,7 +229,7 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
             {item.allowance != null ? ` / лимит ${formatRub(item.allowance)}` : ''}
           </Text>
           {item.over_allowance ? (
-            <Text style={s.warn}>Выше лимита allowance</Text>
+            <Text style={s.warn}>Цена выше лимита</Text>
           ) : null}
           <Text style={s.badge}>{STATUS_LABEL[item.status] || item.status}</Text>
 
@@ -212,9 +241,7 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
                 reload();
                 alertSelectionProposed(role);
               } catch (e: unknown) {
-                if (isOfflineQueued(e)) {
-                  notifyOfflineQueued('Отправка на согласование');
-                } else throw e;
+                failWrite(e, 'Отправка на согласование', 'Не удалось отправить на согласование', 'components.screens.OsSelectionsScreen.Propose');
               }
             }} />
           )}
@@ -226,9 +253,7 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
                 reload();
                 alertSelectionProposed(role);
               } catch (e: unknown) {
-                if (isOfflineQueued(e)) {
-                  notifyOfflineQueued('Повторная отправка');
-                } else throw e;
+                failWrite(e, 'Повторная отправка', 'Не удалось отправить снова', 'components.screens.OsSelectionsScreen.Repropose');
               }
             }} />
           )}
@@ -239,7 +264,14 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
                 // Clarity V: зеркало reject — confirm перед approve
                 showActionConfirm({
                   title: 'Согласовать подбор?',
-                  message: `«${item.title || 'Позиция'}» войдёт в материалы/закупку.`,
+                  message: selectionApproveMessage({
+                    title: item.title,
+                    selfManaged,
+                    price: item.price,
+                    allowance: item.allowance,
+                    overAllowance: item.over_allowance,
+                    formatMoney: formatRub,
+                  }),
                   primaryLabel: 'Согласовать',
                   onPrimary: () => {
                     void (async () => {
@@ -249,9 +281,7 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
                         reload();
                         alertSelectionApproved(role);
                       } catch (e: unknown) {
-                        if (isOfflineQueued(e)) {
-                          notifyOfflineQueued('Согласование');
-                        } else throw e;
+                        failWrite(e, 'Согласование', 'Не удалось согласовать', 'components.screens.OsSelectionsScreen.Approve');
                       }
                     })();
                   },
@@ -259,33 +289,43 @@ export function OsSelectionsScreen({ role }: { role: OsRole }) {
                   onSecondary: () => undefined,
                 });
               }} />
-              <PrimaryButton title="Отклонить" variant="outline" compact onPress={() => {
-                // Clarity P: честный confirm без ложного «укажите причину» (поля нет)
-                showActionConfirm({
-                  title: 'Отклонить подбор?',
-                  message: `«${item.title || 'Позиция'}» будет отклонена. При необходимости добавьте новую.`,
-                  primaryLabel: 'Отклонить',
-                  onPrimary: () => {
-                    void (async () => {
-                      try {
-                        await api.rejectSelection(user.id, activeProject.id, item.id);
-                        await syncProjectSideEffects({ user, project: activeProject });
-                        reload();
-                      } catch (e: unknown) {
-                        if (isOfflineQueued(e)) {
-                          notifyOfflineQueued('Отклонение');
-                        } else throw e;
-                      }
-                    })();
-                  },
-                  secondaryLabel: 'Отмена',
-                  onSecondary: () => undefined,
-                });
-              }} />
+              <PrimaryButton title="Отклонить" variant="outline" compact onPress={() => setRejectTarget(item)} />
             </View>
           )}
         </View>
       ))}
+      <ReasonSheet
+        visible={rejectTarget !== null}
+        title={`Отклонить: ${rejectTarget?.title || 'позиция'}`}
+        placeholder="Почему отклоняете (обязательно)…"
+        hint="Опишите причину — исполнитель увидит её и предложит другой вариант."
+        confirmLabel="Отклонить"
+        onClose={() => setRejectTarget(null)}
+        onConfirm={async (reason) => {
+          const target = rejectTarget;
+          if (!target) return true;
+          try {
+            await api.rejectSelection(user.id, activeProject.id, target.id, reason);
+            await syncProjectSideEffects({ user, project: activeProject });
+            reload();
+            showActionConfirm({
+              title: 'Позиция отклонена',
+              message: 'Исполнитель увидит причину и сможет предложить другой вариант.',
+              primaryLabel: 'Понятно',
+              onPrimary: () => undefined,
+            });
+            return true;
+          } catch (e: unknown) {
+            if (isOfflineQueued(e)) {
+              notifyOfflineQueued('Отклонение', role);
+              return true;
+            }
+            reportError('components.screens.OsSelectionsScreen.Reject', e);
+            notifyError('Не удалось отклонить', e, 'Повторите попытку.');
+            return false;
+          }
+        }}
+      />
     </ScrollView>
   );
 }

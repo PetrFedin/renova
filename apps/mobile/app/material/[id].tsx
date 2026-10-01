@@ -16,8 +16,16 @@ import { api, MaterialPick, Purchase } from '@/lib/api';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { repairTabRoute } from '@/constants/osSections';
 import { findDeliveredPurchaseForPick } from '@/lib/domain/findPurchaseForPick';
-import { purchaseAdvanceLabel, purchaseCancelStatus } from '@/lib/domain/purchaseLifecycle';
+import { purchaseAdvanceLabel, purchaseCancelStatus, purchaseRoleMayCancel } from '@/lib/domain/purchaseLifecycle';
 import { writeResultMessage } from '@/lib/offlineResultMessage';
+import { approvedPurchaseHint, payerLabel } from '@/lib/domain/materialSupply';
+import { resolveSafeDocumentUrl } from '@/lib/documentUrl';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
+import { LoadingState } from '@/components/ui/LoadingState';
+import { EmptyActionState } from '@/components/ui/EmptyActionState';
+import { ReasonSheet } from '@/components/renova/ReasonSheet';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
+import { notifyError } from '@/lib/notify';
 
 const ST: Record<string, string> = {
   draft: 'Черновик', pending: 'На согласовании', approved: 'Согласовано', purchased: 'Куплено', rejected: 'Отклонено',
@@ -46,7 +54,9 @@ function priceTruthLabel(pick: MaterialPick): string {
 
 export default function MaterialDetailScreen() {
   const { id, returnTo } = useLocalSearchParams<{ id: string; returnTo?: string }>();
-  const { user, activeProject } = useRenova();
+  const { user, activeProject, readOnly } = useRenova();
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [pick, setPick] = useState<MaterialPick | null>(null);
   const [loading, setLoading] = useState(true);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
@@ -62,6 +72,7 @@ export default function MaterialDetailScreen() {
       return;
     }
     setLoading(true);
+    setLoadFailed(false);
     Promise.all([
       api.listMaterialPicks(user.id, activeProject.id),
       api.listPurchases(user.id, activeProject.id).catch((error) => {
@@ -84,6 +95,7 @@ export default function MaterialDetailScreen() {
       setPick(null);
       setPurchases([]);
       setPriceTruthError(true);
+      setLoadFailed(true);
     }).finally(() => setLoading(false));
   }, [user?.id, activeProject?.id, id]);
 
@@ -94,16 +106,33 @@ export default function MaterialDetailScreen() {
     return (
       <>
         <BackHeader title="Материал" returnTo={returnTo} />
-        <View style={s.center}><Text>Загрузка…</Text></View>
+        <LoadingState title="Загружаем материал…" />
       </>
     );
   }
 
   if (!pick) {
+    // REP-23: сбой сети — не «материал не найден»
     return (
       <>
         <BackHeader title="Материал" returnTo={returnTo} />
-        <View style={s.center}><Text>Материал не найден</Text></View>
+        {loadFailed ? (
+          <LoadErrorState
+            title="Не удалось загрузить материал"
+            hint="Материал не удалён — данные просто не загрузились. Проверьте сеть и повторите."
+            onRetry={reload}
+            role={role}
+          />
+        ) : (
+          <EmptyActionState
+            title="Материал не найден"
+            hint="Возможно, позиция удалена или относится к другому объекту."
+            icon="cube-outline"
+            actionLabel="Все материалы"
+            actionVariant="accent"
+            onAction={() => replaceOsNav(repairTabRoute(role, 'materials'), undefined, role)}
+          />
+        )}
       </>
     );
   }
@@ -113,7 +142,9 @@ export default function MaterialDetailScreen() {
   const deliveredPurchase = findDeliveredPurchaseForPick(purchases, pick.id);
   const cancelStatus = deliveredPurchase ? purchaseCancelStatus(deliveredPurchase.status) : null;
   const priceNeedsConfirmation = pick.price_actionable === false || pick.price_source === 'legacy_unknown' || pick.price_source === 'unset';
-  const priceCanEdit = pick.status === 'draft' || (pick.status === 'approved' && priceNeedsConfirmation);
+  // REP-05: гость/наблюдатель только смотрит — правка цены, согласование и отправка скрыты
+  const priceCanEdit = !readOnly && (pick.status === 'draft' || (pick.status === 'approved' && priceNeedsConfirmation));
+  const safeShopUrl = resolveSafeDocumentUrl(pick.shop_url);
 
   const saveManualPrice = async () => {
     if (!user || !activeProject || priceBusy) return;
@@ -180,11 +211,19 @@ export default function MaterialDetailScreen() {
               <Text style={s.row}><Text style={s.label}>Этап</Text> <Text style={s.link}>{stage.name}</Text></Text>
             </Pressable>
           )}
-          {pick.shop_url && (
-            <Pressable onPress={() => Linking.openURL(pick.shop_url!)}>
+          {pick.shop_url && safeShopUrl ? (
+            <Pressable
+              onPress={() => {
+                Linking.openURL(safeShopUrl).catch((error) => {
+                  notifyError('Ссылка не открылась', error, 'Скопируйте адрес и откройте его в браузере.');
+                });
+              }}
+            >
               <Text style={s.link}>{pick.shop_name || pick.shop_url}</Text>
             </Pressable>
-          )}
+          ) : null}
+          {pick.shop_url && !safeShopUrl ? <Text style={s.warning}>Ссылка на магазин недействительна и не будет открыта.</Text> : null}
+          <Text style={s.row}><Text style={s.label}>Кто платит</Text> {payerLabel(pick.supply_source)}</Text>
         </View>
         {priceCanEdit && user && activeProject && (
           <View style={s.priceEditor}>
@@ -208,12 +247,12 @@ export default function MaterialDetailScreen() {
           <Text style={s.warning}>Цена не имеет подтверждённого происхождения. Новую закупку по такой позиции система не создаст.</Text>
         )}
         {pick.status === 'approved' && (
-          <Text style={s.hint}>Согласовано, но в факт бюджета попадёт только после «Куплено» подрядчиком.</Text>
+          <Text style={s.hint}>{approvedPurchaseHint(pick.supply_source)}</Text>
         )}
         {pick.status === 'purchased' && (
-          <Text style={s.hint}>Оплата: подрядчик · учтено в факте бюджета.</Text>
+          <Text style={s.hint}>Оплата: {payerLabel(pick.supply_source).toLowerCase()} · учтено в факте бюджета.</Text>
         )}
-        {pick.status === 'purchased' && deliveredPurchase && cancelStatus && role === 'contractor' && user && activeProject && (
+        {!readOnly && pick.status === 'purchased' && deliveredPurchase && cancelStatus && purchaseRoleMayCancel(role, deliveredPurchase.status) && user && activeProject && (
           <PrimaryButton title={purchaseAdvanceLabel(cancelStatus)} variant="outline" onPress={() => {
             showActionConfirm({
               title: 'Убрать из факта?',
@@ -239,7 +278,7 @@ export default function MaterialDetailScreen() {
             });
           }} />
         )}
-        {role === 'customer' && pick.status === 'pending' && user && activeProject && (
+        {!readOnly && role === 'customer' && pick.status === 'pending' && user && activeProject && (
           <PrimaryButton title="Согласовать" onPress={() => {
             showActionConfirm({
               title: 'Согласовать материал?',
@@ -266,7 +305,36 @@ export default function MaterialDetailScreen() {
             });
           }} />
         )}
-        {role === 'contractor' && pick.status === 'draft' && user && activeProject && (
+        {!readOnly && role === 'customer' && pick.status === 'pending' && user && activeProject ? (
+          <>
+            <PrimaryButton title="Отклонить" variant="outline" onPress={() => setRejectOpen(true)} />
+            <ReasonSheet
+              visible={rejectOpen}
+              title={`Отклонить материал: ${pick.name}`}
+              placeholder="Почему отклоняете (обязательно)…"
+              hint="Опишите причину — исполнитель увидит её и предложит другой вариант."
+              confirmLabel="Отклонить"
+              onClose={() => setRejectOpen(false)}
+              onConfirm={async (reason) => {
+                try {
+                  await api.rejectMaterialPick(user.id, activeProject.id, pick.id, reason);
+                  await syncProjectSideEffects({ user, project: activeProject });
+                  reload();
+                  return true;
+                } catch (e: unknown) {
+                  if (isOfflineQueued(e)) {
+                    notifyOfflineQueued('Отклонение материала', role);
+                    return true;
+                  }
+                  reportError('material.detail.reject', e, { projectId: activeProject.id, materialId: pick.id });
+                  notifyError('Не удалось отклонить материал', e, 'Повторите попытку.');
+                  return false;
+                }
+              }}
+            />
+          </>
+        ) : null}
+        {!readOnly && role === 'contractor' && pick.status === 'draft' && user && activeProject && (
           <PrimaryButton title="На согласование" onPress={async () => {
             try {
               await api.submitMaterialPick(user.id, activeProject.id, pick.id);

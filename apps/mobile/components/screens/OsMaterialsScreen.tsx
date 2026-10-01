@@ -16,6 +16,10 @@ import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { api, type MaterialPick, type Purchase, type ReceiptItem } from '@/lib/api';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
+import { LoadingState } from '@/components/ui/LoadingState';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
+import { writeResultMessage } from '@/lib/offlineResultMessage';
+import { purchaseCancelAffectsFact } from '@/lib/domain/purchaseLifecycle';
 import { screenLayout } from '@/constants/screenLayout';
 import { procurementNextAction, readyPickIds } from '@/lib/domain/procurementNextAction';
 import { quantityToBuy, requiredQty, totalAvailableQty } from '@/lib/domain/materialSupply';
@@ -125,6 +129,15 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
     );
   }
 
+  // REP-23: пока данные не пришли, не показываем «материалы не рассчитаны» и нулевые счётчики
+  if (loadState === 'loading' && !picks.length && !purchases.length && !receipts.length) {
+    return (
+      <View style={[screenLayout.screen, { padding: 16 }]}>
+        <LoadingState title="Загружаем материалы…" />
+      </View>
+    );
+  }
+
   const needBuy = picks.filter((pick) => quantityToBuy(pick) > 0).length;
   const approved = picks.filter((pick) => pick.status === 'approved').length;
   const available = picks.filter(isMaterialAvailable).length;
@@ -149,10 +162,14 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
       try {
         await api.generateMaterialNeeds(user.id, activeProject.id);
         await reload();
-      } catch {
+      } catch (e) {
+        if (isOfflineQueued(e)) {
+          notifyOfflineQueued('Расчёт материалов', role);
+          return;
+        }
         showActionConfirm({
           title: 'Не удалось рассчитать материалы',
-          message: 'Потребности не сформированы. Проверьте сеть и повторите.',
+          message: writeResultMessage(e, 'Потребности не сформированы. Проверьте сеть и повторите.'),
         });
       }
     });
@@ -169,10 +186,15 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
         await reload();
         setMaterialSubtab('purchases');
         alertPurchaseCreated(role, ids.length);
-      } catch {
+      } catch (e) {
+        if (isOfflineQueued(e)) {
+          notifyOfflineQueued('Создание закупки', role);
+          return;
+        }
+        // Сервер называет точную причину (нет прав на эту закупку, цена не подтверждена, позиция уже в закупке)
         showActionConfirm({
           title: 'Не удалось создать закупку',
-          message: 'Закупка не создана. Проверьте сеть и повторите.',
+          message: writeResultMessage(e, 'Закупка не создана. Проверьте сеть и повторите.'),
         });
       }
     });
@@ -201,15 +223,32 @@ export function OsMaterialsScreen({ role }: { role: import('@/constants/osSectio
         await syncProjectSideEffects({ user, project: activeProject });
         await reload();
         alertPurchaseAdvanced(role, status);
-      } catch {
+      } catch (e) {
+        if (isOfflineQueued(e)) {
+          notifyOfflineQueued('Смена статуса закупки', role);
+          return;
+        }
         showActionConfirm({
           title: 'Не удалось обновить закупку',
-          message: 'Статус не изменён. Проверьте сеть и повторите.',
+          message: writeResultMessage(e, 'Статус не изменён. Проверьте сеть и повторите.'),
         });
       }
     });
 
     if (status === 'cancelled') {
+      const current = purchases.find((p) => p.id === id)?.status ?? '';
+      if (!purchaseCancelAffectsFact(current)) {
+        showActionConfirm({
+          title: 'Отменить закупку?',
+          message: 'Позиции освободятся и снова станут доступны для новой закупки.',
+          primaryLabel: 'Отменить закупку',
+          primaryDestructive: true,
+          onPrimary: () => { void run(); },
+          secondaryLabel: 'Назад',
+          onSecondary: () => undefined,
+        });
+        return;
+      }
       showActionConfirm({
         title: 'Убрать из факта?',
         message: 'Сумма закупки выйдет из факта бюджета. Позиции и история закупки сохранятся.',

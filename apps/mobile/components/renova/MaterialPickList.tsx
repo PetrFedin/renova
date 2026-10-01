@@ -29,6 +29,8 @@ import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { parseNonNegativeNumber } from '@/lib/parseLocaleNumber';
 import { useBusyAction } from '@/lib/hooks/useBusyAction';
 import { writeResultMessage } from '@/lib/offlineResultMessage';
+import { resolveSafeDocumentUrl } from '@/lib/documentUrl';
+import { notifyError } from '@/lib/notify';
 
 const fmtQty = (value: number) => Number(value.toFixed(3)).toLocaleString('ru-RU');
 
@@ -136,7 +138,8 @@ export function MaterialPickList({
   return (
     <View style={s.box}>
       <Text style={s.head}>Подбор материалов</Text>
-      <WorkTypeFilter value={wt} onChange={setWt} />
+      {/* REP-24: при переданном списке (хаб «Материалы») фильтр по виду работ ничего бы не фильтровал — не показываем */}
+      {!picksOverride ? <WorkTypeFilter value={wt} onChange={setWt} /> : null}
       {visible.map((p) => {
         const required = requiredQty(p);
         const available = totalAvailableQty(p);
@@ -239,11 +242,18 @@ export function MaterialPickList({
                 }}
               />
             )}
-            {p.shop_url && (
-              <Pressable accessibilityRole="link" onPress={() => Linking.openURL(p.shop_url!)}>
+            {p.shop_url && resolveSafeDocumentUrl(p.shop_url) ? (
+              <Pressable
+                accessibilityRole="link"
+                onPress={() => {
+                  Linking.openURL(resolveSafeDocumentUrl(p.shop_url) as string).catch((error) => {
+                    notifyError('Ссылка не открылась', error, 'Скопируйте адрес и откройте его в браузере.');
+                  });
+                }}
+              >
                 <Text style={s.link}>{p.shop_name || p.shop_url}</Text>
               </Pressable>
-            )}
+            ) : null}
             {!readOnly && role === 'customer' && p.status === 'pending' && (
               <PrimaryButton title="Согласовать" onPress={() => {
                 showActionConfirm({

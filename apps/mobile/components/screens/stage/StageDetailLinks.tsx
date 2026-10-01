@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { notifyError } from '@/lib/notify';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { RenovaTheme } from '@/constants/Theme';
 import { StageRoomPicker } from '@/components/renova/StageRoomPicker';
 import type { ProjectDetail, StageDetail, User } from '@/lib/api';
@@ -84,9 +85,17 @@ export function StageDetailLinks({ role, user, project, stage, stageId, canWrite
           selected={stage.room_ids || []}
           disabled={!canScheduleStage}
           onChange={async (room_ids) => {
-            await api.patchStageRooms(user.id, project.id, stage.id, room_ids);
-            await syncProjectSideEffects({ user, project });
-            onRoomsChanged();
+            try {
+              await api.patchStageRooms(user.id, project.id, stage.id, room_ids);
+              await syncProjectSideEffects({ user, project });
+              onRoomsChanged();
+            } catch (e: unknown) {
+              if (isOfflineQueued(e)) {
+                notifyOfflineQueued('Комнаты этапа', role);
+              } else {
+                notifyError('Комнаты не сохранены', e, 'Повторите попытку.');
+              }
+            }
           }}
         />
       ) : (

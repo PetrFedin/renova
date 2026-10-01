@@ -116,6 +116,8 @@ async def test_approved_selection_creates_material_pick(db):
     assert pick.status.value == "approved"
     refreshed = await db.get(MaterialPick, pick.id)
     assert refreshed is not None
+    # REP-28: проект без исполнителя — закупку оформляет заказчик, а не «исполнитель по умолчанию»
+    assert refreshed.supply_source == "customer_to_buy"
 
 
 async def _seed_two_projects(db, suffix: str):

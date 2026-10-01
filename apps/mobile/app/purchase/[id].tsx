@@ -12,7 +12,11 @@ import { api, Purchase } from '@/lib/api';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { budgetTabRoute, calendarTabRoute, repairTabRoute } from '@/constants/osSections';
 import { pushOsNav, replaceOsNav } from '@/lib/pushOsNav';
-import { PURCHASE_NEXT_STATUS, purchaseAdvanceLabel, purchaseRoleMayMove } from '@/lib/domain/purchaseLifecycle';
+import { PURCHASE_NEXT_STATUS, purchaseAdvanceLabel, purchaseCancelAffectsFact, purchaseCancelLabel, purchaseCancelStatus, purchaseRoleMayCancel, purchaseRoleMayMove } from '@/lib/domain/purchaseLifecycle';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
+import { LoadingState } from '@/components/ui/LoadingState';
+import { EmptyActionState } from '@/components/ui/EmptyActionState';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { alertPurchaseAdvanced } from '@/lib/procurementNav';
 import { reportError } from '@/lib/reportError';
 import { useBusyAction } from '@/lib/hooks/useBusyAction';
@@ -27,6 +31,7 @@ export default function PurchaseDetailScreen() {
   const { user, activeProject } = useRenova();
   const canWrite = useWriteAllowed();
   const [purchase, setPurchase] = useState<Purchase | null>(null);
+  const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'error'>('loading');
   const role = user?.role === 'contractor' ? 'contractor' : 'customer';
   const advance = useBusyAction();
 
@@ -34,16 +39,49 @@ export default function PurchaseDetailScreen() {
     if (!user || !activeProject || !id) return;
     api.listPurchases(user.id, activeProject.id).then((items) => {
       setPurchase(items.find((p) => p.id === id) || null);
-    }).catch((e) => { reportError('app.purchase.[id].Purchase', e); setPurchase(null); });
+      setLoadState('loaded');
+    }).catch((e) => {
+      reportError('app.purchase.[id].Purchase', e);
+      // Сбой загрузки — не «закупки нет»: оставляем прежние данные, если они были
+      setLoadState('error');
+    });
   }, [user?.id, activeProject?.id, id]);
 
   useEffect(() => { reload(); }, [reload]);
   useProjectDataReload(reload);
 
-  if (!purchase) return <View style={s.center}><Text>Загрузка…</Text></View>;
+  // REP-13: всегда с кнопкой «назад», различаем загрузку, сбой и «не найдено»
+  if (!purchase) {
+    return (
+      <>
+        <BackHeader title="Закупка" returnTo={returnTo} />
+        {loadState === 'loading' ? (
+          <LoadingState title="Загружаем закупку…" />
+        ) : loadState === 'error' ? (
+          <LoadErrorState
+            title="Не удалось загрузить закупку"
+            hint="Закупка не удалена — данные просто не загрузились. Проверьте сеть и повторите."
+            onRetry={() => { setLoadState('loading'); reload(); }}
+            role={role}
+          />
+        ) : (
+          <EmptyActionState
+            title="Закупка не найдена"
+            hint="Возможно, она удалена или относится к другому объекту."
+            icon="cart-outline"
+            actionLabel="Все закупки"
+            actionVariant="accent"
+            onAction={() => replaceOsNav(repairTabRoute(role, 'materials'), returnTo || `/purchase/${id}`)}
+          />
+        )}
+      </>
+    );
+  }
 
   const rawNext = PURCHASE_NEXT_STATUS[purchase.status];
   const next = rawNext && purchaseRoleMayMove(role, rawNext) ? rawNext : null;
+  const rawCancel = purchaseCancelStatus(purchase.status);
+  const cancel = rawCancel && purchaseRoleMayCancel(role, purchase.status) ? rawCancel : null;
 
   return (
     <>
@@ -73,6 +111,33 @@ export default function PurchaseDetailScreen() {
                 // W128: lifecycle → факт / календарь
                 alertPurchaseAdvanced(role, next);
               }, 'Статус закупки не изменён');
+            }}
+          />
+        )}
+        {canWrite && cancel && user && activeProject && (
+          <PrimaryButton
+            title={purchaseCancelLabel(purchase.status)}
+            variant="dangerOutline"
+            disabled={advance.busy}
+            onPress={() => {
+              const affectsFact = purchaseCancelAffectsFact(purchase.status);
+              showActionConfirm({
+                title: affectsFact ? 'Убрать из факта?' : 'Отменить закупку?',
+                message: affectsFact
+                  ? 'Сумма закупки выйдет из факта бюджета. Позиции и история закупки сохранятся.'
+                  : 'Позиции освободятся и снова станут доступны для новой закупки.',
+                primaryLabel: affectsFact ? 'Убрать' : 'Отменить закупку',
+                primaryDestructive: true,
+                onPrimary: () => {
+                  void advance.run(async () => {
+                    await api.updatePurchaseStatus(user.id, activeProject.id, purchase.id, cancel);
+                    await syncProjectSideEffects({ user, project: activeProject });
+                    reload();
+                  }, 'Закупка не отменена');
+                },
+                secondaryLabel: 'Назад',
+                onSecondary: () => undefined,
+              });
             }}
           />
         )}

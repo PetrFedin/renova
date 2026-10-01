@@ -32,7 +32,8 @@ if (!schedule.includes("title: 'Нужна приёмка этапа'") || !sche
 }
 
 if (selections.includes("Alert.alert('Отклонить'")) throw new Error('selection reject Alert');
-if (!selections.includes("title: 'Отклонить подбор?'")) throw new Error('selection reject sheet');
+// REP-27/43: отклонение подбора идёт через лист с обязательной причиной, а не голый confirm
+if (!selections.includes('<ReasonSheet') || !selections.includes('api.rejectSelection(user.id, activeProject.id, target.id, reason)')) throw new Error('selection reject sheet');
 
 if (expense.includes("Alert.alert('Удалить трату?'")) throw new Error('expense delete Alert');
 if (!expense.includes("title: 'Удалить трату?'")) throw new Error('expense delete sheet');

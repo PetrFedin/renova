@@ -58,3 +58,27 @@ export function needsAvailabilityUpdate(pick: MaterialSupplyTruth): boolean {
   if (pick.supply_source === 'customer_to_buy' || pick.supply_source === 'contractor_to_buy') return false;
   return totalAvailableQty(pick) + Number.EPSILON < requiredQty(pick);
 }
+
+/** Кто платит за закупку позиции — по источнику, а не «всегда подрядчик» (REP-26, REP-43). */
+export function payerLabel(source?: MaterialSupplySource): string {
+  switch (source) {
+    case 'customer_to_buy': return 'Заказчик';
+    case 'contractor_to_buy': return 'Исполнитель';
+    case 'customer_on_hand': return 'Закупка не нужна — материал уже у заказчика';
+    case 'contractor_included': return 'Включено в стоимость работ';
+    case 'third_party': return 'Третья сторона';
+    default: return 'Не указан';
+  }
+}
+
+/** Подсказка о статусе согласованной позиции с учётом того, кто покупает. */
+export function approvedPurchaseHint(source?: MaterialSupplySource): string {
+  switch (source) {
+    case 'customer_to_buy': return 'Согласовано. В факт бюджета попадёт после закупки, оплаченной заказчиком.';
+    case 'contractor_to_buy': return 'Согласовано. В факт бюджета попадёт после закупки исполнителем.';
+    case 'customer_on_hand': return 'Согласовано. Материал уже у заказчика — отдельная закупка не нужна.';
+    case 'contractor_included': return 'Согласовано. Материал включён в стоимость работ — закупка не нужна.';
+    case 'third_party': return 'Согласовано. Материал поставляет третья сторона.';
+    default: return 'Согласовано. Кто покупает материал, пока не указано — выберите источник в подборе.';
+  }
+}
