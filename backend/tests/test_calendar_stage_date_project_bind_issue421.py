@@ -89,14 +89,16 @@ async def test_patch_calendar_stages_rejects_foreign_stage_and_leaves_it_untouch
     """Contractor authorized only to Project A cannot mutate Project B's stage dates
     by pairing Project A's URL with Project B's stage id, and no write survives."""
     g = await _seed(db, "w421a")
+    stage_b_id = g["stage_b"].id  # the canonical path rolls back on 404 and expires ORM instances
+    project_a_id = g["project_a"].id
     _override(db, g["contractor_a"])
     try:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             r = await client.patch(
-                f"/api/v1/projects/{g['project_a'].id}/calendar/stages",
+                f"/api/v1/projects/{project_a_id}/calendar/stages",
                 json={
-                    "stage_id": g["stage_b"].id,
+                    "stage_id": stage_b_id,
                     "planned_start": "2026-10-01",
                     "planned_end": "2026-10-05",
                 },
@@ -109,7 +111,7 @@ async def test_patch_calendar_stages_rejects_foreign_stage_and_leaves_it_untouch
     from sqlalchemy import select
 
     refreshed = (
-        await db.execute(select(Stage).where(Stage.id == g["stage_b"].id))
+        await db.execute(select(Stage).where(Stage.id == stage_b_id))
     ).scalar_one()
     assert refreshed.planned_start is None
     assert refreshed.planned_end is None
