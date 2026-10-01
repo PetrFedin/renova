@@ -531,16 +531,16 @@ async def test_19c_confirmed_schedule_can_be_renegotiated(w):
     assert r.status_code == 409
     r = await w.call("lead", "POST", f"{P(w)}/work-schedules/{sch}/revisions")
     assert r.status_code == 200, r.text[:200]
-
-
-# ---------------------------------------------------------------- 6. старт этапа и работа
-
     rev = r.json()
     assert rev["status"] == "draft" and rev["supersedes_id"] == sch and rev["schedule_version"] >= 2
     r = await w.call("lead", "PUT", f"{P(w)}/work-schedules/{rev['id']}", {"title": "ревизия"})
     assert r.status_code == 200, r.text[:200]
     r = await w.call("cust", "GET", f"{P(w)}/work-schedules/active", expect=200)
     assert r.json()["id"] == sch and r.json()["status"] == "confirmed"
+
+
+# ---------------------------------------------------------------- 6. старт этапа и работа
+
 async def test_20_start_stage(w):
     st = stage_id(w, "Демонтаж")
     for who in ("other", "guest", "cust"):
@@ -689,10 +689,18 @@ async def test_25_confirm_payment_with_transfer_ack(w):
         assert any(p["id"] == pay and p["status"] == w.s["pay_status"] for p in r.json())
 
 
-@pytest.mark.xfail(strict=True, reason="JRN-006: платёж за этап не попадает в budget_spent (волна 1)")
 async def test_25b_stage_payment_counts_in_budget_spent(w):
+    """JRN-006: «перевёл» без чека (paid_unverified) намеренно не идёт в факт; чек на полную сумму — идёт."""
     pay = next(p for p in (await w.call("cust", "GET", f"{P(w)}/payments", expect=200)).json() if p["id"] == w.s["pay"])
     amount = float(pay["amount"])
+    assert pay["status"] == "paid_unverified"
+    before = float((await w.call("cust", "GET", P(w), expect=200)).json()["budget_spent"])
+    assert before < amount, "отметка без чека не должна попадать в факт"
+    qr = f"t=20260927T1200&s={amount:.2f}&fn=9999078901234568&i=12399&fp=1234567899&n=1"
+    await w.call("cust", "POST", f"{P(w)}/receipts/scan", {
+        "payment_id": w.s["pay"], "qr_raw": qr, "client_request_id": "rcpt-req-0001"}, expect=200)
+    pay = next(p for p in (await w.call("cust", "GET", f"{P(w)}/payments", expect=200)).json() if p["id"] == w.s["pay"])
+    assert pay["status"] == "confirmed"
     detail = (await w.call("cust", "GET", P(w), expect=200)).json()["budget_spent"]
     summary = (await w.call("cust", "GET", f"{P(w)}/budget-summary", expect=200)).json()["summary"]["budget_spent"]
     assert float(detail) >= amount and float(summary) >= amount
@@ -924,32 +932,39 @@ async def test_35_invoice_can_be_cancelled(w):
     assert r.status_code == 200, r.text[:200]
 
 
-@pytest.mark.xfail(strict=True, reason="JRN-008: closeout требует «подтвердить» неоплаченные счета (волна 1)")
 async def test_36_closeout_does_not_require_confirming_unpaid(w):
+    """JRN-008: живой неоплаченный счёт блокирует closeout (409), но выход есть — отмена счёта,
+    а не «подтвердить» оплату, которой не было. Отменённые счета closeout не блокируют."""
     pend = [p for p in (await w.call("cust", "GET", f"{P(w)}/payments", expect=200)).json() if p["status"] == "pending"]
     assert pend, "в сценарии остаются неоплаченные счета"
     r = await w.call("cust", "POST", f"{P(w)}/closeout")
-    assert r.status_code == 200, r.text[:200]
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "closeout_not_ready"
+    assert r.json()["detail"]["pending_payments"] == len(pend)
+    for p in pend:
+        await w.call("cust", "POST", f"{P(w)}/payments/{p['id']}/cancel", expect=(200, 409))
+    spent_before = float((await w.call("cust", "GET", P(w), expect=200)).json()["budget_spent"])
+    r = await w.call("cust", "POST", f"{P(w)}/closeout")
+    assert r.status_code == 200, r.text[:300]
+    spent_after = float((await w.call("cust", "GET", P(w), expect=200)).json()["budget_spent"])
+    assert spent_after == spent_before, "отмена счетов не должна менять факт"
 
 
 async def test_37_closeout(w):
-    """Закрываем проект. Пока JRN-008 не исправлен — подтверждаем оставшиеся счета (единственный путь)."""
-    r = await w.call("cust", "GET", P(w), expect=200)
-    if not r.json().get("is_archived"):
-        for p in (await w.call("cust", "GET", f"{P(w)}/payments", expect=200)).json():
-            if p["status"] == "pending":
-                await w.call("cust", "POST", f"{P(w)}/payments/{p['id']}/confirm", {"transfer_ack": True}, expect=200)
-        r = await w.call("cust", "POST", f"{P(w)}/closeout", expect=200)
     r = await w.call("cust", "GET", P(w), expect=200)
     assert r.json()["is_archived"] is True
 
 
-@pytest.mark.xfail(strict=True, reason="JRN-027: после closeout проект не заперт — исполнитель создаёт платежи и допработы (волна 2)")
 async def test_38_project_locked_after_closeout(w):
+    """JRN-027: после closeout смета/график/счета/этапы заперты, гарантия и чтение — нет."""
     r = await w.call("lead", "POST", f"{P(w)}/payments", {"title": "Постфактум", "payment_type": "material", "amount": 100})
-    assert r.status_code in (403, 409)
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "project_closed"
     r = await w.call("lead", "POST", f"{P(w)}/change-orders", {"title": "Постфактум CO", "amount": 100})
-    assert r.status_code in (403, 409)
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "project_closed"
+    sid = stage_id(w, "Стены")
+    r = await w.call("lead", "POST", f"{P(w)}/stages/{sid}/start")
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "project_closed"
+    await w.call("cust", "GET", P(w), expect=200)
+    await w.call("cust", "GET", f"{P(w)}/payments", expect=200)
 
 
 # ---------------------------------------------------------------- 13. гарантия

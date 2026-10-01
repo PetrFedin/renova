@@ -76,6 +76,34 @@ export const osApi = {
   /** Polled from several independent widgets (home digest, control screens, closeout) — общий TTL-кэш вместо параллельного опроса каждым (#432). */
   listWarrantyClaims: (userId: string, projectId: string) => cachedGet<{ items: { id: string; title: string; status: string; created_at?: string; overdue?: boolean }[]; open: number; overdue?: number; post_closeout_allowed?: boolean }>(`/api/v1/projects/${projectId}/warranty-claims`, userId),
   closeWarrantyClaim: async (userId: string, projectId: string, issueId: string) => { try { const result = await req<{ ok: boolean }>(`/api/v1/projects/${projectId}/warranty-claims/${issueId}/close`, { method: 'POST' }, userId); await invalidateCachedGet(`/api/v1/projects/${projectId}/warranty-claims`, userId); return result; } catch (e) { if (e instanceof ApiError) throw e; const { enqueue } = await import('@/lib/offlineQueue'); await enqueue({ path: `/api/v1/projects/${projectId}/warranty-claims/${issueId}/close`, method: 'POST', body: '', userId }); throw new Error('offline_queued'); } },
-  closeoutChecklist: (userId: string, projectId: string) => req<{ ready: boolean; all_stages_done: boolean; pending_payments: number; warranty_open: number; warranty_overdue?: number; post_closeout?: boolean; warranty_post_closeout_allowed?: boolean; acceptance_acts_active: number; next_action: string; archived: boolean }>(`/api/v1/projects/${projectId}/closeout-checklist`, {}, userId),
+  respondWarrantyClaim: async (userId: string, projectId: string, issueId: string, body: { decision: 'accept' | 'reject' | 'fixed'; comment?: string }) => {
+    const path = `/api/v1/projects/${projectId}/warranty-claims/${issueId}/respond`;
+    const serialized = JSON.stringify(body);
+    try {
+      const result = await req<{ ok: boolean }>(path, { method: 'POST', body: serialized }, userId);
+      await invalidateCachedGet(`/api/v1/projects/${projectId}/warranty-claims`, userId);
+      return result;
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path, method: 'POST', body: serialized, userId });
+      throw new Error('offline_queued');
+    }
+  },
+  reopenWarrantyClaim: async (userId: string, projectId: string, issueId: string, body: { comment?: string } = {}) => {
+    const path = `/api/v1/projects/${projectId}/warranty-claims/${issueId}/reopen`;
+    const serialized = JSON.stringify(body);
+    try {
+      const result = await req<{ ok: boolean }>(path, { method: 'POST', body: serialized }, userId);
+      await invalidateCachedGet(`/api/v1/projects/${projectId}/warranty-claims`, userId);
+      return result;
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({ path, method: 'POST', body: serialized, userId });
+      throw new Error('offline_queued');
+    }
+  },
+  closeoutChecklist: (userId: string, projectId: string) => req<{ ready: boolean; open_issues_blocking?: number; open_issues_warning?: number; all_stages_done: boolean; pending_payments: number; warranty_open: number; warranty_overdue?: number; post_closeout?: boolean; warranty_post_closeout_allowed?: boolean; acceptance_acts_active: number; next_action: string; archived: boolean }>(`/api/v1/projects/${projectId}/closeout-checklist`, {}, userId),
   closeoutProject: (userId: string, projectId: string) => req<{ ok: boolean; ready: boolean; next_action: string }>(`/api/v1/projects/${projectId}/closeout`, { method: 'POST' }, userId),
 };

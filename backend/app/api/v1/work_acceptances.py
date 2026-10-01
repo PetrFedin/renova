@@ -74,6 +74,17 @@ from app.services.accept_orchestrator import (  # noqa: E402,F401
 
 def _decision_error(error: ValueError) -> HTTPException:
     code = str(error)
+    gate = getattr(error, "gate", None)
+    if gate is not None:
+        return HTTPException(
+            409,
+            detail={
+                "code": code,
+                "message": f"Закройте критичные и высокие замечания по этапу: {gate['blocking_count']}",
+                "issues": gate["blocking"],
+                "warning_count": gate["warning_count"],
+            },
+        )
     if code in {
         "stage_submit_actor_forbidden",
         "stage_reject_actor_forbidden",

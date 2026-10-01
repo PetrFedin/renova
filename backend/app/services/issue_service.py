@@ -40,6 +40,32 @@ ISSUE_ROLE_ALLOWED: dict[tuple[str, str], set[str]] = {
 }
 
 
+SUPERVISOR_ROLE = "supervisor"
+ISSUE_SEVERITIES = ("low", "medium", "high", "critical")
+# Критичные и высокие замечания блокируют приёмку этапа и closeout; остальные — предупреждение.
+BLOCKING_SEVERITIES = ("high", "critical")
+ISSUE_TERMINAL_STATUS = "closed"
+WARRANTY_PREFIX = "[Гарантия]"
+
+# Технадзор проверяет исправление: подтверждает (fixed → closed), возвращает (→ open)
+# и может открыть закрытое замечание снова. Исполнительные переходы ему недоступны.
+SUPERVISOR_ISSUE_TRANSITIONS: set[tuple[str, str]] = {
+    ("fixed", "closed"),
+    ("review", "closed"),
+    ("fixed", "open"),
+    ("review", "open"),
+    ("closed", "open"),
+}
+
+# Проект без исполнителя: заказчик сам исполнитель и сам проверяющий, отдельного шага
+# «исправлено → проверено» нет — замечание закрывается сразу.
+SELF_MANAGED_CUSTOMER_EXTRA: set[tuple[str, str]] = {
+    ("open", "closed"),
+    ("assigned", "closed"),
+    ("in_progress", "closed"),
+}
+
+
 def role_value(role: UserRole | str) -> str:
     return role.value if hasattr(role, "value") else str(role)
 
@@ -290,10 +316,22 @@ def validate_issue_transition(
     current: str,
     target: str,
     actor_role: UserRole | str,
+    *,
+    self_managed: bool = False,
 ) -> None:
+    role = role_value(actor_role)
+    if role == UserRole.customer.value and self_managed and (current, target) in SELF_MANAGED_CUSTOMER_EXTRA:
+        return
     if target not in ISSUE_TRANSITIONS.get(current, set()):
         raise ValueError(f"invalid_issue_transition:{current}:{target}")
-    if role_value(actor_role) not in ISSUE_ROLE_ALLOWED.get((current, target), set()):
+    allowed = ISSUE_ROLE_ALLOWED.get((current, target), set())
+    if role == SUPERVISOR_ROLE:
+        if (current, target) in SUPERVISOR_ISSUE_TRANSITIONS:
+            return
+        raise ValueError("issue_transition_role_forbidden")
+    if role == UserRole.customer.value and self_managed and UserRole.contractor.value in allowed:
+        return
+    if role not in allowed:
         raise ValueError("issue_transition_role_forbidden")
 
 
@@ -309,9 +347,10 @@ async def transition_issue(
     actor_role: UserRole | str,
     *,
     commit: bool = True,
+    self_managed: bool = False,
 ) -> ProjectIssue:
     """Apply a valid transition; callers may compose it into a wider transaction."""
-    validate_issue_transition(issue.status, target, actor_role)
+    validate_issue_transition(issue.status, target, actor_role, self_managed=self_managed)
     issue.status = target
     issue.closed_at = utc_now() if target == "closed" else None
     if commit:
@@ -336,14 +375,87 @@ async def update_issue_status(
     return issue
 
 
-def issue_transition_targets(project: Project, actor_id: str) -> list[str]:
+def issue_transition_targets(
+    project: Project,
+    actor_id: str,
+    *,
+    supervisor_id: str | None = None,
+) -> list[str]:
     return sorted(
         {
             user_id
-            for user_id in (project.customer_id, project.contractor_id)
+            for user_id in (project.customer_id, project.contractor_id, supervisor_id)
             if user_id and user_id != actor_id
         }
     )
+
+
+def normalize_severity(value: str | None) -> str:
+    """422-совместимая нормализация: только low/medium/high/critical."""
+    normalized = (value or "medium").strip().lower()
+    if normalized not in ISSUE_SEVERITIES:
+        raise ValueError("issue_severity_invalid")
+    return normalized
+
+
+def validate_issue_coordinates(x_pct: float | None, y_pct: float | None) -> None:
+    for coordinate in (x_pct, y_pct):
+        if coordinate is not None and not 0 <= float(coordinate) <= 100:
+            raise ValueError("issue_coordinates_invalid")
+
+
+def _issue_brief(issue: ProjectIssue) -> dict:
+    return {
+        "id": issue.id,
+        "title": issue.title,
+        "severity": issue.severity,
+        "status": issue.status,
+        "stage_id": issue.stage_id,
+    }
+
+
+async def open_issues_gate(
+    db: AsyncSession,
+    project_id: str,
+    *,
+    stage_id: str | None = None,
+) -> dict:
+    """Единый источник истины: какие открытые замечания блокируют приёмку этапа / closeout.
+
+    `stage_id` задан — замечания этого этапа (гейт сдачи и приёмки); не задан — все
+    замечания проекта (closeout). Гарантийные обращения учитывает отдельный контур
+    (`warranty_open`), здесь их нет. Критичные и высокие — блок, низкие и средние —
+    предупреждение.
+    """
+    query = select(ProjectIssue).where(
+        ProjectIssue.project_id == project_id,
+        ProjectIssue.status != ISSUE_TERMINAL_STATUS,
+    )
+    if stage_id:
+        query = query.where(ProjectIssue.stage_id == stage_id)
+    rows = [
+        i
+        for i in (await db.execute(query)).scalars().all()
+        if not (i.title or "").startswith(WARRANTY_PREFIX)
+    ]
+    blocking = [i for i in rows if i.severity in BLOCKING_SEVERITIES]
+    warnings = [i for i in rows if i.severity not in BLOCKING_SEVERITIES]
+    return {
+        "blocking": [_issue_brief(i) for i in blocking],
+        "blocking_count": len(blocking),
+        "warning_count": len(warnings),
+        "warnings": [_issue_brief(i) for i in warnings],
+    }
+
+
+class OpenIssuesBlock(ValueError):
+    """Приёмка этапа заблокирована открытыми критичными/высокими замечаниями."""
+
+    code = "open_issues_block_acceptance"
+
+    def __init__(self, gate: dict):
+        super().__init__(self.code)
+        self.gate = gate
 
 
 def issue_transition_event(current: str, target: str) -> tuple[str, str]:
@@ -410,7 +522,14 @@ async def prepare_issue_transition_effects(
         issue.status,
         issue.title,
     )
-    for target_id in issue_transition_targets(project, actor_id):
+    supervisor_id = None
+    try:
+        from app.services.technical_supervision_action_service import active_supervisor_user_id
+
+        supervisor_id = await active_supervisor_user_id(db, project.id)
+    except Exception:  # noqa: BLE001 — уведомление технадзору не должно ломать переход
+        supervisor_id = None
+    for target_id in issue_transition_targets(project, actor_id, supervisor_id=supervisor_id):
         await outbox.enqueue(
             db,
             aggregate_type="project_issue",

@@ -183,6 +183,12 @@ async def finalize_work_acceptance(
         raise ValueError("photos_required")
     from app.services.acceptance_policy import assert_accept_policy
     assert_accept_policy(stage, checklist=checklist, source="api")
+    # Тот же источник истины, что и у гейта сдачи (completion_check): критичные/высокие
+    # замечания этапа блокируют приёмку, низкие/средние — нет.
+    from app.services import issue_service as issue_svc
+    gate = await issue_svc.open_issues_gate(db, project.id, stage_id=stage.id)
+    if gate["blocking_count"]:
+        raise issue_svc.OpenIssuesBlock(gate)
     row.status = status
     row.accepted_by = accepted_by
     row.accepted_at = now

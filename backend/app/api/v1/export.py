@@ -539,51 +539,17 @@ async def close_warranty_claim(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """W62: закрыть гарантию — только заказчик (снимает блокер closeout)."""
-    from datetime import datetime
-    from app.models.entities import ProjectIssue, UserRole
+    """W62: закрыть гарантию — только заказчик (снимает блокер closeout).
+
+    Идемпотентно: повтор не переписывает closed_at и не шлёт второе уведомление.
+    Исполнителю уходит уведомление о закрытии (QLT-004).
+    """
     from app.services import issue_service as iss
-    from app.services import activity_service as act
+    from app.services import warranty_claim_service as warranty_svc
 
     project = await require_project(db, project_id, user, write=True)
-    if user.role != UserRole.customer or user.id != project.customer_id:
-        raise HTTPException(403, "warranty_close_customer_only")
-    issue = await db.get(ProjectIssue, issue_id)
-    if not issue or issue.project_id != project_id:
-        raise HTTPException(404, "warranty_not_found")
-    if not (issue.title or "").startswith("[Гарантия]"):
-        raise HTTPException(400, "not_a_warranty_claim")
-    issue.status = "closed"
-    issue.closed_at = utc_now()
-    # W46: архивируем связанный warranty-документ
-    try:
-        from sqlalchemy import select
-        from app.models.project_documents import ProjectDocument, DocumentStatus, DocumentType
-        docs = (
-            await db.execute(
-                select(ProjectDocument).where(
-                    ProjectDocument.project_id == project_id,
-                    ProjectDocument.document_type == DocumentType.warranty.value,
-                    ProjectDocument.notes.contains(f"warranty_issue:{issue.id}"),
-                )
-            )
-        ).scalars().all()
-        for doc in docs:
-            if doc.status != DocumentStatus.archived.value:
-                doc.status = DocumentStatus.archived.value
-    except Exception:
-        pass
-    await act.log_event(
-        db,
-        project_id=project_id,
-        user_id=user.id,
-        kind="WarrantyClosed",
-        title=issue.title,
-        link_path="/documents" if user.role.value == "customer" else "/quality-control",
-    )
-    await db.commit()
-    await db.refresh(issue)
-    return {"ok": True, "issue": iss.issue_dict(issue)}
+    issue, changed = await warranty_svc.close_claim(db, project=project, actor=user, issue_id=issue_id)
+    return {"ok": True, "changed": changed, "issue": iss.issue_dict(issue)}
 
 
 
@@ -624,11 +590,17 @@ async def _closeout_snapshot(db, project_id: str, project) -> dict:
     )
     # W60: documents — без активного акта приёмки closeout запрещён (канон → documents → warranty)
     has_acceptance_docs = len(acts_active) > 0
+    # QLT-002: открытые критичные/высокие замечания блокируют closeout; низкие/средние — предупреждение.
+    from app.services import issue_service as issue_svc
+
+    issue_gate = await issue_svc.open_issues_gate(db, project_id)
+    issues_blocking = issue_gate["blocking_count"]
     ready = bool(
         stages_done
         and not pending_pay
         and has_acceptance_docs
         and len(warranty_open) == 0
+        and issues_blocking == 0
     )
     if bool(getattr(project, "is_archived", False)):
         next_action = "Объект уже в архиве"
@@ -640,6 +612,8 @@ async def _closeout_snapshot(db, project_id: str, project) -> dict:
         next_action = "Подтвердите оплаты"
     elif not has_acceptance_docs:
         next_action = "Оформите акт приёмки в документах"
+    elif issues_blocking:
+        next_action = "Закройте критичные и высокие замечания"
     else:
         next_action = "Закройте гарантийные обращения"
     from datetime import datetime as _dt
@@ -657,6 +631,9 @@ async def _closeout_snapshot(db, project_id: str, project) -> dict:
         "acceptance_acts_active": len(acts_active),
         "warranty_open": len(warranty_open),
         "warranty_overdue": warranty_overdue,
+        "open_issues_blocking": issues_blocking,
+        "open_issues_blocking_items": issue_gate["blocking"],
+        "open_issues_warning": issue_gate["warning_count"],
         "ready": ready,
         "archived": archived,
         "post_closeout": archived,

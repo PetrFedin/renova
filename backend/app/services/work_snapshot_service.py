@@ -62,10 +62,11 @@ async def completion_check(db: AsyncSession, stage: Stage, project) -> dict:
     if not _photos_after(stage):
         checks.append({"id": "photos_after", "ok": False, "message": "Не добавлены фотографии результата", "action": "photos", "button": "Добавить фото"})
 
-    issues = (await db.execute(select(ProjectIssue).where(ProjectIssue.stage_id == stage.id))).scalars().all()
-    critical = [i for i in issues if i.severity in ("critical", "high") and i.status != "closed"]
-    if critical:
-        checks.append({"id": "issues", "ok": False, "message": f"Открыты критичные замечания: {len(critical)}", "action": "issues", "button": "Исправить"})
+    from app.services import issue_service as issue_svc
+
+    gate = await issue_svc.open_issues_gate(db, stage.project_id, stage_id=stage.id)
+    if gate["blocking_count"]:
+        checks.append({"id": "issues", "ok": False, "message": f"Открыты критичные замечания: {gate['blocking_count']}", "action": "issues", "button": "Исправить", "issues": gate["blocking"]})
 
     picks = (await db.execute(select(MaterialPick).where(MaterialPick.stage_id == stage.id))).scalars().all()
     missing = [p for p in picks if getattr(p, "qty_needed", 0) and getattr(p, "qty_delivered", 0) < getattr(p, "qty_needed", p.qty or 0)]

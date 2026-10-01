@@ -19,10 +19,14 @@ import { objectTabRoute, tabsRoute, type OsRole } from '@/constants/osSections';
 import { alertWarrantyClosed } from '@/lib/warrantyNav';
 import { reportError } from '@/lib/reportError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { WarrantyTextModal } from '@/components/renova/WarrantyTextModal';
 import {
   issueActions,
   issueWaitingHint,
+  warrantyActions,
+  warrantyWaitingHint,
   type IssueTransitionAction,
+  type WarrantyAction,
 } from '@/lib/domain/issueLifecycle';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
@@ -73,7 +77,8 @@ function IssueCard({
   item,
   actions,
   onTransition,
-  onWarrantyClose,
+  warrantyActs,
+  onWarrantyAction,
   onEscalate,
   mutationKey,
   busy,
@@ -84,7 +89,8 @@ function IssueCard({
   item: ProjectIssue;
   actions: IssueTransitionAction[];
   onTransition: (issue: ProjectIssue, action: IssueTransitionAction) => void;
-  onWarrantyClose?: (issue: ProjectIssue) => void;
+  warrantyActs?: WarrantyAction[];
+  onWarrantyAction?: (issue: ProjectIssue, action: WarrantyAction) => void;
   onEscalate?: (issue: ProjectIssue) => void;
   mutationKey: string | null;
   busy: boolean;
@@ -161,15 +167,22 @@ function IssueCard({
           );
         })}
 
-        {isWarranty && onWarrantyClose ? (
-          <PrimaryButton
-            title="Закрыть гарантию"
-            compact
-            loading={mutationKey === `${item.id}:warranty-close`}
-            disabled={busy && mutationKey !== `${item.id}:warranty-close`}
-            onPress={() => onWarrantyClose(item)}
-          />
-        ) : null}
+        {isWarranty && onWarrantyAction
+          ? (warrantyActs ?? []).map((action) => {
+              const key = `${item.id}:warranty-${action.kind}`;
+              return (
+                <PrimaryButton
+                  key={action.kind}
+                  title={action.label}
+                  variant={action.intent === 'secondary' ? 'outline' : 'primary'}
+                  compact
+                  loading={mutationKey === key}
+                  disabled={busy && mutationKey !== key}
+                  onPress={() => onWarrantyAction(item, action)}
+                />
+              );
+            })
+          : null}
 
         {!isClosed && onEscalate && !(item.title || '').startsWith('[Спор]') ? (
           <PrimaryButton
@@ -198,6 +211,9 @@ export function QualityControlScreen() {
   const mutationRef = useRef(false);
   const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
   const busy = mutationKey !== null;
+  // Проект без исполнителя: заказчик закрывает замечания сам (иначе тупик — QLT-003).
+  const selfManaged = !activeProject?.contractor_id;
+  const [warrantyPrompt, setWarrantyPrompt] = useState<{ issue: ProjectIssue; action: WarrantyAction } | null>(null);
 
   const load = useCallback(async () => {
     if (!user || !activeProject) return;
@@ -279,22 +295,33 @@ export function QualityControlScreen() {
     });
   };
 
-  const closeWarranty = (issue: ProjectIssue) => {
-    if (readOnly || role !== 'customer' || !user || !activeProject || mutationRef.current) return;
+  const runWarrantyAction = (issue: ProjectIssue, action: WarrantyAction, comment?: string) => {
+    if (readOnly || !user || !activeProject) return;
+    void (async () => {
+      const changed = await runMutation(
+        `${issue.id}:warranty-${action.kind}`,
+        'Гарантийное обращение',
+        () => {
+          if (action.kind === 'close') return api.closeWarrantyClaim(user.id, activeProject.id, issue.id);
+          if (action.kind === 'reopen') return api.reopenWarrantyClaim(user.id, activeProject.id, issue.id, { comment });
+          return api.respondWarrantyClaim(user.id, activeProject.id, issue.id, { decision: action.kind, comment });
+        },
+      );
+      if (changed && action.kind === 'close') alertWarrantyClosed('customer');
+    })();
+  };
+
+  const onWarrantyAction = (issue: ProjectIssue, action: WarrantyAction) => {
+    if (readOnly || !user || !activeProject || mutationRef.current) return;
+    if (action.comment !== 'none') {
+      setWarrantyPrompt({ issue, action });
+      return;
+    }
     showActionConfirm({
-      title: 'Закрыть гарантию?',
+      title: `${action.label}?`,
       message: `«${issue.title}»`,
-      primaryLabel: 'Закрыть',
-      onPrimary: () => {
-        void (async () => {
-          const changed = await runMutation(
-            `${issue.id}:warranty-close`,
-            'Закрытие гарантии',
-            () => api.closeWarrantyClaim(user.id, activeProject.id, issue.id),
-          );
-          if (changed) alertWarrantyClosed('customer');
-        })();
-      },
+      primaryLabel: action.label,
+      onPrimary: () => runWarrantyAction(issue, action),
       secondaryLabel: 'Отмена',
       onSecondary: () => undefined,
     });
@@ -360,7 +387,8 @@ export function QualityControlScreen() {
 
   const renderIssue = (item: ProjectIssue) => {
     const isWarranty = (item.title || '').startsWith('[Гарантия]');
-    const actions = readOnly ? [] : issueActions(item.status, role, isWarranty);
+    const actions = readOnly ? [] : issueActions(item.status, role, isWarranty, { selfManaged });
+    const warrantyActs = readOnly || !isWarranty ? [] : warrantyActions(item.status, role);
     return (
       <IssueCard
         key={item.id}
@@ -368,17 +396,32 @@ export function QualityControlScreen() {
         item={item}
         actions={actions}
         onTransition={transitionIssue}
-        onWarrantyClose={!readOnly && role === 'customer' && isWarranty ? closeWarranty : undefined}
+        warrantyActs={warrantyActs}
+        onWarrantyAction={!readOnly && isWarranty ? onWarrantyAction : undefined}
         onEscalate={!readOnly && item.status !== 'closed' ? escalateIssue : undefined}
         mutationKey={mutationKey}
         busy={busy}
-        waitingHint={issueWaitingHint(item.status, role, isWarranty)}
+        waitingHint={isWarranty ? warrantyWaitingHint(item.status, role) : issueWaitingHint(item.status, role, false, { selfManaged })}
         role={role}
       />
     );
   };
 
   return (
+    <>
+    <WarrantyTextModal
+      mode="comment"
+      visible={warrantyPrompt !== null}
+      heading={warrantyPrompt ? `${warrantyPrompt.action.label}: ${warrantyPrompt.issue.title}` : ''}
+      confirmLabel={warrantyPrompt?.action.label ?? 'Готово'}
+      required={warrantyPrompt?.action.comment === 'required'}
+      onClose={() => setWarrantyPrompt(null)}
+      onConfirm={(comment) => {
+        const pending = warrantyPrompt;
+        setWarrantyPrompt(null);
+        if (pending) runWarrantyAction(pending.issue, pending.action, comment);
+      }}
+    />
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
@@ -435,6 +478,7 @@ export function QualityControlScreen() {
         </View>
       ) : null}
     </ScrollView>
+    </>
   );
 }
 

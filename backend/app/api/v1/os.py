@@ -1,4 +1,6 @@
 """Renova OS API — риски, workflow, замечания."""
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,10 +35,10 @@ class IssueIn(BaseModel):
     description: str | None = None
     room_id: str | None = None
     stage_id: str | None = None
-    severity: str = "medium"
+    severity: Literal["low", "medium", "high", "critical"] = "medium"
     floor_plan_id: str | None = None
-    x_pct: float | None = None
-    y_pct: float | None = None
+    x_pct: float | None = Field(default=None, ge=0, le=100)
+    y_pct: float | None = Field(default=None, ge=0, le=100)
     photo_key: str | None = None
     client_request_id: str | None = Field(default=None, min_length=8, max_length=80)
 
@@ -135,7 +137,11 @@ async def create_issue(
 
 @router.post("/projects/{project_id}/issues/{issue_id}/close")
 async def close_issue(project_id: str, issue_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """W63/W64/W149: contractor → fixed (+notify customer); customer → closed (+notify contractor)."""
+    """Legacy: contractor → fixed (+notify customer); customer → closed (+notify contractor).
+
+    Тот же граф и те же права, что у /transition; недоступный переход — 409/403 с кодом
+    (раньше «плоский» 404, хотя замечание существует — QLT-005).
+    """
     from app.models.entities import ProjectIssue, UserRole
     from app.services import notification_service as notif_svc
 
@@ -146,13 +152,30 @@ async def close_issue(project_id: str, issue_id: str, user: User = Depends(get_c
     if (existing.title or "").startswith("[Гарантия]"):
         if user.role != UserRole.customer or user.id != project.customer_id:
             raise HTTPException(403, "warranty_close_customer_only")
+        # Гарантия закрывается своим контуром (идемпотентно, с уведомлением исполнителю).
+        from app.services import warranty_claim_service as warranty_svc
+
+        closed, _changed = await warranty_svc.close_claim(db, project=project, actor=user, issue_id=issue_id)
+        return iss.issue_dict(closed)
+    self_managed = project.contractor_id is None
     # W64: исполнитель отмечает исправление; финал closed — у заказчика
-    next_status = "closed"
-    if user.role == UserRole.contractor and not (existing.title or "").startswith("[Гарантия]"):
-        next_status = "fixed"
-    issue = await iss.update_issue_status(db, issue_id, next_status)
-    if not issue:
-        raise HTTPException(404)
+    next_status = "fixed" if user.role == UserRole.contractor else "closed"
+    previous = existing.status
+    try:
+        issue = await iss.transition_issue(db, existing, next_status, user.role, self_managed=self_managed)
+    except ValueError as exc:
+        code = str(exc)
+        if code == "issue_transition_role_forbidden":
+            raise HTTPException(403, detail={"code": code, "message": "Этот переход недоступен для вашей роли."}) from exc
+        raise HTTPException(
+            409,
+            detail={
+                "code": code.split(":")[0],
+                "message": f"Замечание в статусе «{previous}» нельзя перевести в «{next_status}».",
+                "from": previous,
+                "to": next_status,
+            },
+        ) from exc
 
     event_kind = "IssueFixed" if next_status == "fixed" else "IssueClosed"
     await act.log_event(

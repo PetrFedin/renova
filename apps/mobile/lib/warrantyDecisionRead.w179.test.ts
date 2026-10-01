@@ -15,7 +15,7 @@ must(
   'warranty decision read failure must be observable',
 );
 must(
-  docs.includes("withBusy('warranty-create-extra'"),
+  docs.includes("withBusy('warranty-create'"),
   'nested create-another action must use the shared observable busy/error boundary',
 );
 must(

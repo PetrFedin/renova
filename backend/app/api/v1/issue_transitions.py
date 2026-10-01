@@ -23,7 +23,19 @@ async def transition_issue(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    project = await require_project(db, project_id, user, write=True)
+    from app.services import technical_supervision_service as supervision
+
+    actor_role = user.role
+    try:
+        project = await require_project(db, project_id, user, write=True)
+    except HTTPException as denied:
+        if denied.status_code != 403:
+            raise
+        # Технадзор, назначенный на проект, ведёт замечания: проверяет исправление и закрывает.
+        project = await require_project(db, project_id, user, write=False)
+        if not await supervision.is_active_supervisor(db, project_id=project.id, user_id=user.id):
+            raise denied
+        actor_role = issue_svc.SUPERVISOR_ROLE
     issue = await db.get(ProjectIssue, issue_id)
     if not issue or issue.project_id != project_id:
         raise HTTPException(404)
@@ -42,8 +54,9 @@ async def transition_issue(
             db,
             issue,
             body.status,
-            user.role,
+            actor_role,
             commit=False,
+            self_managed=project.contractor_id is None,
         )
     except ValueError as error:
         code = str(error)

@@ -38,7 +38,11 @@ from app.api.v1 import (
     rooms, stages_ext, project_work_schedule, issue_transitions,
 )
 
-api_router = APIRouter(prefix="/api/v1")
+from fastapi import Depends as _Depends
+from app.api.project_lock import project_closed_guard
+
+# JRN-027: после closeout смета/график/счета/этапы заперты (409 project_closed).
+api_router = APIRouter(prefix="/api/v1", dependencies=[_Depends(project_closed_guard)])
 RouteSignature = tuple[str, str]
 
 def _remove_replaced_routes(router: APIRouter, signatures: set[RouteSignature]) -> None:

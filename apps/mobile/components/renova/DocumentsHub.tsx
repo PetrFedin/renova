@@ -29,6 +29,7 @@ import { budgetTabRoute, calendarTabRoute, repairTabRoute, type OsRole } from '@
 import { documentSectionTarget } from '@/lib/documentSectionNav';
 import { shareRenovaLink } from '@/lib/messengerShare';
 import { BankStatementImportSheet } from '@/components/renova/BankStatementImportSheet';
+import { WarrantyTextModal } from '@/components/renova/WarrantyTextModal';
 import { alertIcalExported } from '@/lib/calendarIcsNav';
 import { alertWarrantyClosed, alertWarrantyCreated } from '@/lib/warrantyNav';
 import { resolveSafeDocumentUrl } from '@/lib/documentUrl';
@@ -101,6 +102,8 @@ export function DocumentsHub({
   const isArchived = Boolean(activeProject?.is_archived);
   const [busy, setBusy] = useState<string | null>(null);
   const [bankImportOpen, setBankImportOpen] = useState(false);
+  const [warrantyFormOpen, setWarrantyFormOpen] = useState(false);
+  const warrantyOpenCount = useRef(0);
 
   const [docIndex, setDocIndex] = useState<ProjectDocumentsResponse | null>(null);
   const [indexLoading, setIndexLoading] = useState(true);
@@ -355,26 +358,17 @@ export function DocumentsHub({
                 {
                   label: 'Создать ещё',
                   onPress: () => {
-                    void withBusy('warranty-create-extra', async () => {
-                      const res = await api.createWarrantyClaim(userId, projectId, {
-                        title: 'Гарантийное обращение',
-                        description: 'Создано из Document Center',
-                      });
-                      void reconcileProjectAfterCommit('WarrantyCreate');
-                      alertWarrantyCreated(role, res, { openCount: (open.open || 0) + 1, returnTo: '/documents' });
-                    });
+                    warrantyOpenCount.current = open.open || 0;
+                    setWarrantyFormOpen(true);
                   },
                 },
               ],
             });
             return;
           }
-          const res = await api.createWarrantyClaim(userId, projectId, {
-            title: 'Гарантийное обращение',
-            description: 'Создано из Document Center',
-          });
-          void reconcileProjectAfterCommit('WarrantyCreate');
-          alertWarrantyCreated(role, res, { openCount: (open.open || 0) + 1, returnTo: '/documents' });
+          // QLT-006: тему и описание дефекта вводит пользователь — не шаблонный текст.
+          warrantyOpenCount.current = open.open || 0;
+          setWarrantyFormOpen(true);
         },
       },
       closeout: {
@@ -853,6 +847,20 @@ export function DocumentsHub({
         role={user?.role === 'contractor' ? 'contractor' : 'customer'}
         onDone={() => {
           void reconcileProjectAfterCommit('BankImport');
+        }}
+      />
+      <WarrantyTextModal
+        mode="create"
+        visible={warrantyFormOpen}
+        onClose={() => setWarrantyFormOpen(false)}
+        onConfirm={(value) => {
+          setWarrantyFormOpen(false);
+          const role = (user?.role === 'contractor' ? 'contractor' : 'customer') as OsRole;
+          void withBusy('warranty-create', async () => {
+            const res = await api.createWarrantyClaim(userId, projectId, value);
+            void reconcileProjectAfterCommit('WarrantyCreate');
+            alertWarrantyCreated(role, res, { openCount: warrantyOpenCount.current + 1, returnTo: '/documents' });
+          });
         }}
       />
     <View style={s.wrap}>

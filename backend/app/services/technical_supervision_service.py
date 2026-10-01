@@ -45,7 +45,9 @@ def _provider_name(value: str | None, *, provider_type: ProviderType, representa
     if provider_type == "company" and not normalized:
         raise ValueError("technical_supervision_company_name_required")
     if not normalized:
-        normalized = " ".join((representative.full_name or "").strip().split()) or representative.phone
+        # Телефон представителя — персональные данные: в статусе, уведомлениях и истории,
+        # видимых исполнителю, его нет. Без имени — нейтральная подпись роли.
+        normalized = " ".join((representative.full_name or "").strip().split()) or "Технадзор"
     if not normalized or len(normalized) > 255:
         raise ValueError("technical_supervision_provider_name_invalid")
     return normalized
