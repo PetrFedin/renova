@@ -9,6 +9,17 @@ from app.models.entities import ChangeOrder, Expense, FloorPlan, FurnitureItem, 
 from app.models.payment_evidence import PaymentEvidence
 from app.services import outbox_service as outbox
 
+# UI-007: the manager feed shows a Russian label, never the raw category code.
+_SELECTION_CATEGORY_LABELS = {
+    "tile": "Плитка",
+    "plumbing": "Сантехника",
+    "lighting": "Свет",
+    "doors": "Двери",
+    "kitchen": "Кухня",
+    "paint": "Краска",
+    "other": "Другое",
+}
+
 @dataclass(frozen=True)
 class PreparedSideEffect:
     effect_type: str
@@ -53,7 +64,7 @@ async def prepare_client_write_side_effects(db: AsyncSession, *, scope: str, pro
         row = await db.get(SelectionItem, entity_id)
         if not row:
             return effects
-        activity_row = await outbox.enqueue(db, aggregate_type="selection", aggregate_id=row.id, event_type=outbox.ACTIVITY_EVENT, payload={"project_id": project_id, "user_id": user_id, "kind": "selection", "title": f"Подбор: {row.title}", "body": row.category, "room_id": row.room_id, "link_path": "/(customer)/(tabs)/repair?tab=selections"})
+        activity_row = await outbox.enqueue(db, aggregate_type="selection", aggregate_id=row.id, event_type=outbox.ACTIVITY_EVENT, payload={"project_id": project_id, "user_id": user_id, "kind": "selection", "title": f"Подбор: {row.title}", "body": _SELECTION_CATEGORY_LABELS.get(row.category, row.category), "room_id": row.room_id, "link_path": "/(customer)/(tabs)/repair?tab=selections"})
         effects.append(PreparedSideEffect(effect_type="activity", outbox_id=activity_row.id))
         return effects
     if scope == "issue.create":

@@ -287,6 +287,9 @@ async def test_create_selection_replays_same_request_id(db):
     assert (await db.execute(select(func.count()).select_from(ClientWriteRequest))).scalar_one() == 1
     assert (await db.execute(select(func.count()).select_from(ActivityEvent))).scalar_one() == 1
     assert (await db.execute(select(func.count()).select_from(DomainOutbox))).scalar_one() == 1
+    # UI-007: the feed carries the Russian category label, not the raw code.
+    outbox_payload = (await db.execute(select(DomainOutbox.payload_json))).scalar_one()
+    assert "Плитка" in outbox_payload and '"body": "tile"' not in outbox_payload
 
     replay_body = SelectionIn(
         title="Плитка Kerama",
