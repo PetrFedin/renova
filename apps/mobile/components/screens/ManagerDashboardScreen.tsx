@@ -5,7 +5,9 @@ import { router } from 'expo-router';
 
 import { ActivityFeed } from '@/components/renova/ActivityFeed';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { BackHeader } from '@/components/renova/BackHeader';
 import { EmptyActionState } from '@/components/ui/EmptyActionState';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { api } from '@/lib/api';
@@ -96,21 +98,31 @@ export function ManagerDashboardScreen() {
     );
   }
 
+  // INB-08: в загрузке и при ошибке всегда есть «Назад», а при ошибке — «Повторить»
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color={RenovaTheme.colors.primaryMuted} />
-        <Text style={styles.stateText}>Собираем управленческую сводку...</Text>
-      </View>
+      <>
+        <BackHeader title="Управленческая сводка" />
+        <View style={styles.center}>
+          <ActivityIndicator color={RenovaTheme.colors.primaryMuted} />
+          <Text style={styles.stateText}>Собираем управленческую сводку...</Text>
+        </View>
+      </>
     );
   }
 
   if (loadError) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.stateTitle}>Не удалось загрузить сводку</Text>
-        <Text style={styles.stateText}>Ошибка API — не пустой «хороший» статус. Потяните вниз или откройте снова.</Text>
-      </View>
+      <>
+        <BackHeader title="Управленческая сводка" />
+        <View style={styles.center}>
+          <LoadErrorState
+            title="Не удалось загрузить сводку"
+            hint="Сводка не загрузилась — это не значит, что всё в порядке. Проверьте сеть и повторите."
+            onRetry={() => { setLoading(true); void load(); }}
+          />
+        </View>
+      </>
     );
   }
 
@@ -121,7 +133,7 @@ export function ManagerDashboardScreen() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
     >
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12}><Text style={styles.back}>‹ Назад</Text></Pressable>
+        <Pressable onPress={() => router.back()} hitSlop={12} accessibilityRole="button" accessibilityLabel="Назад" style={{ minHeight: RenovaTheme.minTouch, justifyContent: 'center' }}><Text style={styles.back}>‹ Назад</Text></Pressable>
         <Text style={styles.title}>Управленческая сводка</Text>
         <Text style={styles.subtitle}>{activeProject.name}</Text>
       </View>

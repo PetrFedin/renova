@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { RenovaTheme } from '@/constants/Theme';
-import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { api, ActivityItem } from '@/lib/api';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
@@ -11,8 +11,8 @@ import type { OsRole } from '@/constants/osSections';
 import { reportError } from '@/lib/reportError';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
+import { EmptyActionState } from '@/components/ui/EmptyActionState';
 
-const KINDS = [{ k: '', l: 'Все' }, { k: 'material', l: 'Материалы' }, { k: 'approval', l: 'Согласования' }, { k: 'room_change', l: 'Комнаты' }];
 
 export function ActivityFeed({
   userId,
@@ -32,6 +32,7 @@ export function ActivityFeed({
   const [kind, setKind] = useState('');
   const [wt, setWt] = useState<string | undefined>();
   const [loadError, setLoadError] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const { user } = useRenova();
   const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
   const back = returnTo || '/';
@@ -45,6 +46,7 @@ export function ActivityFeed({
         }
         setItems(list);
         setLoadError(false);
+        setLoaded(true);
       })
       .catch((e) => {
         reportError('components.renova.ActivityFeed.Items', e);
@@ -65,7 +67,6 @@ export function ActivityFeed({
   return (
     <View style={s.box}>
       <Text style={s.head}>{compact ? 'Недавнее' : 'Архив действий'}</Text>
-      {!compact && <ScrollView horizontal style={{ marginBottom: 6 }}>{KINDS.map((x) => <Pressable key={x.k} style={[s.ch, kind === x.k && s.on]} onPress={() => setKind(x.k)}><Text style={s.ct}>{x.l}</Text></Pressable>)}</ScrollView>}
       {!compact && (
         <GlobalFilterBar
           kind={kind}
@@ -76,6 +77,16 @@ export function ActivityFeed({
       )}
       {loadError ? (
         <LoadErrorState title="Не удалось загрузить ленту" onRetry={reload} />
+      ) : !loaded ? (
+        <Text style={s.d} accessibilityRole="progressbar">Загружаем события…</Text>
+      ) : items.length === 0 && !compact ? (
+        <EmptyActionState
+          title={kind || wt ? 'По фильтру событий нет' : 'Событий пока нет'}
+          hint={kind || wt ? 'Сбросьте фильтр, чтобы увидеть всю ленту.' : 'Здесь появятся согласования, оплаты и изменения по объекту.'}
+          actionLabel={kind || wt ? 'Сбросить фильтр' : undefined}
+          onAction={kind || wt ? () => { setKind(''); setWt(undefined); } : undefined}
+          icon="time-outline"
+        />
       ) : (
         items.map((it) => {
         const clickable = Boolean(it.link_path);
@@ -98,7 +109,7 @@ export function ActivityFeed({
       })
       )}
       {compact && !loadError && (
-        <Pressable onPress={() => pushOsNav('/activity', back, role)}>
+        <Pressable onPress={() => pushOsNav('/activity', back, role)} accessibilityRole="link" accessibilityLabel="Весь архив" style={{ minHeight: RenovaTheme.minTouch, justifyContent: 'center' }}>
           <Text style={s.more}>Весь архив →</Text>
         </Pressable>
       )}
@@ -108,9 +119,6 @@ export function ActivityFeed({
 const s = StyleSheet.create({
   box: { marginVertical: 8 },
   head: { ...screenTypography.section, marginTop: 0, fontWeight: '700', color: RenovaTheme.colors.text },
-  ch: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, backgroundColor: RenovaTheme.colors.border, marginRight: 6 },
-  on: { backgroundColor: '#2563eb' },
-  ct: { fontSize: 11 },
   row: { ...listRowStyles.row },
   rowMuted: { opacity: 0.85 },
   t: { ...screenTypography.listTitle, fontSize: 13 },

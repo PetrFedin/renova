@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { ScrollView, View, Text, StyleSheet } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { pushOsNav } from '@/lib/pushOsNav';
@@ -23,6 +24,7 @@ export default function ActivityScreen() {
 
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [viewProject, setViewProject] = useState<ProjectDetail | null>(null);
+  const [viewError, setViewError] = useState(false);
 
   const projectOptions = useMemo(
     () => projects.map((p) => ({ value: p.id, label: p.name })),
@@ -47,9 +49,10 @@ export default function ActivityScreen() {
       setViewProject(activeProject);
       return;
     }
+    setViewError(false);
     api.getProject(user.id, selectedProjectId)
       .then((p) => setViewProject(p))
-      .catch((e) => { reportError('app.activity.ViewProject', e); setViewProject(null); });
+      .catch((e) => { reportError('app.activity.ViewProject', e); setViewProject(null); setViewError(true); });
   }, [user?.id, selectedProjectId, activeProject]);
 
   useEffect(() => {
@@ -115,6 +118,12 @@ export default function ActivityScreen() {
             />
             <ActivityFeed userId={user.id} projectId={viewProject.id} returnTo={returnTo || '/activity'} />
           </>
+        ) : viewError ? (
+          <LoadErrorState
+            title="Не удалось открыть архив объекта"
+            hint="Нет доступа к объекту или пропала сеть. Повторите или выберите другой объект."
+            onRetry={reloadActivityProject}
+          />
         ) : (
           <Text style={s.loading}>Загрузка архива…</Text>
         )}

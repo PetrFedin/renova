@@ -3,14 +3,14 @@ import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';
 import { WorkTypeFilter } from '@/components/renova/WorkTypeFilter';
 
-const KINDS = [{ k: '', l: 'Все' }, { k: 'material', l: 'Материалы' }, { k: 'approval', l: 'Согласования' }, { k: 'design', l: 'Дизайн' }];
+const KINDS = [{ k: '', l: 'Все' }, { k: 'material', l: 'Материалы' }, { k: 'approval', l: 'Согласования' }, { k: 'design', l: 'Дизайн' }, { k: 'room_change', l: 'Комнаты' }];
 
 export function GlobalFilterBar({ kind, workType, onKind, onWorkType }: { kind?: string; workType?: string; onKind: (k?: string) => void; onWorkType: (w?: string) => void }) {
   return (
     <View style={s.box}>
       <Text style={s.lbl}>Фильтры</Text>
       <View style={s.row}>{KINDS.map(x => (
-        <Pressable key={x.k || 'all'} style={[s.chip, kind === x.k && s.on]} onPress={() => onKind(x.k || undefined)}>
+        <Pressable key={x.k || 'all'} style={[s.chip, kind === x.k && s.on]} onPress={() => onKind(x.k || undefined)} accessibilityRole="button" accessibilityLabel={`Фильтр: ${x.l}`} accessibilityState={{ selected: kind === x.k }} hitSlop={8}>
           <Text style={kind === x.k ? s.onT : s.t}>{x.l}</Text>
         </Pressable>
       ))}</View>
