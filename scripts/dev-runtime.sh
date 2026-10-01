@@ -37,13 +37,20 @@ assert_no_external_local_configuration() {
     MOY_NALOG_CLIENT_ID MOY_NALOG_CLIENT_SECRET MOY_NALOG_REDIRECT_URI \
     MOY_NALOG_TOKEN_URL MOY_NALOG_TOKEN_ENCRYPTION_KEYS \
     FNS_RECEIPT_LOGIN FNS_RECEIPT_PASSWORD \
-    S3_PUBLIC_URL CLOUDFRONT_DOMAIN CLOUDFRONT_KEY_ID \
+    CLOUDFRONT_DOMAIN CLOUDFRONT_KEY_ID \
     SENTRY_DSN EXPO_PUBLIC_SENTRY_DSN OTEL_EXPORTER_OTLP_ENDPOINT \
     OPS_ALERT_EMAIL SMTP_HOST SMTP_USER SMTP_PASSWORD SMTP_FROM \
     OLLAMA_BASE_URL ACCOUNT_PURGE_OPS_SECRET; do
     value="${!key:-}"
     [ -z "$value" ] || fail "canonical local profile refuses non-empty external credential/sink: ${key}"
   done
+
+  # S3_PUBLIC_URL is the host-reachable address of the LOCAL MinIO used to sign
+  # presigned links (DOC-012). Empty or loopback is fine; any external sink is not.
+  case "${S3_PUBLIC_URL:-}" in
+    ""|http://127.0.0.1:*|http://localhost:*|http://\[::1\]:*) ;;
+    *) fail "canonical local profile refuses non-local S3_PUBLIC_URL (only 127.0.0.1/localhost allowed): ${S3_PUBLIC_URL}" ;;
+  esac
 
   [ "${KONTUR_MODE:-}" = "off" ] || fail "canonical local runtime requires KONTUR_MODE=off"
   [ "${GOSKEY_MODE:-}" = "off" ] || fail "canonical local runtime requires GOSKEY_MODE=off"
@@ -221,6 +228,84 @@ backend_up() {
   wait_for_runtime
 }
 
+# Host-run worker (same .env.local as the host-run API). Compose `start` already
+# runs the worker container; use this when the API runs on the host (uvicorn).
+WORKER_RUN_DIR="${RENOVA_WORKER_RUN_DIR:-/tmp/renova-host-worker}"
+
+worker_env() {
+  mkdir -p "$WORKER_RUN_DIR"
+  printf 'worker\n' > "$WORKER_RUN_DIR/role"
+  export RENOVA_RUNTIME_ROLE_FILE="$WORKER_RUN_DIR/role"
+  export RENOVA_WORKER_HEARTBEAT_FILE="$WORKER_RUN_DIR/heartbeat.json"
+  export RENOVA_WORKER_INSTANCE_ID="${RENOVA_WORKER_INSTANCE_ID:-host-worker-1}"
+}
+
+worker_guard() {
+  load_local_env
+  [ -x "$ROOT/backend/.venv/bin/python" ] || fail "backend/.venv missing; run: npm run dev -- bootstrap"
+  if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "${LOCAL_COMPOSE_PROJECT}-worker-1"; then
+    log "WARNING: compose worker container is also running; two workers share the outbox (safe, but redundant)"
+  fi
+}
+
+worker_pid() {
+  local pid
+  pid="$(cat "$WORKER_RUN_DIR/pid" 2>/dev/null || true)"
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && printf '%s\n' "$pid"
+}
+
+worker_check() {
+  load_local_env
+  worker_env
+  if (cd "$ROOT/backend" && .venv/bin/python -m app.runtime_healthcheck); then
+    printf 'OK   Host worker heartbeat (%s)\n' "$RENOVA_WORKER_HEARTBEAT_FILE"
+  else
+    printf 'FAIL Host worker heartbeat\n' >&2; return 2
+  fi
+}
+
+# Foreground: Ctrl-C / SIGTERM triggers the worker's graceful shutdown.
+worker_run() {
+  worker_guard
+  worker_env
+  log "starting host worker (outbox, provider reconciliation, reminders); external providers are off in .env.local"
+  cd "$ROOT/backend"
+  exec .venv/bin/python -m app.worker_main
+}
+
+worker_up() {
+  worker_guard
+  worker_env
+  if worker_pid >/dev/null; then log "host worker already running (pid $(worker_pid))"; return 0; fi
+  cd "$ROOT/backend"
+  nohup .venv/bin/python -m app.worker_main </dev/null >"$WORKER_RUN_DIR/worker.log" 2>&1 &
+  echo $! >"$WORKER_RUN_DIR/pid"
+  local i
+  for i in $(seq 1 30); do
+    worker_pid >/dev/null || { tail -n 40 "$WORKER_RUN_DIR/worker.log" >&2; fail "host worker exited during startup"; }
+    if (cd "$ROOT/backend" && .venv/bin/python -m app.runtime_healthcheck) >/dev/null 2>&1; then
+      log "host worker healthy (pid $(worker_pid), log ${WORKER_RUN_DIR}/worker.log)"
+      return 0
+    fi
+    sleep 1
+  done
+  fail "host worker did not publish a heartbeat; see ${WORKER_RUN_DIR}/worker.log"
+}
+
+worker_down() {
+  local pid i
+  pid="$(worker_pid || true)"
+  [ -n "$pid" ] || { log "host worker not running"; rm -f "$WORKER_RUN_DIR/pid"; return 0; }
+  kill -TERM "$pid"
+  for i in $(seq 1 20); do
+    kill -0 "$pid" 2>/dev/null || { rm -f "$WORKER_RUN_DIR/pid"; log "host worker stopped"; return 0; }
+    sleep 1
+  done
+  kill -KILL "$pid" 2>/dev/null || true
+  rm -f "$WORKER_RUN_DIR/pid"
+  log "host worker force-killed after 20s"
+}
+
 check() {
   load_local_env
   local failed=0
@@ -292,6 +377,7 @@ logs() {
 
 stop() {
   ensure_env_file
+  worker_down
   compose down --remove-orphans
 }
 
@@ -373,6 +459,10 @@ Usage: scripts/dev-runtime.sh <command>
   check         verify infra, Alembic, API health/readiness, worker heartbeats, mobile API URL
   seed          run deterministic idempotent development seed
   reset         destroy LOCAL renova-local volumes, rebuild runtime, migrate, seed, and check
+  worker        run the worker on the host in the foreground (pair with a host-run API; Ctrl-C stops gracefully)
+  worker-up     run the host worker in the background with pid/log in /tmp/renova-host-worker and wait for heartbeat
+  worker-down   stop the background host worker (SIGTERM, graceful)
+  worker-check  verify the host worker heartbeat
   logs          follow local runtime logs
   stop          stop local containers without deleting volumes
   test-focused  run runtime/source contracts and focused backend/mobile tests
@@ -388,6 +478,10 @@ case "${1:-}" in
   check) check ;;
   seed) seed ;;
   reset) doctor; validate_dependencies; reset ;;
+  worker) worker_run ;;
+  worker-up) worker_up ;;
+  worker-down) worker_down ;;
+  worker-check) worker_check ;;
   logs) logs ;;
   stop) stop ;;
   test-focused) focused_tests ;;

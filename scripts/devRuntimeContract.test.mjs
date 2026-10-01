@@ -53,7 +53,7 @@ const externalLocalKeys = [
   'MOY_NALOG_CLIENT_ID', 'MOY_NALOG_CLIENT_SECRET', 'MOY_NALOG_REDIRECT_URI',
   'MOY_NALOG_TOKEN_URL', 'MOY_NALOG_TOKEN_ENCRYPTION_KEYS',
   'FNS_RECEIPT_LOGIN', 'FNS_RECEIPT_PASSWORD',
-  'S3_PUBLIC_URL', 'CLOUDFRONT_DOMAIN', 'CLOUDFRONT_KEY_ID',
+  'CLOUDFRONT_DOMAIN', 'CLOUDFRONT_KEY_ID',
   'SENTRY_DSN', 'OTEL_EXPORTER_OTLP_ENDPOINT', 'OPS_ALERT_EMAIL',
   'SMTP_HOST', 'SMTP_USER', 'SMTP_PASSWORD', 'SMTP_FROM',
   'OLLAMA_BASE_URL', 'ACCOUNT_PURGE_OPS_SECRET',
@@ -62,6 +62,13 @@ for (const key of externalLocalKeys) {
   assert.match(envLocal, new RegExp(`^${key}=$`, 'm'), `env.local.example must explicitly clear ${key}`);
   assert.ok(compose.includes(`${key}: ""`), `Compose must neutralize ${key} even on direct local startup`);
 }
+assert.match(envLocal, /^S3_PUBLIC_URL=http:\/\/127\.0\.0\.1:9000$/m, 'env.local.example must point presigned links at the host-reachable local MinIO');
+assert.ok(compose.includes('S3_PUBLIC_URL: http://127.0.0.1:9000'), 'Compose must sign presigned links for the host-reachable local MinIO');
+assert.ok(runtime.includes('refuses non-local S3_PUBLIC_URL'), 'dev runtime must reject non-loopback S3_PUBLIC_URL');
+for (const token of ['worker_run()', 'worker_up()', 'worker_down()', 'worker_check()', 'app.worker_main']) {
+  assert.ok(runtime.includes(token), `dev runtime must provide host worker command ${token}`);
+}
+assert.equal(pkg.scripts?.['dev:worker'], 'bash scripts/start-dev.sh worker', 'npm run dev:worker must start the host worker');
 assert.match(envLocal, /^EXPO_PUBLIC_SENTRY_DSN=$/m, 'mobile local profile must clear external Sentry DSN');
 
 assert.ok(!launcher.includes('pip install'), 'root launcher must never install packages at startup');

@@ -101,6 +101,8 @@ npm run dev -- stop
 
 For a non-interactive agent run, set `RENOVA_DEV_NO_EXPO=1` before `npm run dev`.
 
+Worker: `npm run dev` already starts `api` and `worker` as containers (APIB-027) and `dev -- check` verifies the worker's local and shared Redis heartbeat. When the API runs on the host instead (`npm run backend:dev` or uvicorn on :8100) there is no worker, so reminders, provider reconciliation and outbox delivery are not processed; start one with `npm run dev:worker` (foreground, Ctrl-C stops it gracefully) or `npm run dev -- worker-up` / `worker-down` / `worker-check` (background, pid/log/heartbeat in `/tmp/renova-host-worker`; `dev -- stop` also stops it). It reads the same `.env.local`, so `KONTUR_MODE=off`, `GOSKEY_MODE=off`, `MOY_NALOG_ENABLED=false` and `PUSH_RECEIPT_WORKER_ENABLED=false` keep every external provider disabled. Run only one of the host worker and the compose worker. `S3_PUBLIC_URL=http://127.0.0.1:9000` makes presigned links point at the host-reachable local MinIO (DOC-012); the local env guard accepts only loopback values there and still refuses any external sink.
+
 Rules:
 - dependency installation belongs to explicit `bootstrap`, never normal startup;
 - `bootstrap` uses `npm ci` and the same Python 3.12.13 / Poetry 2.4.1 lock contract as CI;

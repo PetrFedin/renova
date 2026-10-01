@@ -40,3 +40,19 @@ def test_presign_uses_public_endpoint(monkeypatch):
     assert storage.presigned_url("project-media/p1/a.pdf").startswith("https://files.example.com/")
     monkeypatch.setattr(storage.settings, "s3_public_url", "")
     assert storage.presigned_url("project-media/p1/a.pdf").startswith("http://minio:9000/")
+
+
+def test_local_profile_presigned_links_are_host_reachable(monkeypatch):
+    """DOC-012: compose API sees MinIO as minio:9000, links must use 127.0.0.1:9000."""
+    from pathlib import Path
+
+    example = (Path(__file__).resolve().parents[2] / "env.local.example").read_text(encoding="utf-8")
+    public = next(l.split("=", 1)[1].strip() for l in example.splitlines() if l.startswith("S3_PUBLIC_URL="))
+    assert public == "http://127.0.0.1:9000"
+    for name, value in (
+        ("s3_endpoint", "http://minio:9000"), ("s3_access_key", "renova"),
+        ("s3_secret_key", "renova123"), ("s3_public_url", public),
+    ):
+        monkeypatch.setattr(storage.settings, name, value)
+    for url in (storage.presigned_put("project-media/p1/a.pdf"), storage.presigned_url("project-media/p1/a.pdf")):
+        assert url.startswith("http://127.0.0.1:9000/renova/") and "minio" not in url
