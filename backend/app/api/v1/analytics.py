@@ -128,7 +128,8 @@ async def budget_category_alerts(project_id: str, threshold_pct: float = 10, use
         cats[k] += l.quantity_planned * l.unit_price
         fact[k] += l.quantity_actual * l.unit_price  # EST-007: единое определение факта (quantity_actual x цена)
     for w in waste:
-        if w.status.value not in ("cancelled", "draft"): fact["waste"] += w.volume_m3 * w.price
+        # EST-016: факт вывоза — только выполненный (по нему создаётся Expense), согласованное — обязательство
+        if w.status.value == "done": fact["waste"] += w.volume_m3 * w.price
     out = []
     for k, plan in cats.items():
         f = fact.get(k, 0)
