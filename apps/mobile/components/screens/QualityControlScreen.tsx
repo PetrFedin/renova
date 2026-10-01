@@ -29,6 +29,8 @@ import {
   type WarrantyAction,
 } from '@/lib/domain/issueLifecycle';
 import { writeResultMessage } from '@/lib/offlineResultMessage';
+import { CreateIssueForm } from '@/components/renova/quality/CreateIssueForm';
+import type { NewIssueBody } from '@/lib/domain/newIssueForm';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
 
@@ -214,6 +216,7 @@ export function QualityControlScreen() {
   const busy = mutationKey !== null;
   // Проект без исполнителя: заказчик закрывает замечания сам (иначе тупик — QLT-003).
   const selfManaged = !activeProject?.contractor_id;
+  const [createOpen, setCreateOpen] = useState(false);
   const [warrantyPrompt, setWarrantyPrompt] = useState<{ issue: ProjectIssue; action: WarrantyAction } | null>(null);
 
   const load = useCallback(async () => {
@@ -326,6 +329,14 @@ export function QualityControlScreen() {
       secondaryLabel: 'Отмена',
       onSecondary: () => undefined,
     });
+  };
+
+  // QLT-007: замечание вне плана этажа (без точки на плане).
+  const createNewIssue = async (body: NewIssueBody): Promise<boolean> => {
+    if (readOnly || !user || !activeProject) return false;
+    const ok = await runMutation('create-issue', 'Новое замечание', () => api.createIssue(user.id, activeProject.id, body));
+    if (ok) setCreateOpen(false);
+    return ok;
   };
 
   const escalateIssue = (issue: ProjectIssue) => {
@@ -464,6 +475,22 @@ export function QualityControlScreen() {
           <Text style={styles.summaryLabel}>на проверке</Text>
         </View>
       </View>
+
+      {!readOnly ? (
+        <View style={styles.cardBlock}>
+          {createOpen ? (
+            <CreateIssueForm
+              rooms={(activeProject.rooms ?? []).map((r) => ({ id: r.id, name: r.name }))}
+              stages={(activeProject.stages ?? []).map((st) => ({ id: st.id, name: st.name }))}
+              busy={busy}
+              onSubmit={createNewIssue}
+              onCancel={() => setCreateOpen(false)}
+            />
+          ) : (
+            <PrimaryButton title="Добавить замечание" variant="outline" compact disabled={busy} onPress={() => setCreateOpen(true)} />
+          )}
+        </View>
+      ) : null}
 
       <View style={styles.cardBlock}>
         <Text style={styles.sectionTitle}>Требуют внимания</Text>
