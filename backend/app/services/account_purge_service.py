@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import User, UserSession
+from app.models.entities import PushToken, User, UserSession
 
 logger = logging.getLogger("renova.purge")
 
@@ -27,6 +27,7 @@ async def purge_deleted_users(db: AsyncSession, *, older_than_days: int = RETENT
     n = 0
     for user in rows:
         await db.execute(delete(UserSession).where(UserSession.user_id == user.id))
+        await db.execute(delete(PushToken).where(PushToken.user_id == user.id))
         await db.delete(user)
         n += 1
     if n:

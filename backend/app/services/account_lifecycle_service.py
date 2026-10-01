@@ -6,7 +6,9 @@ from datetime import timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timeutil import utc_now
-from app.models.entities import User
+from sqlalchemy import delete
+
+from app.models.entities import PushToken, User
 from app.services import session_service
 
 RETENTION_DAYS = 30
@@ -45,6 +47,8 @@ async def soft_delete_account(db: AsyncSession, user: User) -> dict[str, object]
             user.id,
             commit=False,
         )
+        # COM-017: a deleted account must not keep receiving push on its devices.
+        await db.execute(delete(PushToken).where(PushToken.user_id == user.id))
         await db.commit()
     except Exception:
         await db.rollback()

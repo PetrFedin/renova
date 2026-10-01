@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, field_validator
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -47,3 +47,25 @@ async def register_token(
 
     await db.commit()
     return {"ok": True}
+
+
+@router.post("/unregister")
+@router.delete("/token")
+async def unregister_token(
+    body: TokenIn | None = None,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Detach this user's push token(s) from the account (COM-017, idempotent).
+
+    Called on logout so the next account on the same device does not receive
+    the previous user's notifications. Only the caller's own rows are touched:
+    a token currently bound to someone else is left alone. Without a body every
+    token of the caller is removed (sign out everywhere).
+    """
+    stmt = delete(PushToken).where(PushToken.user_id == user.id)
+    if body is not None:
+        stmt = stmt.where(PushToken.token == body.token)
+    result = await db.execute(stmt)
+    await db.commit()
+    return {"ok": True, "removed": int(result.rowcount or 0)}

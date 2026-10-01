@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import AppNotification, NotificationType
 from app.models.outbox_runtime import SideEffectDelivery
+from app.services.notification_links import link_for_role, recipient_role
 from app.services.push_service import send_push, stable_push_delivery_id
 
 _TYPE_ALIASES: dict[str, str] = {
@@ -41,7 +42,6 @@ def _stored_link(link_path: str | None, return_to: str | None) -> str | None:
     return f"{link_path}{separator}returnTo={quote(return_to, safe='/()')}"
 
 
-async def notify(
 async def _nudge_inbox(user_id: str) -> None:
     """Best-effort WS frame so an open app refreshes its notification badge at once."""
     try:
@@ -53,6 +53,7 @@ async def _nudge_inbox(user_id: str) -> None:
         pass
 
 
+async def notify(
     db: AsyncSession,
     *,
     user_id: str,
@@ -88,6 +89,15 @@ async def _nudge_inbox(user_id: str) -> None:
             return_to=return_to,
         )
 
+    # COM-018/COM-039: the in-app record and a durable push job are written in the
+    # same transaction as the caller's business change. Push delivery runs from
+    # the outbox (retries, ops alerting) and never holds the HTTP request; if it
+    # is exhausted the in-app record remains, so nothing is lost.
+    from app.services import outbox_service
+
+    role = await recipient_role(db, user_id)
+    link_path = link_for_role(link_path, role)
+    return_to = link_for_role(return_to, role)
     notification = AppNotification(
         user_id=user_id,
         project_id=project_id,
@@ -97,17 +107,34 @@ async def _nudge_inbox(user_id: str) -> None:
         link_path=_stored_link(link_path, return_to),
     )
     db.add(notification)
+    await db.flush()
+    row = await outbox_service.enqueue(
+        db,
+        aggregate_type="notification",
+        aggregate_id=notification.id,
+        event_type=outbox_service.NOTIFICATION_EVENT,
+        payload={
+            "user_id": user_id,
+            "project_id": project_id,
+            "notification_type": notification_type,
+            "title": title,
+            "body": body,
+            "link_path": link_path,
+            "return_to": return_to,
+            "role": role,
+        },
+    )
+    db.add(
+        SideEffectDelivery(
+            outbox_id=row.id,
+            effect_type="notification",
+            entity_id=notification.id,
+        )
+    )
     await db.commit()
     await db.refresh(notification)
-    delivery_id = stable_push_delivery_id(f"notification:{notification.id}")
-    await send_push(
-        db,
-        user_id,
-        title,
-        body,
-        {"link_path": link_path, "returnTo": return_to or "/"},
-        delivery_id=delivery_id,
-    )
+    outbox_service.kick_dispatch()
+    await _nudge_inbox(user_id)
     return notification
 
 
@@ -122,7 +149,11 @@ async def notify_from_outbox(
     body: str,
     link_path: str | None = None,
     return_to: str | None = None,
+    role: str | None = None,
 ) -> AppNotification:
+    role = role or await recipient_role(db, user_id)
+    link_path = link_for_role(link_path, role)
+    return_to = link_for_role(return_to, role)
     delivery = (
         await db.execute(
             select(SideEffectDelivery).where(SideEffectDelivery.outbox_id == outbox_id)
@@ -164,6 +195,7 @@ async def notify_from_outbox(
                 "link_path": link_path,
                 "returnTo": return_to or "/",
                 "outbox_id": outbox_id,
+                **({"role": role} if role else {}),
             },
             delivery_id=delivery_id,
         )
@@ -200,6 +232,27 @@ async def list_for_user(
     return list(result.scalars().all())
 
 
+async def count_unread(db: AsyncSession, user_id: str) -> int:
+    """Real COUNT of every visible unread notification (COM-009: no 50 cap)."""
+    result = await db.execute(
+        select(func.count())
+        .select_from(AppNotification)
+        .where(*_visible_filter(user_id), AppNotification.read.is_(False))
+    )
+    return int(result.scalar_one() or 0)
+
+
+async def mark_all_read(db: AsyncSession, user_id: str) -> int:
+    """Mark every unread notification of the user as read; returns how many changed."""
+    result = await db.execute(
+        update(AppNotification)
+        .where(AppNotification.user_id == user_id, AppNotification.read.is_(False))
+        .values(read=True)
+    )
+    await db.commit()
+    return int(result.rowcount or 0)
+
+
 async def mark_read(db: AsyncSession, notification_id: str, user_id: str) -> bool:
     result = await db.execute(
         select(AppNotification).where(
@@ -232,27 +285,6 @@ async def snooze_until(db: AsyncSession, notification_id: str, user_id: str, unt
 
 async def snooze(db: AsyncSession, notification_id: str, user_id: str, hours: int = 24) -> bool:
     result = await db.execute(
-async def count_unread(db: AsyncSession, user_id: str) -> int:
-    """Real COUNT of every visible unread notification (COM-009: no 50 cap)."""
-    result = await db.execute(
-        select(func.count())
-        .select_from(AppNotification)
-        .where(*_visible_filter(user_id), AppNotification.read.is_(False))
-    )
-    return int(result.scalar_one() or 0)
-
-
-async def mark_all_read(db: AsyncSession, user_id: str) -> int:
-    """Mark every unread notification of the user as read; returns how many changed."""
-    result = await db.execute(
-        update(AppNotification)
-        .where(AppNotification.user_id == user_id, AppNotification.read.is_(False))
-        .values(read=True)
-    )
-    await db.commit()
-    return int(result.rowcount or 0)
-
-
         select(AppNotification).where(
             AppNotification.id == notification_id,
             AppNotification.user_id == user_id,
@@ -264,6 +296,13 @@ async def mark_all_read(db: AsyncSession, user_id: str) -> int:
     notification.snoozed_until = utc_now() + timedelta(hours=hours)
     await db.commit()
     return True
+
+
+def _return_to_of(link_path: str | None) -> str | None:
+    """Decoded returnTo carried by a stored link (stored percent-encoded, see _stored_link)."""
+    if not link_path or "returnTo=" not in link_path:
+        return None
+    return unquote(link_path.split("returnTo=")[-1].split("&")[0])
 
 
 def notif_dict(notification: AppNotification) -> dict:
@@ -278,10 +317,3 @@ def notif_dict(notification: AppNotification) -> dict:
         "read": notification.read,
         "created_at": notification.created_at.isoformat(),
     }
-def _return_to_of(link_path: str | None) -> str | None:
-    """Decoded returnTo carried by a stored link (stored percent-encoded, see _stored_link)."""
-    if not link_path or "returnTo=" not in link_path:
-        return None
-    return unquote(link_path.split("returnTo=")[-1].split("&")[0])
-
-

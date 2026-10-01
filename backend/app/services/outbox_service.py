@@ -30,6 +30,43 @@ RETRY_BASE_SECONDS = 5
 RETRY_MAX_SECONDS = 5 * 60
 _EFFECT_NAMESPACE = uuid.UUID("29a31cf5-f2dd-49f1-8ad7-f44f268d15da")
 
+# COM-018: direct notifications enqueue their push here; the API process may
+# opt in (see main.lifespan) to nudge the dispatcher right after commit so push
+# does not wait for the worker tick. Off by default: tests and one-shot scripts
+# must never open a second session against an unrelated database.
+_inline_kick_enabled = False
+_kick_tasks: set[asyncio.Task] = set()
+
+
+def enable_inline_kick(enabled: bool = True) -> None:
+    global _inline_kick_enabled
+    _inline_kick_enabled = enabled
+
+
+def kick_dispatch(limit: int = 20) -> None:
+    """Fire-and-forget dispatch in its own session; never blocks the request."""
+    if not _inline_kick_enabled:
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+
+    async def _run() -> None:
+        from app.db.session import SessionLocal
+
+        try:
+            async with SessionLocal() as session:
+                await dispatch_pending(session, limit=limit)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - the worker retries retained rows
+            logger.exception("background outbox kick failed")
+
+    task = loop.create_task(_run())
+    _kick_tasks.add(task)
+    task.add_done_callback(_kick_tasks.discard)
+
 
 async def enqueue(
     db: AsyncSession,
@@ -291,6 +328,16 @@ async def _release_failure(
         )
     )
     await db.commit()
+    if attempts is not None and attempts >= MAX_ATTEMPTS:
+        # Retries exhausted: the row stays unprocessed and is counted as
+        # "poisoned" by runtime_snapshot (ops alert / dead-letter replay). The
+        # in-app notification, if any, is already committed and is not lost.
+        logger.error(
+            "outbox poisoned after %s attempts id=%s error=%s",
+            attempts,
+            outbox_id,
+            str(error)[:200],
+        )
     return attempts is not None
 
 
@@ -657,6 +704,7 @@ async def _handle(
             body=payload["body"],
             link_path=payload.get("link_path"),
             return_to=payload.get("return_to"),
+            role=payload.get("role"),
         )
         return
 

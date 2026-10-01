@@ -69,6 +69,12 @@ async def lifespan(app: FastAPI):
     await init_db()
     validate_storage_runtime()
 
+    from app.services import outbox_service
+
+    # Direct notifications enqueue push into the outbox; let the API nudge the
+    # dispatcher right after commit so delivery does not wait for a worker tick.
+    outbox_service.enable_inline_kick()
+
     # Startup must not mutate demo/business data. Demo materialization is an
     # explicit local operator action (`python -m app.dev_seed`, surfaced as
     # `npm run dev -- seed`) after the database is migrated and runtime-ready.

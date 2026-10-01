@@ -1,7 +1,7 @@
 """Единый архив действий по проекту."""
 import json
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timeutil import utc_now
@@ -235,6 +235,32 @@ async def log_event_from_outbox(
     return event
 
 
+# COM-032: the UI filter chips send short group names ("material", "approval",
+# "room_change", ...) while emitters store CamelCase kinds ("MaterialOrdered",
+# "AcceptancePassed", ...). Stored values are not renamed; the feed expands a
+# group name into the real kinds. Any other value keeps exact-match semantics.
+_KIND_GROUPS: dict[str, tuple[frozenset[str], tuple[str, ...]]] = {
+    "material": (frozenset({"material", "materials"}), ("Material",)),
+    "approval": (
+        frozenset({"approval", "InspectionRequested", "PaymentApproved", "PaymentEvidenceApproved", "RoomChangeApproved"}),
+        ("Acceptance", "Schedule", "ChangeOrder", "Document"),
+    ),
+    "room_change": (frozenset({"room_change", "RoomCreated", "RoomChangeRequested", "RoomChangeApproved"}), ()),
+    "payment": (frozenset({"payment", "ExpenseAdded", "ExpenseUpdated", "ExpenseRemoved", "BankImportExpenses"}), ("Payment",)),
+}
+
+
+def kind_filter_clause(kind: str):
+    """SQL clause matching ``kind`` as a group name or an exact stored kind."""
+    group = _KIND_GROUPS.get(kind)
+    if group is None:
+        return ActivityEvent.kind == kind
+    exact, prefixes = group
+    clauses = [ActivityEvent.kind.in_(sorted(exact | {kind}))]
+    clauses.extend(ActivityEvent.kind.like(f"{prefix}%") for prefix in prefixes)
+    return or_(*clauses)
+
+
 async def project_feed(
     db: AsyncSession,
     project_id: str,
@@ -246,7 +272,7 @@ async def project_feed(
     items: list[dict] = []
     query = select(ActivityEvent).where(ActivityEvent.project_id == project_id)
     if kind:
-        query = query.where(ActivityEvent.kind == kind)
+        query = query.where(kind_filter_clause(kind))
     if work_type:
         query = query.where(ActivityEvent.work_type == work_type)
     if room_id:
@@ -269,7 +295,7 @@ async def project_feed(
     from app.models.entities import Room
 
     room_ids = (await db.execute(select(Room.id).where(Room.project_id == project_id))).scalars().all()
-    if room_ids:
+    if room_ids and (not kind or kind == "room_change"):
         room_query = select(RoomChangeLog).where(RoomChangeLog.room_id.in_(room_ids))
         if room_id:
             room_query = room_query.where(RoomChangeLog.room_id == room_id)

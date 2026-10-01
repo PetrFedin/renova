@@ -292,6 +292,17 @@ async def get_participants(project_id: str, thread_id: str, user: User = Depends
     return await chat_svc.list_participants(db, thread_id, user)
 
 
+def _neutral_invite_ack(invitation_id: str) -> dict:
+    return {
+        "id": invitation_id,
+        "status": "invited",
+        "user_id": None,
+        "delivery_channel": "invitation",
+        "delivery_status": "processed",
+        "delivery_outbox_id": None,
+    }
+
+
 @router.post("/{project_id}/chats/{thread_id}/invite")
 async def invite_to_chat(project_id: str, thread_id: str, body: InviteBody, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     _p, t = await require_chat_access(db, project_id, thread_id, user, write=True)
@@ -299,7 +310,7 @@ async def invite_to_chat(project_id: str, thread_id: str, body: InviteBody, user
         raise HTTPException(400, "invite_requires_exactly_one_target")
     chat_svc.ensure_profile_code(user)
     try:
-        return await chat_svc.invite_participant(
+        result = await chat_svc.invite_participant(
             db,
             t,
             user,
@@ -309,12 +320,21 @@ async def invite_to_chat(project_id: str, thread_id: str, body: InviteBody, user
     except ValueError as exc:
         code = str(exc)
         if code == "invite_profile_not_found":
-            raise HTTPException(404, code) from exc
+            # COM-041: an unknown profile code must look exactly like an
+            # accepted invitation, otherwise the endpoint is an oracle for
+            # which 6-hex codes belong to registered users.
+            return _neutral_invite_ack(
+                str(uuid.uuid5(uuid.NAMESPACE_URL, f"renova:chat-invite:{thread_id}:{(body.profile_code or '').strip().upper()}"))
+            )
         if code == "invite_self_not_allowed":
             raise HTTPException(409, code) from exc
         if code in {"invite_requires_exactly_one_target", "invite_phone_invalid"}:
             raise HTTPException(422, code) from exc
         raise
+    # COM-041: the channel (in-app vs SMS), participant status and user id would
+    # reveal whether the phone/code belongs to a registered account. The client
+    # gets one neutral acknowledgement; the real state stays in the outbox.
+    return _neutral_invite_ack(result["id"])
 
 
 @router.post("/{project_id}/chats/{thread_id}/messages")
