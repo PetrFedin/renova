@@ -33,6 +33,7 @@ import { resolveSafeDocumentUrl } from '@/lib/documentUrl';
 import { notifyError } from '@/lib/notify';
 import { materialEditPolicy, parseMaterialForm } from '@/lib/domain/materialPickEdit';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
+import { unitRu } from '@/lib/unitLabel';
 
 const fmtQty = (value: number) => Number(value.toFixed(3)).toLocaleString('ru-RU');
 
@@ -121,7 +122,7 @@ export function MaterialPickList({
     if (available === null || available > required) {
       showActionConfirm({
         title: 'Проверьте количество',
-        message: `Доступно должно быть от 0 до ${fmtQty(required)} ${pick.unit}.`,
+        message: `Доступно должно быть от 0 до ${fmtQty(required)} ${unitRu(pick.unit)}.`,
       });
       return;
     }
@@ -220,11 +221,11 @@ export function MaterialPickList({
               onPress={() => nav.material(p.id)}
             >
               <Text style={s.n}>{p.name} · {materialPickStatusLabel(p.status)}{p.room_id && roomName(p.room_id) ? ` · ${roomName(p.room_id)}` : ''}</Text>
-              <Text style={s.m}>{p.qty} {p.unit} · {formatRub(p.total)} {p.analog_of_id ? '· аналог' : ''}</Text>
+              <Text style={s.m}>{p.qty} {unitRu(p.unit)} · {formatRub(p.total)} {p.analog_of_id ? '· аналог' : ''}</Text>
             </Pressable>
             <Text style={s.supplyMeta}>{supplyLabel(p.supply_source)}</Text>
             <Text style={s.m}>
-              Доступно {fmtQty(available)} из {fmtQty(required)} {p.unit}{toBuy > 0 ? ` · к покупке ${fmtQty(toBuy)}` : ''}
+              Доступно {fmtQty(available)} из {fmtQty(required)} {unitRu(p.unit)}{toBuy > 0 ? ` · к покупке ${fmtQty(toBuy)}` : ''}
             </Text>
 
             {!readOnly && p.status !== 'purchased' ? (
@@ -265,13 +266,13 @@ export function MaterialPickList({
                   <TextInput
                     accessibilityLabel={`Доступное количество: ${p.name}`}
                     style={s.inp}
-                    placeholder={`Доступно, ${p.unit}`}
+                    placeholder={`Доступно, ${unitRu(p.unit)}`}
                     value={editAvailable}
                     onChangeText={setEditAvailable}
                     keyboardType="decimal-pad"
                   />
                 ) : (
-                  <Text style={s.m}>В наличии полностью: {fmtQty(required)} {p.unit}</Text>
+                  <Text style={s.m}>В наличии полностью: {fmtQty(required)} {unitRu(p.unit)}</Text>
                 )}
                 {p.status === 'approved' ? (
                   <Text style={s.reapprovalHint}>Изменение источника или наличия потребует повторного согласования.</Text>

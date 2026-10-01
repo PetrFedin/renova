@@ -9,6 +9,7 @@ import { PURCHASE_NEXT_STATUS, purchaseAdvanceLabel, purchaseCancelLabel, purcha
 import { pushOsNav } from '@/lib/pushOsNav';
 import { useRenova } from '@/lib/context/RenovaContext';
 import type { OsRole } from '@/constants/osSections';
+import { unitRu } from '@/lib/unitLabel';
 
 type Props = {
   purchases: Purchase[];
@@ -50,7 +51,7 @@ export function PurchaseList({ purchases, readOnly, returnTo, mutationKey, onAdv
               <Text style={s.sum}>{formatRub(purchase.total_amount)} · {purchase.items.length} поз.</Text>
             </Pressable>
             {purchase.items.slice(0, 3).map((item) => (
-              <Text key={item.id} style={s.item} numberOfLines={1}>{item.name} — {item.qty} {item.unit}</Text>
+              <Text key={item.id} style={s.item} numberOfLines={1}>{item.name} — {item.qty} {unitRu(item.unit)}</Text>
             ))}
             {!readOnly && next && onAdvance ? (
               <PrimaryButton

@@ -19,6 +19,7 @@ import { alertMaterialPickApproved, alertMaterialPickSubmitted } from '@/lib/pro
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { resolveSafeDocumentUrl } from '@/lib/documentUrl';
 import { writeResultMessage } from '@/lib/offlineResultMessage';
+import { unitRu } from '@/lib/unitLabel';
 
 export function MaterialPickDetailSheet({
   pick,
@@ -257,7 +258,7 @@ export function MaterialPickDetailSheet({
     >
       <View style={sheetContentStyles.row}>
         <Text style={sheetContentStyles.label}>Количество</Text>
-        <Text style={sheetContentStyles.value}>{pick.qty} {pick.unit}</Text>
+        <Text style={sheetContentStyles.value}>{pick.qty} {unitRu(pick.unit)}</Text>
       </View>
       <View style={sheetContentStyles.row}>
         <Text style={sheetContentStyles.label}>Цена</Text>

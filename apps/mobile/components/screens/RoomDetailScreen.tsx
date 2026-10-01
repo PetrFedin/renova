@@ -32,6 +32,7 @@ import { parseNonNegativeNumber, parsePositiveNumber } from '@/lib/parseLocaleNu
 import { InfoBanner } from '@/components/ui/InfoBanner';
 import { alertEstimateFrozen, isEstimateFrozen, ESTIMATE_FROZEN_MESSAGE, ESTIMATE_FROZEN_ACTION } from '@/lib/estimateFrozenHint';
 import { writeResultMessage } from '@/lib/offlineResultMessage';
+import { unitRu } from '@/lib/unitLabel';
 
 type RoomMutation = 'archive' | 'save' | 'materials';
 type RoomLoadState = 'loading' | 'ready' | 'error';
@@ -295,7 +296,7 @@ export function RoomDetailScreen() {
         <View style={s.card}>
           <Text style={s.h}>Калькулятор материалов</Text>
           {!calcItems.length && <Text style={s.line}>Плитка, краска, ламинат — по размерам комнаты</Text>}
-          {calcItems.map((it) => <Text key={it.name} style={s.line}>{it.name}: {it.qty} {it.unit}{it.note ? ` · ${it.note}` : ''}</Text>)}
+          {calcItems.map((it) => <Text key={it.name} style={s.line}>{it.name}: {it.qty} {unitRu(it.unit)}{it.note ? ` · ${it.note}` : ''}</Text>)}
           {canWrite && (
             <PrimaryButton
               title="Рассчитать материалы"

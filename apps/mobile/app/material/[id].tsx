@@ -26,6 +26,7 @@ import { EmptyActionState } from '@/components/ui/EmptyActionState';
 import { ReasonSheet } from '@/components/renova/ReasonSheet';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { notifyError } from '@/lib/notify';
+import { unitRu } from '@/lib/unitLabel';
 
 const ST: Record<string, string> = {
   draft: 'Черновик', pending: 'На согласовании', approved: 'Согласовано', purchased: 'Куплено', rejected: 'Отклонено',
@@ -201,7 +202,7 @@ export default function MaterialDetailScreen() {
       <BackHeader title={pick.name} returnTo={returnTo} subtitle={ST[pick.status] || pick.status} />
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
         <View style={s.card}>
-          <Text style={s.row}><Text style={s.label}>Кол-во</Text> {pick.qty} {pick.unit}</Text>
+          <Text style={s.row}><Text style={s.label}>Кол-во</Text> {pick.qty} {unitRu(pick.unit)}</Text>
           <Text style={s.row}><Text style={s.label}>Цена</Text> {formatRub(pick.price)} · итого {formatRub(pick.total)}</Text>
           <Text style={[s.provenance, priceNeedsConfirmation && s.warning]}>{priceTruthLabel(pick)}</Text>
           {priceTruthError && <Text style={s.warning}>Не удалось загрузить подтверждение происхождения цены. Не считайте цену проверенной.</Text>}

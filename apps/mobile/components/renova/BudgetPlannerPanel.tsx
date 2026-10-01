@@ -8,6 +8,7 @@ import { WORK_TYPES_FALLBACK, groupWorkTypes } from '@/constants/workCatalog';
 import { REGIONS_FALLBACK, fallbackMarketEstimate, type MarketEstimate, type MarketConsumable } from '@/constants/regions';
 import { api } from '@/lib/api';
 import { reportCatch } from '@/lib/reportError';
+import { unitRu } from '@/lib/unitLabel';
 
 type Props = {
   workTypes: string[];
@@ -211,7 +212,7 @@ export function BudgetPlannerPanel({
               {est.lemana_suggestions.map((l) => (
                 <Pressable key={l.name} style={s.lemana} onPress={() => Linking.openURL(l.shop_url)}>
                   <Text style={s.lemanaName}>{l.name}</Text>
-                  <Text style={s.lemanaMeta}>~{formatRub(l.avg_price)}/{l.unit} · открыть в каталоге →</Text>
+                  <Text style={s.lemanaMeta}>~{formatRub(l.avg_price)}/{unitRu(l.unit)} · открыть в каталоге →</Text>
                 </Pressable>
               ))}
             </>
@@ -222,7 +223,7 @@ export function BudgetPlannerPanel({
               <Text style={s.section}>Расходники и материалы ({formatRub(matTotal)})</Text>
               {localMaterials.map((m, i) => (
                 <View key={`${m.name}-${i}`} style={s.matRow}>
-                  <Text style={s.matName}>{m.name} · {m.qty} {m.unit}</Text>
+                  <Text style={s.matName}>{m.name} · {m.qty} {unitRu(m.unit)}</Text>
                   <TextInput
                     style={s.priceInput}
                     keyboardType="numeric"

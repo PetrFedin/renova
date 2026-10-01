@@ -7,9 +7,10 @@ import { EstimateLineRow } from '@/components/screens/object/ObjectSection';
 import type { EstimateLine } from '@/lib/api';
 import { estimateLineSourceLabel } from '@/lib/domain/estimateFilters';
 import { groupEstimateLinesByRoom } from '@/lib/domain/groupEstimateByRoom';
+import { unitRu } from '@/lib/unitLabel';
 
 function workMeta(l: EstimateLine): string {
-  return `${l.quantity_planned} ${l.unit} · ${formatRub(l.quantity_planned * l.unit_price)}`;
+  return `${l.quantity_planned} ${unitRu(l.unit)} · ${formatRub(l.quantity_planned * l.unit_price)}`;
 }
 
 export function EstimateWorksByRoom({ lines }: { lines: EstimateLine[] }) {

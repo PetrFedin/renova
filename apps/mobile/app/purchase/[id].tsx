@@ -21,6 +21,7 @@ import { alertPurchaseAdvanced } from '@/lib/procurementNav';
 import { reportError } from '@/lib/reportError';
 import { useBusyAction } from '@/lib/hooks/useBusyAction';
 import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
+import { unitRu } from '@/lib/unitLabel';
 
 const ST: Record<string, string> = {
   draft: 'Черновик', approved: 'Согласовано', ordered: 'Заказано', paid: 'Оплачено',
@@ -97,7 +98,7 @@ export default function PurchaseDetailScreen() {
         {purchase.items.map((i) => (
           <View key={i.id} style={s.item}>
             <Text style={s.itemName}>{i.name}</Text>
-            <Text style={s.meta}>{i.qty} {i.unit} · {formatRub(i.total)}</Text>
+            <Text style={s.meta}>{i.qty} {unitRu(i.unit)} · {formatRub(i.total)}</Text>
           </View>
         ))}
         {canWrite && next && user && activeProject && (
