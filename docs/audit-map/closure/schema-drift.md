@@ -23,46 +23,18 @@ reported separately and are not part of the ratchet (`--server-defaults`: +52 in
 
 Code: `backend/app/models/entities.py`, `backend/app/models/outbox_runtime.py`. Unique semantics are unchanged.
 
-## Remaining (39): need a migration (model is the intended truth)
+## Closed by migration `x08schemadrift01` (39 -> 0)
 
-Baseline for the ratchet: `backend/scripts/schema_drift_baseline.json` (39; per kind 32 nullable, 3 FK, 4 index).
-Migrations were intentionally not added here (wave 6-C owns the next revision; single head).
+Down revision is `x06coinvoicelink01` (the x07 portal-link revision was not yet in origin/main when x08 was written;
+the main session must re-point `down_revision` to x07 once it lands, keeping a single head).
 
-### Nullable: model `NOT NULL`, DB `NULL` (32) - classification `nullable`
-Migration `align_not_null`: for each column first `UPDATE ... SET col = <model default> WHERE col IS NULL`
-(`created_at/updated_at` -> `now()`, `qty/price/budget_*/attempts/qty_delivered` -> `0`, `status` -> model default, `unit` -> `''`),
-then `op.alter_column(..., nullable=False)`. Check row counts with NULLs on production before running.
-
-| table | columns |
-|---|---|
-| `chat_thread_reads` | `created_at`, `last_read_at`, `updated_at` |
-| `contractor_profiles` | `created_at` |
-| `document_versions` | `created_at` |
-| `domain_outbox` | `attempts`, `created_at` |
-| `floor_plans` | `created_at` |
-| `job_lead_quotes` | `created_at` |
-| `job_leads` | `created_at` |
-| `material_picks` | `created_at`, `price`, `qty`, `qty_delivered`, `status`, `unit`, `updated_at` |
-| `project_documents` | `created_at` |
-| `project_issues` | `created_at` |
-| `purchase_items` | `qty`, `unit`, `unit_price` |
-| `purchases` | `created_at`, `total_amount`, `updated_at` |
-| `selection_items` | `created_at`, `updated_at` |
-| `suppliers` | `created_at` |
-| `work_acceptances` | `created_at`, `status` |
-| `work_orders` | `budget_planned`, `budget_spent` |
-
-### Foreign keys missing in DB (3) - classification `foreign key`
-`op.create_foreign_key` after cleaning orphans (`UPDATE ... SET col = NULL WHERE col NOT IN (SELECT id FROM ...)`):
-- `material_picks.analog_of_id` -> `material_picks.id`
-- `receipts.room_id` -> `rooms.id`
-- `receipts.stage_id` -> `stages.id`
-
-### Indexes missing in DB (4) - classification `index`
-`op.create_index` (use `postgresql_concurrently` + autocommit block on large tables):
-- `ix_material_picks_stage_id (stage_id)`, `ix_material_picks_work_type (work_type)`
-- `ix_project_viewers_project_id (project_id)`
-- `ix_work_acceptances_status (status)`
+* 32 `NOT NULL`: NULLs backfilled with the model default (timestamps -> UTC now, qty -> 1, prices/totals/budgets/attempts/qty_delivered -> 0,
+  unit -> `шт`, material pick status -> `draft`, acceptance status -> `not_requested`), then `alter_column(nullable=False)`.
+* 3 FK (`material_picks.analog_of_id`, `receipts.room_id`, `receipts.stage_id`): orphans set to NULL, constraint created (NO ACTION as in the models).
+  Stage deletion now nulls `receipts.stage_id` first (`stage_mutation_service`).
+* 4 indexes via `CREATE INDEX IF NOT EXISTS`.
+* Downgrade drops indexes/FKs and relaxes NOT NULL; backfilled values stay. Checked on local DB 5433: upgrade -> downgrade -> upgrade.
+* Ratchet baseline lowered to 0 (`schema_drift_baseline.json`).
 
 ### Not classified as drift but visible only with live data
 `payments.change_order_id` is added by head `x06coinvoicelink01`; a database that was not upgraded to head fails in the worker
