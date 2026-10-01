@@ -394,7 +394,7 @@ Approve использует pre-confirm dialog; после mutation вызыв�
 
 # 7. Control / Acceptance screen router
 
-**VERIFIED. Source:** `OsControlScreen.tsx` blob `b33fe8343d7629fd5ac859009ebdff36da629810`.
+**VERIFIED. Source:** `OsControlScreen.tsx` blob `299b29fe2571900663e290c35bc0096854b8eb7f`.
 
 Dispatch:
 
@@ -470,7 +470,7 @@ Rework stages are listed separately and link to stage details.
 
 # 9. Contractor Control view
 
-**VERIFIED. Source:** `ContractorControlView.tsx` blob `dc2d3793252be1668ffe720e98cf1572c7d9c085`.
+**VERIFIED. Source:** `ContractorControlView.tsx` blob `907887032766d02be6df17bafd6894384b96b0c3`.
 
 Loads:
 

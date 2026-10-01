@@ -37,7 +37,7 @@ The route-composition source changed in this contour and is traceability-bound h
 
 | Source | Blob SHA | Что подтверждает |
 |---|---|---|
-| `backend/app/api/v1/router.py` | `2e4d89f1af1f45a4444635594c2168c84d239b35` | canonical warranty POST replacement + preservation of legacy list/close composition |
+| `backend/app/api/v1/router.py` | `292dd48b37b77cc408db9f0c215ad7a5007e6cd0` | canonical warranty POST replacement + preservation of legacy list/close composition |
 
 The master dossier's older router snapshot is historical until the next consolidated documentation snapshot refresh; this annex is authoritative for the warranty contour and must be read together with the master dossier.
 

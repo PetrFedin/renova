@@ -101,7 +101,7 @@ Repository qualification is **CI VERIFIED** for the exact tested candidate only.
 
 | Source | Blob SHA | Contract |
 |---|---|---|
-| `backend/app/api/v1/router.py` | `8663e5b54289b133c5a2ff30af0533cfee93dfb6` | canonical HTTP assignment, conversion and management composition |
+| `backend/app/api/v1/router.py` | `292dd48b37b77cc408db9f0c215ad7a5007e6cd0` | canonical HTTP assignment, conversion and management composition |
 | `backend/app/services/project_assignment_service.py` | `7fa18d5b0b2dfc4413626281cb5dc4c48f286894` | refreshed locked assignment state |
 | `backend/app/services/project_participant_service.py` | `110934ea99f3c71c2a2dfcc048b0c328f6482c58` | refreshed participant lifecycle and fail-closed former-lead semantics |
 | `backend/app/services/project_create_service.py` | `12825d9b6128eb29ad9b53ff406b9e451e728c69` | shared non-committing preparation |

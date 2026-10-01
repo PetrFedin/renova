@@ -170,6 +170,6 @@ Repository CI доказывает только `CI VERIFIED`. Реальная 
 
 | Source | Blob SHA | Что подтверждает |
 |---|---|---|
-| `backend/app/api/v1/router.py` | `5b8cfa5ef1bdd6d85cdbfc7ef51795e40c9254a3` | direct canonical material-price router composition без legacy route surgery |
+| `backend/app/api/v1/router.py` | `292dd48b37b77cc408db9f0c215ad7a5007e6cd0` | direct canonical material-price router composition без legacy route surgery |
 
 Этот annex владеет material-price изменением router. Остальные router snapshots в старых annex остаются доказательством своих контуров на соответствующих exact-head и не означают, что material price снова должен использовать route replacement.
