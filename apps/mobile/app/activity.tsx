@@ -22,7 +22,9 @@ export default function ActivityScreen() {
   const { user, activeProject, projects, loadProject } = useRenova();
   const role = user?.role === 'contractor' ? 'contractor' : 'customer';
 
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  // Явный выбор пользователя; пока его нет — следуем за активным объектом (он может
+  // подгрузиться позже первого рендера, и тогда архив не должен залипнуть на другом объекте).
+  const [pickedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [viewProject, setViewProject] = useState<ProjectDetail | null>(null);
   const [viewError, setViewError] = useState(false);
 
@@ -36,9 +38,7 @@ export default function ActivityScreen() {
     [activeProject?.id, projects],
   );
 
-  useEffect(() => {
-    setSelectedProjectId((prev) => prev ?? defaultProjectId);
-  }, [defaultProjectId]);
+  const selectedProjectId = pickedProjectId ?? defaultProjectId;
 
   const reloadActivityProject = useCallback(() => {
     if (!user || !selectedProjectId) {

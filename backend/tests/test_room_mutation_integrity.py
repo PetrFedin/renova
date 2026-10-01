@@ -649,3 +649,14 @@ async def test_room_change_log_cannot_read_foreign_project_room(db):
             db=db,
         )
     assert captured.value.status_code == 404
+
+
+def test_changed_fields_label_is_human_readable_russian() -> None:
+    from app.services.room_mutation_service import _changed_fields_label
+
+    label = _changed_fields_label(
+        {"is_archived": {}, "outlets_count": {}, "width_m": {}, "unknown_column": {}}
+    )
+    assert "_" not in label
+    assert "розетки" in label and "ширина" in label and "архив" in label
+    assert "параметры" in label

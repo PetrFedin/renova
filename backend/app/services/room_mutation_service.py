@@ -100,6 +100,28 @@ async def _room_amounts(db: AsyncSession, room_id: str) -> tuple[float, float]:
     return float(planned or 0), float(actual or 0)
 
 
+_FIELD_LABELS_RU = {
+    "name": "название",
+    "room_type": "тип комнаты",
+    "floor_level": "этаж",
+    "length_m": "длина",
+    "width_m": "ширина",
+    "height_m": "высота",
+    "openings_sq_m": "площадь проёмов",
+    "outlets_count": "розетки",
+    "switches_count": "выключатели",
+    "plumbing_points": "точки сантехники",
+    "notes": "заметки",
+    "budget_alert_pct": "порог бюджета",
+    "is_archived": "архив",
+}
+
+
+def _changed_fields_label(changes: dict[str, dict[str, object]]) -> str:
+    """Человекочитаемый список изменённых полей: в уведомлениях не должно быть имён колонок."""
+    return ", ".join(sorted({_FIELD_LABELS_RU.get(field, "параметры") for field in changes}))
+
+
 async def _prepare_effects(
     db: AsyncSession,
     *,
@@ -110,7 +132,7 @@ async def _prepare_effects(
     changes: dict[str, dict[str, object]],
 ) -> None:
     created = action == "create"
-    changed_fields = ", ".join(sorted(changes))
+    changed_fields = _changed_fields_label(changes)
     activity_title = (
         f"Добавлена комната: {room.name}"
         if created
