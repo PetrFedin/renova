@@ -22,7 +22,9 @@ import { reportCatch } from '@/lib/reportError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { writeResultMessage } from '@/lib/offlineResultMessage';
 
+// HOM-03: заявки на исполнителя создаёт и разбирает заказчик — вход должен быть и у него.
 const EXTRA_BASIC = [
+  { label: 'Заявки на исполнителя', href: '/job-leads' },
   { label: 'Помощь', href: '/guide' },
 ];
 

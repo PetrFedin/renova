@@ -7,12 +7,13 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { RenovaTheme } from '@/constants/Theme';
 import { navigateAfterLogin } from '@/lib/osEntry';
+import { notifyError } from '@/lib/notify';
 import { DetailLevelPreview } from '@/components/renova/DetailLevelPreview';
 
 const MODES = [
-  { id: 'brief', label: 'Кратко', desc: 'Только ключевые цифры и статусы' },
-  { id: 'standard', label: 'Стандарт', desc: 'Баланс деталей и скорости' },
-  { id: 'detailed', label: 'Подробно', desc: 'Все метрики, графики, логи' },
+  { id: 'brief', label: 'Кратко', desc: 'Без блоков «Риски» и аналитики на главной, короткие подсказки' },
+  { id: 'standard', label: 'Стандарт', desc: 'Риски и аналитика на главной, подсказки в одну строку' },
+  { id: 'detailed', label: 'Подробно', desc: 'Всё как в «Стандарте» плюс развёрнутые подсказки на вкладках и в мастере' },
 ];
 
 export default function DetailQuizScreen() {
@@ -27,6 +28,8 @@ export default function DetailQuizScreen() {
       await AsyncStorage.setItem('renova_detail_quiz_done', '1');
       const role = (await AsyncStorage.getItem('renova_user_role')) === 'contractor' ? 'contractor' : 'customer';
       await navigateAfterLogin(role);
+    } catch (error) {
+      notifyError('Не удалось сохранить выбор', error, 'Попробуйте ещё раз.');
     } finally {
       setBusy(false);
     }
@@ -39,7 +42,7 @@ export default function DetailQuizScreen() {
     <View style={s.wrap}>
       <Pressable onPress={backToRole} style={s.back} accessibilityRole="button">
         <Text style={s.backText}>← Выбор роли</Text>
-        <Text style={s.backSub}>Заказчик · Исполнитель · Наблюдатель</Text>
+        <Text style={s.backSub}>Выйти из аккаунта и выбрать роль заново</Text>
       </Pressable>
       <Text style={s.title}>Как показывать информацию?</Text>
       {MODES.map(m => (

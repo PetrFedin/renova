@@ -20,6 +20,7 @@ import { ProjectCardLifecycleIcons } from '@/components/renova/ProjectCardLifecy
 import { canManageProjectLifecycle } from '@/lib/domain/projectLifecycle';
 import type { OsRole } from '@/constants/osSections';
 import { filterOutJunkProjects } from '@/lib/junkProjects';
+import { isDemoPhone } from '@/lib/sessionBootstrap';
 import { reportError } from '@/lib/reportError';
 import { resolveConfirmedPendingPayments } from '@/lib/domain/enrichProjectsPendingPayments';
 
@@ -135,7 +136,9 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
 
   const portfolio = useMemo(() => summarizePortfolio(projects, pendingById), [projects, pendingById]);
   // Investor honesty: E2E/Wizard Test не засоряют список объектов
-  const activeProjects = useMemo(() => filterOutJunkProjects(projects), [projects]);
+  // HOM-29: реальные объекты («Студия», «тест»…) не прячем — фильтр только для демо-аккаунта.
+  const demoAccount = isDemoPhone(user?.phone);
+  const activeProjects = useMemo(() => (demoAccount ? filterOutJunkProjects(projects) : projects), [projects, demoAccount]);
   const displayProjects = bucket === 'active' ? activeProjects : bucketItems;
   const { inProgress, completed } = useMemo(
     () => partitionPortfolioProjects(displayProjects, pendingById),
@@ -198,7 +201,7 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
     }
     setBusyId(id);
     try {
-      await loadProject(id);
+      await loadProject(id, { strict: true });
       setOpen(false);
     } catch (error: unknown) {
       const { code, status } = projectSwitchError(error);
@@ -347,7 +350,7 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
                   <Ionicons name="create-outline" size={18} color={RenovaTheme.colors.textMuted} />
                   <Text style={s.itemT}>Данные объекта</Text>
                 </Pressable>
-                {bucket === 'active' ? (
+                {bucket === 'active' && user?.role === 'customer' ? (
                   <Pressable
                     style={s.item}
                     onPress={() => {

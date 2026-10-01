@@ -1,7 +1,6 @@
 /** Единая главная Renova OS — заказчик и исполнитель */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, ActivityIndicator, RefreshControl } from 'react-native';
-import { pushOsNav } from '@/lib/pushOsNav';
 import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
@@ -322,15 +321,6 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
   const showKpi = (['kpi_budget', 'kpi_schedule', 'kpi_materials', 'kpi_quality'] as const).some((id) => isVisible(id));
 
   if (!user) return null;
-
-  if (role === 'contractor' && projects.length === 0) {
-    return (
-      <ScrollView style={s.container} contentContainerStyle={s.content}>
-        <Text style={s.emptyTitle}>Нет объектов</Text>
-        <PrimaryButton title="Заявки и новые объекты" variant="accent" onPress={() => pushOsNav('/job-leads', undefined, role)} />
-      </ScrollView>
-    );
-  }
 
   if (!activeProject) {
     if (projects.length > 0 && (projectResolving || ctxLoading)) {

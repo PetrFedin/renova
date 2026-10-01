@@ -101,6 +101,33 @@ export default function RoleScreen() {
     }
   }
 
+  // HOM-15: правка номера отменяет отправленный код — иначе он проверялся бы по новому номеру.
+  function changePhone(next: string) {
+    setPhone(next);
+    if (codeSent) {
+      setCodeSent(false);
+      setCode('');
+      setDemoCode(null);
+    }
+  }
+
+  async function resendCode() {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api.sendSmsCode(phone);
+      setCode('');
+      if (r.demo_code && DEMO_LOGIN_ENABLED) setDemoCode(r.demo_code);
+      alertMessage('Код отправлен', r.demo_code && DEMO_LOGIN_ENABLED ? `Демо-код: ${r.demo_code}` : 'Проверьте SMS');
+    } catch (e: any) {
+      const msg = e?.message || 'Не удалось отправить код. Попробуйте чуть позже.';
+      setError(msg);
+      alertMessage('Не удалось отправить код', msg);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function continueWithoutTeam() {
     setBusy(true);
     setError(null);
@@ -150,7 +177,7 @@ export default function RoleScreen() {
       </View>
       {mode === 'sms' && (
         <>
-          <TextInput style={styles.input} placeholder="Телефон +7…" value={phone} onChangeText={setPhone} keyboardType="phone-pad" editable={!teamJoinPending} />
+          <TextInput style={styles.input} placeholder="Телефон +7…" value={phone} onChangeText={changePhone} keyboardType="phone-pad" editable={!teamJoinPending} />
           {codeSent && <TextInput style={styles.input} placeholder="Код из SMS" value={code} onChangeText={setCode} keyboardType="number-pad" maxLength={6} editable={!teamJoinPending} />}
           <TextInput style={styles.input} placeholder="Имя (необязательно)" value={name} onChangeText={setName} editable={!teamJoinPending} />
           {demoCode && <Text style={styles.demoCode}>Демо-код: {demoCode}</Text>}
@@ -167,6 +194,16 @@ export default function RoleScreen() {
         onPress={onContinue}
         loading={busy}
       />
+      {mode === 'sms' && codeSent && !teamJoinPending ? (
+        <View style={styles.codeLinks}>
+          <Pressable disabled={busy} onPress={() => { void resendCode(); }} accessibilityRole="button">
+            <Text style={styles.codeLink}>Отправить код ещё раз</Text>
+          </Pressable>
+          <Pressable disabled={busy} onPress={() => changePhone(phone)} accessibilityRole="button">
+            <Text style={styles.codeLink}>Изменить номер</Text>
+          </Pressable>
+        </View>
+      ) : null}
       {teamJoinPending ? (
         <Pressable disabled={busy} style={styles.skipJoin} onPress={() => { void continueWithoutTeam(); }}>
           <Text style={styles.skipJoinText}>Продолжить без вступления</Text>
@@ -197,6 +234,8 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1, borderColor: RenovaTheme.colors.border, borderRadius: 10, padding: 12, marginBottom: 10, backgroundColor: RenovaTheme.colors.surface },
   demoCode: { textAlign: 'center', color: RenovaTheme.colors.primary, fontWeight: '600', marginBottom: 8 },
   joinNotice: { fontSize: 12, color: RenovaTheme.colors.textMuted, textAlign: 'center', marginBottom: 10, lineHeight: 18 },
+  codeLinks: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12 },
+  codeLink: { color: RenovaTheme.colors.primary, fontWeight: '600', fontSize: 14 },
   skipJoin: { paddingVertical: 12, alignItems: 'center' },
   skipJoinText: { color: RenovaTheme.colors.textMuted, fontWeight: '600', fontSize: 13 },
   note: { textAlign: 'center', fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 16, lineHeight: 18 },

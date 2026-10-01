@@ -20,6 +20,7 @@ import { ProjectCardLifecycleIcons } from '@/components/renova/ProjectCardLifecy
 import { canManageProjectLifecycle } from '@/lib/domain/projectLifecycle';
 import { pushOsNav, replaceOsNav } from '@/lib/pushOsNav';
 import { reportCatch, reportError } from '@/lib/reportError';
+import { notifyError } from '@/lib/notify';
 
 type Props = {
   role: OsRole;
@@ -251,11 +252,13 @@ export function ProjectEmptyState({
         .then(() => onSelectProject(id))
         .catch((error: unknown) => {
           if (isSubscriptionRequired(error)) showPaywall();
+          else notifyError('Не удалось открыть объект', error, 'Проверьте подключение и попробуйте ещё раз.');
         });
       return;
     }
-    loadProject(id).catch((error: unknown) => {
+    loadProject(id, { strict: true }).catch((error: unknown) => {
       if (isSubscriptionRequired(error)) showPaywall();
+      else notifyError('Не удалось открыть объект', error, 'Проверьте подключение и попробуйте ещё раз.');
     });
   };
 

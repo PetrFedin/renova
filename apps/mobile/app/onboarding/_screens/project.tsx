@@ -21,7 +21,7 @@ export default function ProjectPickScreen() {
     if (entering) return;
     setEntering(true);
     try {
-      await loadProject(projectId);
+      await loadProject(projectId, { strict: true });
       await AsyncStorage.setItem(SESSION_KEYS.projectExplicitlyPicked, '1');
       await AsyncStorage.removeItem(SESSION_KEYS.pendingProjectPick);
       replaceOsNav(osEntryRoute(role));

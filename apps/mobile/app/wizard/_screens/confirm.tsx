@@ -13,8 +13,6 @@ import { PostCreateSheet } from '@/components/renova/os/home/PostCreateSheet';
 import { ContractorInviteSheet } from '@/components/renova/os/home/ContractorInviteSheet';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { parseLocaleNumber, parsePositiveNumber } from '@/lib/parseLocaleNumber';
-import { syncProjectSideEffects } from '@/lib/projectDataBus';
-import { api } from '@/lib/api';
 import type { MarketEstimate } from '@/constants/regions';
 import { buildMarketEstimateInsights } from '@/lib/wizard/buildMarketEstimateInsights';
 import { buildQuickWizardRooms, quickWizardFloorSqM } from '@/lib/wizard/buildQuickWizardRooms';
@@ -47,7 +45,6 @@ export default function WizardConfirm() {
   const [complexity, setComplexity] = useState(1);
   const [laborShare, setLaborShare] = useState(0.5);
   const [marketEstimate, setMarketEstimate] = useState<MarketEstimate | null>(null);
-  const [applyMarketPlan, setApplyMarketPlan] = useState(true);
   const [budgetInput, setBudgetInput] = useState(
     wizard.customer_budget ? String(wizard.customer_budget) : '',
   );
@@ -117,11 +114,6 @@ export default function WizardConfirm() {
         customer_budget: budgetNum > 0 ? budgetNum : undefined,
       });
       setCreatedProjectId(result.id);
-      if (applyMarketPlan && marketEstimate && user) {
-        await api.patchProject(user.id, result.id, { budget_planned: Math.round(marketEstimate.grand_total) });
-        await syncProjectSideEffects({ user, project: { id: result.id } as any });
-        await loadProject(result.id);
-      }
       setCreatedName(wizard.name.trim());
       if (result.demoKeptPrimary && __DEV__) {
         const { createdName: cn, activeName } = result.demoKeptPrimary;
@@ -184,22 +176,17 @@ export default function WizardConfirm() {
           onComplexityChange={setComplexity}
           laborShare={laborShare}
           onLaborShareChange={setLaborShare}
-          onEstimate={(est) => {
-            setMarketEstimate(est);
-            if (est.grand_total > summary.grandTotal * 1.12) setApplyMarketPlan(true);
-          }}
+          onEstimate={setMarketEstimate}
           compact
         />
 
         {marketInsights ? <MarketEstimateInsightCard insights={marketInsights} /> : null}
 
         {marketEstimate ? (
-          <Pressable style={styles.toggleRow} onPress={() => setApplyMarketPlan((v) => !v)}>
-            <Text style={styles.toggleMark}>{applyMarketPlan ? '☑' : '☐'}</Text>
-            <Text style={styles.toggleText}>
-              Записать рыночную оценку {formatRub(marketEstimate.grand_total)} в план сметы (шаблон {formatRub(summary.grandTotal)})
-            </Text>
-          </Pressable>
+          <Text style={styles.noteMuted}>
+            Рыночная оценка {formatRub(marketEstimate.grand_total)} — только ориентир: в план проекта она не записывается.
+            План берётся из сметы (шаблон {formatRub(summary.grandTotal)}), а свой лимит укажите в поле выше.
+          </Text>
         ) : null}
 
         <Text style={styles.note}>После создания: контроль бюджета на главной и в «Деньги». Комнаты можно уточнить в «Квартира».</Text>
@@ -254,6 +241,7 @@ const styles = StyleSheet.create({
   sub: { color: RenovaTheme.colors.textMuted, marginTop: 8 },
   roomLine: { fontSize: 13, marginTop: 4, color: RenovaTheme.colors.text },
   note: { marginVertical: 16, color: RenovaTheme.colors.text, lineHeight: 22, fontSize: 13 },
+  noteMuted: { marginBottom: 12, fontSize: 12, lineHeight: 17, color: RenovaTheme.colors.textMuted },
   toggleRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start', marginBottom: 16, padding: 12, backgroundColor: RenovaTheme.colors.infoBg, borderRadius: 10 },
   toggleMark: { fontSize: 18, lineHeight: 22 },
   toggleText: { flex: 1, fontSize: 13, lineHeight: 18, color: RenovaTheme.colors.text },

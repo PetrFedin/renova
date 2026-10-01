@@ -4,6 +4,7 @@ import { replaceOsNav } from '@/lib/pushOsNav';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { useRenova } from '@/lib/context/RenovaContext';
 import type { UserRole } from '@/lib/api';
+import { confirmAction } from '@/lib/notify';
 
 export function roleDisplayLabel(role?: UserRole | string | null): string {
   return role === 'contractor' ? 'Исполнитель' : 'Заказчик';
@@ -24,6 +25,14 @@ export function RoleSwitchButton({ compact }: { compact?: boolean }) {
   const roleLabel = roleDisplayLabel(user?.role);
 
   async function onPress() {
+    // HOM-18: кнопка выходит из аккаунта — спрашиваем, а не разлогиниваем одним касанием.
+    const ok = await confirmAction({
+      title: 'Выйти из аккаунта?',
+      message: 'Вы вернётесь на экран входа и сможете выбрать роль. Данные объектов сохранятся.',
+      confirmLabel: 'Выйти',
+      cancelLabel: 'Остаться',
+    });
+    if (!ok) return;
     await logout();
     replaceOsNav('/onboarding/role');
   }
@@ -39,7 +48,7 @@ export function RoleSwitchButton({ compact }: { compact?: boolean }) {
         accessibilityLabel={ROLE_SWITCH_A11Y(roleLabel)}
       >
         <Text style={s.compactText}>← Выбор роли</Text>
-        <Text style={s.compactSub}>{roleLabel} · сменить →</Text>
+        <Text style={s.compactSub}>{roleLabel} · выйти →</Text>
       </Pressable>
     );
   }
@@ -52,7 +61,7 @@ export function RoleSwitchButton({ compact }: { compact?: boolean }) {
       accessibilityLabel={ROLE_SWITCH_A11Y(roleLabel)}
     >
       <Text style={s.btnText}>← Выбор роли</Text>
-      <Text style={s.btnSub}>Заказчик · Исполнитель</Text>
+      <Text style={s.btnSub}>Выйти из аккаунта и войти заново</Text>
     </Pressable>
   );
 }

@@ -7,6 +7,7 @@ import { tabsRoute, type OsRole } from '@/constants/osSections';
 import { RenovaTheme } from '@/constants/Theme';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { filterOutJunkProjects } from '@/lib/junkProjects';
+import { isDemoPhone } from '@/lib/sessionBootstrap';
 import { api } from '@/lib/api';
 import { summarizePortfolio } from '@/lib/domain/summarizePortfolio';
 import { aggregatePortfolioBudgetBreakdowns, type PortfolioCategoryRow } from '@/lib/domain/aggregatePortfolioBudget';
@@ -19,7 +20,8 @@ import { reportError } from '@/lib/reportError';
 
 export function PortfolioProjectsView() {
   const { user, projects, activeProject, loadProject } = useRenova();
-  const cleanProjects = filterOutJunkProjects(projects);
+  // HOM-29: фильтр тестовых имён — только для демо-аккаунта, реальные объекты не скрываем.
+  const cleanProjects = isDemoPhone(user?.phone) ? filterOutJunkProjects(projects) : projects;
   const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
   const allIds = useMemo(() => cleanProjects.map((p) => p.id), [cleanProjects]);
   const {
@@ -148,7 +150,7 @@ export function PortfolioProjectsView() {
 
   async function openProject(id: string) {
     try {
-      await loadProject(id);
+      await loadProject(id, { strict: true });
       replaceOsNav(tabsRoute(role, 'index'));
     } catch (error) {
       reportError('portfolio.openProject', error, { projectId: id });

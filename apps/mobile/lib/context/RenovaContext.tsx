@@ -175,7 +175,8 @@ type Ctx = {
   refreshMe: () => Promise<void>;
   /** Сброс активного объекта (корзина/архив текущего проекта) */
   clearActiveProject: () => Promise<void>;
-  loadProject: (id: string) => Promise<void>;
+  /** `strict` — при лимите запросов бросить понятную ошибку (смена объекта), а не молча остаться на прежнем (HOM-12). */
+  loadProject: (id: string, opts?: { strict?: boolean }) => Promise<void>;
   /** Подхват сохранённого объекта — один раз на все разделы OS */
   ensureActiveProject: () => Promise<void>;
   /** Идёт загрузка/восстановление активного объекта */
@@ -307,7 +308,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
   }, [user?.id, refreshTeamAccess]);
 
   const loadProject = useCallback(
-    async (id: string) => {
+    async (id: string, opts?: { strict?: boolean }) => {
       if (!user) return;
       const stamp = sessionStampRef.current;
       setProjectResolving(true);
@@ -338,8 +339,11 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
         }).catch(reportCatch('renovaContext'));
       } catch (e) {
         // Duck-typed rate_limit (HMR) — не роняем UI, оставляем текущий activeProject
-        if (isRateLimitError(e)) return;
-        if (e instanceof Error && /rate_limit/i.test(e.message)) return;
+        const limited = isRateLimitError(e) || (e instanceof Error && /rate_limit/i.test(e.message));
+        if (limited) {
+          if (opts?.strict) throw new Error('Слишком много запросов. Подождите минуту и откройте объект ещё раз.');
+          return;
+        }
         throw e;
       } finally {
         setProjectResolving(false);
@@ -646,30 +650,45 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     } catch {
       /* silent-catch-ok: POST/PATCH response is sufficient as the committed project fallback */
     }
-    const refreshed = await enrichProjectsPendingPayments(user.id, await api.listProjects(user.id), user.role as UserRole);
-    setProjects(refreshed);
-    const junkWizard = isDemoPhone(user.phone) && isJunkProjectName(created.name);
-    if (junkWizard) {
-      const primary = pickPrimaryDemoProject(refreshed);
-      const primaryId = primary?.id;
-      if (primaryId) {
-        const primaryDetail = await api.getProject(user.id, primaryId);
-        setActiveProject(primaryDetail);
-        setReadOnly(!!primaryDetail.read_only);
-        await AsyncStorage.setItem(KEYS.projectId, primaryId);
-        await AsyncStorage.removeItem(SESSION_KEYS.pendingProjectPick);
-        return {
-          id: created.id,
-          demoKeptPrimary: { createdName: created.name, activeName: primary?.name || primaryDetail.name },
-        };
+    // HOM-02: объект уже создан — ни один шаг ниже не должен бросить исключение,
+    // иначе «Повторить» в мастере создаст второй такой же объект.
+    try {
+      const refreshed = await enrichProjectsPendingPayments(user.id, await api.listProjects(user.id), user.role as UserRole);
+      setProjects(refreshed);
+      const junkWizard = isDemoPhone(user.phone) && isJunkProjectName(created.name);
+      if (junkWizard) {
+        const primary = pickPrimaryDemoProject(refreshed);
+        const primaryId = primary?.id;
+        if (primaryId) {
+          const primaryDetail = await api.getProject(user.id, primaryId);
+          setActiveProject(primaryDetail);
+          setReadOnly(!!primaryDetail.read_only);
+          await AsyncStorage.setItem(KEYS.projectId, primaryId);
+          await AsyncStorage.removeItem(SESSION_KEYS.pendingProjectPick);
+          setWizardState(defaultWizard);
+          return {
+            id: created.id,
+            demoKeptPrimary: { createdName: created.name, activeName: primary?.name || primaryDetail.name },
+          };
+        }
       }
+    } catch (error) {
+      reportError('projectWizard.afterCreate.refreshList', error, { projectId: created.id });
     }
     setActiveProject(detail);
     setReadOnly(!!detail.read_only);
-    await AsyncStorage.setItem(KEYS.projectId, created.id);
-    await AsyncStorage.setItem(SESSION_KEYS.projectExplicitlyPicked, '1');
-    await AsyncStorage.removeItem(SESSION_KEYS.pendingProjectPick);
-    await refreshProjects();
+    try {
+      await AsyncStorage.setItem(KEYS.projectId, created.id);
+      await AsyncStorage.setItem(SESSION_KEYS.projectExplicitlyPicked, '1');
+      await AsyncStorage.removeItem(SESSION_KEYS.pendingProjectPick);
+    } catch (error) {
+      reportError('projectWizard.afterCreate.persistActive', error, { projectId: created.id });
+    }
+    await refreshProjects().catch((error: unknown) => {
+      reportError('projectWizard.afterCreate.refreshProjects', error, { projectId: created.id });
+    });
+    // HOM-19: черновик мастера не должен переходить в следующий «Новый проект».
+    setWizardState(defaultWizard);
     return { id: created.id };
   }, [user, wizard, refreshProjects]);
 

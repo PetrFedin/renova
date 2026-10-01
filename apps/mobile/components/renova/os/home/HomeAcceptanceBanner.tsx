@@ -11,17 +11,19 @@ type Props = {
   role: OsRole;
   /** W107: прямой /stage/{id} если известен этап в review */
   href?: OsNavHref;
+  /** Гость/наблюдатель: принимать он не может, формулировка — не «вашей» (HOM-16). */
+  readOnly?: boolean;
 };
 
-export function HomeAcceptanceBanner({ count, role, href }: Props) {
+export function HomeAcceptanceBanner({ count, role, href, readOnly = false }: Props) {
   const { returnTo } = useOsNavFromHere(role);
   if (count <= 0) return null;
 
   const isContractor = role === 'contractor';
-  const head = isContractor
+  const head = isContractor || readOnly
     ? `${count} этап(ов) ждут ответа заказчика`
     : `${count} этап(ов) ждут вашей приёмки`;
-  const link = isContractor ? 'Статус →' : 'Проверить →';
+  const link = isContractor || readOnly ? 'Статус →' : 'Проверить →';
 
   return (
     <Pressable

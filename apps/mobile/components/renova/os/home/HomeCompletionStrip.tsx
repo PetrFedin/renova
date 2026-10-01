@@ -14,9 +14,11 @@ type Props = {
   role: OsRole;
   userId: string;
   projectId: string;
+  /** Гость/наблюдатель: рассылать дайджест он не может — сервер ответит отказом (HOM-07). */
+  readOnly?: boolean;
 };
 
-export function HomeCompletionLinks({ role, userId, projectId }: Props) {
+export function HomeCompletionLinks({ role, userId, projectId, readOnly = false }: Props) {
   const { pushScreen } = useOsNavFromHere(role);
   const { user, activeProject } = useRenova();
   const [busy, setBusy] = useState(false);
@@ -25,11 +27,8 @@ export function HomeCompletionLinks({ role, userId, projectId }: Props) {
     setBusy(true);
     try {
       await exportExpensesCsvFile(userId, projectId);
-    } catch {
-      showActionConfirm({
-        title: 'Ошибка',
-        message: 'Не удалось выгрузить таблицу. Проверьте сервер.',
-      });
+    } catch (error) {
+      notifyError('Не удалось выгрузить таблицу', error, 'Проверьте подключение и попробуйте ещё раз.');
     } finally {
       setBusy(false);
     }
@@ -40,6 +39,7 @@ export function HomeCompletionLinks({ role, userId, projectId }: Props) {
       {/* W55: closeout/warranty в Document Center — главный финал, не только KPI PDF */}
       <HomeLinkRow title="Закрытие и документы" onPress={() => pushScreen('/documents')} />
       <HomeLinkRow title="Отчёты проекта" onPress={() => pushScreen('/reports')} />
+      {readOnly ? null : (
       <HomeLinkRow
         title={busy ? 'Дайджест…' : 'Недельный дайджест'}
         onPress={() => {
@@ -66,6 +66,7 @@ export function HomeCompletionLinks({ role, userId, projectId }: Props) {
             .finally(() => setBusy(false));
         }}
       />
+      )}
       <HomeLinkRow
         title={busy ? 'Выгрузка…' : 'Экспорт расходов (CSV)'}
         onPress={() => { if (!busy) exportCsv(); }}

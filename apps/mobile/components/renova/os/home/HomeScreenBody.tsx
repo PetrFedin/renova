@@ -131,6 +131,7 @@ export function HomeScreenBody({
         <HomeAcceptanceBanner
           count={snap.quality.awaitingAcceptance}
           role={role}
+          readOnly={readOnly}
           href={snap.activeWorks.find((w) => w.status === 'review')?.href}
         />
       ) : null}
@@ -178,7 +179,7 @@ export function HomeScreenBody({
             />
           ))}
           {phase === 'complete' && (
-            <HomeCompletionLinks role={role} userId={user.id} projectId={activeProject.id} />
+            <HomeCompletionLinks role={role} userId={user.id} projectId={activeProject.id} readOnly={readOnly} />
           )}
           {isVisible('budget_alerts') && <BudgetAlerts items={budgetAlerts} returnTo={returnTo} />}
           {isVisible('sites') && (

@@ -3,14 +3,22 @@ import { Platform } from 'react-native';
 import { notifyAlert } from '@/lib/notify';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import { authHeaders } from '@/lib/api/client';
+import { API_BASE, authHeaders } from '@/lib/api/client';
 
 export async function exportExpensesCsvFile(userId: string, projectId: string, filename = 'renova-expenses.csv') {
-  const base = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
-  const r = await fetch(`${base}/api/v1/projects/${projectId}/analytics/expenses.csv`, {
+  // HOM-21: адрес и проверка стенда — из общего клиента, а не из своей копии переменной.
+  const r = await fetch(`${API_BASE}/api/v1/projects/${projectId}/analytics/expenses.csv`, {
     headers: authHeaders(userId),
   });
-  if (!r.ok) throw new Error('csv');
+  if (!r.ok) {
+    throw new Error(
+      r.status === 401 || r.status === 403
+        ? 'Нет доступа к выгрузке расходов этого объекта.'
+        : r.status === 404
+          ? 'Объект не найден.'
+          : 'Сервер не смог подготовить таблицу. Попробуйте позже.',
+    );
+  }
 
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     const blob = await r.blob();
