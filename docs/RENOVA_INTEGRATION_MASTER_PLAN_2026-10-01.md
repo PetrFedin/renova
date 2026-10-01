@@ -281,7 +281,7 @@ Never send quarantined files into OCR, PDF preview or downstream AI/indexing.
 
 ### Passkeys / step-up authentication — ADOPT
 
-Reference: https://github.com/MasterKale/SimpleWebAuthn
+Server reference: https://github.com/duo-labs/py_webauthn
 
 Add passkeys to high-risk roles and actions:
 
