@@ -143,6 +143,16 @@ export const RENOVA_ROUTES: RenovaRoute[] = [
   },
 
   {
+    id: 'notification-center',
+    path: '/notification-center',
+    titleRu: 'Уведомления',
+    audience: 'both',
+    visibility: 'deeplink',
+    status: 'ga',
+    entryPoints: ['os.header'],
+    descriptionRu: 'Лента in-app уведомлений (колокольчик в шапке): прочитано, «Отметить все», переход по ссылке.',
+  },
+  {
     id: 'inbox',
     path: '/inbox',
     titleRu: 'Входящие',

@@ -10,6 +10,7 @@ import {
   getInboxHealthSnapshot,
   getInboxItemsSnapshot,
   getInboxWsConnectedSnapshot,
+  getNotificationUnreadSnapshot,
   reloadInboxSync,
   markChatReadAndSync,
   subscribeInboxSync,
@@ -28,6 +29,11 @@ export function useInboxWsListener(onPush: () => void) {
 
 function useChatUnreadCount() {
   return useSyncExternalStore(subscribeInboxSync, getChatUnreadCountSnapshot, getChatUnreadCountSnapshot);
+}
+
+/** Непрочитанные in-app уведомления (колокольчик в шапке). */
+export function useNotificationUnread() {
+  return useSyncExternalStore(subscribeInboxSync, getNotificationUnreadSnapshot, getNotificationUnreadSnapshot);
 }
 
 function useChatFailed() {

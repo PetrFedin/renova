@@ -120,3 +120,4 @@ export default function RootLayout() {
     </SafeAreaProvider>
   );
 }
+            <Stack.Screen name="notification-center" options={{ headerShown: false }} />

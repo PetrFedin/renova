@@ -47,6 +47,8 @@ const listeners = new Set<Listener>();
 
 let chatCount = 0;
 let chatFailed = false;
+/** Непрочитанные in-app уведомления (COM-001): тот же цикл WS/poll, что и чат — отдельного поллера нет. */
+let notifUnread = 0;
 let inboxWsConnected = false;
 let chatThreads: ChatThread[] = [];
 let inboxItems: InboxItem[] = [];
@@ -100,6 +102,18 @@ export function getChatUnreadCountSnapshot() {
   return chatCount;
 }
 
+export function getNotificationUnreadSnapshot() {
+  return notifUnread;
+}
+
+/** Экран уведомлений сообщает точный счётчик после mark-read, не дожидаясь следующего тика. */
+export function setNotificationUnread(count: number) {
+  const next = Math.max(0, count || 0);
+  if (next === notifUnread) return;
+  notifUnread = next;
+  notify();
+}
+
 export function getChatFailedSnapshot() {
   return chatFailed;
 }
@@ -132,6 +146,7 @@ function snapshotState() {
   return {
     chatCount,
     chatFailed,
+    notifUnread,
     chatThreads,
     inboxBadge,
     inboxHealthSnapshot,
@@ -144,6 +159,7 @@ function notifyIfChanged(prev: ReturnType<typeof snapshotState>) {
   if (
     prev.chatCount === chatCount
     && prev.chatFailed === chatFailed
+    && prev.notifUnread === notifUnread
     && prev.chatThreads === chatThreads
     && prev.inboxBadge === inboxBadge
     && prev.inboxHealthSnapshot === inboxHealthSnapshot
@@ -182,6 +198,17 @@ async function loadChatState(userId: string): Promise<ChatLoadState> {
       reportError('inbox.chatUnreadTotal', fallbackError, { userId });
       return { threads: chatThreads, unread: chatCount, threadsOk: false, unreadOk: false };
     }
+  }
+}
+
+async function loadNotificationUnread(userId: string): Promise<number | null> {
+  try {
+    const { count } = await api.unreadNotifications(userId);
+    return Math.max(0, count || 0);
+  } catch (error) {
+    // Прежнее значение остаётся: сбой счётчика не должен обнулять бейдж.
+    reportError('inbox.notificationsUnread', error, { userId });
+    return null;
   }
 }
 
@@ -244,6 +271,7 @@ function refreshInboxChatRow(nextChat: number) {
 
 function resetForSignedOut() {
   chatCount = 0;
+  notifUnread = 0;
   chatFailed = false;
   chatThreads = [];
   inboxItems = [];
@@ -267,6 +295,7 @@ function prepareReloadContext(merged: ReloadOpts) {
   if (activeUserId !== merged.userId) {
     activeUserId = merged.userId;
     chatCount = 0;
+    notifUnread = 0;
     chatFailed = false;
     chatThreads = [];
     inboxItems = [];
@@ -388,8 +417,13 @@ export async function reloadInboxSync(opts: ReloadOpts, force = false): Promise<
   request = (async () => {
     if (!merged.userId) return;
 
-    const chatState = await loadChatState(merged.userId);
+    const [chatState, notifState] = await Promise.all([
+      loadChatState(merged.userId),
+      loadNotificationUnread(merged.userId),
+    ]);
     if (generation !== reloadGeneration) return;
+
+    if (notifState !== null) notifUnread = notifState;
 
     chatThreads = chatState.threads;
     chatCount = chatState.unread;

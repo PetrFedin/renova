@@ -10,7 +10,7 @@ export { TAB_ALIASES };
 export const STACK_PATHS = new Set([
   '/reports', '/manager-dashboard', '/guide', '/portfolio', '/budget-planner', '/scratchpad',
   '/checklist-templates', '/conflicts', '/documents', '/approvals', '/inbox', '/quality-control',
-  '/activity', '/scan-receipt', '/job-leads',
+  '/activity', '/scan-receipt', '/job-leads', '/notification-center',
 ]);
 
 function queryParams(query: string): Record<string, string> {

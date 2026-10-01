@@ -4,9 +4,9 @@
  * удалены после миграции на Slot (OsRoleTabsNavigator), чтобы не вернуть
  * Maximum update depth через BottomTabNavigator.
  */
-import { View, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useState } from 'react';
-import { usePathname } from 'expo-router';
+import { router, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { OsSectionMenu } from '@/components/renova/os/OsSectionMenu';
 import { OsProjectPicker } from '@/components/renova/os/OsProjectPicker';
@@ -17,12 +17,15 @@ import { type OsRole } from '@/constants/osSections';
 import { RenovaTheme } from '@/constants/Theme';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { OsSearchModal } from '@/components/renova/os/OsSearchModal';
+import { useNotificationUnread } from '@/lib/useChatUnread';
+import { NOTIFICATIONS_ROUTE, bellA11yLabel, formatBadge } from '@/lib/notificationsFeed';
 
 /** Шапка: лого + иконки в ряду; путь — отдельный контейнер под линией */
 export function OsTabsHeaderBar({ role }: { role: OsRole }) {
   const pathname = usePathname();
   const { user, activeProject, apiReachable } = useRenova();
   const [searchOpen, setSearchOpen] = useState(false);
+  const notifUnread = useNotificationUnread();
 
   return (
     <>
@@ -42,6 +45,20 @@ export function OsTabsHeaderBar({ role }: { role: OsRole }) {
                 {!apiReachable ? <View style={profileBtn.offlineDot} /> : null}
               </Pressable>
             )}
+            <Pressable
+              style={profileBtn.btn}
+              onPress={() => router.push({ pathname: NOTIFICATIONS_ROUTE, params: { returnTo: pathname } } as any)}
+              accessibilityRole="button"
+              accessibilityLabel={bellA11yLabel(notifUnread)}
+              hitSlop={8}
+            >
+              <Ionicons name="notifications-outline" size={22} color={RenovaTheme.colors.text} />
+              {notifUnread > 0 ? (
+                <View style={profileBtn.badge}>
+                  <Text style={profileBtn.badgeText}>{formatBadge(notifUnread)}</Text>
+                </View>
+              ) : null}
+            </Pressable>
             <Pressable
               style={profileBtn.btn}
               onPress={() => pushOsTabNav(role, 'profile', undefined, undefined, pathname)}
@@ -82,6 +99,19 @@ const profileBtn = StyleSheet.create({
     justifyContent: 'center',
     position: 'relative',
   },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 3,
+    borderRadius: 8,
+    backgroundColor: RenovaTheme.colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: { color: RenovaTheme.colors.surface, fontSize: 10, fontWeight: '700' },
   offlineDot: {
     position: 'absolute',
     top: 6,

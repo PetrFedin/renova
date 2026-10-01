@@ -49,11 +49,16 @@ export const notificationsApi = {
       '{}',
       userId,
     ),
-  reactionDigestPush: (userId: string) => req(`/api/v1/notifications/reaction-digest?push=1`, {}, userId),
   reactionDigest: (userId: string) =>
     req<{ count: number; items: AppNotification[] }>(`/api/v1/notifications/reaction-digest`, {}, userId),
   unreadNotifications: (userId: string) => req<{ count: number }>(`/api/v1/notifications/unread-count`, {}, userId),
-  listNotifications: (userId: string) => req<AppNotification[]>('/api/v1/notifications', {}, userId),
+  /** Страница ленты (новые сверху). Сервер ограничивает limit до 100. */
+  listNotifications: (userId: string, page: { limit?: number; offset?: number } = {}) =>
+    req<AppNotification[]>(
+      `/api/v1/notifications?limit=${page.limit ?? 30}&offset=${page.offset ?? 0}`,
+      {},
+      userId,
+    ),
   readNotification: (userId: string, id: string) =>
     withOffline(
       () => req(`/api/v1/notifications/${id}/read`, { method: 'POST' }, userId),
