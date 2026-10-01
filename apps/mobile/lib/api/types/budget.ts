@@ -124,4 +124,6 @@ export type ChangeOrder = {
   /** Счёт на оплату допработы (создаётся при согласовании) */
   payment_id?: string | null;
   payment_status?: string | null;
+  /** Этап, к которому привязана допработа (необязательно); счёт наследует его */
+  stage_id?: string | null;
 };

@@ -37,6 +37,7 @@ export function ContractorEstimateView() {
   const { user, activeProject, loadProject, isContractorOwner, teamRole } = useRenova();
   const [coTitle, setCoTitle] = useState('Доп. розетки');
   const [coAmount, setCoAmount] = useState('8500');
+  const [coStageId, setCoStageId] = useState<string | null>(null);
   const [lineType, setLineType] = useState<EstimateLineTypeFilter>('all');
   const [category, setCategory] = useState<string | null>(null);
 
@@ -81,7 +82,7 @@ export function ContractorEstimateView() {
       return;
     }
     try {
-      await api.createChangeOrder(user.id, project.id, { title: coTitle, amount });
+      await api.createChangeOrder(user.id, project.id, { title: coTitle, amount, ...(coStageId ? { stage_id: coStageId } : {}) });
       await loadProject(project.id);
       // W127: ДО → слой изменений / бюджет после approve (см. EstimateChangesLayer)
       alertChangeOrderSubmitted('contractor');
@@ -206,6 +207,22 @@ export function ContractorEstimateView() {
         <Text style={styles.sectionHint}>Отдельная заявка заказчику — не правка строки сметы.</Text>
         <TextInput style={styles.inpFull} value={coTitle} onChangeText={setCoTitle} placeholder="Название работы" />
         <TextInput style={styles.inpFull} value={coAmount} onChangeText={setCoAmount} keyboardType="decimal-pad" placeholder="Сумма" />
+        {(project.stages ?? []).length > 0 ? (
+          <>
+            <Text style={styles.sectionHint}>Этап (необязательно): счёт допработы привяжется к нему.</Text>
+            <View style={styles.links}>
+              {(project.stages ?? []).map((st) => (
+                <PrimaryButton
+                  key={st.id}
+                  title={st.name}
+                  compact
+                  variant={coStageId === st.id ? 'primary' : 'outline'}
+                  onPress={() => setCoStageId(coStageId === st.id ? null : st.id)}
+                />
+              ))}
+            </View>
+          </>
+        ) : null}
         <PrimaryButton disabled={!canWrite} title="Отправить на согласование" onPress={addChangeOrder} />
       </ScrollView>
     </>

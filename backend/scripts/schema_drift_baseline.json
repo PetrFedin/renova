@@ -1,0 +1,8 @@
+{
+  "total": 39,
+  "by_kind": {
+    "foreign key missing in DB": 3,
+    "index missing in DB": 4,
+    "nullable": 32
+  }
+}

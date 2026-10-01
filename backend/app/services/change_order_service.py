@@ -40,12 +40,14 @@ async def create_order(
     title: str,
     amount: float,
     description: str | None,
+    stage_id: str | None = None,
 ) -> ChangeOrder:
     order = ChangeOrder(
         project_id=project_id,
         title=title,
         amount=amount,
         description=description,
+        stage_id=stage_id,
         created_by=user_id,
     )
     db.add(order)
@@ -84,33 +86,28 @@ async def approve(db: AsyncSession, order_id: str) -> ChangeOrder | None:
     return order
 
 
-def change_order_payment_marker(order_id: str) -> str:
-    """Связь допработа -> счёт без отдельной колонки: маркер в начале notes платежа."""
-    return f"CO:{order_id}"
-
-
 async def linked_payment(db: AsyncSession, order_id: str) -> Payment | None:
+    """Счёт допработы: настоящая связь `Payment.change_order_id` (MNY-020)."""
     return (
         await db.execute(
             select(Payment)
-            .where(Payment.notes.like(f"{change_order_payment_marker(order_id)};%"))
-            .order_by(Payment.created_at.asc())
+            .where(Payment.change_order_id == order_id)
+            .order_by(Payment.created_at.asc(), Payment.id.asc())
             .limit(1)
         )
     ).scalars().first()
 
 
 async def payments_by_order(db: AsyncSession, project_id: str) -> dict[str, Payment]:
-    """order_id -> счёт допработы (по маркеру) для всех платежей проекта."""
+    """order_id -> счёт допработы для всех допработ проекта."""
     result = await db.execute(
         select(Payment)
-        .where(Payment.project_id == project_id, Payment.notes.like("CO:%;%"))
-        .order_by(Payment.created_at.asc())
+        .where(Payment.project_id == project_id, Payment.change_order_id.is_not(None))
+        .order_by(Payment.created_at.asc(), Payment.id.asc())
     )
     mapping: dict[str, Payment] = {}
     for payment in result.scalars().all():
-        order_id = (payment.notes or "").split(";", 1)[0][3:]
-        mapping.setdefault(order_id, payment)
+        mapping.setdefault(payment.change_order_id, payment)
     return mapping
 
 
@@ -130,8 +127,9 @@ async def _ensure_order_payment(
         f"Оплата доп. работ: {order.title}"[:255],
         float(order.amount),
         "advance",
-        None,
-        f"{change_order_payment_marker(order.id)}; доп. работы",
+        order.stage_id,
+        "доп. работы",
+        change_order_id=order.id,
     )
 
 
@@ -320,6 +318,7 @@ async def approve_with_sign_draft(
             "status": existing_document.status,
             "payment_id": existing_payment.id if existing_payment else None,
             "payment_status": existing_payment.status.value if existing_payment else None,
+            "stage_id": order.stage_id,
             "schedule_synced": False,
             "replayed": True,
         }
@@ -345,7 +344,7 @@ async def approve_with_sign_draft(
             # начала работ не входит (DOC-003/006/007).
             document_type=DocumentType.addendum.value,
             change_order_id=order.id,
-            notes=f"CO:{order.id}; сумма {order.amount:.0f} ₽; черновик для подписи",
+            notes=f"сумма {order.amount:.0f} ₽; черновик для подписи",
             # Содержание нужно, иначе подписать нельзя (contract_has_no_content):
             # документ рисуется по данным change order.
             href=f"/api/v1/projects/{project_id}/change-orders/{order.id}/document.pdf",
@@ -397,6 +396,7 @@ async def approve_with_sign_draft(
         "status": draft.status,
         "payment_id": payment.id,
         "payment_status": payment.status.value,
+        "stage_id": order.stage_id,
         "schedule_synced": schedule_synced,
         "replayed": not newly_approved,
     }

@@ -229,6 +229,10 @@ class Payment(Base):
     title: Mapped[str] = mapped_column(String(255))
     amount: Mapped[float] = mapped_column(Float)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # MNY-020: счёт допработы связан колонкой, а не маркером `CO:<id>;` в notes.
+    change_order_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("change_orders.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     yookassa_payment_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
@@ -247,6 +251,8 @@ class ChangeOrder(Base):
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     amount: Mapped[float] = mapped_column(Float)
+    # Необязательная привязка допработы к этапу (счёт наследует её при одобрении).
+    stage_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("stages.id", ondelete="SET NULL"), nullable=True)
     status: Mapped[ChangeOrderStatus] = mapped_column(Enum(ChangeOrderStatus), default=ChangeOrderStatus.pending)
     created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
@@ -829,6 +835,9 @@ class JobLead(Base):
     status: Mapped[JobLeadStatus] = mapped_column(Enum(JobLeadStatus), default=JobLeadStatus.open)
     pre_estimate: Mapped[float | None] = mapped_column(Float, nullable=True)
     assigned_contractor_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    # MKT-005: причина закрытия заявки заказчиком (хранится при первом закрытии).
+    closed_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 class ContractorPortfolioPhoto(Base):
@@ -846,6 +855,10 @@ class LeadMessage(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     lead_id: Mapped[str] = mapped_column(String(36), ForeignKey("job_leads.id"), index=True)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
+    # MKT-010: приватный тред «заказчик <-> исполнитель-откликнувшийся».
+    thread_contractor_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True, index=True
+    )
     text: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 

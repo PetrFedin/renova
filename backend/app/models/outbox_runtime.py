@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.timeutil import utc_now
@@ -33,12 +33,13 @@ class SideEffectDelivery(Base):
     """Exactly-once local entity ledger for a domain-outbox side effect."""
 
     __tablename__ = "side_effect_deliveries"
+    # Migration w6 uses a named unique constraint plus a plain index (APIB-039); mirror it.
+    __table_args__ = (UniqueConstraint("outbox_id", name="uq_side_effect_delivery_outbox"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     outbox_id: Mapped[str] = mapped_column(
         String(36),
         ForeignKey("domain_outbox.id", ondelete="CASCADE"),
-        unique=True,
         index=True,
     )
     effect_type: Mapped[str] = mapped_column(String(64), index=True)

@@ -1,4 +1,4 @@
-"""JRN-004 / MNY-020 / DOC-006: approve не 500, один счёт на допработу, подпись документа."""
+"""JRN-004 / MNY-020 / DOC-006: approve не 500, один счёт на допработу (колонка change_order_id), подпись документа."""
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import func, select
@@ -39,10 +39,10 @@ async def _setup(client):
     return pid, h_cust, h_cont
 
 
-async def _create(client, pid, h_cont, title="Тёплый пол", amount=30000):
+async def _create(client, pid, h_cont, title="Тёплый пол", amount=30000, **extra):
     r = await client.post(
         f"/api/v1/projects/{pid}/change-orders", headers=h_cont,
-        json={"title": title, "amount": amount},
+        json={"title": title, "amount": amount, **extra},
     )
     assert r.status_code == 200, r.text
     return r.json()["id"]
@@ -53,7 +53,7 @@ async def _co_payments(pid):
 
     async with sess.SessionLocal() as db:
         rows = (await db.execute(select(Payment).where(Payment.project_id == pid))).scalars().all()
-        return [p for p in rows if (p.notes or "").startswith("CO:")]
+        return [p for p in rows if p.change_order_id]
 
 
 async def test_approve_survives_failing_outbox_and_is_idempotent(monkeypatch):
@@ -124,3 +124,70 @@ async def test_change_order_document_signed_by_both_parties():
         assert doc["status"] == "active"  # обе стороны подписали
         pdf = await client.get(f"/api/v1/projects/{pid}/change-orders/{co_id}/document.pdf", headers=h_cust)
         assert pdf.status_code == 200
+
+
+async def test_invoice_linked_by_column_and_inherits_stage_without_marker():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        pid, h_cust, h_cont = await _setup(client)
+        from app.db import session as sess
+        from app.models.entities import Stage
+
+        async with sess.SessionLocal() as db:
+            stage_id = (await db.execute(select(Stage.id).where(Stage.project_id == pid).limit(1))).scalar_one()
+        co_id = await _create(client, pid, h_cont, stage_id=stage_id)
+        url = f"/api/v1/projects/{pid}/change-orders/{co_id}/approve"
+        first = (await client.post(url, headers=h_cust)).json()
+        again = (await client.post(url, headers=h_cust)).json()
+        assert first["stage_id"] == stage_id and again["payment_id"] == first["payment_id"]
+        payments = await _co_payments(pid)
+        assert len(payments) == 1
+        assert payments[0].change_order_id == co_id and payments[0].stage_id == stage_id
+        assert "CO:" not in (payments[0].notes or "")
+        listed = (await client.get(f"/api/v1/projects/{pid}/change-orders", headers=h_cust)).json()
+        row = next(x for x in listed if x["id"] == co_id)
+        assert row["stage_id"] == stage_id and row["payment_id"] == payments[0].id
+        assert row["payment_status"] == "pending"
+
+
+async def test_create_rejects_foreign_or_unknown_stage():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        pid, h_cust, h_cont = await _setup(client)
+        r = await client.post(
+            f"/api/v1/projects/{pid}/change-orders", headers=h_cont,
+            json={"title": "x", "amount": 100, "stage_id": "00000000-0000-0000-0000-000000000000"},
+        )
+        assert r.status_code == 404 and r.json()["detail"] == "stage_not_found"
+
+
+async def test_migration_backfills_marker_into_column():
+    import importlib.util
+    from pathlib import Path
+
+    from sqlalchemy import create_engine, text
+
+    path = next(Path(__file__).resolve().parents[1].glob("alembic/versions/x06coinvoicelink01_*.py"))
+    spec = importlib.util.spec_from_file_location("x06_mig", path)
+    mig = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mig)
+    assert mig.down_revision == "x05teaminviteinvitee01"
+
+    engine = create_engine("sqlite://")
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE change_orders (id VARCHAR(36) PRIMARY KEY)"))
+        conn.execute(text("CREATE TABLE payments (id VARCHAR(36) PRIMARY KEY, notes TEXT, change_order_id VARCHAR(36))"))
+        conn.execute(text("INSERT INTO change_orders VALUES ('co-1')"))
+        conn.execute(text(
+            "INSERT INTO payments (id, notes) VALUES "
+            "('p-marker', 'CO:co-1; доп. работы'), ('p-plain', 'просто счёт'), "
+            "('p-orphan', 'CO:co-gone; доп. работы'), ('p-null', NULL)"
+        ))
+        assert mig.backfill_change_order_links(conn) == 1
+        assert mig.backfill_change_order_links(conn) == 0  # повтор безопасен
+        rows = {r[0]: (r[1], r[2]) for r in conn.execute(text("SELECT id, change_order_id, notes FROM payments"))}
+        assert rows["p-marker"] == ("co-1", "доп. работы")
+        assert rows["p-plain"] == (None, "просто счёт")
+        assert rows["p-orphan"] == (None, "CO:co-gone; доп. работы")
+        assert rows["p-null"] == (None, None)
+        mig.restore_change_order_markers(conn)
+        restored = conn.execute(text("SELECT notes FROM payments WHERE id='p-marker'")).scalar()
+        assert restored == "CO:co-1; доп. работы"

@@ -128,6 +128,12 @@ export function changeOrderPaymentLine(status: string, paymentStatus?: string | 
   return 'Счёт выставлен, ждёт оплаты';
 }
 
+/** Строка этапа допработы (stage_id необязателен; неизвестный этап не показываем). */
+export function changeOrderStageLine(stageName?: string | null): string | null {
+  const name = (stageName ?? '').trim();
+  return name ? `Этап: ${name}` : null;
+}
+
 export function roomChangeStatusLabel(status: string): string {
   return ROOM_CHANGE_STATUS_LABEL[status] ?? status;
 }

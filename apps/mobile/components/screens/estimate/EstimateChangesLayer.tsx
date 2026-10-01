@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { ObjectSection } from '@/components/screens/object/ObjectSection';
-import { changeOrderPaymentLine, changeOrderStatusLabel } from '@/constants/labels';
+import { changeOrderPaymentLine, changeOrderStageLine, changeOrderStatusLabel } from '@/constants/labels';
 import { api, type ChangeOrder } from '@/lib/api';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { budgetTabRoute } from '@/constants/osSections';
@@ -31,7 +31,9 @@ export function EstimateChangesLayer({
   onOrdersChanged,
   onProjectReload,
 }: Props) {
-  const { user } = useRenova();
+  const { user, activeProject } = useRenova();
+  const stageName = (stageId?: string | null) =>
+    stageId ? activeProject?.stages?.find((st) => st.id === stageId)?.name ?? null : null;
   const role = user?.role === 'contractor' ? 'contractor' : 'customer';
 
   const notifyBudgetDelta = (order: ChangeOrder, documentId?: string) => {
@@ -83,6 +85,7 @@ export function EstimateChangesLayer({
         ) : null}
         {pending.map((o) => (
           <ChangeOrderRow
+            stageLine={changeOrderStageLine(stageName(o.stage_id))}
             key={o.id}
             order={o}
             canWrite={canWrite}
@@ -164,6 +167,7 @@ export function EstimateChangesLayer({
                 {o.title} · {formatRub(o.amount)}
               </Text>
               <Text style={s.meta}>Статус: {changeOrderStatusLabel(o.status)}</Text>
+              {changeOrderStageLine(stageName(o.stage_id)) ? <Text style={s.meta}>{changeOrderStageLine(stageName(o.stage_id))}</Text> : null}
               {changeOrderPaymentLine(o.status, o.payment_status) ? (
                 <Text style={s.meta}>{changeOrderPaymentLine(o.status, o.payment_status)}</Text>
               ) : null}
@@ -185,11 +189,13 @@ export function EstimateChangesLayer({
 
 function ChangeOrderRow({
   order,
+  stageLine,
   canWrite,
   onApprove,
   onReject,
 }: {
   order: ChangeOrder;
+  stageLine?: string | null;
   canWrite: boolean;
   onApprove: () => void;
   onReject: () => void;
@@ -200,6 +206,7 @@ function ChangeOrderRow({
         {order.title} · {formatRub(order.amount)}
       </Text>
       <Text style={s.meta}>Статус: {changeOrderStatusLabel(order.status)}</Text>
+      {stageLine ? <Text style={s.meta}>{stageLine}</Text> : null}
       {canWrite && (
         <View style={s.actions}>
           <PrimaryButton title="Согласовать" onPress={onApprove} />

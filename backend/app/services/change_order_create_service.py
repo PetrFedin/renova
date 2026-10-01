@@ -13,12 +13,14 @@ async def prepare_order(
     title: str,
     amount: float,
     description: str | None,
+    stage_id: str | None = None,
 ) -> ChangeOrder:
     order = ChangeOrder(
         project_id=project_id,
         title=title,
         amount=amount,
         description=description,
+        stage_id=stage_id,
         created_by=user_id,
     )
     db.add(order)

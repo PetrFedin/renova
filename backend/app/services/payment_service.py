@@ -28,6 +28,8 @@ async def prepare_payment(
     payment_type: str,
     stage_id: str | None = None,
     notes: str | None = None,
+    *,
+    change_order_id: str | None = None,
 ) -> Payment:
     payment = Payment(
         project_id=project_id,
@@ -37,6 +39,7 @@ async def prepare_payment(
         amount=amount,
         created_by=user_id,
         notes=notes,
+        change_order_id=change_order_id,
     )
     db.add(payment)
     await db.flush()

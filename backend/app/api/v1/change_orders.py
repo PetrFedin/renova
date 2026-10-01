@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
-from app.models.entities import ChangeOrder, User, UserRole
+from app.models.entities import ChangeOrder, Stage, User, UserRole
 from app.services import change_order_service as co_svc
 
 router = APIRouter(prefix="/projects/{project_id}/change-orders", tags=["change-orders"])
@@ -14,6 +14,7 @@ class ChangeOrderCreate(BaseModel):
     title: str
     amount: float = Field(gt=0)
     description: str | None = None
+    stage_id: str | None = Field(default=None, max_length=36)
     client_request_id: str | None = Field(default=None, min_length=8, max_length=80)
 
 
@@ -37,6 +38,7 @@ async def list_co(project_id: str, user: User = Depends(get_current_user), db: A
             "amount": x.amount,
             "status": x.status.value,
             "description": x.description,
+            "stage_id": x.stage_id,
             "payment_id": payments[x.id].id if x.id in payments else None,
             "payment_status": payments[x.id].status.value if x.id in payments else None,
         }
@@ -57,11 +59,18 @@ async def create_co(project_id: str, body: ChangeOrderCreate, user: User = Depen
         replay_entity_id,
     )
 
+    if body.stage_id:
+        stage = await db.get(Stage, body.stage_id)
+        if not stage or stage.project_id != project_id:
+            raise HTTPException(404, "stage_not_found")
+
     payload = {
         "title": body.title,
         "amount": float(body.amount),
         "description": body.description,
     }
+    if body.stage_id:  # ключ только когда задан: старые request_id без этапа хэшируются как раньше
+        payload["stage_id"] = body.stage_id
     try:
         replay_id = await replay_entity_id(
             db,
@@ -93,6 +102,7 @@ async def create_co(project_id: str, body: ChangeOrderCreate, user: User = Depen
         title=body.title,
         amount=body.amount,
         description=body.description,
+        stage_id=body.stage_id,
     )
     try:
         created, entity_id = await commit_client_write(
@@ -156,6 +166,7 @@ async def approve_co(project_id: str, order_id: str, user: User = Depends(get_cu
         "document_id": draft_id,
         "payment_id": (draft_meta or {}).get("payment_id"),
         "payment_status": (draft_meta or {}).get("payment_status"),
+        "stage_id": co.stage_id,
         "amount": co.amount,
         "title": co.title,
         "schedule_synced": bool((draft_meta or {}).get("schedule_synced")),
