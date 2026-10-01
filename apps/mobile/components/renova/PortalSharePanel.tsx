@@ -1,5 +1,5 @@
 /** W122: шаринг клиентского портала (Houzz/BT) — приёмка / подпись / оплата */
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Switch, ActivityIndicator } from 'react-native';
 import { notifyError } from '@/lib/notify';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -11,6 +11,8 @@ import { apiErrorMessage } from '@/lib/formatPhone';
 import { shareRenovaLink } from '@/lib/messengerShare';
 import type { OsRole } from '@/constants/osSections';
 import { alertPortalLinkShared } from '@/lib/shareAccessNav';
+import { portalLinkRowLabel, type PortalLinkRow } from '@/lib/domain/portalLinks';
+import { reportCatch } from '@/lib/reportError';
 
 type Props = {
   userId: string;
@@ -26,6 +28,32 @@ export function PortalSharePanel({ userId, projectId, role, embedded }: Props) {
   // Исполнитель выдаёт только ссылку на просмотр: права заказчика выпускает лишь заказчик.
   const canGrant = role !== 'contractor';
   const [busy, setBusy] = useState(false);
+  const [links, setLinks] = useState<PortalLinkRow[]>([]);
+
+  const loadLinks = useCallback(async () => {
+    try {
+      const r = await api.listPortalLinks(userId, projectId);
+      setLinks(r.items);
+    } catch (e) {
+      reportCatch('components.renova.PortalSharePanel.list')(e);
+    }
+  }, [userId, projectId]);
+
+  useEffect(() => {
+    void loadLinks();
+  }, [loadLinks]);
+
+  const revoke = async (id: string) => {
+    setBusy(true);
+    try {
+      await api.revokePortalLink(userId, projectId, id);
+      await loadLinks();
+    } catch (e: unknown) {
+      notifyError('Портал', e, 'Не удалось отозвать ссылку');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const share = async () => {
     setBusy(true);
@@ -46,6 +74,7 @@ export function PortalSharePanel({ userId, projectId, role, embedded }: Props) {
       await shareRenovaLink(link.url, `портал Renova (${scopeHint})`);
       // W135: после шаринга — приёмка / оплаты в кабинете
       alertPortalLinkShared(role, scopeHint);
+      void loadLinks();
     } catch (e: unknown) {
       notifyError('Портал', e, 'Не удалось создать ссылку');
     } finally {
@@ -81,6 +110,13 @@ export function PortalSharePanel({ userId, projectId, role, embedded }: Props) {
         disabled={busy}
         onPress={share}
       />
+      {links.length ? <Text style={s.hint}>Активные ссылки — отзовите, если отправили не тому или ссылка утекла:</Text> : null}
+      {links.map((l) => (
+        <View key={l.id} style={s.row}>
+          <Text style={s.label}>{portalLinkRowLabel(l)}</Text>
+          <PrimaryButton title="Отозвать" variant="outline" disabled={busy} onPress={() => revoke(l.id)} />
+        </View>
+      ))}
       {busy ? <ActivityIndicator style={{ marginTop: 8 }} color={RenovaTheme.colors.primary} /> : null}
     </View>
   );

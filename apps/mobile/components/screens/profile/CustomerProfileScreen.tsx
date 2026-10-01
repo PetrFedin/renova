@@ -17,6 +17,7 @@ import { ProfileHeader } from './ProfileHeader';
 import { ProfileSection } from './ProfileSection';
 import { ProfileNotifications } from './ProfileNotifications';
 import { profileScreenStyles as ps } from './profileScreenStyles';
+import { DeleteAccountButton } from './DeleteAccountButton';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { reportCatch } from '@/lib/reportError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
@@ -147,6 +148,7 @@ export function CustomerProfileScreen() {
               }
             }}
           />
+          <DeleteAccountButton />
         </View>
       </ProfileSection>
 

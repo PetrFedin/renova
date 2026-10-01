@@ -18,7 +18,7 @@ export const miscApi = {
     viewerUserId: string,
     opts?: { allow_accept_stage?: boolean; allow_pay?: boolean },
   ) =>
-    req<{ token: string; url: string; expires_hours: number }>(
+    req<{ id?: string; token: string; url: string; expires_hours: number }>(
       `/api/v1/projects/${projectId}/viewers/${viewerUserId}/portal-link`,
       {
         method: 'POST',
@@ -35,7 +35,7 @@ export const miscApi = {
     projectId: string,
     opts?: { allow_accept_stage?: boolean; allow_pay?: boolean },
   ) =>
-    req<{ token: string; url: string; expires_hours: number }>(
+    req<{ id?: string; token: string; url: string; expires_hours: number }>(
       `/api/v1/projects/${projectId}/portal-link`,
       {
         method: 'POST',
@@ -47,6 +47,16 @@ export const miscApi = {
       },
       userId,
     ),
+  /** INB-04: активные портал-ссылки проекта (заказчик — все, исполнитель — свои). */
+  listPortalLinks: (userId: string, projectId: string) =>
+    req<{ items: { id: string; scopes: string[]; created_at: string | null; expires_at: string | null; issued_by: string; user_id: string }[] }>(
+      `/api/v1/projects/${projectId}/portal-links`,
+      {},
+      userId,
+    ),
+  /** INB-04: отозвать ссылку — она и выданные по ней portal-JWT перестают работать сразу. */
+  revokePortalLink: (userId: string, projectId: string, linkId: string) =>
+    req<{ ok: boolean }>(`/api/v1/projects/${projectId}/portal-links/${linkId}`, { method: 'DELETE' }, userId),
   exchangePortalToken: (token: string) =>
     req<{ user_id: string; project_id: string; project_name: string; read_only: boolean; access_mode: string; role: string; scopes?: string[]; access_token?: string; token_type?: string }>(
       '/api/v1/auth/portal/session',

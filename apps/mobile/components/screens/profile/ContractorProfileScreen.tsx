@@ -20,6 +20,7 @@ import { exportGdprJsonFile } from '@/lib/exportGdprJson';
 import { ProfileHeader } from './ProfileHeader';
 import { ProfileSection } from './ProfileSection';
 import { profileScreenStyles as ps } from './profileScreenStyles';
+import { DeleteAccountButton } from './DeleteAccountButton';
 import { alertRequisitesSaved } from '@/lib/fieldCommsNav';
 import { TeamSection } from './TeamSection';
 import * as WebBrowser from 'expo-web-browser';
@@ -296,6 +297,7 @@ export function ContractorProfileScreen() {
               }
             }}
           />
+          <DeleteAccountButton />
         </View>
       </ProfileSection>
 

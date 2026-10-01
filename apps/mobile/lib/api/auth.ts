@@ -13,6 +13,11 @@ export const authApi = {
   me: (userId: string) => req<User>('/api/v1/auth/me', {}, userId),
   exportMyData: (userId: string) => req<{ user: object; projects: object[] }>('/api/v1/auth/export', {}, userId),
   anonymizeMe: (userId: string) => req('/api/v1/auth/anonymize', { method: 'POST' }, userId),
+  /** ROLE-016: можно ли удалить аккаунт и что мешает (активные проекты, незавершённые платежи). */
+  accountDeletionCheck: (userId: string) =>
+    req<{ can_delete: boolean; blockers: { code: string; count: number }[] }>('/api/v1/auth/me/deletion-check', {}, userId),
+  /** APIA-006: удаление (анонимизация) аккаунта; 409 account_deletion_blocked при активных проектах/деньгах. */
+  deleteMyAccount: (userId: string) => req<{ ok: boolean; soft_deleted: boolean }>('/api/v1/auth/me', { method: 'DELETE' }, userId),
   revokeAllSessions: (userId: string) =>
     req<{ ok: boolean; revoked: number }>('/api/v1/auth/sessions/revoke-all', { method: 'POST' }, userId),
   /**
