@@ -1,10 +1,5 @@
 import * as ImageManipulator from 'expo-image-manipulator';
 
-export function compressDataUrl(dataUrl: string, maxLen = 400_000): string {
-  if (dataUrl.length <= maxLen) return dataUrl;
-  return dataUrl.slice(0, maxLen);
-}
-
 export async function compressUri(uri: string, width = 1200): Promise<string> {
   const r = await ImageManipulator.manipulateAsync(uri, [{ resize: { width } }], { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG });
   return r.uri;
