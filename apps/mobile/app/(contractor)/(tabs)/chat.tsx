@@ -2,16 +2,14 @@ import { View, StyleSheet } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 import { OfflineSyncBanner } from '@/components/renova/OfflineSyncBanner';
 import { ChatListView } from '@/components/renova/chat/ChatListView';
-import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { OsTabFocusGate } from '@/components/renova/os/OsTabFocusGate';
 
 function ContractorChatBody() {
-  const { user, projects } = useRenova();
+  const { user } = useRenova();
   if (!user) return null;
-  if (!projects.length) {
-    return <ProjectEmptyState role="contractor" hint="Добавьте объект — здесь будут чаты с заказчиком." />;
-  }
+  // BUD-33: a thread-only guest owns no projects but still has an inbox; the list
+  // itself shows the empty state.
   return (
     <View style={styles.wrap}>
       <OfflineSyncBanner />

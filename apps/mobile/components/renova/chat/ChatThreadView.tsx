@@ -903,7 +903,7 @@ export function ChatThreadView({
             onEdit={() => { setEditText(m.text ?? ''); setEditMsg(m); }}
             onDelete={() => { void deleteMessage(m); }}
             onTask={canCreateTask ? () => setTaskMsg(m) : undefined}
-            onConfirm={canManageParticipants && m.message_type === 'confirm' ? async () => {
+            onConfirm={canManageParticipants && m.message_type === 'confirm' && m.author_id !== user.id ? async () => {
               try {
                 await api.confirmChatMessage(user.id, projectId, threadId, m.id);
               } catch (e) {

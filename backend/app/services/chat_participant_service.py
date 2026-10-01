@@ -64,6 +64,15 @@ async def is_active_thread_participant(
     return row is not None
 
 
+async def is_thread_only_participant(db: AsyncSession, *, project, thread, user) -> bool:
+    """Active invited participant who has no project access of their own (JRN-009)."""
+    from app.services import team_service as team_svc
+
+    if await team_svc.can_access_project(db, user, project, write=False):
+        return False
+    return await is_active_thread_participant(db, thread_id=thread.id, user_id=user.id)
+
+
 async def participant_inbox(
     db: AsyncSession,
     *,
