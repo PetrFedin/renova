@@ -40,6 +40,30 @@ async def list_articles_admin(
     ]
 
 
+@router.get("/{slug}")
+async def get_article_admin(
+    slug: str,
+    user: User = Depends(require_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Статья целиком (в т.ч. снятая) — для формы редактирования (MKT-030)."""
+    article = (
+        await db.execute(select(RepairArticle).where(RepairArticle.slug == slug))
+    ).scalar_one_or_none()
+    if article is None:
+        raise HTTPException(404, detail={"code": "article_not_found"})
+    return {
+        "slug": article.slug,
+        "title": article.title,
+        "category": article.category,
+        "summary": article.summary,
+        "body": article.body,
+        "tags": article.tags or "",
+        "read_min": article.read_min,
+        "published": article.published,
+    }
+
+
 @router.delete("/{slug}")
 async def unpublish_article(
     slug: str,

@@ -4,6 +4,7 @@ import { isQueueableWriteError } from './queueableError';
 import type { ApprovalItem, ArticleDetail, ArticleSummary, ProjectDetail } from './types';
 export const miscApi = {
   listArticles: (category?: string) => req<ArticleSummary[]>(`/api/v1/articles${category ? `?category=${category}` : ''}`),
+  listArticleCategories: () => req<{ id: string; label: string }[]>('/api/v1/articles/categories'),
   getArticle: (slug: string) => req<ArticleDetail>(`/api/v1/articles/${slug}`),
   listViewers: (userId: string, projectId: string) => req<{ user_id: string; phone: string; full_name?: string; role: string }[]>(`/api/v1/projects/${projectId}/viewers`, {}, userId),
   shareViewer: (userId: string, projectId: string, body: { phone?: string; profile_code?: string }) =>

@@ -38,7 +38,7 @@ def test_global_operation_modules_use_only_canonical_admin_guard():
         ocr_worker,
     )
     expected_counts = {
-        articles_admin: 4,
+        articles_admin: 5,
         audit: 1,
         automation_worker: 2,
         ocr_worker: 2,

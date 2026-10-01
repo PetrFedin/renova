@@ -1,20 +1,43 @@
 import { useEffect, useState } from 'react';
-import { ScrollView, View, Text, StyleSheet } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { RenovaTheme } from '@/constants/Theme';
 import { api, ArticleDetail } from '@/lib/api';
-import { reportCatch } from '@/lib/reportError';
+import { reportError } from '@/lib/reportError';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
+import { articleViewState } from '@/lib/domain/articleListState';
 
 export default function ArticleScreen() {
   const { slug, returnTo } = useLocalSearchParams<{ slug: string; returnTo?: string }>();
   const [article, setArticle] = useState<ArticleDetail | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    if (slug) api.getArticle(slug).then(setArticle).catch(reportCatch('app.article.slug.1'));
-  }, [slug]);
+    if (!slug) return;
+    setError(null);
+    api.getArticle(slug).then(setArticle).catch((e: unknown) => {
+      reportError('app.article.slug.load', e, { slug });
+      setError(e);
+    });
+  }, [slug, attempt]);
 
-  if (!article) return <View style={styles.center}><Text>Загрузка…</Text></View>;
+  const state = articleViewState({ loading: !article, error, hasArticle: !!article });
+  if (!article) {
+    return (
+      <>
+        <BackHeader title="Статья" returnTo={returnTo} />
+        {state === 'loading' ? (
+          <View style={styles.center}><ActivityIndicator color={RenovaTheme.colors.primary} /></View>
+        ) : state === 'not_found' ? (
+          <LoadErrorState title="Статья не найдена" hint="Возможно, её сняли с публикации." onRetry={() => setAttempt((n) => n + 1)} />
+        ) : (
+          <LoadErrorState title="Не удалось загрузить статью" onRetry={() => setAttempt((n) => n + 1)} />
+        )}
+      </>
+    );
+  }
 
   return (
     <>

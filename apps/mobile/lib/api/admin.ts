@@ -172,6 +172,9 @@ export const adminApi = {
   startProTrial: (userId: string) => req('/api/v1/subscription/start-trial', { method: 'POST' }, userId),
   checkoutPro: (userId: string) => req('/api/v1/subscription/checkout', { method: 'POST' }, userId),
   listArticlesAdmin: (userId: string) => req<{ slug: string; title: string; category: string; published: boolean }[]>('/api/v1/articles/admin', {}, userId),
+  getArticleAdmin: (userId: string, slug: string) =>
+    req<{ slug: string; title: string; category: string; summary: string; body: string; tags: string; read_min: number; published: boolean }>(
+      `/api/v1/articles/admin/${slug}`, {}, userId),
   createArticleAdmin: (userId: string, body: object) => req('/api/v1/articles/admin', { method: 'POST', body: JSON.stringify(body) }, userId),
   updateArticleAdmin: (userId: string, slug: string, body: object) => req(`/api/v1/articles/admin/${slug}`, { method: 'PATCH', body: JSON.stringify(body) }, userId),
   deleteArticleAdmin: (userId: string, slug: string) => req(`/api/v1/articles/admin/${slug}`, { method: 'DELETE' }, userId),

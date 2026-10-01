@@ -50,6 +50,10 @@ async def get_article(slug: str, db: AsyncSession = Depends(get_db)):
     r = await db.execute(select(RepairArticle).where(RepairArticle.slug == slug))
     a = r.scalar_one_or_none()
     if a:
+        # Снятая с публикации статья не отдаётся читателям (MKT-029); админ
+        # читает её через /articles/admin/{slug}. Запись в БД важнее статики.
+        if not a.published:
+            raise HTTPException(404, detail={"code": "article_not_found"})
         return {
             "slug": a.slug, "title": a.title, "category": a.category,
             "category_label": CATEGORIES.get(a.category, a.category),
