@@ -212,6 +212,30 @@ async def my_invitations(
     return {"items": await team_svc.list_pending_invitations(db, user.id)}
 
 
+@router.get("/invites")
+async def owner_invites(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Действующие приглашения моей бригады (MKT-012)."""
+    _require_contractor(user)
+    return {"items": await team_svc.list_owner_invites(db, user.id)}
+
+
+@router.delete("/invites/{invite_id}")
+async def revoke_invite(
+    invite_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Владелец отзывает неиспользованное приглашение (MKT-012)."""
+    _require_contractor(user)
+    try:
+        return await team_svc.revoke_invite_as_owner(db, owner_id=user.id, invite_id=invite_id)
+    except ValueError as error:
+        raise _team_error(error) from error
+
+
 @router.post("/invitations/{invitation_id}/{decision}")
 async def respond_invitation(
     invitation_id: str,

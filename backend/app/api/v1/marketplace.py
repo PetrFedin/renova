@@ -32,11 +32,13 @@ ANONYMOUS_CONTRACTOR_NAME = "Исполнитель"
 
 
 class ProfileIn(BaseModel):
-    company_name: str | None = None
-    specialties: str | None = None
-    city: str | None = None
-    bio: str | None = None
-    payment_requisites: str | None = None
+    """MKT-003: частичное сохранение профиля. Поле, которого нет в теле или равного null,
+    не меняется (null не «стирает»); пустая строка — осознанная очистка."""
+    company_name: str | None = Field(default=None, max_length=255)
+    specialties: str | None = Field(default=None, max_length=512)
+    city: str | None = Field(default=None, max_length=64)
+    bio: str | None = Field(default=None, max_length=4000)
+    payment_requisites: str | None = Field(default=None, max_length=1000)
 
 
 class LeadIn(BaseModel):
@@ -305,12 +307,18 @@ async def upsert_profile(
     profile = (
         await db.execute(select(ContractorProfile).where(ContractorProfile.user_id == user.id))
     ).scalar_one_or_none()
+    # MKT-003: только присланные и не-null поля — «сохранить реквизиты» не трогает город/био,
+    # а явный null не стирает уже сохранённое.
+    changes = {
+        key: (value.strip() if isinstance(value, str) else value)
+        for key, value in body.model_dump(exclude_unset=True).items()
+        if value is not None
+    }
     if not profile:
-        profile = ContractorProfile(user_id=user.id, **body.model_dump(exclude_unset=True))
+        profile = ContractorProfile(user_id=user.id, **changes)
         db.add(profile)
     else:
-        # MKT-003: только присланные поля — «сохранить реквизиты» не трогает город/био.
-        for key, value in body.model_dump(exclude_unset=True).items():
+        for key, value in changes.items():
             setattr(profile, key, value)
     await db.commit()
     await db.refresh(profile)

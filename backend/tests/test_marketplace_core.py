@@ -202,3 +202,16 @@ async def test_feed_pagination_filters_and_type_validation():
         assert len((await c.get(f"{BASE}/job-leads?city=казан", headers=xh)).json()) == 2 or len((await c.get(f"{BASE}/job-leads?city=Казань", headers=xh)).json()) == 2
         assert [x["title"] for x in (await c.get(f"{BASE}/job-leads?renovation_type=capital", headers=xh)).json()] == ["L0"]
         assert len((await c.get(f"{BASE}/job-leads?budget_min=150000&budget_max=250000", headers=xh)).json()) == 1
+
+
+async def test_profile_null_and_oversize_do_not_wipe_or_500():
+    """MKT-003: явный null не стирает сохранённое, '' — осознанная очистка, длинное — 422."""
+    async with _client() as c:
+        ch, xh, rh, ctr_id = await _setup(c)
+        await c.post(f"{BASE}/contractors/profile", headers=xh, json={"specialties": "tiling", "city": "Казань", "bio": "О себе"})
+        r = await c.post(f"{BASE}/contractors/profile", headers=xh, json={"specialties": None, "city": None, "bio": "", "payment_requisites": "СБП"})
+        assert r.status_code == 200
+        p = (await c.get(f"{BASE}/contractors/me/profile", headers=xh)).json()
+        assert (p["specialties"], p["city"], p["bio"], p["payment_requisites"]) == ("tiling", "Казань", "", "СБП")
+        assert (await c.post(f"{BASE}/contractors/profile", headers=xh, json={"city": "x" * 65})).status_code == 422
+        assert (await c.post(f"{BASE}/contractors/profile", headers=ch, json={"city": "x"})).status_code == 403

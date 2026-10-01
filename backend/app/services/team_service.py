@@ -1006,3 +1006,55 @@ async def leave_team(db: AsyncSession, *, user_id: str) -> dict:
         raise
     await _dispatch(db, "team.member_left")
     return {"ok": True, "released_stage_assignments": released}
+
+
+async def list_owner_invites(db: AsyncSession, owner_id: str) -> list[dict]:
+    """MKT-012: действующие (не использованные, не истёкшие) приглашения бригады владельца.
+
+    Токен публичных ссылок наружу не отдаётся — только id, роль, тип и срок.
+    """
+    team = await owned_team(db, owner_id)
+    if team is None:
+        return []
+    rows = (
+        await db.execute(
+            select(TeamInvite)
+            .where(
+                TeamInvite.team_id == team.id,
+                TeamInvite.used.is_(False),
+                TeamInvite.expires_at >= utc_now(),
+            )
+            .order_by(TeamInvite.created_at.desc(), TeamInvite.id.asc())
+        )
+    ).scalars().all()
+    return [
+        {
+            "id": invite.id,
+            "role": invite.role,
+            "kind": "personal" if invite.invitee_user_id else "link",
+            "invitee_user_id": invite.invitee_user_id,
+            "expires_at": invite.expires_at.isoformat(),
+        }
+        for invite in rows
+    ]
+
+
+async def revoke_invite_as_owner(db: AsyncSession, *, owner_id: str, invite_id: str) -> dict:
+    """MKT-012: владелец отзывает ещё не принятое приглашение (ссылку/QR или личное).
+
+    Чужое, неизвестное и уже использованное/истёкшее — 404 ``invitation_not_found``.
+    """
+    team = await owned_team(db, owner_id)
+    invite = await db.get(TeamInvite, invite_id) if team is not None else None
+    if (
+        team is None
+        or invite is None
+        or invite.team_id != team.id
+        or invite.used
+        or invite.expires_at < utc_now()
+    ):
+        await db.rollback()
+        raise ValueError("invitation_not_found")
+    invite.used = True
+    await db.commit()
+    return {"ok": True, "id": invite.id}

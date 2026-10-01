@@ -103,3 +103,25 @@ async def test_member_leaves_owner_cannot(db):
     r = await _call(db, owner, "POST", "/api/v1/teams/leave")
     assert r.status_code == 409
     assert "tr-owner" in await _member_ids(db, team.id)
+
+
+@pytest.mark.asyncio
+async def test_owner_lists_and_revokes_invites_and_revoked_link_cannot_join(db):
+    """MKT-012: владелец видит действующие приглашения и отзывает; отозванная ссылка не принимается."""
+    owner, member, other, team = await _seed(db)
+    link = (await _call(db, owner, "POST", "/api/v1/teams/invite-link", json={"role": "member"})).json()
+    items = (await _call(db, owner, "GET", "/api/v1/teams/invites")).json()["items"]
+    assert len(items) == 1 and items[0]["kind"] == "link" and "token" not in items[0]
+    invite_id = items[0]["id"]
+    # чужой владелец (не его бригада) — 404; участник-не-владелец тоже
+    r = await _call(db, other, "DELETE", f"/api/v1/teams/invites/{invite_id}")
+    assert r.status_code == 404
+    assert (await _call(db, owner, "DELETE", f"/api/v1/teams/invites/{invite_id}")).status_code == 200
+    assert (await _call(db, owner, "GET", "/api/v1/teams/invites")).json()["items"] == []
+    assert (await _call(db, owner, "DELETE", f"/api/v1/teams/invites/{invite_id}")).status_code == 404
+    newcomer = User(id="tr-newcomer", phone="+79990009005", role=UserRole.contractor)
+    db.add(newcomer)
+    await db.commit()
+    joined = await _call(db, newcomer, "POST", "/api/v1/teams/join", json={"token": link["token"]})
+    assert joined.json().get("ok") is False  # контракт join: 200 + ok:false
+    assert "tr-newcomer" not in await _member_ids(db, team.id)
