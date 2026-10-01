@@ -7,6 +7,7 @@ import NetInfo from '@react-native-community/netinfo';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { RenovaProvider, useRenova } from '@/lib/context/RenovaContext';
+import { RenovaTheme } from '@/constants/Theme';
 import { NavTracker } from '@/components/renova/NavTracker';
 import { flushOfflineOutbox, isOnline, startOfflineFlushScheduler, subscribeOfflineFlush } from '@/lib/offline';
 import { getQueue } from '@/lib/offlineQueue';
@@ -25,6 +26,13 @@ import {
   installNativeNotificationInteractions,
   scheduleNativeSyncConflictNotification,
 } from '@/lib/nativeNotifications';
+
+/** Единый фон экранов: без него стек-экраны (Заявки, Админ, Работа) рисовались серым #f2f2f2 рядом с #F8FAFC вкладок. */
+const ROOT_STACK_OPTIONS = {
+  headerShown: false,
+  animation: 'slide_from_right',
+  contentStyle: { backgroundColor: RenovaTheme.colors.background },
+} as const;
 
 SplashScreen.preventAutoHideAsync();
 initSentry();
@@ -133,7 +141,7 @@ export default function RootLayout() {
           <StatusBar style="dark" />
           <NavTracker />
           <NotificationNavigationBridge />
-          <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+          <Stack screenOptions={ROOT_STACK_OPTIONS}>
             <Stack.Screen name="index" />
             <Stack.Screen name="onboarding/[step]" options={{ title: 'Онбординг' }} />
             <Stack.Screen name="wizard" options={{ presentation: 'modal' }} />
