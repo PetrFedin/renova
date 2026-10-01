@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
-import { View, Text, Image, Pressable, StyleSheet, PanResponder, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, StyleSheet, PanResponder, ActivityIndicator } from 'react-native';
 import { notifyAlert, notifyError } from '@/lib/notify';
 import { useLocalSearchParams, usePathname } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import { AuthImage } from '@/components/renova/AuthImage';
 import { api, FloorPlan } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
@@ -22,7 +23,6 @@ import { reportCatch, reportError } from '@/lib/reportError';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { EmptyActionState } from '@/components/ui/EmptyActionState';
 
-const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
 const MAP_H = 180;
 
 type MapLayoutEvent = { nativeEvent?: { layout?: { width?: number } } };
@@ -351,7 +351,7 @@ export function FloorPlanPanel({
             </>
           ) : null}
           <View style={s.mapWrap} onLayout={onMapLayout}>
-            <Image source={{ uri: `${BASE}${plan.image_url}` }} style={s.img} resizeMode="contain" />
+            <AuthImage uri={plan.image_url} userId={userId} style={s.img} resizeMode="contain" errorLabel="Не удалось загрузить план этажа" />
             {punchMode ? (
               <Pressable
                 style={s.punchOverlay}

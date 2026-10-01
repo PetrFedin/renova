@@ -7,6 +7,7 @@ import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { EmptyActionState } from '@/components/ui/EmptyActionState';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
@@ -229,10 +230,7 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
                         message: 'Слишком много запросов. Повторите через несколько секунд.',
                       });
                     } else {
-                      showActionConfirm({
-                        title: 'Не удалось отправить',
-                        message: 'Запрос сохранён в форме. Повторите отправку позже.',
-                      });
+                      notifyError('Не удалось отправить запрос', e, 'Текст остался в форме — повторите отправку чуть позже.');
                     }
                     return false;
                   }
@@ -289,10 +287,14 @@ function ContractorRoomsBody() {
   const pathname = usePathname();
   const nav = useNavFromHere();
   const canWrite = useWriteAllowed();
-  const { user, activeProject, loadProject } = useRenova();
+  const { user, activeProject, loadProject, teamRole } = useRenova();
+  // OBJ-11: согласует и отклоняет запросы владелец или прораб бригады; участнику сервер ответит отказом.
+  const canDecideRequests = teamRole !== 'member';
   const [rooms, setRooms] = useState<Room[]>([]);
   /** Ключ последней успешной загрузки: пустой список показываем только после подтверждения, не при сбое/429 */
   const [confirmedKey, setConfirmedKey] = useState<string | null>(null);
+  /** Ключ «объект:фильтр», для которого последняя загрузка упала (OBJ-25). */
+  const [failedKey, setFailedKey] = useState<string | null>(null);
   const [requests, setRequests] = useState<RoomChangeRequest[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [roomFilter, setRoomFilter] = useState('active');
@@ -329,8 +331,10 @@ function ContractorRoomsBody() {
       const list = await api.listRooms(user.id, activeProject.id, { archived: roomFilter === 'archive' });
       setRooms(filterRoomsByArchive(list, roomFilter === 'archive'));
       setConfirmedKey(`${activeProject.id}:${roomFilter}`);
+      setFailedKey(null);
     } catch (e) {
       reportError('rooms.contractor.listRooms', e, { userId: user.id, projectId: activeProject.id, roomFilter });
+      setFailedKey(`${activeProject.id}:${roomFilter}`);
       if (isRateLimitError(e)) {
         showActionConfirm({
           title: 'Подождите',
@@ -352,17 +356,21 @@ function ContractorRoomsBody() {
 
   if (!activeProject || !user) return <ProjectEmptyState role="contractor" />;
 
-  const roomsConfirmedEmpty = !rooms.length && confirmedKey === `${activeProject.id}:${roomFilter}`;
+  const roomsLoadFailed = failedKey === `${activeProject.id}:${roomFilter}`;
+  const roomsConfirmedEmpty = !rooms.length && confirmedKey === `${activeProject.id}:${roomFilter}` && !roomsLoadFailed;
   const activeRooms = (activeProject.rooms || []).filter((r) => !r.is_archived);
 
   const approveRequest = (request: RoomChangeRequest) => {
-    if (!canWrite || mutationRef.current) return;
+    if (!canWrite || !canDecideRequests || mutationRef.current) return;
     const key = `approve:${request.id}`;
     showActionConfirm({
       title: 'Согласовать запрос?',
-      message: request.message || (request.room_id === null
-        ? 'Комната будет создана по запросу заказчика.'
-        : 'Комната будет изменена по запросу заказчика.'),
+      message: request.room_id === null
+        ? `${request.message || 'Запрос заказчика'}\n\nКомната будет создана по запросу заказчика.`
+        : request.payload && Object.keys(request.payload).length
+          ? `${request.message || 'Запрос заказчика'}\n\nКомната будет изменена по запросу заказчика.`
+          // OBJ-12: текстовый запрос комнату сам не меняет — не обещаем обратного.
+          : `${request.message || 'Запрос заказчика'}\n\nЭто пожелание заказчика: комната сама не изменится — правки внесите вручную. Согласование покажет заказчику, что вы приняли запрос.`,
       primaryLabel: 'Согласовать',
       onPrimary: () => {
         void runMutation(key, async () => {
@@ -482,13 +490,13 @@ function ContractorRoomsBody() {
             <Text>{r.message}</Text>
             <View style={styles.row}>
               <PrimaryButton
-                disabled={!canWrite || busy}
+                disabled={!canWrite || !canDecideRequests || busy}
                 loading={mutationKey === `approve:${r.id}`}
                 title="Согласовать"
                 onPress={() => approveRequest(r)}
               />
               <PrimaryButton
-                disabled={!canWrite || busy}
+                disabled={!canWrite || !canDecideRequests || busy}
                 loading={mutationKey === `reject:${r.id}`}
                 title="Отклонить"
                 variant="dangerOutline"
@@ -516,6 +524,13 @@ function ContractorRoomsBody() {
             ))}
           </View>
         ))}
+        {roomsLoadFailed ? (
+          <LoadErrorState
+            title="Не удалось загрузить комнаты"
+            hint={rooms.length ? 'Показан последний загруженный список — он мог устареть.' : 'Пустой экран не означает, что комнат нет. Проверьте сеть и повторите.'}
+            onRetry={() => { void reloadRooms(); }}
+          />
+        ) : null}
         {roomsConfirmedEmpty ? (
           <EmptyActionState
             title={roomFilter === 'archive' ? 'Архив комнат пуст' : 'Комнат пока нет'}

@@ -40,7 +40,7 @@ export function EstimateDocumentsLayer({
   const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
   const [busy, setBusy] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
-  const [csvText, setCsvText] = useState('name,line_type,unit,quantity_planned,unit_price,room_name\nШтукатурка стен,work,м2,40,450,Гостиная\n');
+  const [csvText, setCsvText] = useState('name,line_type,unit,quantity_planned,unit_price,room_name\n');
 
   const pdfPath = `/api/v1/projects/${projectId}/estimate.pdf`;
 
@@ -64,9 +64,9 @@ export function EstimateDocumentsLayer({
     },
     {
       id: 'estimate-xlsx',
-      label: 'Смета для Excel (XLSX)',
-      desc: 'Таблица с форматированием',
-      format: 'XLSX',
+      label: 'Смета для Excel',
+      desc: 'Таблица с итогом и НДС по ставке объекта',
+      format: 'XLS',
       run: () => api.exportEstimateXlsx(userId, projectId),
     },
   ];
@@ -203,12 +203,15 @@ export function EstimateDocumentsLayer({
         );
       })}
 
-      <PrimaryButton
-        title="Импорт CSV в смету"
-        variant="outline"
-        onPress={() => setImportOpen(true)}
-        disabled={!!busy}
-      />
+      {/* OBJ-07: сервер принимает импорт только от исполнителя — заказчику и гостю кнопку не показываем. */}
+      {role === 'contractor' && !activeProject?.estimate_locked_at ? (
+        <PrimaryButton
+          title="Импорт CSV в смету"
+          variant="outline"
+          onPress={() => setImportOpen(true)}
+          disabled={!!busy}
+        />
+      ) : null}
 
       <PrimaryButton
         title="→ Все документы проекта"

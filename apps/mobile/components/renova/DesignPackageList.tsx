@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, Linking, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { notifyError } from '@/lib/notify';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { api } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
@@ -18,6 +19,9 @@ import { pushOsNav } from '@/lib/pushOsNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { writeResultMessage } from '@/lib/offlineResultMessage';
+import { useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
+import { fetchAuthedMediaBlob } from '@/lib/authedMedia';
+import { openPdfBlob } from '@/lib/pdfOpen';
 
 type DP = { id: string; title: string; version: number; file_url?: string | null; status: string };
 
@@ -33,6 +37,8 @@ export function DesignPackageList({
   embedded?: boolean;
 }) {
   const { user, activeProject } = useRenova();
+  // OBJ-17: гость и наблюдатель только смотрят — сервер всё равно ответит 403.
+  const canWrite = useWriteAllowed();
   const [items, setItems] = useState<DP[]>([]);
   const [uploading, setUploading] = useState(false);
   const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'error'>('loading');
@@ -51,7 +57,52 @@ export function DesignPackageList({
   }, [userId, projectId]);
   useEffect(() => { load(); }, [load]);
   useProjectDataReload(load);
-  const BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
+  /** OBJ-16: файл за авторизацией — тянем с токеном и открываем blob, а не `Linking.openURL` без заголовков. */
+  const openFile = async (fileUrl: string, title: string) => {
+    try {
+      const blob = await fetchAuthedMediaBlob(userId, fileUrl);
+      await openPdfBlob(blob, `${title.replace(/[^\w.-]+/g, '_') || 'design'}.pdf`, 'preview');
+    } catch (err) {
+      notifyError('Не удалось открыть файл', err, 'Проверьте подключение и повторите.');
+    }
+  };
+
+  const sendForApproval = async (id: string) => {
+    try {
+      await api.submitDesignPackage(userId, projectId, id);
+      await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any) });
+      load();
+    } catch (err) {
+      if (isOfflineQueued(err)) notifyOfflineQueued('Отправка на согласование');
+      else notifyError('Не отправлено на согласование', err, 'Повторите попытку.');
+    }
+  };
+
+  const returnForRework = (d: DP) => {
+    showActionConfirm({
+      title: 'Вернуть на доработку?',
+      message: `v${d.version} · ${d.title}. Исполнитель увидит, что пакет не согласован, и загрузит новую версию.`,
+      primaryLabel: 'Вернуть',
+      primaryDestructive: true,
+      onPrimary: () => {
+        void (async () => {
+          try {
+            await api.rejectDesignPackage(userId, projectId, d.id);
+            await syncProjectSideEffects({
+              user: user ?? ({ id: userId } as any),
+              project: activeProject ?? ({ id: projectId } as any),
+            });
+            load();
+          } catch (e: unknown) {
+            if (isOfflineQueued(e)) notifyOfflineQueued('Возврат на доработку');
+            else showActionConfirm({ title: 'Не удалось', message: writeResultMessage(e, 'Ошибка возврата на доработку') });
+          }
+        })();
+      },
+      secondaryLabel: 'Отмена',
+      onSecondary: () => undefined,
+    });
+  };
 
   const uploadPdf = async () => {
     setUploading(true);
@@ -110,14 +161,22 @@ export function DesignPackageList({
           </View>
           <View style={s.actions}>
             {d.file_url && (
-              <PrimaryButton title="Открыть" variant="outline" compact onPress={() => Linking.openURL(`${BASE}${d.file_url}`)} />
+              <PrimaryButton title="Открыть" variant="outline" compact onPress={() => { void openFile(d.file_url!, d.title); }} />
             )}
-            {role === 'customer' && d.status === 'pending' && (
+            {role === 'customer' && canWrite && d.status === 'pending' && (
+              <PrimaryButton
+                title="Вернуть"
+                variant="outline"
+                compact
+                onPress={() => returnForRework(d)}
+              />
+            )}
+            {role === 'customer' && canWrite && d.status === 'pending' && (
               <PrimaryButton
                 title="Согласовать"
                 compact
                 onPress={() => {
-                  // Clarity U: design approve — confirm (reject API в mobile пока нет)
+                  // Clarity U: design approve — confirm
                   showActionConfirm({
                     title: 'Согласовать дизайн?',
                     message: `v${d.version} · ${d.title}. После согласия можно закупать по этому пакету.`,
@@ -145,13 +204,13 @@ export function DesignPackageList({
                 }}
               />
             )}
-            {role === 'contractor' && (d.status === 'draft' || d.status === 'published') && (
-              <PrimaryButton title="На соглас." variant="outline" compact onPress={async () => { await api.submitDesignPackage(userId, projectId, d.id); await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any) }); load(); }} />
+            {role === 'contractor' && canWrite && (d.status === 'draft' || d.status === 'published') && (
+              <PrimaryButton title="На соглас." variant="outline" compact onPress={() => { void sendForApproval(d.id); }} />
             )}
           </View>
         </View>
       ))}
-      {role === 'contractor' && (
+      {role === 'contractor' && canWrite && (
         <PrimaryButton title={uploading ? 'Загрузка…' : '+ Новая версия PDF'} variant="outline" disabled={uploading} onPress={uploadPdf} />
       )}
     </View>

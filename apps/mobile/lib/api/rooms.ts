@@ -38,7 +38,10 @@ export const roomsApi = {
       const filtered = filterRoomsByArchive(rooms, opts?.archived);
       if (typeof localStorage !== 'undefined') localStorage.setItem(cacheKey, JSON.stringify(filtered));
       return filtered;
-    } catch {
+    } catch (error) {
+      // OBJ-36: кэш — только при сбое сети/сервера. Отказ в доступе (401/403) и «не найдено» (404)
+      // нельзя маскировать старым списком комнат.
+      if (!isQueueableWriteError(error)) throw error;
       if (typeof localStorage !== 'undefined') {
         const scoped = parseCachedRooms(localStorage.getItem(cacheKey));
         if (scoped) return scoped;
@@ -105,7 +108,15 @@ export const roomsApi = {
     // Same client_request_id and exact serialized body is sent on the first
     // attempt and on every offline replay so a lost response cannot create a
     // duplicate RoomChangeRequest/notification (#436, #316/#398 pattern).
-    const requestBody = JSON.stringify({ ...body, client_request_id: createClientRequestId('room-change-request') });
+    // OBJ-01: текстовый запрос без структурных правок идёт БЕЗ payload — пустой объект
+    // сервер считает пустой правкой комнаты и отвечает 422 `room_patch_empty`.
+    const { payload, ...rest } = body as { payload?: unknown };
+    const hasPayload = !!payload && typeof payload === 'object' && Object.keys(payload as object).length > 0;
+    const requestBody = JSON.stringify({
+      ...rest,
+      ...(hasPayload ? { payload } : {}),
+      client_request_id: createClientRequestId('room-change-request'),
+    });
     try {
       return await req(`/api/v1/projects/${projectId}/room-change-requests`, { method: 'POST', body: requestBody }, userId);
     } catch (e) {

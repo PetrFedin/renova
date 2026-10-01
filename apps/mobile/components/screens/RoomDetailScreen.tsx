@@ -27,6 +27,8 @@ import { DOCUMENTS_MENU_HINT } from '@/lib/documentsNav';
 import { screenLayout } from '@/constants/screenLayout';
 import { reportCatch, reportError } from '@/lib/reportError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { notifyError } from '@/lib/notify';
+import { parseNonNegativeNumber, parsePositiveNumber } from '@/lib/parseLocaleNumber';
 import { InfoBanner } from '@/components/ui/InfoBanner';
 import { alertEstimateFrozen, isEstimateFrozen, ESTIMATE_FROZEN_MESSAGE, ESTIMATE_FROZEN_ACTION } from '@/lib/estimateFrozenHint';
 import { writeResultMessage } from '@/lib/offlineResultMessage';
@@ -145,7 +147,7 @@ export function RoomDetailScreen() {
     }
   }, [loadProject, load]);
 
-  const lines = (activeProject?.estimate_lines || []).filter(l => (l.room_id && l.room_id === room?.id) || l.room_name === room?.name);
+  const lines = (activeProject?.estimate_lines || []).filter(l => l.room_id ? l.room_id === room?.id : l.room_name === room?.name);
 
   const toggleArchive = () => {
     if (!user || !activeProject || !room || !isContractor || mutationRef.current) return;
@@ -211,6 +213,32 @@ export function RoomDetailScreen() {
     });
   };
 
+  /** OBJ-21: размеры — через общий разбор чисел (запятая, пробелы), без молчаливого NaN/усечения. */
+  const saveDimensions = () => {
+    const length_m = parsePositiveNumber(len);
+    const width_m = parsePositiveNumber(wid);
+    const height_m = parsePositiveNumber(hei);
+    if (length_m === null || width_m === null || height_m === null) {
+      showActionConfirm({ title: 'Габариты', message: 'Длина, ширина и высота — числа больше 0, например 4,2.' });
+      return;
+    }
+    void save({ length_m, width_m, height_m });
+  };
+
+  const saveEngineering = () => {
+    const outlets_count = parseNonNegativeNumber(outlets);
+    const plumbing_points = parseNonNegativeNumber(plumbing);
+    const switches_count = parseNonNegativeNumber(switches);
+    if (
+      outlets_count === null || plumbing_points === null || switches_count === null
+      || ![outlets_count, plumbing_points, switches_count].every(Number.isInteger)
+    ) {
+      showActionConfirm({ title: 'Инженерия', message: 'Количество розеток, выключателей и точек сантехники — целые числа от 0.' });
+      return;
+    }
+    void save({ outlets_count, plumbing_points, switches_count });
+  };
+
   if (loading || projectResolving) {
     return (<><BackHeader title="Комната" returnTo={returnTo} /><View style={s.center}><Text>Загрузка объекта…</Text></View></>);
   }
@@ -231,7 +259,7 @@ export function RoomDetailScreen() {
         <BackHeader title="Комната" returnTo={returnTo} />
         <View style={[s.center, s.emptyState]}>
           <Text style={s.h}>Комната не найдена</Text>
-          <Text style={s.emptyHint}>Проверили и активные, и архивные комнаты. Возможно, комната удалена или ссылка устарела.</Text>
+          <Text style={s.emptyHint}>Проверили активные и архивные комнаты текущего объекта. Возможно, комната относится к другому объекту — выберите его в шапке (значок объектов), — либо она удалена или ссылка устарела.</Text>
           <PrimaryButton title="Проверить снова" variant="outline" onPress={() => { void load(); }} />
         </View>
       </>
@@ -277,8 +305,13 @@ export function RoomDetailScreen() {
               disabled={busy && mutation !== 'materials'}
               onPress={() => {
                 void runMutation('materials', async () => {
-                  const result = await api.calcRoomMaterials(user.id, project.id, room.id);
-                  setCalcItems(result.items);
+                  try {
+                    const result = await api.calcRoomMaterials(user.id, project.id, room.id);
+                    setCalcItems(result.items);
+                  } catch (error) {
+                    if (isOfflineQueued(error)) notifyOfflineQueued('Расчёт материалов');
+                    else notifyError('Не удалось рассчитать материалы', error, 'Проверьте подключение и повторите.');
+                  }
                 });
               }}
             />
@@ -328,18 +361,18 @@ export function RoomDetailScreen() {
 
         {showDetails && (
           <>
-            {isContractor && <RoomBudgetThreshold value={room.budget_alert_pct} onChange={v => save({ budget_alert_pct: v })} />}
-            {isContractor && (<View style={s.card}><Text style={s.h}>Тип и этаж</Text>
+            {isContractor && canWrite && <RoomBudgetThreshold value={room.budget_alert_pct} onChange={v => save({ budget_alert_pct: v })} />}
+            {isContractor && canWrite && (<View style={s.card}><Text style={s.h}>Тип и этаж</Text>
               <RoomTypePicker value={room.room_type} onChange={(room_type) => save({ room_type })} />
               <FloorLevelPicker value={room.floor_level ?? 1} max={project.property_type === 'house' ? 3 : 1} onChange={(floor_level) => save({ floor_level })} />
             </View>)}
             {(isContractor || ownerCanEdit) && (<View style={s.card}><Text style={s.h}>Габариты</Text>
               <Field label="Длина" value={len} onChange={setLen} /><Field label="Ширина" value={wid} onChange={setWid} /><Field label="Высота" value={hei} onChange={setHei} />
-              <PrimaryButton disabled={(!canWrite && !ownerCanEdit) || busy} loading={mutation === 'save'} title="Сохранить" compact onPress={() => save({ length_m:+len, width_m:+wid, height_m:+hei })} />
+              <PrimaryButton disabled={(!canWrite && !ownerCanEdit) || busy} loading={mutation === 'save'} title="Сохранить" compact onPress={saveDimensions} />
             </View>)}
             <View style={s.card}><Text style={s.h}>Инженерия</Text>
               {(isContractor || ownerCanEdit) ? (<><Field label="Розетки" value={outlets} onChange={setOutlets} /><Field label="Сантехника" value={plumbing} onChange={setPlumbing} />
-              <PrimaryButton disabled={(!canWrite && !ownerCanEdit) || busy} loading={mutation === 'save'} title="Сохранить" compact onPress={() => save({ outlets_count:+outlets||0, plumbing_points:+plumbing||0, switches_count:+switches||0 })} /></>)
+              <PrimaryButton disabled={(!canWrite && !ownerCanEdit) || busy} loading={mutation === 'save'} title="Сохранить" compact onPress={saveEngineering} /></>)
               : <Text style={s.line}>Розетки {room.outlets_count} · сантехника {room.plumbing_points}. Изменения — через запрос исполнителю.</Text>}
             </View>
             {lines.length > 0 && <View style={s.card}><Text style={s.h}>Смета</Text>

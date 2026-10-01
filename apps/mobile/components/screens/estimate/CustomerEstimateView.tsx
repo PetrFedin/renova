@@ -8,6 +8,7 @@ import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { api, ChangeOrder, MaterialStats } from '@/lib/api';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { ObjectTabGuide } from '@/components/screens/object/ObjectTabGuide';
 import { OsHubTabs } from '@/components/renova/os/OsHubTabs';
 import { EstimateSummaryLayer } from '@/components/screens/estimate/EstimateSummaryLayer';
@@ -36,6 +37,8 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
   const { user, activeProject, loadProject } = useRenova();
   const [stats, setStats] = useState<MaterialStats | null>(null);
   const [orders, setOrders] = useState<ChangeOrder[]>([]);
+  /** OBJ-13: сбой загрузки доп. работ ≠ «Нет ожидающих доп. работ». */
+  const [ordersFailed, setOrdersFailed] = useState(false);
   const [layer, setLayer] = useState<EstimateLayer>('summary');
   const [lineType, setLineType] = useState<EstimateLineTypeFilter>('all');
   const [category, setCategory] = useState<string | null>(null);
@@ -47,7 +50,12 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
   const reloadEstimateSurface = useCallback(() => {
     if (!user || !activeProject) return;
     api.materialStats(user.id, activeProject.id).then(setStats).catch(reportCatch('components.screens.estimate.CustomerEstimateView.1'));
-    api.listChangeOrders(user.id, activeProject.id).then(setOrders).catch(reportCatch('components.screens.estimate.CustomerEstimateView.2'));
+    api.listChangeOrders(user.id, activeProject.id)
+      .then((list) => { setOrders(list); setOrdersFailed(false); })
+      .catch((error: unknown) => {
+        reportError('components.screens.estimate.CustomerEstimateView.2', error);
+        setOrdersFailed(true);
+      });
     if (activeProject.estimate_lock_proposed_at && !activeProject.estimate_locked_at) {
       api.getEstimateLockDiff(user.id, activeProject.id).then(setLockDiff).catch((e) => { reportError('components.screens.estimate.CustomerEsti.LockDiff', e); setLockDiff(null); });
     } else {
@@ -151,7 +159,15 @@ export function CustomerEstimateView({ onNextTab }: { onNextTab?: (tab: ObjectTa
         />
       )}
 
-      {activeLayer === 'changes' && (
+      {activeLayer === 'changes' && ordersFailed && orders.length === 0 ? (
+        <LoadErrorState
+          title="Не удалось загрузить доп. работы"
+          hint="Пустой список здесь не означает, что изменений нет. Проверьте сеть и повторите."
+          onRetry={reloadEstimateSurface}
+        />
+      ) : null}
+
+      {activeLayer === 'changes' && !(ordersFailed && orders.length === 0) && (
         <EstimateChangesLayer
           userId={user.id}
           projectId={activeProject.id}

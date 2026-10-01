@@ -27,13 +27,18 @@ export function PlanTabOverview({ role, project, userId }: Props) {
   const nav = useNavFromHere();
   const [floorCount, setFloorCount] = useState(0);
   const [designPending, setDesignPending] = useState(0);
+  // OBJ-30: сбой загрузки ≠ «план не загружен» / «нет ожидающих».
+  const [plansFailed, setPlansFailed] = useState(false);
+  const [designFailed, setDesignFailed] = useState(false);
 
   const reload = useCallback(() => {
-    api.listFloorPlans(userId, project.id).then((plans) => setFloorCount(plans.length)).catch(reportCatch('components.screens.object.PlanTabOverview.1'));
+    api.listFloorPlans(userId, project.id)
+      .then((plans) => { setFloorCount(plans.length); setPlansFailed(false); })
+      .catch((error: unknown) => { reportCatch('components.screens.object.PlanTabOverview.1')(error); setPlansFailed(true); });
     api
       .listDesignPackages(userId, project.id)
-      .then((items) => setDesignPending(items.filter((d) => d.status === 'pending').length))
-      .catch(reportCatch('components.screens.object.PlanTabOverview.2'));
+      .then((items) => { setDesignPending(items.filter((d) => d.status === 'pending').length); setDesignFailed(false); })
+      .catch((error: unknown) => { reportCatch('components.screens.object.PlanTabOverview.2')(error); setDesignFailed(true); });
   }, [userId, project.id]);
   useEffect(() => { reload(); }, [reload]);
   useProjectDataReload(reload);
@@ -41,11 +46,14 @@ export function PlanTabOverview({ role, project, userId }: Props) {
   const stagesCount = project.stages?.length || 0;
   const roomsCount = project.rooms?.length || project.rooms_count || 0;
   const dates = formatScheduleRange(project.planned_start_date, project.planned_end_date);
-  const planStatus = floorCount
+  const planStatus = plansFailed && !floorCount
+    ? 'не удалось проверить план этажа — откройте вкладку ещё раз'
+    : floorCount
     ? designPending
       ? `план есть · дизайн на согласовании (${designPending})`
       : 'план загружен'
     : 'план этажа ещё не загружен';
+  const planStatusFull = designFailed ? `${planStatus} · дизайн-пакеты не удалось проверить` : planStatus;
 
   return (
     <View style={s.wrap}>
@@ -54,7 +62,7 @@ export function PlanTabOverview({ role, project, userId }: Props) {
         <Text style={s.heroMeta}>
           {dates} · {roomsCount} комн. · {stagesCount} этапов
         </Text>
-        <Text style={s.heroStatus}>{planStatus}</Text>
+        <Text style={s.heroStatus}>{planStatusFull}</Text>
       </View>
 
       <View style={s.links}>

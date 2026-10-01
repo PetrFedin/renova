@@ -102,7 +102,8 @@ export function RoomDiagramInteractive({ room }: { room: Room }) {
 
   return (
     <View style={s.wrap}>
-      <Text style={s.head}>Схема · tap/drag розетки ({pts.length}/{room.outlets_count})</Text>
+      <Text style={s.head}>Схема розеток · набросок на этом устройстве ({pts.length} из {room.outlets_count})</Text>
+      <Text style={s.draftHint}>Расположение точек хранится только на этом устройстве и не уходит исполнителю или заказчику.</Text>
       <View {...pan.panHandlers} style={[s.room, { width: OW, height: OH }]}>
         {Array.from({ length: Math.floor(OH / GRID) + 1 }, (_, gy) => Array.from({ length: Math.floor(OW / GRID) + 1 }, (_, gx) => (
           <View key={`g${gx}-${gy}`} style={[s.gridPt, { left: gx * GRID, top: gy * GRID }]} />
@@ -127,7 +128,8 @@ export function RoomDiagramInteractive({ room }: { room: Room }) {
 
 const s = StyleSheet.create({
   wrap: { backgroundColor: RenovaTheme.colors.surface, borderRadius: 12, padding: 12, marginBottom: 10 },
-  head: { fontWeight: '700', marginBottom: 8 },
+  head: { fontWeight: '700', marginBottom: 4 },
+  draftHint: { fontSize: 11, color: RenovaTheme.colors.textMuted, marginBottom: 8 },
   room: { borderWidth: 2, borderColor: '#374151', backgroundColor: '#f9fafb' },
   dot: { position: 'absolute', width: 10, height: 10, borderRadius: 5, backgroundColor: '#f59e0b' },
   dotActive: { backgroundColor: '#ef4444', transform: [{ scale: 1.3 }] },

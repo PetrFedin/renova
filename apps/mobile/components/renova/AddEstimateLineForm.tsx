@@ -15,6 +15,7 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { alertEstimateLineAdded } from '@/lib/fieldCommsNav';
 import type { OsRole } from '@/constants/osSections';
 import { reportCatch } from '@/lib/reportError';
+import { notifyError } from '@/lib/notify';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { parseLocaleNumber } from '@/lib/parseLocaleNumber';
 import { createClientRequestId } from '@/lib/clientRequestId';
@@ -116,10 +117,8 @@ export function AddEstimateLineForm({
         clearDraft();
         if (collapsed) setOpen(false);
       } else {
-        showActionConfirm({
-          title: 'Строка не добавлена',
-          message: 'Введённые данные сохранены в форме. Проверьте сеть и повторите.',
-        });
+        // OBJ-28: причина отказа сервера (смета зафиксирована, нет прав) — а не «проверьте сеть».
+        notifyError('Строка не добавлена', error, 'Введённые данные сохранены в форме. Проверьте сеть и повторите.');
       }
     } finally {
       busyRef.current = false;

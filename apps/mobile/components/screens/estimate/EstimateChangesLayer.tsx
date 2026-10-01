@@ -66,7 +66,7 @@ export function EstimateChangesLayer({
         title={pending.length ? `Ждут решения · Δ ${formatRub(pendingDelta)}` : 'Ждут вашего решения'}
         hint={
           pending.length
-            ? `Одобрите или отклоните ${pending.length} поз. — смета обновится. Итоговая дельта: ${formatRub(pendingDelta)}.`
+            ? `Одобрите или отклоните ${pending.length} поз. Итоговая дельта: ${formatRub(pendingDelta)}. Одобренная доп. работа попадает в бюджет и допсоглашение; строки сметы не меняются.`
             : 'Нет ожидающих доп. работ.'
         }
       >
@@ -93,7 +93,7 @@ export function EstimateChangesLayer({
               // Clarity R: money confirm перед одобрением дельты
               showActionConfirm({
                 title: 'Согласовать доп. работу?',
-                message: `«${o.title}» · ${formatRub(o.amount)} попадёт в смету и бюджет.`,
+                message: `«${o.title}» · ${formatRub(o.amount)} добавится в бюджет проекта и в допсоглашение; строки сметы не меняются.`,
                 primaryLabel: 'Согласовать',
                 onPrimary: () => {
                   void (async () => {
@@ -130,7 +130,7 @@ export function EstimateChangesLayer({
             onReject={() => {
               showActionConfirm({
                 title: 'Отклонить доп. работу?',
-                message: `«${o.title}» · ${formatRub(o.amount)} не войдёт в смету.`,
+                message: `«${o.title}» · ${formatRub(o.amount)} не войдёт в бюджет проекта.`,
                 primaryLabel: 'Отклонить',
                 onPrimary: () => {
                   void (async () => {

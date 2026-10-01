@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { router, usePathname } from 'expo-router';
 import { ScrollView, Text, View, StyleSheet, TextInput } from 'react-native';
 import { notifyError } from '@/lib/notify';
@@ -15,7 +15,11 @@ import { EstimateSourceLegend } from '@/components/renova/estimate/EstimateSourc
 import { EstimateEditorByRoom } from '@/components/renova/estimate/EstimateEditorByRoom';
 import { EstimateOperationsPanel } from '@/components/renova/estimate/EstimateOperationsPanel';
 import { ObjectTabGuide } from '@/components/screens/object/ObjectTabGuide';
-import { api } from '@/lib/api';
+import { api, type ChangeOrder } from '@/lib/api';
+import { EstimateDocumentsLayer } from '@/components/screens/estimate/EstimateDocumentsLayer';
+import { ContractorChangeOrdersList } from '@/components/screens/estimate/ContractorChangeOrdersList';
+import { useProjectDataReload } from '@/lib/useProjectDataReload';
+import { reportCatch, reportError } from '@/lib/reportError';
 import { budgetTabRoute, repairTabRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { DOCUMENTS_MENU_HINT } from '@/lib/documentsNav';
@@ -35,8 +39,13 @@ export function ContractorEstimateView() {
   const pathname = usePathname();
   const canWrite = useWriteAllowed();
   const { user, activeProject, loadProject, isContractorOwner, teamRole } = useRenova();
-  const [coTitle, setCoTitle] = useState('Доп. розетки');
-  const [coAmount, setCoAmount] = useState('8500');
+  // OBJ-06: поля пустые — раньше одно нажатие «Отправить» создавало реальную доп. работу «Доп. розетки 8500 ₽».
+  const [coTitle, setCoTitle] = useState('');
+  const [coAmount, setCoAmount] = useState('');
+  const [coSending, setCoSending] = useState(false);
+  const [orders, setOrders] = useState<ChangeOrder[]>([]);
+  const [ordersLoaded, setOrdersLoaded] = useState(false);
+  const [ordersFailed, setOrdersFailed] = useState(false);
   const [coStageId, setCoStageId] = useState<string | null>(null);
   const [lineType, setLineType] = useState<EstimateLineTypeFilter>('all');
   const [category, setCategory] = useState<string | null>(null);
@@ -48,6 +57,21 @@ export function ContractorEstimateView() {
   );
   const totals = estimateTotals(allLines);
   const filteredTotal = estimateTotals(filtered).total;
+  const userId = user?.id;
+  const projectId = activeProject?.id;
+
+  const reloadOrders = useCallback(() => {
+    if (!userId || !projectId) return;
+    api.listChangeOrders(userId, projectId)
+      .then((list) => { setOrders(list); setOrdersFailed(false); setOrdersLoaded(true); })
+      .catch((error: unknown) => {
+        reportError('components.screens.estimate.ContractorEstimateView.orders', error, { projectId });
+        setOrdersFailed(true);
+        setOrdersLoaded(true);
+      });
+  }, [userId, projectId]);
+  useEffect(() => { reloadOrders(); }, [reloadOrders]);
+  useProjectDataReload(reloadOrders);
 
   if (!activeProject) {
     return <ProjectEmptyState role="contractor" />;
@@ -66,7 +90,11 @@ export function ContractorEstimateView() {
         notifyOfflineQueued('Изменение строки');
         return;
       }
-      throw e;
+      // OBJ-08: отказ сервера (смета зафиксирована, нет прав) — сообщаем причину, а не молча
+      // оставляем в поле значение, которое не сохранилось.
+      reportError('components.screens.estimate.ContractorEstimateView.patchLine', e, { projectId: project.id, lineId });
+      notifyError('Строка не сохранена', e, 'Попробуйте ещё раз.');
+      await loadProject(project.id).catch(reportCatch('components.screens.estimate.ContractorEstimateView.reloadAfterPatch'));
     }
   }
 
@@ -81,9 +109,16 @@ export function ContractorEstimateView() {
       showActionConfirm({ title: 'Сумма допсоглашения', message: 'Укажите сумму больше 0, например 8 500 или 8500,50.' });
       return;
     }
+    if (coSending) return;
+    setCoSending(true);
     try {
-      await api.createChangeOrder(user.id, project.id, { title: coTitle, amount, ...(coStageId ? { stage_id: coStageId } : {}) });
-      await loadProject(project.id);
+      await api.createChangeOrder(user.id, project.id, { title: coTitle.trim(), amount, ...(coStageId ? { stage_id: coStageId } : {}) });
+      // Форма очищается сразу после принятия сервером: повторное нажатие не создаст дубль.
+      setCoTitle('');
+      setCoAmount('');
+      setCoStageId(null);
+      await loadProject(project.id).catch(reportCatch('components.screens.estimate.ContractorEstimateView.reloadAfterCo'));
+      reloadOrders();
       // W127: ДО → слой изменений / бюджет после approve (см. EstimateChangesLayer)
       alertChangeOrderSubmitted('contractor');
     } catch (e: unknown) {
@@ -91,7 +126,10 @@ export function ContractorEstimateView() {
         notifyOfflineQueued('Допсоглашение');
         return;
       }
-      throw e;
+      reportError('components.screens.estimate.ContractorEstimateView.createChangeOrder', e, { projectId: project.id });
+      notifyError('Доп. работа не отправлена', e, 'Данные остались в форме — повторите отправку.');
+    } finally {
+      setCoSending(false);
     }
   }
 
@@ -145,7 +183,7 @@ export function ContractorEstimateView() {
             {!isContractorOwner && teamRole && teamRole !== 'owner' ? (
               <Text style={{ color: '#64748B', marginTop: 8 }}>Отправку сметы делает главный исполнитель (не {teamRole}).</Text>
             ) : null}
-            {project.estimate_lock_proposed_at ? (
+            {project.estimate_lock_proposed_at && isContractorOwner ? (
               <PrimaryButton
                 title="Отозвать предложение"
                 variant="outline"
@@ -178,7 +216,7 @@ export function ContractorEstimateView() {
           </>
         )}
 
-        {user && canWrite && (
+        {user && canWrite && !project.estimate_locked_at && (
           <AddEstimateLineForm
             collapsed
             userId={user.id}
@@ -197,16 +235,27 @@ export function ContractorEstimateView() {
           />
         )}
 
+        {user ? <EstimateDocumentsLayer userId={user.id} projectId={project.id} pathname={pathname} /> : null}
         <Text style={styles.meta}>{DOCUMENTS_MENU_HINT}</Text>
         <View style={styles.links}>
           <PrimaryButton title="→ Бюджет" variant="outline" onPress={() => pushOsNav(budgetTabRoute('contractor', 'summary'), pathname, 'contractor')} />
           <PrimaryButton title="→ Материалы" variant="outline" onPress={() => pushOsNav(repairTabRoute('contractor', 'materials'), pathname, 'contractor')} />
         </View>
 
+        {project.estimate_locked_at ? (
+          <Text style={styles.sectionHint}>Смета зафиксирована: новые строки добавляются через доп. работу ниже.</Text>
+        ) : null}
         <Text style={styles.section}>Изменение сметы (доп. работа)</Text>
         <Text style={styles.sectionHint}>Отдельная заявка заказчику — не правка строки сметы.</Text>
-        <TextInput style={styles.inpFull} value={coTitle} onChangeText={setCoTitle} placeholder="Название работы" />
-        <TextInput style={styles.inpFull} value={coAmount} onChangeText={setCoAmount} keyboardType="decimal-pad" placeholder="Сумма" />
+        <ContractorChangeOrdersList
+          orders={orders}
+          loaded={ordersLoaded}
+          failed={ordersFailed}
+          stageName={(stageId) => (stageId ? (project.stages ?? []).find((st) => st.id === stageId)?.name ?? null : null)}
+          onRetry={reloadOrders}
+        />
+        <TextInput style={styles.inpFull} value={coTitle} onChangeText={setCoTitle} placeholder="Название работы, например «Доп. розетки»" />
+        <TextInput style={styles.inpFull} value={coAmount} onChangeText={setCoAmount} keyboardType="decimal-pad" placeholder="Сумма, ₽" />
         {(project.stages ?? []).length > 0 ? (
           <>
             <Text style={styles.sectionHint}>Этап (необязательно): счёт допработы привяжется к нему.</Text>
@@ -223,7 +272,7 @@ export function ContractorEstimateView() {
             </View>
           </>
         ) : null}
-        <PrimaryButton disabled={!canWrite} title="Отправить на согласование" onPress={addChangeOrder} />
+        <PrimaryButton disabled={!canWrite || coSending} loading={coSending} title="Отправить на согласование" onPress={addChangeOrder} />
       </ScrollView>
     </>
   );

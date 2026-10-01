@@ -195,6 +195,8 @@ export function CreateRoomSheet({
         onChange={setFloor}
         max={propertyType === 'house' ? 3 : 1}
       />
+      {/* OBJ-27: типовые значения не должны выглядеть как замеры пользователя. */}
+      <Text style={s.presetHint}>Размеры и число точек подставлены как типовые для выбранного типа комнаты. Замените их своими замерами — по ним считаются смета и бюджет.</Text>
       <RoomDimensionsSection values={dimValues} setters={dimSetters} />
       <RoomEngineeringSection values={dimValues} setters={dimSetters} />
     </SheetSurface>
@@ -202,5 +204,6 @@ export function CreateRoomSheet({
 }
 
 const s = StyleSheet.create({
+  presetHint: { fontSize: 12, lineHeight: 17, color: RenovaTheme.colors.textMuted, marginBottom: 8 },
   validation: { fontSize: 12, color: RenovaTheme.colors.warning, textAlign: 'center' },
 });

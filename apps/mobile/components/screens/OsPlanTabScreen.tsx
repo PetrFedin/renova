@@ -74,7 +74,8 @@ export function OsPlanTabScreen({
 
   const setSubTab = useCallback((id: PlanSub) => {
     setSub(id);
-    router.setParams({ sub: id });
+    // OBJ-15: ручной выбор слоя сбрасывает ?punch=1, иначе эффект выше вернёт «Планировку».
+    router.setParams({ sub: id, punch: undefined });
   }, []);
 
   if (!activeProject || !user) {

@@ -12,6 +12,7 @@ import { objectTabGuideCompact } from '@/lib/detailLevelPolicy';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { useDetailLevel } from '@/lib/useDetailLevel';
 import { reportCatch } from '@/lib/reportError';
+import { useRenova } from '@/lib/context/RenovaContext';
 
 export type ObjectTabId = 'profile' | 'rooms' | 'estimate' | 'plan';
 
@@ -48,9 +49,16 @@ const PLAN_LINKS = (role: OsRole) => [
   { label: '→ Деньги', href: budgetTabHref(role, 'summary') },
 ] as const;
 
-function dismissKey(tab: ObjectTabId) {
-  return `renova_object_guide_dismissed_${tab}`;
+/** OBJ-31: ключ скрытия — по аккаунту и роли, чтобы подсказка не пропадала у другого пользователя устройства. */
+function dismissKey(tab: ObjectTabId, userId?: string | null) {
+  return userId ? `renova_object_guide_dismissed_${userId}_${tab}` : `renova_object_guide_dismissed_${tab}`;
 }
+
+/** Подсказка вкладки «Смета» для исполнителя: у него нет слоя «Изменения», доп. работа — форма внизу. */
+const CONTRACTOR_ESTIMATE_GUIDE: Pick<Guide, 'read' | 'do'> = {
+  read: 'Смета проекта: строки работ и материалов, предложение заказчику.',
+  do: 'Правьте строки и отправьте смету на согласование. После фиксации новые работы — через «доп. работу» внизу экрана.',
+};
 
 export function ObjectTabGuide({
   tab,
@@ -64,7 +72,10 @@ export function ObjectTabGuide({
   /** Принудительный compact; по умолчанию — из detailLevel (brief → compact) */
   compact?: boolean;
 }) {
-  const g = GUIDES[tab];
+  const { user } = useRenova();
+  const base = GUIDES[tab];
+  const effectiveRole = role ?? (user?.role === 'contractor' ? 'contractor' : undefined);
+  const g = tab === 'estimate' && effectiveRole === 'contractor' ? { ...base, ...CONTRACTOR_ESTIMATE_GUIDE } : base;
   const pathname = usePathname();
   const detailLevel = useDetailLevel();
   const compact = compactProp ?? objectTabGuideCompact(detailLevel);
@@ -74,7 +85,7 @@ export function ObjectTabGuide({
 
   useEffect(() => {
     let alive = true;
-    AsyncStorage.getItem(dismissKey(tab))
+    AsyncStorage.getItem(dismissKey(tab, user?.id))
       .then((v) => {
         if (alive) {
           setDismissed(v === '1');
@@ -88,12 +99,12 @@ export function ObjectTabGuide({
     return () => {
       alive = false;
     };
-  }, [tab]);
+  }, [tab, user?.id]);
 
   const dismiss = useCallback(() => {
     setDismissed(true);
-    AsyncStorage.setItem(dismissKey(tab), '1').catch(reportCatch('ObjectTabGuide.dismissSave'));
-  }, [tab]);
+    AsyncStorage.setItem(dismissKey(tab, user?.id), '1').catch(reportCatch('ObjectTabGuide.dismissSave'));
+  }, [tab, user?.id]);
 
   if (!ready || dismissed) return null;
 

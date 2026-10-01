@@ -62,6 +62,22 @@ export const designApi = {
       throw new Error('offline_queued');
     }
   },
+  /** OBJ-17: заказчик возвращает пакет на доработку (сервер: pending → rejected). */
+  rejectDesignPackage: async (userId: string, projectId: string, id: string) => {
+    try {
+      return await req(`/api/v1/projects/${projectId}/design-packages/${id}/reject`, { method: 'POST' }, userId);
+    } catch (e) {
+      if (!isQueueableWriteError(e)) throw e;
+      const { enqueue } = await import('@/lib/offlineQueue');
+      await enqueue({
+        path: `/api/v1/projects/${projectId}/design-packages/${id}/reject`,
+        method: 'POST',
+        body: '{}',
+        userId,
+      });
+      throw new Error('offline_queued');
+    }
+  },
   designDiff: (userId: string, projectId: string, v1?: number, v2?: number) =>
     req(`/api/v1/projects/${projectId}/design-packages/diff?v1=${v1 || 1}&v2=${v2 || 2}`, {}, userId),
 };
