@@ -14,7 +14,8 @@ type Props = {
   stageName: string;
   /** qualityScore: null = без оценки (не подставляем 10/5) */
   onAccept: (qualityScore: number | null) => void;
-  onReturn: (reason: string, qualityScore: number | null) => void;
+  /** Promise<false> = ошибка: модалка остаётся открытой с введённой причиной */
+  onReturn: (reason: string, qualityScore: number | null) => Promise<boolean | void> | boolean | void;
   acceptDisabled?: boolean;
   returnDisabled?: boolean;
   busy?: boolean;
@@ -62,10 +63,7 @@ export function AcceptanceDecisionButtons({
         visible={returnOpen}
         stageName={stageName}
         onClose={() => setReturnOpen(false)}
-        onConfirm={(reason) => {
-          setReturnOpen(false);
-          onReturn(reason, score);
-        }}
+        onConfirm={(reason) => onReturn(reason, score)}
       />
     </View>
   );

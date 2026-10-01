@@ -1,3 +1,4 @@
+import { formatRiskImpact } from '@/lib/domain/formatRiskImpact';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
@@ -128,7 +129,7 @@ export function ManagerDashboardScreen() {
       <View style={styles.heroCard}>
         <Text style={styles.heroLabel}>Главный риск</Text>
         <Text style={[styles.heroTitle, { color: riskColor }]}>{topRisk?.title || riskLabel(budget?.risk)}</Text>
-        <Text style={styles.heroText}>{topRisk?.impact || 'Критичных отклонений в текущей сводке нет.'}</Text>
+        <Text style={styles.heroText}>{formatRiskImpact(topRisk?.impact) || 'Критичных отклонений в текущей сводке нет.'}</Text>
         {topRisk?.href ? <PrimaryButton title="Открыть риск" variant="outline" compact onPress={() => pushOsNav(topRisk.href!, undefined, role)} /> : null}
       </View>
 
@@ -136,12 +137,12 @@ export function ManagerDashboardScreen() {
         <KpiCard
           label="Бюджет"
           value={budget ? formatRub(budget.budget_spent) : '—'}
-          hint={budget ? `План: ${formatRub(budget.budget_planned)} · отклонение ${Math.round(budget.deviation_pct || 0)}%` : 'Нет данных бюджета'}
+          hint={budget ? `План: ${formatRub(budget.budget_planned)}${budget.budget_spent > 0 ? ` · отклонение ${Math.round(budget.deviation_pct || 0)}%` : ' · факт не внесён'}` : 'Нет данных бюджета'}
         />
         <KpiCard
           label="Прогноз"
-          value={budget ? formatRub(budget.forecast_total) : '—'}
-          hint={budget ? `Перерасход: ${formatRub(Math.max(0, budget.forecast_over || 0))}` : 'Прогноз недоступен'}
+          value={budget && budget.budget_spent > 0 ? formatRub(budget.forecast_total) : '—'}
+          hint={budget && budget.budget_spent > 0 ? `Перерасход: ${formatRub(Math.max(0, budget.forecast_over || 0))}` : 'Прогноз появится после первых расходов'}
         />
         <KpiCard
           label="Риски"

@@ -1,8 +1,9 @@
 /** Создание нового этапа ремонта — исполнитель */
 import { useState } from 'react';
-import { Modal, View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
-import { notifyAlert, notifyError } from '@/lib/notify';
-import { RenovaTheme } from '@/constants/Theme';
+import { Text, TextInput } from 'react-native';
+import { notifyError } from '@/lib/notify';
+import { SheetSurface, sheetContentStyles } from '@/components/renova/SheetSurface';
+import { checkDateRange } from '@/lib/validateDate';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RoomPickerChips } from '@/components/renova/RoomPickerChips';
 import type { ProjectDetail } from '@/lib/api';
@@ -10,8 +11,6 @@ import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { alertStageCreated } from '@/lib/fieldCommsNav';
 import type { OsRole } from '@/constants/osSections';
-
-type PropagationEvent = { stopPropagation?: () => void };
 
 export function CreateStageSheet({
   visible,
@@ -31,21 +30,22 @@ export function CreateStageSheet({
   const { user } = useRenova();
   const role: OsRole = user?.role === 'customer' ? 'customer' : 'contractor';
   const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   async function submit() {
-    if (!name.trim()) return;
+    if (!name.trim() || busy) return;
+    const dates = checkDateRange(start, end);
+    if (!dates.ok) { setFormError(dates.error); return; }
+    setFormError(null);
     setBusy(true);
     try {
       await onCreate({
         name: name.trim(),
-        planned_start: start || undefined,
-        planned_end: end || undefined,
+        planned_start: dates.start,
+        planned_end: dates.end,
         room_ids: roomId ? [roomId] : undefined,
       });
-      setName('');
-      setStart('');
-      setEnd('');
-      setRoomId(null);
+      reset();
       onClose();
       // W134: этап → график / работы
       alertStageCreated(role);
@@ -53,10 +53,7 @@ export function CreateStageSheet({
       // W113: offline из createStage
       if (isOfflineQueued(e)) {
         notifyOfflineQueued('Этап');
-        setName('');
-        setStart('');
-        setEnd('');
-        setRoomId(null);
+        reset();
         onClose();
       } else {
         notifyError('Ошибка', e, 'Не удалось создать этап');
@@ -66,28 +63,34 @@ export function CreateStageSheet({
     }
   }
 
+  function reset() {
+    setName('');
+    setStart('');
+    setEnd('');
+    setRoomId(null);
+    setFormError(null);
+  }
+
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={s.backdrop} onPress={onClose}>
-        <Pressable style={s.sheet} onPress={(event: PropagationEvent) => event.stopPropagation?.()}>
-          <Text style={s.head}>Новый этап</Text>
-          <TextInput style={s.inp} value={name} onChangeText={setName} placeholder="Название (например: Штукатурка)" />
-          <TextInput style={s.inp} value={start} onChangeText={setStart} placeholder="Начало ГГГГ-ММ-ДД" />
-          <TextInput style={s.inp} value={end} onChangeText={setEnd} placeholder="Окончание ГГГГ-ММ-ДД" />
-          {project.rooms?.length ? (
-            <RoomPickerChips rooms={project.rooms} value={roomId} onChange={setRoomId} optional />
-          ) : null}
-          <PrimaryButton title={busy ? 'Создание…' : 'Создать этап'} onPress={submit} disabled={busy} />
-          <PrimaryButton title="Отмена" variant="outline" onPress={onClose} />
-        </Pressable>
-      </Pressable>
-    </Modal>
+    <SheetSurface
+      visible={visible}
+      onClose={onClose}
+      busy={busy}
+      title="Новый этап"
+      footer={
+        <>
+          <PrimaryButton title={busy ? 'Создание…' : 'Создать этап'} onPress={() => { void submit(); }} loading={busy} disabled={busy || !name.trim()} />
+          <PrimaryButton title="Отмена" variant="outline" onPress={onClose} disabled={busy} />
+        </>
+      }
+    >
+      <TextInput style={sheetContentStyles.input} value={name} onChangeText={setName} placeholder="Название (например: Штукатурка)" />
+      <TextInput style={sheetContentStyles.input} value={start} onChangeText={(v: string) => { setStart(v); setFormError(null); }} placeholder="Начало: ДД.ММ.ГГГГ" keyboardType="numbers-and-punctuation" />
+      <TextInput style={sheetContentStyles.input} value={end} onChangeText={(v: string) => { setEnd(v); setFormError(null); }} placeholder="Окончание: ДД.ММ.ГГГГ" keyboardType="numbers-and-punctuation" />
+      {formError ? <Text style={sheetContentStyles.note} accessibilityRole="alert">{formError}</Text> : null}
+      {project.rooms?.length ? (
+        <RoomPickerChips rooms={project.rooms} value={roomId} onChange={setRoomId} optional />
+      ) : null}
+    </SheetSurface>
   );
 }
-
-const s = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: RenovaTheme.colors.surface, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, paddingBottom: 28 },
-  head: { fontSize: 17, fontWeight: '800', marginBottom: 12 },
-  inp: { borderWidth: 1, borderColor: RenovaTheme.colors.borderLight, borderRadius: 10, padding: 12, marginBottom: 8, fontSize: 15 },
-});

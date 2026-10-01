@@ -1,10 +1,11 @@
 /** Создание комнаты — исполнитель (Объект → Комнаты) */
 import { useEffect, useState } from 'react';
-import { Modal, View, Text, StyleSheet, ScrollView } from 'react-native';
+import { Text, StyleSheet } from 'react-native';
 import { notifyAlert, notifyError } from '@/lib/notify';
 import { isRateLimitError } from '@/lib/api';
 import { parseNonNegativeInt, parsePositiveNumber } from '@/lib/parseLocaleNumber';
 import { RenovaTheme } from '@/constants/Theme';
+import { SheetSurface } from '@/components/renova/SheetSurface';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import type { RoomTypeId } from '@/constants/roomTypes';
 import type { ProjectDetail } from '@/lib/api';
@@ -111,7 +112,7 @@ export function CreateRoomSheet({
     const outletsN = outlets.trim() ? parseNonNegativeInt(outlets) : 0;
     const switchesN = switches.trim() ? parseNonNegativeInt(switches) : 0;
     const plumbingN = plumbing.trim() ? parseNonNegativeInt(plumbing) : 0;
-    if (!name.trim()) return;
+    if (!name.trim() || busy) return;
     if (len === null || wid === null || hei === null) {
       notifyAlert('Размеры комнаты', 'Длина, ширина и высота — положительные числа в метрах, например 4,2.');
       return;
@@ -151,56 +152,49 @@ export function CreateRoomSheet({
   const canSubmit = name.trim().length > 0 && parsePositiveNumber(length) !== null && parsePositiveNumber(width) !== null;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={s.backdrop}>
-        <View style={s.sheet}>
-          <Text style={s.head}>{requestMode ? 'Запрос новой комнаты' : 'Новая комната'}</Text>
-          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            <RoomFormGuideBox compact />
-            <PropertyTypeBanner propertyType={propertyType} />
-            <RoomNameField
-              value={name}
-              onChange={(v) => {
-                setName(v);
-                setNameTouched(true);
-              }}
-              roomType={roomType}
-            />
-            <RoomTypeSection value={roomType} onChange={setRoomType} onPreset={applyPreset} />
-            <RoomFloorSection
-              propertyType={propertyType}
-              value={floor}
-              onChange={setFloor}
-              max={propertyType === 'house' ? 3 : 1}
-            />
-            <RoomDimensionsSection values={dimValues} setters={dimSetters} />
-            <RoomEngineeringSection values={dimValues} setters={dimSetters} />
-            <PrimaryButton
-              title={busy ? (requestMode ? 'Отправка…' : 'Создание…') : (requestMode ? 'Отправить запрос' : 'Создать комнату')}
-              onPress={submit}
-              disabled={busy || !canSubmit}
-            />
-            {!canSubmit ? (
-              <Text style={s.validation}>Укажите название, длину и ширину — без них комната не сохранится.</Text>
-            ) : null}
-            <PrimaryButton title="Отмена" variant="outline" onPress={onClose} />
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
+    <SheetSurface
+      visible={visible}
+      onClose={onClose}
+      busy={busy}
+      title={requestMode ? 'Запрос новой комнаты' : 'Новая комната'}
+      footer={
+        <>
+          <PrimaryButton
+            title={busy ? (requestMode ? 'Отправка…' : 'Создание…') : (requestMode ? 'Отправить запрос' : 'Создать комнату')}
+            onPress={() => { void submit(); }}
+            loading={busy}
+            disabled={busy || !canSubmit}
+          />
+          {!canSubmit ? (
+            <Text style={s.validation}>Укажите название, длину и ширину — без них комната не сохранится.</Text>
+          ) : null}
+          <PrimaryButton title="Отмена" variant="outline" onPress={onClose} disabled={busy} />
+        </>
+      }
+    >
+      <RoomFormGuideBox compact />
+      <PropertyTypeBanner propertyType={propertyType} />
+      <RoomNameField
+        value={name}
+        onChange={(v) => {
+          setName(v);
+          setNameTouched(true);
+        }}
+        roomType={roomType}
+      />
+      <RoomTypeSection value={roomType} onChange={setRoomType} onPreset={applyPreset} />
+      <RoomFloorSection
+        propertyType={propertyType}
+        value={floor}
+        onChange={setFloor}
+        max={propertyType === 'house' ? 3 : 1}
+      />
+      <RoomDimensionsSection values={dimValues} setters={dimSetters} />
+      <RoomEngineeringSection values={dimValues} setters={dimSetters} />
+    </SheetSurface>
   );
 }
 
 const s = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
-  sheet: {
-    backgroundColor: RenovaTheme.colors.surface,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    padding: 16,
-    paddingBottom: 28,
-    maxHeight: '92%',
-  },
-  head: { fontSize: 17, fontWeight: '800', marginBottom: 12 },
-  validation: { fontSize: 12, color: RenovaTheme.colors.warning, textAlign: 'center', marginVertical: 8 },
+  validation: { fontSize: 12, color: RenovaTheme.colors.warning, textAlign: 'center' },
 });

@@ -271,7 +271,7 @@ export function DocumentsHub({
       bankImport: {
         id: 'bank-import',
         label: 'Импорт выписки',
-        desc: 'CSV банка → матч → confirm оплат (gate приёмки)',
+        desc: 'CSV банка → сопоставление → подтверждение оплат (после приёмки этапа)',
         format: 'CSV',
         run: async () => {
           setBankImportOpen(true);

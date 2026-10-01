@@ -1,15 +1,15 @@
-/** W123: импорт банковской выписки → матч → confirm оплат → бюджет (Smetter/Gectaro) */
+/** W123: импорт банковской выписки → сопоставление → подтверждение оплат → бюджет (Smetter/Gectaro) */
 import { useState } from 'react';
-import {
-  View, Text, Modal, TextInput, Pressable, StyleSheet, ActivityIndicator,
-} from 'react-native';
-import { RenovaTheme } from '@/constants/Theme';
+import { TextInput } from 'react-native';
+import { SheetSurface, sheetContentStyles } from '@/components/renova/SheetSurface';
+import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { api } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { budgetTabRoute, type OsRole } from '@/constants/osSections';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { writeResultMessage } from '@/lib/offlineResultMessage';
 
 type Props = {
   visible: boolean;
@@ -74,7 +74,7 @@ export function BankStatementImportSheet({
           .catch((e: unknown) => {
             showActionConfirm({
               title: 'Ошибка',
-              message: e instanceof Error ? e.message : 'Не удалось создать расходы',
+              message: writeResultMessage(e, 'Не удалось создать расходы'),
             });
           })
           .finally(() => setBusy(null));
@@ -85,6 +85,7 @@ export function BankStatementImportSheet({
   };
 
   const submit = async () => {
+    if (busy) return;
     const text = csv.trim();
     if (!text) {
       showActionConfirm({
@@ -125,14 +126,14 @@ export function BankStatementImportSheet({
       if (!matchToken) {
         showActionConfirm({
           title: 'Импорт выписки',
-          message: 'Сервер не выдал подтверждение матча. Загрузите выписку снова.',
+          message: 'Сервер не выдал подтверждение сопоставления. Загрузите выписку снова.',
         });
         return;
       }
 
       showActionConfirm({
         title: 'Подтвердить оплаты?',
-        message: `${summary}\n\nПодтвердить ${confirmableIds.length} pending-оплат(ы)? Требуется приёмка этапа (gate).`,
+        message: `${summary}\n\nПодтвердить оплаты, ожидающие подтверждения: ${confirmableIds.length}? Для этого этап должен быть принят.`,
         actions: [
           {
             label: 'Подтвердить',
@@ -143,7 +144,7 @@ export function BankStatementImportSheet({
                   await sync();
                   showActionConfirm({
                     title: 'Выписка → оплаты',
-                    message: `Подтверждено: ${r.confirmed_count} · уже подтверждено: ${r.replayed_count} · заблокировано gate: ${r.blocked_count}`,
+                    message: `Подтверждено: ${r.confirmed_count} · уже подтверждено: ${r.replayed_count} · не подтверждено (этап не принят): ${r.blocked_count}`,
                     actions: [
                       ...(r.confirmed_count > 0 || r.replayed_count > 0
                         ? [{ label: 'К оплатам', onPress: goPayments }]
@@ -155,14 +156,14 @@ export function BankStatementImportSheet({
                 .catch((e: unknown) => {
                   showActionConfirm({
                     title: 'Ошибка',
-                    message: e instanceof Error ? e.message : 'Не удалось подтвердить',
+                    message: writeResultMessage(e, 'Не удалось подтвердить'),
                   });
                 })
                 .finally(() => setBusy(null));
             },
           },
           {
-            label: 'Только матч',
+            label: 'Только сопоставить',
             onPress: () => askExpenses(text, unmatched),
           },
         ],
@@ -170,7 +171,7 @@ export function BankStatementImportSheet({
     } catch (e: unknown) {
       showActionConfirm({
         title: 'Ошибка',
-        message: e instanceof Error ? e.message : 'Не удалось импортировать',
+        message: writeResultMessage(e, 'Не удалось импортировать'),
       });
     } finally {
       setBusy(null);
@@ -178,76 +179,28 @@ export function BankStatementImportSheet({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={s.backdrop}>
-        <View style={s.card}>
-          <Text style={s.title}>Импорт банковской выписки</Text>
-          <Text style={s.hint}>
-            Формат: дата;сумма;назначение. Совпавшие pending-счета можно подтвердить (как в 1С/банке).
-          </Text>
-          <TextInput
-            style={s.input}
-            multiline
-            placeholder={'2026-07-01;150000;Оплата этапа черновые\n...'}
-            value={csv}
-            onChangeText={setCsv}
-            textAlignVertical="top"
-            editable={!busy}
-          />
-          <View style={s.actions}>
-            <Pressable onPress={onClose} style={s.btnGhost} disabled={!!busy}>
-              <Text style={s.btnGhostT}>Отмена</Text>
-            </Pressable>
-            <Pressable onPress={submit} style={s.btn} disabled={!!busy}>
-              {busy ? (
-                <ActivityIndicator color={RenovaTheme.colors.surface} />
-              ) : (
-                <Text style={s.btnT}>Импортировать</Text>
-              )}
-            </Pressable>
-          </View>
-        </View>
-      </View>
-    </Modal>
+    <SheetSurface
+      visible={visible}
+      onClose={onClose}
+      busy={!!busy}
+      title="Импорт банковской выписки"
+      subtitle="Формат: дата;сумма;назначение. Совпавшие неоплаченные счета можно подтвердить (как в 1С/банке)."
+      footer={
+        <>
+          <PrimaryButton title="Импортировать" onPress={() => { void submit(); }} loading={!!busy} disabled={!!busy} />
+          <PrimaryButton title="Отмена" variant="ghost" onPress={onClose} disabled={!!busy} />
+        </>
+      }
+    >
+      <TextInput
+        style={[sheetContentStyles.input, { minHeight: 140 }]}
+        multiline
+        placeholder={'2026-07-01;150000;Оплата этапа черновые\n...'}
+        value={csv}
+        onChangeText={setCsv}
+        textAlignVertical="top"
+        editable={!busy}
+      />
+    </SheetSurface>
   );
 }
-
-const s = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-  },
-  card: {
-    backgroundColor: RenovaTheme.colors.surface,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    padding: 16,
-    paddingBottom: 28,
-    gap: 10,
-  },
-  title: { fontSize: 17, fontWeight: '700', color: RenovaTheme.colors.text },
-  hint: { fontSize: 13, color: RenovaTheme.colors.textMuted, lineHeight: 18 },
-  input: {
-    minHeight: 140,
-    borderWidth: 1,
-    borderColor: RenovaTheme.colors.border,
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 14,
-    color: RenovaTheme.colors.text,
-    backgroundColor: RenovaTheme.colors.background,
-  },
-  actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 4 },
-  btn: {
-    backgroundColor: RenovaTheme.colors.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 10,
-    minWidth: 120,
-    alignItems: 'center',
-  },
-  btnT: { color: RenovaTheme.colors.surface, fontWeight: '700', fontSize: 14 },
-  btnGhost: { paddingHorizontal: 14, paddingVertical: 12 },
-  btnGhostT: { color: RenovaTheme.colors.textMuted, fontWeight: '600', fontSize: 14 },
-});

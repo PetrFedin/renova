@@ -36,7 +36,7 @@ type Props = {
   /** qualityScore: null = без оценки (не подставляем 10/5) */
   onAcceptPress: (qualityScore: number | null) => void;
   /** Причина возврата обязательна (запрашивается в AcceptanceDecisionButtons) */
-  onReturnPress: (reason: string, qualityScore: number | null) => void;
+  onReturnPress: (reason: string, qualityScore: number | null) => Promise<boolean>;
   onExportAcceptance: () => void;
   onReload: () => Promise<void>;
 };

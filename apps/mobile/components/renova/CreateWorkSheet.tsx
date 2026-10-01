@@ -1,6 +1,6 @@
 /** Форма создания работы — секции: что · где · когда · бюджет */
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Pressable, ScrollView, Modal } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
 import { notifyAlert, notifyError } from '@/lib/notify';
 import { RenovaTheme, card, formatRub } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';
@@ -19,6 +19,8 @@ import { alertWorkCreated } from '@/lib/fieldCreateNav';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import type { OsRole } from '@/constants/osSections';
 import { reportError } from '@/lib/reportError';
+import { SheetSurface } from '@/components/renova/SheetSurface';
+import { checkDateRange, parseDateInput } from '@/lib/validateDate';
 
 type Props = {
   visible: boolean;
@@ -72,6 +74,7 @@ export function CreateWorkSheet({
   const [budget, setBudget] = useState('');
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
+  const [dateError, setDateError] = useState<string | null>(null);
   const [tab, setTab] = useState<FormTab>('form');
   const [regionCode, setRegionCode] = useState('moscow');
   const [complexity, setComplexity] = useState(1);
@@ -139,8 +142,9 @@ export function CreateWorkSheet({
   const onEstimate = (est: MarketEstimate) => {
     setBudget(String(Math.round(est.grand_total)));
     setDaysEst(est.days_estimated);
-    if (est.days_estimated && plannedStart) {
-      const d = new Date(plannedStart);
+    const startIso = parseDateInput(plannedStart);
+    if (est.days_estimated && startIso) {
+      const d = new Date(`${startIso}T12:00:00`);
       d.setDate(d.getDate() + Math.ceil(est.days_estimated));
       setPlannedEnd(d.toISOString().slice(0, 10));
     }
@@ -158,6 +162,13 @@ export function CreateWorkSheet({
       notifyAlert('Бюджет работы', 'Введите бюджет числом, например 25 000 или 25000,50.');
       return;
     }
+    const dates = checkDateRange(plannedStart, plannedEnd, { start: isCustomer ? 'День' : 'Старт', end: isCustomer ? 'До' : 'Финиш' });
+    if (!dates.ok) {
+      setDateError(dates.error);
+      return;
+    }
+    setDateError(null);
+    if (busy) return;
     setBusy(true);
     try {
       let wo: import('@/lib/api').WorkOrder;
@@ -166,8 +177,8 @@ export function CreateWorkSheet({
           title,
           work_type: workType,
           room_id: roomId || null,
-          planned_start: plannedStart || null,
-          planned_end: plannedEnd || plannedStart || null,
+          planned_start: dates.start ?? null,
+          planned_end: dates.end ?? dates.start ?? null,
           budget_planned: budgetNum,
           notes: notes || null,
           publish,
@@ -224,13 +235,28 @@ export function CreateWorkSheet({
     }
   }
 
-  return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={s.backdrop}>
-        <View style={s.sheet}>
-          <Text style={s.head}>{isCustomer ? 'Задача на день' : 'Новая работа'}</Text>
-          <Text style={s.guide}>{isCustomer ? 'Можно несколько задач в один день — каждая отдельной строкой в календаре.' : WORK_FORM_HINTS.guide}</Text>
+  const footer = isCustomer ? (
+    <>
+      <PrimaryButton title="Добавить в план" loading={busy} disabled={busy} onPress={() => submit(true)} />
+      <PrimaryButton title="Отмена" variant="outline" disabled={busy} onPress={onClose} />
+    </>
+  ) : (
+    <>
+      <PrimaryButton title="Опубликовать" loading={busy} disabled={busy} onPress={() => submit(true)} />
+      <PrimaryButton title="Черновик" variant="outline" disabled={busy} onPress={() => submit(false)} />
+      <PrimaryButton title="Отмена" variant="ghost" disabled={busy} onPress={onClose} />
+    </>
+  );
 
+  return (
+    <SheetSurface
+      visible={visible}
+      onClose={onClose}
+      busy={busy}
+      title={isCustomer ? 'Задача на день' : 'Новая работа'}
+      subtitle={isCustomer ? 'Можно несколько задач в один день — каждая отдельной строкой в календаре.' : WORK_FORM_HINTS.guide}
+      footer={footer}
+    >
           {!isCustomer ? (
           <View style={s.tabs}>
             <Pressable style={[s.tab, tab === 'form' && s.tabOn]} onPress={() => setTab('form')}>
@@ -242,7 +268,7 @@ export function CreateWorkSheet({
           </View>
           ) : null}
 
-          <ScrollView style={{ maxHeight: 460 }} keyboardShouldPersistTaps="handled">
+          <View>
             {tab === 'form' || isCustomer ? (
               <>
                 {preview ? (
@@ -311,8 +337,8 @@ export function CreateWorkSheet({
                       <TextInput
                         style={s.input}
                         value={plannedStart}
-                        onChangeText={setPlannedStart}
-                        placeholder="2026-07-06"
+                        onChangeText={(v: string) => { setPlannedStart(v); setDateError(null); }}
+                        placeholder="ДД.ММ.ГГГГ"
                       />
                       <Text style={s.dateHint}>{isCustomer ? 'День' : 'Старт'}</Text>
                     </View>
@@ -320,12 +346,13 @@ export function CreateWorkSheet({
                       <TextInput
                         style={s.input}
                         value={plannedEnd}
-                        onChangeText={setPlannedEnd}
-                        placeholder="2026-07-10"
+                        onChangeText={(v: string) => { setPlannedEnd(v); setDateError(null); }}
+                        placeholder="ДД.ММ.ГГГГ"
                       />
                       <Text style={s.dateHint}>{isCustomer ? 'До (необяз.)' : 'Финиш'}</Text>
                     </View>
                   </View>
+                  {dateError ? <Text style={s.dateErr} accessibilityRole="alert">{dateError}</Text> : null}
                 </WorkFormSection>
 
                 <WorkFormSection title="Бюджет" hint={WORK_FORM_HINTS.budget}>
@@ -376,25 +403,8 @@ export function CreateWorkSheet({
                 />
               </View>
             )}
-          </ScrollView>
-
-          <View style={s.actions}>
-            {isCustomer ? (
-              <>
-                <PrimaryButton title="Добавить в план" disabled={busy} onPress={() => submit(true)} />
-                <PrimaryButton title="Отмена" variant="outline" disabled={busy} onPress={onClose} />
-              </>
-            ) : (
-              <>
-                <PrimaryButton title="Черновик" variant="outline" disabled={busy} onPress={() => submit(false)} />
-                <PrimaryButton title="Опубликовать" disabled={busy} onPress={() => submit(true)} />
-                <PrimaryButton title="Отмена" variant="outline" disabled={busy} onPress={onClose} />
-              </>
-            )}
           </View>
-        </View>
-      </View>
-    </Modal>
+    </SheetSurface>
   );
 }
 
@@ -442,6 +452,7 @@ const s = StyleSheet.create({
   area: { minHeight: 72, textAlignVertical: 'top' },
   dateRow: { flexDirection: 'row', gap: 10 },
   dateCol: { flex: 1, gap: 4 },
+  dateErr: { fontSize: 12, color: RenovaTheme.colors.danger },
   dateHint: { fontSize: 11, color: RenovaTheme.colors.textSubtle },
   metaHint: { fontSize: 12, color: RenovaTheme.colors.textMuted },
   link: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.primary, marginTop: 4 },

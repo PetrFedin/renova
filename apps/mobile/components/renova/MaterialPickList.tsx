@@ -27,6 +27,8 @@ import {
 } from '@/lib/procurementNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { parseNonNegativeNumber } from '@/lib/parseLocaleNumber';
+import { useBusyAction } from '@/lib/hooks/useBusyAction';
+import { writeResultMessage } from '@/lib/offlineResultMessage';
 
 const fmtQty = (value: number) => Number(value.toFixed(3)).toLocaleString('ru-RU');
 
@@ -63,6 +65,8 @@ export function MaterialPickList({
   const [editSource, setEditSource] = useState<MaterialSupplySource>('contractor_to_buy');
   const [editAvailable, setEditAvailable] = useState('0');
   const [supplyBusyId, setSupplyBusyId] = useState<string | null>(null);
+  const submitAction = useBusyAction();
+  const createAction = useBusyAction();
 
   const load = useCallback(() => {
     api.listMaterialPicks(userId, projectId, wt).then(setItems).catch(reportCatch('components.renova.MaterialPickList.1'));
@@ -122,7 +126,7 @@ export function MaterialPickList({
     } catch (error) {
       showActionConfirm({
         title: 'Источник не изменён',
-        message: error instanceof Error ? error.message : 'Проверьте данные и повторите.',
+        message: writeResultMessage(error, 'Проверьте данные и повторите.'),
       });
     } finally {
       setSupplyBusyId(null);
@@ -229,7 +233,7 @@ export function MaterialPickList({
                   } catch (e) {
                     showActionConfirm({
                       title: 'Цена не проверена',
-                      message: e instanceof Error ? e.message : 'Не удалось обновить цену',
+                      message: writeResultMessage(e, 'Не удалось обновить цену'),
                     });
                   }
                 }}
@@ -256,7 +260,7 @@ export function MaterialPickList({
                       } catch (e: unknown) {
                         showActionConfirm({
                           title: 'Ошибка',
-                          message: e instanceof Error ? e.message : 'Не удалось согласовать',
+                          message: writeResultMessage(e, 'Не удалось согласовать'),
                         });
                       }
                     })();
@@ -267,11 +271,13 @@ export function MaterialPickList({
               }} />
             )}
             {!readOnly && role === 'contractor' && p.status === 'draft' && (
-              <PrimaryButton title="На согласование" variant="outline" onPress={async () => {
-                await api.submitMaterialPick(userId, projectId, p.id);
-                await syncAfter();
-                await refresh();
-                alertMaterialPickSubmitted(role);
+              <PrimaryButton title="На согласование" variant="outline" loading={submitAction.busy} onPress={() => {
+                void submitAction.run(async () => {
+                  await api.submitMaterialPick(userId, projectId, p.id);
+                  await syncAfter();
+                  await refresh();
+                  alertMaterialPickSubmitted(role);
+                }, 'Не удалось отправить на согласование');
               }} />
             )}
           </View>
@@ -313,7 +319,7 @@ export function MaterialPickList({
               keyboardType="decimal-pad"
             />
           ) : null}
-          <PrimaryButton title="Сохранить" onPress={async () => {
+          <PrimaryButton title="Сохранить" loading={createAction.busy} onPress={() => {
             const available = createSource === 'customer_on_hand' ? 1 : (createAvailable.trim() ? parseNonNegativeNumber(createAvailable) : 0);
             const priceNum = price.trim() ? parseNonNegativeNumber(price) : 0;
             if (priceNum === null) {
@@ -324,24 +330,26 @@ export function MaterialPickList({
               showActionConfirm({ title: 'Доступное количество', message: 'Введите число от 0 до 1 (количество нового материала — 1 шт).' });
               return;
             }
-            await api.createMaterialPick(userId, projectId, {
-              name: name || 'Материал',
-              price: priceNum,
-              qty: 1,
-              unit: 'шт',
-              work_type: wt,
-              room_id: roomId,
-              supply_source: createSource,
-              qty_available: available,
-            });
-            setName('');
-            setPrice('');
-            setRoomId(null);
-            setCreateSource('contractor_to_buy');
-            setCreateAvailable('0');
-            setShowForm(false);
-            await syncAfter();
-            await refresh();
+            void createAction.run(async () => {
+              await api.createMaterialPick(userId, projectId, {
+                name: name || 'Материал',
+                price: priceNum,
+                qty: 1,
+                unit: 'шт',
+                work_type: wt,
+                room_id: roomId,
+                supply_source: createSource,
+                qty_available: available,
+              });
+              setName('');
+              setPrice('');
+              setRoomId(null);
+              setCreateSource('contractor_to_buy');
+              setCreateAvailable('0');
+              setShowForm(false);
+              await syncAfter();
+              await refresh();
+            }, 'Материал не сохранён');
           }} />
         </View>
       )}

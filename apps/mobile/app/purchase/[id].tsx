@@ -15,6 +15,7 @@ import { pushOsNav, replaceOsNav } from '@/lib/pushOsNav';
 import { PURCHASE_NEXT_STATUS, purchaseAdvanceLabel, purchaseRoleMayMove } from '@/lib/domain/purchaseLifecycle';
 import { alertPurchaseAdvanced } from '@/lib/procurementNav';
 import { reportError } from '@/lib/reportError';
+import { useBusyAction } from '@/lib/hooks/useBusyAction';
 
 const ST: Record<string, string> = {
   draft: 'Черновик', approved: 'Согласовано', ordered: 'Заказано', paid: 'Оплачено',
@@ -27,6 +28,7 @@ export default function PurchaseDetailScreen() {
   const canWrite = useWriteAllowed();
   const [purchase, setPurchase] = useState<Purchase | null>(null);
   const role = user?.role === 'contractor' ? 'contractor' : 'customer';
+  const advance = useBusyAction();
 
   const reload = useCallback(() => {
     if (!user || !activeProject || !id) return;
@@ -62,12 +64,15 @@ export default function PurchaseDetailScreen() {
         {canWrite && next && user && activeProject && (
           <PrimaryButton
             title={purchaseAdvanceLabel(next)}
-            onPress={async () => {
-              await api.updatePurchaseStatus(user.id, activeProject.id, purchase.id, next);
-              await syncProjectSideEffects({ user, project: activeProject });
-              reload();
-              // W128: lifecycle → факт / календарь
-              alertPurchaseAdvanced(role, next);
+            loading={advance.busy}
+            onPress={() => {
+              void advance.run(async () => {
+                await api.updatePurchaseStatus(user.id, activeProject.id, purchase.id, next);
+                await syncProjectSideEffects({ user, project: activeProject });
+                reload();
+                // W128: lifecycle → факт / календарь
+                alertPurchaseAdvanced(role, next);
+              }, 'Статус закупки не изменён');
             }}
           />
         )}

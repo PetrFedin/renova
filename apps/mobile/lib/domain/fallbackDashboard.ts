@@ -18,7 +18,7 @@ export function fallbackDashboard(project: ProjectDetail): Dashboard {
     budget_planned: planned,
     budget_spent: spent,
     budget_variance_percent: variance,
-    days_overdue: 0,
+    days_overdue: null,
     next_action_title: allDone
       ? 'Закрытие проекта'
       : activeStage

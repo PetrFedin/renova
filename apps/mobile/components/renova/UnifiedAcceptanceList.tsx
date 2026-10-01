@@ -53,14 +53,15 @@ export function UnifiedAcceptanceList({
     item: UnifiedAcceptanceItem,
     action: 'accept' | 'return',
     opts: { qualityScore: number | null; reason?: string },
-  ) => {
-    if (!userId || !projectId) return;
+  ): Promise<boolean> => {
+    if (!userId || !projectId) return false;
+    let ok = true;
     setBusyId(item.id);
     try {
       if (action === 'accept') {
         if (item.kind !== 'acceptance') {
           pushStageDetail(item.stageId, returnTo);
-          return;
+          return false;
         }
         await api.acceptWork(
           userId,
@@ -77,7 +78,7 @@ export function UnifiedAcceptanceList({
         alertStageAccepted(role);
       } else {
         const reason = opts.reason?.trim();
-        if (!reason) return; // причина возврата обязательна (проверяет и RejectStageModal)
+        if (!reason) return false; // причина возврата обязательна (проверяет и RejectStageModal)
         if (item.kind === 'acceptance') {
           await api.returnWork(
             userId,
@@ -96,6 +97,7 @@ export function UnifiedAcceptanceList({
     } catch (e: unknown) {
       if (isOfflineQueued(e)) notifyOfflineQueued(action === 'accept' ? 'Приёмка' : 'Возврат');
       else {
+        ok = false;
         const code = (e as { code?: string })?.code;
         if (action === 'accept' && (code === 'checklist_required' || code === 'checklist_incomplete')) {
           showActionConfirm({
@@ -113,6 +115,7 @@ export function UnifiedAcceptanceList({
     } finally {
       setBusyId(null);
     }
+    return ok;
   };
 
   const resubmit = (item: ReworkItem) => {
@@ -169,9 +172,12 @@ export function UnifiedAcceptanceList({
               onSecondary: () => undefined,
             });
           }}
-          onReturn={(reason, qualityScore) => {
-            decide(it, 'return', { qualityScore, reason }).catch(reportCatch('acceptance.return'));
-          }}
+          onReturn={(reason, qualityScore) =>
+            decide(it, 'return', { qualityScore, reason }).catch((e) => {
+              reportCatch('acceptance.return')(e);
+              return false;
+            })
+          }
         />
       ))}
       <ActionConfirmSheet
@@ -201,7 +207,7 @@ function AcceptanceRow({
   item: UnifiedAcceptanceItem;
   onOpen: () => void;
   onAccept: (qualityScore: number | null) => void;
-  onReturn: (reason: string, qualityScore: number | null) => void;
+  onReturn: (reason: string, qualityScore: number | null) => Promise<boolean>;
   isContractor: boolean;
   busy: boolean;
 }) {

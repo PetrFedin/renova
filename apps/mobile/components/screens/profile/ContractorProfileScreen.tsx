@@ -1,5 +1,5 @@
 import { requireSuccessfulTeamInvite } from '@/lib/teamJoinFlow';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, View, Text, TextInput, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -25,7 +25,10 @@ import { profileScreenStyles as ps } from './profileScreenStyles';
 import { alertTeamInviteSent, alertTeamCreated, alertRequisitesSaved } from '@/lib/fieldCommsNav';
 import * as WebBrowser from 'expo-web-browser';
 import { reportCatch, reportError } from '@/lib/reportError';
+import { useBusyAction } from '@/lib/hooks/useBusyAction';
+import { buildRequisitesPatch, canSaveProfile, type ProfileLoadState, type RequisitesFields } from '@/lib/contractorProfileSave';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { writeResultMessage } from '@/lib/offlineResultMessage';
 
 /** Без дубля шапки «Ещё» (Архив там). Sprint IA. */
 const EXTRA_ITEMS = [
@@ -75,7 +78,7 @@ function TeamSection() {
                           await syncProjectSideEffects({ user, project: activeProject });
                           setTeam(await api.getTeam(user.id));
                         } catch (e: unknown) {
-                          showActionConfirm({ title: 'Не удалось убрать', message: e instanceof Error ? e.message : 'Повторите позже' });
+                          showActionConfirm({ title: 'Не удалось убрать', message: writeResultMessage(e, 'Повторите позже') });
                         }
                       },
                       secondaryLabel: 'Отмена',
@@ -101,7 +104,7 @@ function TeamSection() {
                       await syncProjectSideEffects({ user, project: activeProject });
                       setTeam(null);
                     } catch (e: unknown) {
-                      showActionConfirm({ title: 'Не удалось выйти', message: e instanceof Error ? e.message : 'Повторите позже' });
+                      showActionConfirm({ title: 'Не удалось выйти', message: writeResultMessage(e, 'Повторите позже') });
                     }
                   },
                   secondaryLabel: 'Отмена',
@@ -130,7 +133,7 @@ function TeamSection() {
                 setPhone('');
                 alertTeamInviteSent('contractor');
               } catch (e: unknown) {
-                showActionConfirm({ title: 'Ошибка', message: e instanceof Error ? e.message : 'Не удалось пригласить' });
+                showActionConfirm({ title: 'Ошибка', message: writeResultMessage(e, 'Не удалось пригласить') });
               }
             }}
           />
@@ -147,7 +150,7 @@ function TeamSection() {
               alertTeamCreated('contractor');
             } catch (e: unknown) {
               setTeam(null);
-              showActionConfirm({ title: 'Ошибка', message: e instanceof Error ? e.message : 'Не удалось создать бригаду' });
+              showActionConfirm({ title: 'Ошибка', message: writeResultMessage(e, 'Не удалось создать бригаду') });
             }
           }}
         />
@@ -164,12 +167,25 @@ export function ContractorProfileScreen() {
   const [msg, setMsg] = useState(user?.npd_verified ? 'НПД подтверждён' : '');
   const [payReq, setPayReq] = useState('');
   const [company, setCompany] = useState('');
+  const [profileState, setProfileState] = useState<ProfileLoadState>('loading');
+  const profileBaseline = useRef<RequisitesFields>({ company_name: '', payment_requisites: '' });
+  const saveAction = useBusyAction();
   const reloadProfile = useCallback(() => {
     if (!user) return;
+    setProfileState((prev) => (prev === 'ready' ? prev : 'loading'));
     api.getMyContractorProfile(user.id).then((p) => {
-      setPayReq(p.payment_requisites || '');
-      setCompany(p.company_name || '');
-    }).catch(reportCatch('components.screens.profile.ContractorProfileScre.1'));
+      profileBaseline.current = {
+        company_name: p.company_name || '',
+        payment_requisites: p.payment_requisites || '',
+      };
+      setPayReq(profileBaseline.current.payment_requisites);
+      setCompany(profileBaseline.current.company_name);
+      setProfileState('ready');
+    }).catch((e) => {
+      reportCatch('components.screens.profile.ContractorProfileScre.1')(e);
+      // Поля остаются как были (если уже загружались), но сохранять без загруженного профиля нельзя.
+      setProfileState((prev) => (prev === 'ready' ? prev : 'error'));
+    });
   }, [user?.id]);
   useEffect(() => { reloadProfile(); }, [reloadProfile]);
   useProjectDataReload(reloadProfile);
@@ -198,35 +214,49 @@ export function ContractorProfileScreen() {
 
       <ProfileSection title="Реквизиты для оплаты">
         <Text style={ps.userMeta}>Заказчик увидит эти данные при переводе (СБП / карта / счёт). Без демо-карт.</Text>
-        <TextInput
-          style={ps.input}
-          placeholder="Название ИП / ООО"
-          value={company}
-          onChangeText={setCompany}
-        />
-        <TextInput
-          style={[ps.input, { minHeight: 88, textAlignVertical: 'top' }]}
-          placeholder={"СБП · +7…\nБанк · карта/счёт"}
-          value={payReq}
-          onChangeText={setPayReq}
-          multiline
-        />
-        <PrimaryButton
-          title="Сохранить реквизиты"
-          variant="outline"
-          onPress={async () => {
-            if (!user) return;
-            try {
-              await api.upsertContractorProfile(user.id, {
-                company_name: company || null,
-                payment_requisites: payReq || null,
-              });
-              alertRequisitesSaved('contractor');
-            } catch {
-              showActionConfirm({ title: 'Ошибка', message: 'Не удалось сохранить реквизиты' });
-            }
-          }}
-        />
+        {profileState === 'error' ? (
+          <>
+            <Text style={ps.userMeta}>Не удалось загрузить реквизиты. Сохранение отключено, чтобы не затереть данные.</Text>
+            <PrimaryButton title="Повторить" variant="outline" onPress={reloadProfile} />
+          </>
+        ) : profileState === 'loading' ? (
+          <Text style={ps.userMeta}>Загрузка реквизитов…</Text>
+        ) : (
+          <>
+            <TextInput
+              style={ps.input}
+              placeholder="Название ИП / ООО"
+              value={company}
+              onChangeText={setCompany}
+            />
+            <TextInput
+              style={[ps.input, { minHeight: 88, textAlignVertical: 'top' }]}
+              placeholder={"СБП · +7…\nБанк · карта/счёт"}
+              value={payReq}
+              onChangeText={setPayReq}
+              multiline
+            />
+            <PrimaryButton
+              title="Сохранить реквизиты"
+              variant="outline"
+              loading={saveAction.busy}
+              disabled={!canSaveProfile(profileState)}
+              onPress={() => {
+                if (!user || !canSaveProfile(profileState)) return;
+                const patch = buildRequisitesPatch(profileBaseline.current, { company_name: company, payment_requisites: payReq });
+                if (Object.keys(patch).length === 0) {
+                  showActionConfirm({ title: 'Нечего сохранять', message: 'Реквизиты не изменились.' });
+                  return;
+                }
+                void saveAction.run(async () => {
+                  await api.upsertContractorProfile(user.id, patch);
+                  profileBaseline.current = { company_name: company.trim(), payment_requisites: payReq.trim() };
+                  alertRequisitesSaved('contractor');
+                }, 'Не удалось сохранить реквизиты');
+              }}
+            />
+          </>
+        )}
       </ProfileSection>
 
       <ProfileSection title="Персонализация">
@@ -386,7 +416,7 @@ export function ContractorProfileScreen() {
                 const r = await api.revokeAllSessions(user.id);
                 showActionConfirm({ title: 'Готово', message: `Сессий закрыто: ${r.revoked}. Войдите снова на других устройствах.` });
               } catch (e) {
-                showActionConfirm({ title: 'Ошибка', message: e instanceof Error ? e.message : 'Не удалось' });
+                showActionConfirm({ title: 'Ошибка', message: writeResultMessage(e, 'Не удалось') });
               }
             }}
           />

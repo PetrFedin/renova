@@ -82,7 +82,8 @@ export type Dashboard = {
   budget_planned: number;
   budget_spent: number;
   budget_variance_percent: number;
-  days_overdue: number;
+  /** null — неизвестно (дашборд недоступен, показываем «—»), не «просрочек нет» */
+  days_overdue: number | null;
   next_action_title: string;
   next_action_type: string;
   alerts: string[];

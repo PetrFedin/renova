@@ -204,7 +204,7 @@ export function StageDetailScreen() {
     }
   };
 
-  const runReturnStage = async (reason: string, qualityScore: number | null) => {
+  const runReturnStage = async (reason: string, qualityScore: number | null): Promise<boolean> => {
     try {
       await rejectStage(stage!.id, reason, { qualityScore });
       await reload();
@@ -214,6 +214,7 @@ export function StageDetailScreen() {
         primaryLabel: 'Понятно',
         onPrimary: () => undefined,
       });
+      return true;
     } catch (e: unknown) {
       if (isOfflineQueued(e)) { notifyOfflineQueued('Возврат на доработку'); return true; }
       reportError('stage.return', e, { stageId: stage?.id });
@@ -418,7 +419,7 @@ export function StageDetailScreen() {
             swipeOpen={swipeOpen}
             setSwipeOpen={setSwipeOpen}
             onAcceptPress={onAcceptPress}
-            onReturnPress={(reason, qualityScore) => { runReturnStage(reason, qualityScore).catch(reportCatch('stage.return')); }}
+            onReturnPress={(reason, qualityScore) => runReturnStage(reason, qualityScore).catch((e) => { reportCatch('stage.return')(e); return false; })}
             onExportAcceptance={() => { onExportAcceptance().catch(reportCatch('stage.exportAcceptance')); }}
             onReload={reload}
           />

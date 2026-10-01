@@ -1,4 +1,4 @@
-export type BudgetSummaryState = 'empty' | 'over' | 'forecast-risk' | 'on-track';
+export type BudgetSummaryState = 'empty' | 'no-fact' | 'over' | 'forecast-risk' | 'on-track';
 
 export type BudgetSummaryViewInput = {
   planned: number;
@@ -24,7 +24,14 @@ export type BudgetSummaryView = {
   customerBudget: number | null;
   customerBudgetOver: number;
   state: BudgetSummaryState;
+  /** Факт внесён (> 0): только тогда экономия/отклонение/маржа/прогноз что-то значат (UI-001). */
+  factKnown: boolean;
 };
+
+/** Показывать ли «Экономия/отклонение %/маржа/прогноз»: только при известном факте > 0. */
+export function shouldShowSavings(planned: number, spent: number): boolean {
+  return Number.isFinite(planned) && Number.isFinite(spent) && planned > 0 && spent > 0;
+}
 
 function finite(value: number | null | undefined, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
@@ -56,6 +63,7 @@ export function buildBudgetSummaryView(input: BudgetSummaryViewInput): BudgetSum
 
   let state: BudgetSummaryState = 'on-track';
   if (planned === 0 && spent === 0) state = 'empty';
+  else if (spent === 0) state = 'no-fact';
   else if (deviation > 0) state = 'over';
   else if (forecast != null && forecast > planned) state = 'forecast-risk';
 
@@ -72,5 +80,6 @@ export function buildBudgetSummaryView(input: BudgetSummaryViewInput): BudgetSum
     customerBudget,
     customerBudgetOver,
     state,
+    factKnown: spent > 0,
   };
 }

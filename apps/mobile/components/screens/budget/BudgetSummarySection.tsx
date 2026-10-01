@@ -77,6 +77,7 @@ export function BudgetSummarySection(props: Props) {
 
   const stateLabel = {
     empty: 'Нет финансовых данных',
+    'no-fact': 'Факт ещё не внесён',
     over: 'Перерасход',
     'forecast-risk': 'Риск превышения',
     'on-track': 'В пределах плана',
@@ -85,7 +86,7 @@ export function BudgetSummarySection(props: Props) {
     ? RenovaTheme.colors.danger
     : view.state === 'forecast-risk'
       ? RenovaTheme.colors.warning
-      : view.state === 'empty'
+      : view.state === 'empty' || view.state === 'no-fact'
         ? RenovaTheme.colors.textMuted
         : RenovaTheme.colors.success;
   // The label already carries the direction, so the value must not carry it a
@@ -93,8 +94,9 @@ export function BudgetSummarySection(props: Props) {
   // minus the whole budget — shown in green under «В пределах плана» on a
   // project where nothing had been spent yet, which is when the figure is at
   // its largest. Only the neutral label keeps a signed value.
-  const deviationLabel = formatDeviationLabel(view.deviation);
-  const deviationValue = formatDeviationValue(view.deviation);
+  // UI-001: при факте 0 «Экономия = весь план / −100 % / маржа = план» — не экономия, а отсутствие данных.
+  const deviationLabel = view.factKnown ? formatDeviationLabel(view.deviation) : 'Отклонение';
+  const deviationValue = view.factKnown ? formatDeviationValue(view.deviation) : '—';
 
   const firstPending = pendingPayments[0] ?? null;
   const urgentBudget = view.state === 'over' || view.state === 'forecast-risk' || budgetAlerts.length > 0;
@@ -150,8 +152,8 @@ export function BudgetSummarySection(props: Props) {
 
           <Text style={s.dataHint}>
             План {formatRub(view.planned)}
-            {view.deviationPct !== 0 ? ` · отклонение ${view.deviationPct > 0 ? '+' : ''}${view.deviationPct}%` : ''}
-            {role === 'contractor' ? ` · маржа ${formatRub(view.margin)}` : ''}
+            {view.factKnown && view.deviationPct !== 0 ? ` · отклонение ${view.deviationPct > 0 ? '+' : ''}${view.deviationPct}%` : ''}
+            {role === 'contractor' && view.factKnown ? ` · маржа ${formatRub(view.margin)}` : ''}
           </Text>
           <Text style={[s.dataHint, view.customerBudgetOver > 0 && { color: RenovaTheme.colors.dangerText }]}>
             {view.customerBudget != null
@@ -160,7 +162,7 @@ export function BudgetSummarySection(props: Props) {
           </Text>
 
           <View style={s.summaryMetaRow}>
-            {view.forecast != null ? (
+            {view.forecast != null && view.factKnown ? (
               <View style={s.summaryMetaCell}>
                 <Text style={s.summaryLabel}>Прогноз</Text>
                 <Text style={s.summaryMetaValue}>{formatRub(view.forecast)}</Text>
