@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.models.work_schedule import WorkScheduleItemStatus, WorkScheduleStatus
 
@@ -16,6 +16,18 @@ class WorkScheduleItemIn(BaseModel):
     requires_hidden_work_acceptance: bool = False
     sort_order: int = 0
 
+    @model_validator(mode="after")
+    def _finish_not_before_start(self):
+        # JRN-015: a work item cannot end before it starts.
+        if self.planned_finish_date < self.planned_start_date:
+            raise ValueError("planned_finish_date must not be before planned_start_date")
+        return self
+
+
+def _check_schedule_range(start: date | None, finish: date | None) -> None:
+    if start is not None and finish is not None and finish < start:
+        raise ValueError("planned_finish_date must not be before planned_start_date")
+
 
 class WorkScheduleCreateIn(BaseModel):
     title: str = "План-график работ"
@@ -27,6 +39,11 @@ class WorkScheduleCreateIn(BaseModel):
     # offline-queue replay so a lost response can never mint a second schedule.
     client_request_id: str | None = Field(default=None, max_length=80)
 
+    @model_validator(mode="after")
+    def _range_ok(self):
+        _check_schedule_range(self.planned_start_date, self.planned_finish_date)
+        return self
+
 
 class WorkScheduleUpdateIn(BaseModel):
     title: str | None = None
@@ -34,6 +51,11 @@ class WorkScheduleUpdateIn(BaseModel):
     planned_start_date: date | None = None
     planned_finish_date: date | None = None
     items: list[WorkScheduleItemIn] | None = None
+
+    @model_validator(mode="after")
+    def _range_ok(self):
+        _check_schedule_range(self.planned_start_date, self.planned_finish_date)
+        return self
 
 
 class WorkScheduleRejectIn(BaseModel):

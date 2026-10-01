@@ -170,6 +170,7 @@ async def decide(
 
     if item_type == "room_change":
         from app.services import room_change_service as room_change_svc
+        from app.services import room_service
 
         request, room, replayed, changes = await room_change_svc.decide_request(
             db,
@@ -188,6 +189,7 @@ async def decide(
             "replayed": replayed,
             "room_id": room.id if room else request.room_id,
             "changes": changes,
+            "estimate_frozen": bool(changes) and room_service.estimate_is_locked(project),
         }
 
     raise ValueError("unknown_approval_type")

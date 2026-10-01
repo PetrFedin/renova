@@ -7,13 +7,13 @@ class RoomInput(BaseModel):
     name: str
     room_type: str | None = None
     floor_level: int = Field(default=1, ge=-2, le=20)
-    length_m: float = Field(gt=0)
-    width_m: float = Field(gt=0)
-    height_m: float = Field(default=2.7, gt=0)
-    openings_sq_m: float = Field(default=2, ge=0)
-    outlets_count: int = Field(default=0, ge=0)
-    switches_count: int = Field(default=0, ge=0)
-    plumbing_points: int = Field(default=0, ge=0)
+    length_m: float = Field(gt=0, le=100)
+    width_m: float = Field(gt=0, le=100)
+    height_m: float = Field(default=2.7, gt=0, le=10)
+    openings_sq_m: float = Field(default=2, ge=0, le=500)
+    outlets_count: int = Field(default=0, ge=0, le=1000)
+    switches_count: int = Field(default=0, ge=0, le=1000)
+    plumbing_points: int = Field(default=0, ge=0, le=1000)
     notes: str | None = None
     budget_alert_pct: float | None = None
 
@@ -22,13 +22,13 @@ class RoomUpdate(BaseModel):
     name: str | None = None
     room_type: str | None = None
     floor_level: int | None = Field(default=None, ge=-2, le=20)
-    length_m: float | None = Field(default=None, gt=0)
-    width_m: float | None = Field(default=None, gt=0)
-    height_m: float | None = Field(default=None, gt=0)
-    openings_sq_m: float | None = Field(default=None, ge=0)
-    outlets_count: int | None = Field(default=None, ge=0)
-    switches_count: int | None = Field(default=None, ge=0)
-    plumbing_points: int | None = Field(default=None, ge=0)
+    length_m: float | None = Field(default=None, gt=0, le=100)
+    width_m: float | None = Field(default=None, gt=0, le=100)
+    height_m: float | None = Field(default=None, gt=0, le=10)
+    openings_sq_m: float | None = Field(default=None, ge=0, le=500)
+    outlets_count: int | None = Field(default=None, ge=0, le=1000)
+    switches_count: int | None = Field(default=None, ge=0, le=1000)
+    plumbing_points: int | None = Field(default=None, ge=0, le=1000)
     notes: str | None = None
     budget_alert_pct: float | None = None
     is_archived: bool | None = None

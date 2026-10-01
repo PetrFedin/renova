@@ -38,6 +38,16 @@ ROOM_DIRECT_MUTABLE_FIELDS = ROOM_MUTABLE_FIELDS | {"is_archived"}
 _COUNT_FIELDS = frozenset({"outlets_count", "switches_count", "plumbing_points"})
 _POSITIVE_FIELDS = frozenset({"length_m", "width_m", "height_m"})
 _NON_NEGATIVE_FIELDS = frozenset({"openings_sq_m", "budget_alert_pct"})
+# Sane upper bounds (QLT-009): reject typos like 4000 m rooms that would
+# produce absurd estimate quantities.
+_MAX_VALUES = {
+    "length_m": 100.0,
+    "width_m": 100.0,
+    "height_m": 10.0,
+    "openings_sq_m": 500.0,
+    "budget_alert_pct": 1000.0,
+}
+_MAX_COUNT = 1000
 _NULLABLE_FIELDS = frozenset({"room_type", "notes", "budget_alert_pct"})
 _SYSTEM_FINISH_NAMES = frozenset(
     {
@@ -128,7 +138,7 @@ def validate_room_patch(data: dict, *, allow_archive: bool = False) -> dict:
                 parsed = int(value)
             except (TypeError, ValueError) as error:
                 raise ValueError(f"room_patch_count_invalid:{field}") from error
-            if parsed < 0 or float(value) != float(parsed):
+            if parsed < 0 or parsed > _MAX_COUNT or float(value) != float(parsed):
                 raise ValueError(f"room_patch_count_invalid:{field}")
             normalized[field] = parsed
             continue
@@ -143,9 +153,20 @@ def validate_room_patch(data: dict, *, allow_archive: bool = False) -> dict:
                 raise ValueError(f"room_patch_number_invalid:{field}")
             if field in _NON_NEGATIVE_FIELDS and parsed_float < 0:
                 raise ValueError(f"room_patch_number_invalid:{field}")
+            if parsed_float != parsed_float or parsed_float > _MAX_VALUES.get(field, float("inf")):
+                raise ValueError(f"room_patch_number_invalid:{field}")
             normalized[field] = parsed_float
             continue
         raise ValueError(f"room_patch_field_forbidden:{field}")
+    return normalized
+
+
+def validate_room_create(data: dict) -> dict:
+    """Normalize the fields of a brand-new room (add-room request, QLT-007)."""
+    normalized = validate_room_patch(data)
+    for required in ("name", "length_m", "width_m"):
+        if required not in normalized:
+            raise ValueError(f"room_patch_value_required:{required}")
     return normalized
 
 

@@ -327,7 +327,10 @@ class RoomChangeRequest(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"))
-    room_id: Mapped[str] = mapped_column(String(36), ForeignKey("rooms.id", ondelete="CASCADE"))
+    # NULL room_id = "add a room" request (QLT-007): the new room's fields live in
+    # payload_json and `created_room_id` is set once the executor approves it.
+    room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id", ondelete="CASCADE"), nullable=True)
+    created_room_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rooms.id", ondelete="SET NULL"), nullable=True)
     requested_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
     status: Mapped[RoomChangeStatus] = mapped_column(Enum(RoomChangeStatus), default=RoomChangeStatus.pending)
     message: Mapped[str] = mapped_column(Text)

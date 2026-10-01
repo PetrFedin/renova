@@ -203,7 +203,11 @@ async def approval_hub(
                 {
                     "id": request.id,
                     "type": "room_change",
-                    "title": "Изменение комнаты",
+                    "title": (
+                        "Изменение комнаты"
+                        if request.room_id
+                        else "Добавление комнаты"
+                    ),
                     "subtitle": request.message[:80],
                     "status": _status(request.status),
                     "room_id": request.room_id,

@@ -482,6 +482,9 @@ async def update_dates(
             db,
             stage=stage,
             actor_id=actor.id,
+        if stage.status == StageStatus.done:
+            # STG-008: dates of an accepted stage are history.
+            raise ValueError("stage_dates_locked_done")
             kind="StageDatesChanged",
             title=f"Изменены даты этапа: {stage.name}",
             body=(

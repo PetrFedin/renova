@@ -21,6 +21,8 @@ from app.services import team_service
 
 RoomDecision = Literal["approve", "reject"]
 ROOM_CHANGE_CREATE_SCOPE = "room_change.create"
+_CONTRACTOR_ROOMS_PATH = "/(contractor)/(tabs)/object?tab=rooms"
+_CUSTOMER_ROOMS_PATH = "/(customer)/(tabs)/object?tab=rooms"
 
 
 def _target(decision: RoomDecision) -> RoomChangeStatus:
@@ -54,7 +56,7 @@ async def create_request(
     *,
     project: Project,
     actor: User,
-    room_id: str,
+    room_id: str | None,
     message: str,
     payload: dict | None = None,
     client_request_id: str | None = None,
@@ -67,6 +69,11 @@ async def create_request(
     A new id always creates a distinct request, even for an identical
     room/message/payload — payload equality is never treated as intent
     identity.
+
+    QLT-007: `room_id=None` is an "add a room" request — `payload` carries the
+    new room (name, type, sizes); the executor's approval creates it.
+    QLT-009: with no executor linked nobody can decide, so creation is a 409
+    (`room_change_no_contractor`); the customer edits/creates directly then.
     """
     from app.services.client_write_idempotency import (
         IdempotencyConflict,
@@ -76,13 +83,19 @@ async def create_request(
 
     if actor.id != project.customer_id:
         raise ValueError("room_change_customer_required")
-    room = (
-        await db.execute(
-            select(Room).where(Room.id == room_id, Room.project_id == project.id)
-        )
-    ).scalar_one_or_none()
-    if room is None:
-        raise ValueError("room_change_room_not_found")
+    if project.contractor_id is None:
+        raise ValueError("room_change_no_contractor")
+    room = None
+    if room_id is not None:
+        room = (
+            await db.execute(
+                select(Room).where(Room.id == room_id, Room.project_id == project.id)
+            )
+        ).scalar_one_or_none()
+        if room is None:
+            raise ValueError("room_change_room_not_found")
+    elif payload is None:
+        raise ValueError("room_patch_empty")
     normalized_message = (message or "").strip()
     if not normalized_message:
         raise ValueError("room_change_message_required")
@@ -90,10 +103,15 @@ async def create_request(
         raise ValueError("room_change_message_too_long")
     normalized_payload = None
     if payload is not None:
-        normalized_payload = room_service.validate_room_patch(payload)
+        normalized_payload = (
+            room_service.validate_room_patch(payload)
+            if room is not None
+            else room_service.validate_room_create(payload)
+        )
 
+    room_label = room.name if room is not None else str(normalized_payload["name"])
     canonical_payload = {
-        "room_id": room.id,
+        "room_id": room.id if room is not None else None,
         "message": normalized_message,
         "payload": normalized_payload,
     }
@@ -124,7 +142,7 @@ async def create_request(
 
     request = RoomChangeRequest(
         project_id=project.id,
-        room_id=room.id,
+        room_id=room.id if room is not None else None,
         requested_by=actor.id,
         message=normalized_message,
         payload_json=(
@@ -145,10 +163,14 @@ async def create_request(
             "project_id": project.id,
             "user_id": actor.id,
             "kind": "RoomChangeRequested",
-            "title": f"Запрошено изменение комнаты: {room.name}",
+            "title": (
+                f"Запрошено изменение комнаты: {room.name}"
+                if room is not None
+                else f"Запрошено добавление комнаты: {room_label}"
+            ),
             "body": normalized_message,
-            "room_id": room.id,
-            "link_path": f"/room/{room.id}",
+            "room_id": room.id if room is not None else None,
+            "link_path": f"/room/{room.id}" if room is not None else _CONTRACTOR_ROOMS_PATH,
         },
     )
     for recipient_id in sorted(
@@ -165,7 +187,11 @@ async def create_request(
                 "user_id": recipient_id,
                 "project_id": project.id,
                 "notification_type": "room_change",
-                "title": "Запрос на изменение комнаты",
+                "title": (
+                    "Запрос на изменение комнаты"
+                    if room is not None
+                    else f"Запрос на добавление комнаты: {room_label}"
+                ),
                 "body": normalized_message[:500],
                 "link_path": "/(contractor)/(tabs)/object?tab=rooms",
                 "return_to": "/(contractor)/(tabs)/",
@@ -211,18 +237,28 @@ async def _prepare_effects(
     *,
     project: Project,
     request: RoomChangeRequest,
-    room: Room,
+    room: Room | None,
     actor_id: str,
     decision: RoomDecision,
     reason: str | None,
     changes: dict[str, dict[str, object]],
 ) -> None:
     approved = decision == "approve"
-    title = (
-        f"Изменение комнаты согласовано: {room.name}"
-        if approved
-        else f"Изменение комнаты отклонено: {room.name}"
-    )
+    add_room = request.room_id is None
+    label = room.name if room is not None else str(_payload(request).get("name") or "")
+    if add_room:
+        title = (
+            f"Добавление комнаты согласовано: {label}"
+            if approved
+            else f"Добавление комнаты отклонено: {label}"
+        )
+    else:
+        title = (
+            f"Изменение комнаты согласовано: {label}"
+            if approved
+            else f"Изменение комнаты отклонено: {label}"
+        )
+    link_path = f"/room/{room.id}" if room is not None else _CUSTOMER_ROOMS_PATH
     body = (reason or "").strip() or request.message
     await outbox.enqueue(
         db,
@@ -235,14 +271,16 @@ async def _prepare_effects(
             "kind": "RoomChangeApproved" if approved else "RoomChangeRejected",
             "title": title,
             "body": body,
-            "room_id": room.id,
-            "link_path": f"/room/{room.id}",
+            "room_id": room.id if room is not None else None,
+            "link_path": link_path,
         },
     )
     if project.customer_id and project.customer_id != actor_id:
         change_count = len(changes)
         notification_body = body
-        if approved and change_count:
+        if approved and add_room:
+            notification_body = f"Комната создана. {body}"
+        elif approved and change_count:
             notification_body = f"Применено изменений: {change_count}. {body}"
         await outbox.enqueue(
             db,
@@ -255,7 +293,7 @@ async def _prepare_effects(
                 "notification_type": "room_change",
                 "title": title,
                 "body": notification_body,
-                "link_path": f"/room/{room.id}",
+                "link_path": link_path,
                 "return_to": "/(customer)/(tabs)/object?tab=rooms",
             },
         )
@@ -290,15 +328,19 @@ async def decide_request(
         if isinstance(request.status, RoomChangeStatus)
         else RoomChangeStatus(str(request.status))
     )
-    room = (
-        await db.execute(
-            select(Room).where(
-                Room.id == request.room_id,
-                Room.project_id == project.id,
+    add_room = request.room_id is None
+    lookup_id = request.created_room_id if add_room else request.room_id
+    room = None
+    if lookup_id is not None:
+        room = (
+            await db.execute(
+                select(Room).where(
+                    Room.id == lookup_id,
+                    Room.project_id == project.id,
+                )
             )
-        )
-    ).scalar_one_or_none()
-    if room is None:
+        ).scalar_one_or_none()
+    if room is None and not add_room:
         raise ValueError("room_change_room_not_found")
 
     if current == target:
@@ -310,7 +352,20 @@ async def decide_request(
     try:
         if decision == "approve":
             patch = _payload(request)
-            if patch:
+            if add_room:
+                # Idempotent: the row is locked and only `pending` reaches here,
+                # so the room is created exactly once. A locked estimate keeps
+                # its lines/budget (prepare_room -> sync_room_estimate_lines).
+                if not patch:
+                    raise ValueError("room_change_payload_invalid")
+                room = await room_service.prepare_room(
+                    db,
+                    project=project,
+                    data=room_service.validate_room_create(patch),
+                )
+                request.created_room_id = room.id
+                changes = {"room_created": {"old": None, "new": room.id}}
+            elif patch:
                 changes = await room_service.apply_room_patch(
                     db,
                     room,
@@ -340,7 +395,8 @@ async def decide_request(
         raise
 
     await db.refresh(request)
-    await db.refresh(room)
+    if room is not None:
+        await db.refresh(room)
     from app.services.outbox_inline_dispatch import dispatch_best_effort
 
     await dispatch_best_effort(

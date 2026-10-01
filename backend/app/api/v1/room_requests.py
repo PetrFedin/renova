@@ -18,7 +18,8 @@ router = APIRouter(prefix="/projects", tags=["room-requests"])
 
 
 class RoomChangeCreate(BaseModel):
-    room_id: str
+    # None = "add a room" request: `payload` is the new room (QLT-007)
+    room_id: str | None = None
     message: str = Field(min_length=1, max_length=4000)
     payload: dict | None = None
     client_request_id: str | None = Field(default=None, min_length=8, max_length=80)
@@ -40,6 +41,14 @@ def _request_error(error: ValueError) -> HTTPException:
         return HTTPException(
             403,
             detail={"code": code, "message": "Действие недоступно для вашей роли в проекте"},
+        )
+    if code == "room_change_no_contractor":
+        return HTTPException(
+            409,
+            detail={
+                "code": code,
+                "message": "Исполнитель не подключён: изменения комнат вносите напрямую",
+            },
         )
     if code in {"room_change_room_not_found"}:
         return HTTPException(404, detail={"code": code})
@@ -83,6 +92,7 @@ async def list_requests(
         {
             "id": request.id,
             "room_id": request.room_id,
+            "created_room_id": request.created_room_id,
             "status": request.status.value if hasattr(request.status, "value") else str(request.status),
             "message": request.message,
             "payload": _payload_json(request),
@@ -146,6 +156,7 @@ async def _decide(
         "id": request.id,
         "status": request.status.value if hasattr(request.status, "value") else str(request.status),
         "room_id": room.id if room else request.room_id,
+        "created_room_id": request.created_room_id,
         "changes": changes,
         "replayed": replayed,
         # EST-001: locked estimate => room data applied, lines/budget untouched.

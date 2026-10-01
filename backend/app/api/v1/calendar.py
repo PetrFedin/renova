@@ -8,7 +8,7 @@ from app.db.session import get_db
 from app.models.entities import User, UserRole
 from app.services import calendar_import_service as cal_import_svc
 from app.services import calendar_service as cal_svc
-from app.services import stage_service as stage_svc
+from app.services import stage_mutation_service as stage_mutations
 from app.services.client_write_idempotency import IdempotencyConflict
 
 router = APIRouter(prefix="/projects", tags=["calendar"])
@@ -18,6 +18,15 @@ class StageDatesUpdate(BaseModel):
     stage_id: str
     planned_start: date | None = None
     planned_end: date | None = None
+
+
+def _calendar_date_error(error: ValueError) -> HTTPException:
+    code = str(error)
+    if code == "stage_schedule_actor_forbidden":
+        return HTTPException(403, detail={"code": code})
+    if code in {"confirmed_schedule_controls_dates", "stage_dates_locked_done"}:
+        return HTTPException(409, detail={"code": code})
+    return HTTPException(422, detail={"code": code})
 
 
 @router.get("/{project_id}/calendar")
@@ -37,10 +46,20 @@ async def update_stage_dates(
     db: AsyncSession = Depends(get_db),
 ):
     await require_project(db, project_id, user, write=True)
-    if user.role != UserRole.contractor:
-        raise HTTPException(403, "Только исполнитель меняет даты")
-    stage = await stage_svc.update_stage_dates(db, project_id, body.stage_id, body.planned_start, body.planned_end)
-    if not stage:
+    # STG-008: same rules as the canonical PATCH /stages/{id}/dates — schedule
+    # actor, confirmed-schedule lock, project bounds, no dates on done stages.
+    try:
+        result = await stage_mutations.update_dates(
+            db,
+            project_id=project_id,
+            stage_id=body.stage_id,
+            actor=user,
+            planned_start=body.planned_start,
+            planned_end=body.planned_end,
+        )
+    except ValueError as error:
+        raise _calendar_date_error(error) from error
+    if result is None:
         raise HTTPException(404)
     from sqlalchemy import select
     from app.models.entities import WasteOrder
@@ -95,4 +114,6 @@ async def import_ical(project_id: str, body: IcalImportIn, user: User = Depends(
         )
     except IdempotencyConflict:
         raise HTTPException(409, "calendar_import_conflict")
+    except ValueError as error:
+        raise _calendar_date_error(error) from error
     return result

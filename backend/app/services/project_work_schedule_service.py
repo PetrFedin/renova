@@ -3,6 +3,7 @@ from datetime import date
 
 from fastapi import HTTPException
 from sqlalchemy import delete, select
+from sqlalchemy.orm.attributes import set_committed_value
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import Project, Stage, StageStatus, User
@@ -55,8 +56,48 @@ async def load_items(db: AsyncSession, schedule_id: str) -> list[ProjectWorkSche
     )
 
 
+def derived_item_status(item: ProjectWorkScheduleItem, stage: Stage | None) -> WorkScheduleItemStatus:
+    """STG-012: the status of a stage-linked item follows its stage (read-only).
+
+    The stage is the source of truth for execution progress; an item only keeps
+    its own marker for the annotations that are not stage states
+    (blocked / delayed / cancelled) while the stage is still planned or active.
+    """
+    current = item.status
+    if stage is None or current == WorkScheduleItemStatus.cancelled:
+        return current
+    if stage.status == StageStatus.done:
+        return WorkScheduleItemStatus.accepted
+    if stage.status == StageStatus.review:
+        return WorkScheduleItemStatus.submitted
+    if current in (WorkScheduleItemStatus.blocked, WorkScheduleItemStatus.delayed):
+        return current
+    if stage.status == StageStatus.active:
+        return WorkScheduleItemStatus.in_progress
+    if current in (
+        WorkScheduleItemStatus.in_progress,
+        WorkScheduleItemStatus.submitted,
+        WorkScheduleItemStatus.accepted,
+    ):
+        return WorkScheduleItemStatus.planned
+    return current
+
+
 async def attach_items(db: AsyncSession, schedule: ProjectWorkSchedule) -> ProjectWorkSchedule:
-    schedule.items = await load_items(db, schedule.id)
+    items = await load_items(db, schedule.id)
+    stage_ids = {item.stage_id for item in items if item.stage_id}
+    if stage_ids:
+        stages = {
+            stage.id: stage
+            for stage in (await db.execute(select(Stage).where(Stage.id.in_(stage_ids)))).scalars().all()
+        }
+        for item in items:
+            stage = stages.get(item.stage_id) if item.stage_id else None
+            derived = derived_item_status(item, stage)
+            if derived != item.status:
+                # Not persisted: reads must never rewrite the schedule.
+                set_committed_value(item, "status", derived)
+    schedule.items = items
     return schedule
 
 
@@ -284,16 +325,23 @@ async def list_schedules(db: AsyncSession, project_id: str) -> list[ProjectWorkS
 
 
 async def get_active_schedule(db: AsyncSession, project: Project) -> ProjectWorkSchedule | None:
-    """Return the current schedule without mutating schedule or stage truth."""
+    """Return the schedule in force without mutating schedule or stage truth.
+
+    STG-007: a confirmed schedule stays in force until a revision of it is
+    confirmed (which archives it); drafts/submissions never overshadow it.
+    """
+    base = (
+        select(ProjectWorkSchedule)
+        .where(ProjectWorkSchedule.project_id == project.id)
+        .where(ProjectWorkSchedule.status != WorkScheduleStatus.archived)
+        .order_by(ProjectWorkSchedule.created_at.desc())
+        .limit(1)
+    )
     schedule = (
-        await db.execute(
-            select(ProjectWorkSchedule)
-            .where(ProjectWorkSchedule.project_id == project.id)
-            .where(ProjectWorkSchedule.status != WorkScheduleStatus.archived)
-            .order_by(ProjectWorkSchedule.created_at.desc())
-            .limit(1)
-        )
+        await db.execute(base.where(ProjectWorkSchedule.status == WorkScheduleStatus.confirmed))
     ).scalars().first()
+    if schedule is None:
+        schedule = (await db.execute(base)).scalars().first()
     if schedule:
         await attach_items(db, schedule)
     return schedule
@@ -314,6 +362,18 @@ async def get_schedule(
     if schedule:
         await attach_items(db, schedule)
     return schedule
+
+
+async def _confirmed_schedule_for_project(db: AsyncSession, project_id: str) -> ProjectWorkSchedule | None:
+    return (
+        await db.execute(
+            select(ProjectWorkSchedule)
+            .where(ProjectWorkSchedule.project_id == project_id)
+            .where(ProjectWorkSchedule.status == WorkScheduleStatus.confirmed)
+            .order_by(ProjectWorkSchedule.created_at.desc())
+            .limit(1)
+        )
+    ).scalars().first()
 
 
 async def create_schedule(
@@ -363,6 +423,17 @@ async def create_schedule(
         if not existing:
             raise HTTPException(status_code=404, detail="work_schedule_idempotency_target_missing")
         return existing, True
+
+    # STG-007: a confirmed schedule is changed through a revision, never by a
+    # second independent schedule.
+    if await _confirmed_schedule_for_project(db, project.id) is not None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "confirmed_schedule_exists_use_revision",
+                "message": "График уже согласован — изменения вносятся через запрос изменения графика",
+            },
+        )
 
     # #420: recheck authority against a freshly loaded Project right before
     # materializing the schedule so a revocation that lands while the checks
@@ -425,9 +496,19 @@ async def update_schedule(
     user: User,
     body: WorkScheduleUpdateIn,
 ) -> ProjectWorkSchedule:
-    # P0: submitted/confirmed frozen until reject→draft
+    # P0: submitted/confirmed frozen until reject→draft. A confirmed schedule is
+    # changed through a revision (POST …/revisions), see request_schedule_revision.
     if schedule.status == WorkScheduleStatus.confirmed:
-        raise HTTPException(status_code=409, detail="confirmed_schedule_cannot_be_edited")
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "confirmed_schedule_cannot_be_edited",
+                "message": "Согласованный график не правится — запросите изменение графика",
+                "revision_path": f"/projects/{schedule.project_id}/work-schedules/{schedule.id}/revisions",
+            },
+        )
+    if schedule.status == WorkScheduleStatus.archived:
+        raise HTTPException(status_code=409, detail="archived_schedule_cannot_be_edited")
     if schedule.status == WorkScheduleStatus.submitted:
         raise HTTPException(status_code=409, detail="submitted_schedule_cannot_be_edited")
     project = await db.get(Project, schedule.project_id)
@@ -441,6 +522,10 @@ async def update_schedule(
         await _validate_items_for_replace(
             db, project_id=schedule.project_id, schedule_id=schedule.id, items=body.items
         )
+    next_start = body.planned_start_date if body.planned_start_date is not None else schedule.planned_start_date
+    next_finish = body.planned_finish_date if body.planned_finish_date is not None else schedule.planned_finish_date
+    if next_start and next_finish and next_finish < next_start:
+        raise HTTPException(status_code=422, detail="work_schedule_dates_invalid")
     if body.title is not None:
         schedule.title = body.title
     if body.description is not None:
@@ -480,6 +565,9 @@ async def sync_stages_from_schedule_items(
             continue
         stage = await db.get(Stage, item.stage_id)
         if not stage or stage.project_id != schedule.project_id:
+            continue
+        if stage.status == StageStatus.done:
+            # Dates of an accepted stage are history, a revision never rewrites them.
             continue
         stage.planned_start = item.planned_start_date
         stage.planned_end = item.planned_finish_date
@@ -637,6 +725,15 @@ async def confirm_schedule(
     if schedule.status != WorkScheduleStatus.submitted:
         raise HTTPException(status_code=409, detail="schedule_must_be_submitted_before_confirm")
 
+    current = await _confirmed_schedule_for_project(db, schedule.project_id)
+    if schedule.supersedes_id:
+        # A revision replaces exactly the schedule it was requested from.
+        if current is None or current.id != schedule.supersedes_id:
+            raise HTTPException(status_code=409, detail="schedule_revision_base_outdated")
+        current.status = WorkScheduleStatus.archived
+        current.updated_at = utc_now()
+    elif current is not None and current.id != schedule.id:
+        raise HTTPException(status_code=409, detail="confirmed_schedule_exists_use_revision")
     schedule.status = WorkScheduleStatus.confirmed
     schedule.confirmed_by = user.id
     schedule.confirmed_at = utc_now()
@@ -666,6 +763,120 @@ async def confirm_schedule(
     await db.refresh(schedule)
     await _dispatch_schedule_effects(db, source="work_schedule.confirm")
     return await attach_items(db, schedule)
+
+
+async def request_schedule_revision(
+    db: AsyncSession,
+    *,
+    project: Project,
+    schedule: ProjectWorkSchedule,
+    user: User,
+) -> ProjectWorkSchedule:
+    """STG-007: «запросить изменение подтверждённого графика».
+
+    The executor opens a new draft (schedule_version + 1, supersedes_id → the
+    confirmed row) pre-filled with the confirmed items. It then goes through the
+    normal edit → submit → customer confirm/reject cycle. While it is not
+    confirmed the confirmed schedule stays in force (and keeps its date lock);
+    confirming the revision archives the old row and refreshes stage dates.
+    """
+    from app.services.team_service import can_access_project
+
+    if not await can_access_project(db, user, project, write=True):
+        raise HTTPException(status_code=403, detail="project_forbidden")
+    if not await can_manage_schedule(db, user, project):
+        raise HTTPException(status_code=403, detail="only_contractor_or_foreman_can_request_schedule_revision")
+    if schedule.status != WorkScheduleStatus.confirmed:
+        raise HTTPException(status_code=409, detail="schedule_revision_requires_confirmed_schedule")
+
+    open_revision = (
+        await db.execute(
+            select(ProjectWorkSchedule.id)
+            .where(ProjectWorkSchedule.project_id == schedule.project_id)
+            .where(ProjectWorkSchedule.supersedes_id == schedule.id)
+            .where(
+                ProjectWorkSchedule.status.in_(
+                    [WorkScheduleStatus.draft, WorkScheduleStatus.submitted, WorkScheduleStatus.rejected]
+                )
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if open_revision:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "schedule_revision_already_open", "schedule_id": open_revision},
+        )
+
+    now = utc_now()
+    revision = ProjectWorkSchedule(
+        project_id=schedule.project_id,
+        title=schedule.title,
+        description=schedule.description,
+        planned_start_date=schedule.planned_start_date,
+        planned_finish_date=schedule.planned_finish_date,
+        created_by=user.id,
+        schedule_version=int(schedule.schedule_version or 1) + 1,
+        supersedes_id=schedule.id,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(revision)
+    try:
+        await db.flush()
+        id_map: dict[str, str] = {}
+        copies: list[tuple[ProjectWorkScheduleItem, ProjectWorkScheduleItem]] = []
+        for old in await load_items(db, schedule.id):
+            new = ProjectWorkScheduleItem(
+                schedule_id=revision.id,
+                project_id=old.project_id,
+                stage_id=old.stage_id,
+                title=old.title,
+                description=old.description,
+                status=old.status,
+                planned_start_date=old.planned_start_date,
+                planned_finish_date=old.planned_finish_date,
+                actual_start_date=old.actual_start_date,
+                actual_finish_date=old.actual_finish_date,
+                requires_customer_acceptance=old.requires_customer_acceptance,
+                requires_photo=old.requires_photo,
+                requires_hidden_work_acceptance=old.requires_hidden_work_acceptance,
+                delay_days=old.delay_days,
+                blocking_reason=old.blocking_reason,
+                sort_order=old.sort_order,
+                progress_percent=old.progress_percent,
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(new)
+            copies.append((old, new))
+        await db.flush()
+        for old, new in copies:
+            id_map[old.id] = new.id
+        for old, new in copies:
+            if old.depends_on_item_id:
+                new.depends_on_item_id = id_map.get(old.depends_on_item_id)
+        await _prepare_schedule_effects(
+            db,
+            schedule=revision,
+            actor_id=user.id,
+            activity_kind="ScheduleRevisionRequested",
+            activity_title=f"Запрошено изменение графика: {revision.title}",
+            activity_body=None,
+            link_path="/(contractor)/(tabs)/calendar",
+            notification_target=None,
+            notification_type="schedule_review",
+            notification_title="",
+            notification_body="",
+            return_to="/(contractor)/(tabs)/",
+        )
+        await db.commit()
+    except BaseException:
+        await db.rollback()
+        raise
+    await db.refresh(revision)
+    await _dispatch_schedule_effects(db, source="work_schedule.revision")
+    return await attach_items(db, revision)
 
 
 async def reject_schedule(
@@ -744,36 +955,15 @@ async def mark_schedule_items_accepted_for_stage(
     return updated
 
 
-async def sync_stage_from_item_status(
-    db: AsyncSession,
-    item: ProjectWorkScheduleItem,
-    status: WorkScheduleItemStatus,
-) -> None:
-    if not item.stage_id:
-        return
-    stage = await db.get(Stage, item.stage_id)
-    if not stage or stage.project_id != item.project_id:
-        return
-
-    stage.needs_rework = status == WorkScheduleItemStatus.blocked
-    if status == WorkScheduleItemStatus.planned:
-        stage.status = StageStatus.planned
-        stage.percent_complete = min(stage.percent_complete or 0, 10)
-    elif status in [WorkScheduleItemStatus.ready, WorkScheduleItemStatus.in_progress]:
-        stage.status = StageStatus.active
-        stage.actual_start = stage.actual_start or date.today()
-        stage.percent_complete = max(stage.percent_complete or 0, item.progress_percent or 25)
-    elif status == WorkScheduleItemStatus.submitted:
-        stage.status = StageStatus.review
-        stage.percent_complete = max(stage.percent_complete or 0, item.progress_percent or 90)
-    elif status == WorkScheduleItemStatus.accepted:
-        # P0: done только при реальной приёмке заказчика (не по одному статусу этапа)
-        if stage.customer_accepted_at:
-            stage.status = StageStatus.done
-            stage.percent_complete = 100
-        else:
-            stage.status = StageStatus.review
-            stage.percent_complete = max(stage.percent_complete or 0, item.progress_percent or 95)
+# Item-local markers that are not stage states and so may be set on a stage-linked item.
+_ITEM_LOCAL_STATUSES = frozenset(
+    {
+        WorkScheduleItemStatus.ready,
+        WorkScheduleItemStatus.blocked,
+        WorkScheduleItemStatus.delayed,
+        WorkScheduleItemStatus.cancelled,
+    }
+)
 
 
 async def update_item_status(
@@ -794,6 +984,8 @@ async def update_item_status(
     """
     from app.services.schedule_item_transitions import assert_item_transition
 
+    if schedule.status in (WorkScheduleStatus.archived,):
+        raise HTTPException(status_code=409, detail="archived_schedule_cannot_be_edited")
     await assert_item_transition(
         db,
         user=user,
@@ -801,6 +993,22 @@ async def update_item_status(
         from_status=item.status,
         to_status=body_status,
     )
+    stage = await db.get(Stage, item.stage_id) if item.stage_id else None
+    if stage is not None and stage.project_id != project.id:
+        stage = None
+    if stage is not None:
+        # STG-003/STG-004: a stage-linked item never moves its stage. Execution
+        # states come from the stage (start / submit / acceptance with their
+        # gates); the item only mirrors them.
+        if body_status not in _ITEM_LOCAL_STATUSES and body_status != derived_item_status(item, stage):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "schedule_item_status_follows_stage",
+                    "message": "Статус пункта следует за этапом: начните, сдайте или примите этап через его действия",
+                    "stage_id": stage.id,
+                },
+            )
     if body_status == WorkScheduleItemStatus.accepted:
         if not is_project_customer(user, project):
             raise HTTPException(status_code=403, detail="only_customer_can_set_schedule_item_accepted")
@@ -840,7 +1048,6 @@ async def update_item_status(
         item.progress_percent = max(item.progress_percent or 0, 100)
     item.delay_days = calculate_delay(item)
     item.updated_at = utc_now()
-    await sync_stage_from_item_status(db, item, body_status)
     await db.commit()
     await db.refresh(item)
     return item

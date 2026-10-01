@@ -45,7 +45,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.calendar_import import IcalImportResult
-from app.models.entities import Project, Stage
+from app.models.entities import Project, Stage, StageStatus, User
 from app.services.client_write_idempotency import (
     IdempotencyConflict,
     commit_client_write,
@@ -193,6 +193,17 @@ async def import_ical_atomic(
                 "replayed": True,
             }
 
+        # STG-009: same authority and lock as the canonical stage-dates path.
+        from app.services import stage_mutation_service as stage_mutations
+
+        project = await db.get(Project, project_id)
+        actor = await db.get(User, actor_id)
+        if project is None or actor is None:
+            raise ValueError("project_not_found")
+        await stage_mutations._require_schedule_actor(db, project=project, actor=actor)
+        if await stage_mutations._confirmed_schedule_exists(db, project_id):
+            raise ValueError("confirmed_schedule_controls_dates")
+
         events = parse_ical_events(content)
 
         # One project-scoped, locked snapshot of stages taken before any
@@ -216,6 +227,13 @@ async def import_ical_atomic(
             # already scoped to project_id — no cross-project row can be
             # selected here.
             consumed_fallback_ids.add(stage.id)
+            if stage.status == StageStatus.done:
+                # Accepted stages keep their dates; the event is consumed, not remapped.
+                continue
+            try:
+                stage_mutations._validate_dates(project, planned_start=ev.start, planned_end=ev.end)
+            except ValueError:
+                continue  # outside the project window / inverted: skip, do not corrupt
             mapping.append((stage, ev))
 
         updated = 0

@@ -21,6 +21,7 @@ from app.services.project_work_schedule_service import (
     get_schedule,
     list_schedules,
     reject_schedule,
+    request_schedule_revision,
     submit_schedule,
     update_item_status,
     update_schedule,
@@ -144,6 +145,21 @@ async def reject_project_work_schedule(
     if not schedule:
         raise HTTPException(status_code=404, detail="work_schedule_not_found")
     return await reject_schedule(db, project=project, schedule=schedule, user=user, reason=body.reason)
+
+
+@router.post("/{schedule_id}/revisions", response_model=WorkScheduleOut)
+async def request_project_work_schedule_revision(
+    project_id: str,
+    schedule_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """STG-007: запросить изменение подтверждённого графика (новая ревизия-черновик)."""
+    project = await require_project(db, project_id, user, write=True)
+    schedule = await get_schedule(db, project_id=project.id, schedule_id=schedule_id)
+    if not schedule:
+        raise HTTPException(status_code=404, detail="work_schedule_not_found")
+    return await request_schedule_revision(db, project=project, schedule=schedule, user=user)
 
 
 @router.post("/{schedule_id}/items/{item_id}/status", response_model=WorkScheduleItemOut)

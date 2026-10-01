@@ -67,6 +67,7 @@ def _mutation_error(error: ValueError) -> HTTPException:
 async def _stage_response(
     db: AsyncSession,
     result: mutations.StageMutationResult,
+        "stage_dates_locked_done",
 ) -> dict:
     loaded = await stage_service.get_stage_full(db, result.stage.id)
     if loaded is None:

@@ -516,19 +516,28 @@ async def test_19_schedule(w):
     assert r.json()["status"] == "confirmed"
 
 
-@pytest.mark.xfail(strict=True, reason="JRN-015: в графике finish<start принимается (PUT вернул 200) (волна 2)")
 async def test_19b_schedule_rejects_finish_before_start(w):
     assert w.s["bad_dates_status"] in (400, 409, 422)
 
 
-@pytest.mark.xfail(strict=True, reason="STG-007/JRN-015: подтверждённый график терминален, пересогласования нет (волна 2)")
 async def test_19c_confirmed_schedule_can_be_renegotiated(w):
-    r = await w.call("lead", "PUT", f"{P(w)}/work-schedules/{w.s['sch']}", {"title": "после confirm"})
+    # STG-007: подтверждённый график не правится на месте (409), изменение — через ревизию-черновик;
+    # пока она не подтверждена, в силе подтверждённый график.
+    sch = w.s["sch"]
+    r = await w.call("lead", "PUT", f"{P(w)}/work-schedules/{sch}", {"title": "после confirm"})
+    assert r.status_code == 409
+    r = await w.call("lead", "POST", f"{P(w)}/work-schedules/{sch}/revisions")
     assert r.status_code == 200, r.text[:200]
 
 
 # ---------------------------------------------------------------- 6. старт этапа и работа
 
+    rev = r.json()
+    assert rev["status"] == "draft" and rev["supersedes_id"] == sch and rev["schedule_version"] >= 2
+    r = await w.call("lead", "PUT", f"{P(w)}/work-schedules/{rev['id']}", {"title": "ревизия"})
+    assert r.status_code == 200, r.text[:200]
+    r = await w.call("cust", "GET", f"{P(w)}/work-schedules/active", expect=200)
+    assert r.json()["id"] == sch and r.json()["status"] == "confirmed"
 async def test_20_start_stage(w):
     st = stage_id(w, "Демонтаж")
     for who in ("other", "guest", "cust"):
