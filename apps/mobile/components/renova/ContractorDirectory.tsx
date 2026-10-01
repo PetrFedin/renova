@@ -11,6 +11,7 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { reportCatch } from '@/lib/reportError';
 import { contractorMeta } from '@/lib/domain/contractorMeta';
+import { contractorMatchParams } from '@/lib/domain/contractorMatchParams';
 
 type C = {
   id: string;
@@ -53,16 +54,22 @@ export function ContractorDirectory({
   linkedOnly?: boolean;
   onLinked?: () => void;
 }) {
-  const { user, loadProject } = useRenova();
+  const { user, loadProject, activeProject } = useRenova();
   const [items, setItems] = useState<C[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
 
+  const project = activeProject && (!projectId || activeProject.id === projectId) ? activeProject : null;
+  const matchKey = JSON.stringify(contractorMatchParams(project));
   const reload = useCallback(() => {
-    api
-      .matchContractors(userId, 'capital', 'tiling')
+    const { renovationType, specialty } = JSON.parse(matchKey) as ReturnType<typeof contractorMatchParams>;
+    // Нет данных объекта — обычный каталог, а не «подбор» по выдуманным параметрам.
+    const load = renovationType || specialty
+      ? api.matchContractors(userId, renovationType, specialty)
+      : api.listContractors(userId);
+    load
       .then(setItems)
       .catch(() => api.listContractors(userId).then(setItems).catch(reportCatch('components.renova.ContractorDirectory.1')));
-  }, [userId]);
+  }, [userId, matchKey]);
   useEffect(() => { reload(); }, [reload]);
   useProjectDataReload(reload);
 
