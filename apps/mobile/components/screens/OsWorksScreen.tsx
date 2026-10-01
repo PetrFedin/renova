@@ -120,22 +120,33 @@ export function OsWorksScreen({ role }: { role: OsRole }) {
     }
   }, [user?.id, activeProject?.id]);
 
+  // Зависим от id, а не от самого объекта: loadProject подменяет activeProject новым объектом,
+  // и тогда refreshWorks менялся бы на каждый ответ → useFocusEffect перезапускал загрузку по кругу
+  // (≈250 запросов /stages/:id/blocked за 6 с и 429 на всё приложение).
+  const activeProjectId = activeProject?.id;
+  const userId = user?.id;
   const refreshWorks = useCallback(() => {
-    if (activeProject) void loadProject(activeProject.id);
+    if (activeProjectId) void loadProject(activeProjectId);
     void reloadBlocked();
     void reloadStageCapabilities();
-    if (isContractor && user && activeProject) {
-      api.reworkSlaCheck(user.id, activeProject.id).catch(reportCatch('works.reworkSla'));
+    if (isContractor && userId && activeProjectId) {
+      api.reworkSlaCheck(userId, activeProjectId).catch(reportCatch('works.reworkSla'));
     }
-  }, [activeProject, loadProject, reloadBlocked, reloadStageCapabilities, isContractor, user]);
+  }, [activeProjectId, loadProject, reloadBlocked, reloadStageCapabilities, isContractor, userId]);
 
   useFocusEffect(
     useCallback(() => {
       refreshWorks();
     }, [refreshWorks]),
   );
-  // W91: соседний таб/мутация → этапы и blockedMap без remount
-  useProjectDataReload(refreshWorks);
+  // W91: соседний таб/мутация → blockedMap и права без remount. Сам объект здесь НЕ перечитываем:
+  // loadProject шлёт notifyProjectDataChanged, и вызов loadProject из этого же обработчика
+  // замыкал бесконечный цикл (reload → loadProject → notify → reload …, ~2 раза в секунду).
+  const reloadAfterProjectChange = useCallback(() => {
+    void reloadBlocked();
+    void reloadStageCapabilities();
+  }, [reloadBlocked, reloadStageCapabilities]);
+  useProjectDataReload(reloadAfterProjectChange);
 
   const stages = useMemo(() => {
     if (!activeProject) return [];
