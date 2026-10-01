@@ -47,7 +47,8 @@ if (schedule.includes('Alert.prompt?.') || schedule.includes("Alert.alert('От�
 if (!schedule.includes("title: 'Отклонить график?'")) throw new Error('schedule reject sheet');
 
 if (budget.includes('Alert.alert')) throw new Error('budget planner still Alert');
-if (!budget.includes("title: 'Применить к плану?'")) throw new Error('budget apply sheet');
+// BUD-03: PATCH budget_planned сервер игнорировал, а экран писал «План обновлён» — кнопку убрали, оценка справочная
+if (budget.includes('budget_planned') || budget.includes('patchProject')) throw new Error('budget planner must not write the plan');
 
 if (home.includes('Alert.alert') || home.includes('Alert.')) throw new Error('home completion still Alert');
 if (!home.includes("title: 'Дайджест'")) throw new Error('digest sheet');

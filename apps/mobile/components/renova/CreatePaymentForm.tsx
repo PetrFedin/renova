@@ -6,7 +6,7 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { StagePickerChips } from '@/components/renova/StagePickerChips';
 import { formSurfaceStyles } from '@/constants/formStyles';
 import { filterChipStyles } from '@/constants/screenTypography';
-import { api, type ProjectDetail } from '@/lib/api';
+import { api, ApiError, type ProjectDetail } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { alertPaymentCreated } from '@/lib/estimatePayNav';
@@ -96,7 +96,7 @@ export function CreatePaymentForm({
         : apiErrorMessage(error, 'Не удалось создать счёт');
       showActionConfirm({
         title: 'Не удалось создать счёт',
-        message: message.includes('403') || message.includes('Forbidden')
+        message: error instanceof ApiError && error.status === 403
           ? 'Этот тип счёта недоступен исполнителю. Используйте «Этап» или «Материалы».'
           : `${message} Введённые данные сохранены в форме.`,
       });

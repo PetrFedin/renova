@@ -173,7 +173,7 @@ export function BudgetExpensesSection({
             <ReceiptBulkLinkPanel
               userId={userId}
               project={project}
-              receipts={receipts}
+              receipts={receipts.filter((r) => filteredReceiptIds.includes(r.id))}
               onDone={onReload}
             />
           ) : null}

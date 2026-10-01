@@ -71,7 +71,8 @@ export function useOsBudgetScreen() {
 
   useFocusEffect(useCallback(() => { reload().catch((e) => reportError('budget.focus', e)); }, [reload]));
 
-  const pending = payments.filter((p) => p.status === 'pending' || p.status === 'paid_unverified');
+  // «Ожидает оплаты» — только неоплаченные счета; оплаченные без проверки (paid_unverified) показываем отдельно (BUD-09)
+  const pending = payments.filter((p) => p.status === 'pending' || p.status === 'processing');
   const sortedPayments = [...payments].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
   const filteredPayments = payFilter === 'pending'
     ? sortedPayments.filter((p) => p.status === 'pending' || p.status === 'processing')

@@ -1,5 +1,7 @@
 /** Вкладка «Бюджет → Сводка» — состояние, решение, затем детали */
+import { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
+import { notifyError } from '@/lib/notify';
 import { router, usePathname } from 'expo-router';
 import { formatRub, RenovaTheme } from '@/constants/Theme';
 import { formatDeviationLabel, formatDeviationValue } from '@/lib/domain/budgetDeviationLabel';
@@ -58,6 +60,7 @@ export function BudgetSummarySection(props: Props) {
     projectStart, projectEnd, periodParam, focusParam, onPaymentPress, onExpensePress,
   } = props;
   const pathname = usePathname();
+  const [exporting, setExporting] = useState(false);
   const unifiedRows = buildUnifiedBudgetExpenses(receipts, expenses, rooms, stages, picks, purchases);
   const period = parseBudgetPeriod(periodParam);
   const focus = parseBudgetFocus(focusParam);
@@ -98,8 +101,11 @@ export function BudgetSummarySection(props: Props) {
   const deviationLabel = view.factKnown ? formatDeviationLabel(view.deviation) : 'Отклонение';
   const deviationValue = view.factKnown ? formatDeviationValue(view.deviation) : '—';
 
-  const firstPending = pendingPayments[0] ?? null;
-  const urgentBudget = view.state === 'over' || view.state === 'forecast-risk' || budgetAlerts.length > 0;
+  const firstPending = pendingPayments.find((payment) => payment.status === 'pending') ?? null;
+  const unverifiedPayments = payments.filter((payment) => payment.status === 'paid_unverified');
+  // тот же критерий, что рисует BudgetAlerts: иначе «Разобрать отклонения» ведёт на пустую вкладку
+  const hasRoomOverrun = budgetAlerts.some((alert) => alert.plan > 0 && alert.fact > alert.plan);
+  const urgentBudget = view.state === 'over' || view.state === 'forecast-risk' || hasRoomOverrun;
   const nextAction = firstPending && role === 'customer' && !readOnly
     ? {
         title: `Оплатить ${formatRub(firstPending.amount)}`,
@@ -276,7 +282,22 @@ export function BudgetSummarySection(props: Props) {
       {bwVisible('budget_alerts') && <BudgetAlerts items={budgetAlerts} returnTo={pathname} role={role} />}
       {bwVisible('actions') && (
         <View style={s.actions}>
-          <PrimaryButton title="Таблица" variant="outline" compact onPress={() => api.exportExpensesCsv(userId, projectId)} />
+          <PrimaryButton
+            title="Таблица"
+            variant="outline"
+            compact
+            loading={exporting}
+            disabled={exporting}
+            onPress={() => {
+              if (exporting) return;
+              setExporting(true);
+              api.exportExpensesCsv(userId, projectId)
+                .catch((error: unknown) => {
+                  notifyError('Таблица не выгружена', error, 'Не удалось сформировать таблицу расходов. Повторите попытку.');
+                })
+                .finally(() => setExporting(false));
+            }}
+          />
           {role === 'contractor' ? (
             <PrimaryButton title="Рыночная оценка" variant="outline" compact onPress={() => pushOsNav('/budget-planner', pathname, role)} />
           ) : null}
@@ -316,6 +337,27 @@ export function BudgetSummarySection(props: Props) {
               <Text style={[s.status, { color: RenovaTheme.colors.warning }]}>
                 {role === 'customer' && !readOnly ? 'Открыть →' : 'Ожидает'}
               </Text>
+            </Pressable>
+          ))}
+        </>
+      )}
+      {unverifiedPayments.length > 0 && bwVisible('pending_payments') && (
+        <>
+          <Text style={s.section}>Оплачено, на проверке</Text>
+          <Text style={s.dataHint}>Эти суммы пока не в факте: нужен чек или подтверждение получения исполнителем.</Text>
+          {unverifiedPayments.map((payment) => (
+            <Pressable
+              key={payment.id}
+              style={s.row}
+              accessibilityRole="button"
+              accessibilityLabel={`Открыть оплату ${payment.title}`}
+              onPress={() => onPaymentPress(payment)}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={s.rowTitle}>{payment.title}</Text>
+                <Text style={s.rowMeta}>{PAYMENT_TYPE_LABEL[payment.payment_type] || payment.payment_type} · {formatRub(payment.amount)}</Text>
+              </View>
+              <Text style={[s.status, { color: RenovaTheme.colors.warning }]}>На проверке</Text>
             </Pressable>
           ))}
         </>

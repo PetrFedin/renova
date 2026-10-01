@@ -9,6 +9,7 @@ import { SheetSurface, sheetContentStyles } from '@/components/renova/SheetSurfa
 import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';
 import { api, type OsExpense, type ProjectDetail, type ReceiptItem, type Room, type Stage } from '@/lib/api';
+import { apiErrorMessage } from '@/lib/formatPhone';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
@@ -136,9 +137,8 @@ export function ExpenseDetailSheet({
         onClose();
         return;
       }
-      const message = error && typeof error === 'object' && 'detail' in error
-        ? String((error as { detail?: string }).detail)
-        : 'Не удалось сохранить изменения. Введённые данные остались в форме.';
+      // ApiError.detail бывает объектом {code, message} — берём готовый русский текст сервера
+      const message = apiErrorMessage(error, 'Не удалось сохранить изменения. Введённые данные остались в форме.');
       showActionConfirm({ title: 'Изменения не сохранены', message });
     } finally {
       mutationRef.current = false;
@@ -176,9 +176,7 @@ export function ExpenseDetailSheet({
               notifyOfflineQueued('Удаление траты');
               onClose();
             } else {
-              const message = error && typeof error === 'object' && 'detail' in error
-                ? String((error as { detail?: string }).detail)
-                : 'Не удалось удалить трату.';
+              const message = apiErrorMessage(error, 'Не удалось удалить трату.');
               showActionConfirm({ title: 'Трата не удалена', message });
             }
           } finally {

@@ -18,6 +18,8 @@ import { useLocalSearchParams, router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { paymentReceiptKey } from '@/constants/sessionKeys';
 import { alertReceiptScanned } from '@/lib/receiptNav';
+import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
+import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import type { OsRole } from '@/constants/osSections';
 
 const REQUIRED_RECEIPT_QR_FIELDS = ['t', 's', 'fn', 'i', 'fp', 'n'] as const;
@@ -40,6 +42,7 @@ export default function ScanReceiptScreen() {
   const [roomId, setRoomId] = useState<string | null>(roomParam || null);
   const [stageId, setStageId] = useState<string | null>(stageParam || null);
   const scanned = useRef(false);
+  const canWrite = useWriteAllowed();
 
   useEffect(() => {
     if (!activeProject?.stages || !roomId || stageId) return;
@@ -49,6 +52,10 @@ export default function ScanReceiptScreen() {
 
   async function submit(qr: string) {
     if (!user || !activeProject || busy || scanned.current) return;
+    if (!canWrite) {
+      notifyAlert('Только просмотр', 'У вас нет прав добавлять чеки в этом объекте.');
+      return;
+    }
 
     const normalizedQr = qr.trim();
     if (!isReceiptQr(normalizedQr)) {
@@ -87,8 +94,13 @@ export default function ScanReceiptScreen() {
         () => router.back(),
       );
     } catch (err) {
+      if (isOfflineQueued(err)) {
+        // Чек поставлен в очередь: повторный скан создал бы дубль — оставляем защиту от повтора
+        notifyOfflineQueued('Чек', user.role === 'contractor' ? 'contractor' : 'customer');
+        return;
+      }
       scanned.current = false;
-      notifyError('Ошибка', err, 'Не удалось проверить чек. Проверьте QR или сервер.');
+      notifyError('Чек не сохранён', err, 'Не удалось проверить чек. Проверьте QR и повторите.');
     } finally {
       setBusy(false);
     }
@@ -99,6 +111,7 @@ export default function ScanReceiptScreen() {
       <>
         <BackHeader title="Скан чека" returnTo={returnTo} subtitle={paymentId ? 'Чек для подтверждения оплаты счёта' : 'Вставьте строку QR с чека'} />
         <View style={styles.wrap}>
+          <ReadOnlyBanner />
           <Text style={styles.hintWeb}>Формат: t=...&s=...&fn=...&i=...&fp=...&n=1</Text>
           <TextInput
             style={styles.input}
@@ -123,7 +136,7 @@ export default function ScanReceiptScreen() {
               disabled={busy}
             />
           )}
-          <PrimaryButton disabled={busy || !manual.trim()} title={busy ? 'Проверка…' : 'Проверить и сохранить'} onPress={() => submit(manual)} />
+          <PrimaryButton disabled={busy || !canWrite || !manual.trim()} title={busy ? 'Проверка…' : 'Проверить и сохранить'} onPress={() => submit(manual)} />
           {user && activeProject && <ManualExpenseForm userId={user.id} project={activeProject} initialRoomId={roomId} initialStageId={stageId} collapsed onSaved={() => loadProject(activeProject.id)} />}
         </View>
       </>
@@ -144,6 +157,7 @@ export default function ScanReceiptScreen() {
   return (
     <>
       <BackHeader title="Скан чека" returnTo={returnTo} subtitle="Камера или расход без чека ниже" />
+      <ReadOnlyBanner />
       {activeProject && (
         <ExpenseContextPickers
           project={activeProject}

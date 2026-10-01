@@ -36,7 +36,9 @@ export function ReceiptBulkLinkPanel({ userId, project, receipts, readOnly, onDo
     try {
       const stage = project.stages?.find((s) => s.id === stageId);
       const roomId = stage?.room_ids?.[0] ?? null;
-      await Promise.all(
+      // Частичный успех возможен: привязываем всё, что получится, и всегда обновляем список,
+      // чтобы привязанные чеки не оставались «без этапа» на экране.
+      const results = await Promise.allSettled(
         unlinked.map((r) =>
           api.patchReceipt(userId, project.id, r.id, {
             stage_id: stageId,
@@ -44,14 +46,25 @@ export function ReceiptBulkLinkPanel({ userId, project, receipts, readOnly, onDo
           }),
         ),
       );
+      const failed = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+      const linked = results.length - failed.length;
       await syncProjectSideEffects({
         user: user ?? ({ id: userId } as any),
         project: activeProject ?? project,
       });
-      alertReceiptsBulkLinked((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole, unlinked.length);
       onDone();
+      if (failed.length === 0) {
+        alertReceiptsBulkLinked((user?.role === 'customer' ? 'customer' : 'contractor') as OsRole, unlinked.length);
+      } else {
+        notifyError(
+          `Привязано ${linked} из ${results.length}`,
+          failed[0].reason,
+          'Остальные чеки не привязаны — повторите попытку.',
+        );
+      }
     } catch (err) {
-      notifyError('Ошибка', err, 'Не удалось привязать все чеки. Проверьте сервер.');
+      onDone();
+      notifyError('Ошибка', err, 'Не удалось привязать чеки. Повторите попытку.');
     } finally {
       setBusy(false);
     }
@@ -60,7 +73,7 @@ export function ReceiptBulkLinkPanel({ userId, project, receipts, readOnly, onDo
   return (
     <View style={s.box}>
       <Text style={s.head}>{unlinked.length} чек(ов) без этапа</Text>
-      <Text style={s.hint}>Выберите этап — применится ко всем перечисленным в списке ниже</Text>
+      <Text style={s.hint}>Выберите этап — применится ко всем чекам без этапа из списка выше</Text>
       {project.stages?.length ? (
         <StagePickerChips stages={project.stages} value={stageId} onChange={setStageId} />
       ) : null}

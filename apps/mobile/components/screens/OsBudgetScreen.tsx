@@ -1,7 +1,6 @@
 /** Единый «Бюджет» — оркестратор вкладок (данные в useOsBudgetScreen) */
 import { useEffect, useState } from 'react';
 import { ScrollView, View, Text } from 'react-native';
-import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useLocalSearchParams, usePathname } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -11,6 +10,8 @@ import { PaymentDetailSheet } from '@/components/renova/PaymentDetailSheet';
 import { useBudgetWidgets } from '@/lib/useBudgetWidgets';
 import { useCustomerBudget } from '@/lib/hooks/useCustomerBudget';
 import { ProjectEmptyState } from '@/components/renova/ProjectEmptyState';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
+import { LoadingState } from '@/components/ui/LoadingState';
 import { useOsBudgetScreen } from '@/lib/hooks/useOsBudgetScreen';
 import type { OsRole } from '@/constants/osSections';
 import { resolveBudgetFigures } from '@/lib/useOsBudgetFigures';
@@ -95,14 +96,22 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
 
   if (loadState === 'error') {
     return (
-      <View style={{ flex: 1, padding: 16, gap: 12, justifyContent: 'center' }}>
-        <Text style={{ fontSize: 16, fontWeight: '700', color: RenovaTheme.colors.text }}>
-          Не удалось загрузить бюджет
-        </Text>
-        <Text style={{ fontSize: 13, color: RenovaTheme.colors.textMuted }}>
-          Данные не загружены — это не «0 ₽ расходов». Проверьте сеть и повторите.
-        </Text>
-        <PrimaryButton title="Повторить" onPress={() => { void reload(); }} />
+      <View style={{ flex: 1, padding: 16 }}>
+        <LoadErrorState
+          title="Не удалось загрузить бюджет"
+          hint="Данные не загружены — это не «0 ₽ расходов». Проверьте сеть и повторите."
+          onRetry={() => { void reload(); }}
+          role={role}
+        />
+      </View>
+    );
+  }
+
+  // BUD-07: пока данные не пришли, не рисуем нули «0 ₽ факта / нет финансовых данных»
+  if (loadState === 'loading' && !summary && !payments.length && !expenses.length && !receipts.length) {
+    return (
+      <View style={{ flex: 1, padding: 16 }}>
+        <LoadingState title="Загружаем бюджет…" />
       </View>
     );
   }
