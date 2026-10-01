@@ -62,6 +62,11 @@ def validate_configured_runtime(
     )
     _validate_admin_identity_configuration(current, policy)
     validate_observability_configuration(current)
+    # C9/C10/C11: S3 в production, CORS без «*», доверенные прокси. Реестр интеграций — единая
+    # точка; импорт ленивый, чтобы config/environment не зависели от сервисного слоя.
+    from app.services.integrations.registry import validate_integration_policy
+
+    validate_integration_policy(current)
     return policy
 
 
@@ -90,4 +95,7 @@ def configured_runtime_warnings(
         )
     )
     warnings.extend(observability_warnings(current))
+    from app.services.integrations.registry import integration_warnings
+
+    warnings.extend(integration_warnings(current))
     return tuple(warnings)

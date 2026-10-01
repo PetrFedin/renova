@@ -90,6 +90,13 @@ class Settings(BaseSettings):
     log_json: bool = False
     cors_allowed_origins: str = ""
     rate_limit_rpm: int = 120
+    # Читается и uvicorn (процесс-обёртка), здесь — только для startup-guard: за балансировщиком
+    # без явного списка доверенных прокси client.host == адрес LB (ломает rate limit и IP-allowlist
+    # вебхука ЮKassa). В production значение обязательно; без прокси укажите 127.0.0.1.
+    forwarded_allow_ips: str | None = None
+    # true: в production отсутствие любой критичной интеграции (в т.ч. платежей) — отказ старта,
+    # а не предупреждение. Включается владельцем перед боевым запуском.
+    integrations_strict: bool = False
 
     twilio_sid: str | None = None
     twilio_token: str | None = None

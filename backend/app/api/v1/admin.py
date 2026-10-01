@@ -3,6 +3,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.admin_access import require_admin_user
+from app.api.v1.admin_integrations import router as integrations_router
 from app.api.v1.admin_outbox_dead_letters import router as outbox_dead_letter_router
 from app.api.v1.admin_provider_reconciliations import router as provider_reconciliation_router
 from app.db.session import get_db
@@ -273,3 +274,4 @@ async def h0_readiness(
 
 router.include_router(outbox_dead_letter_router)
 router.include_router(provider_reconciliation_router)
+router.include_router(integrations_router)

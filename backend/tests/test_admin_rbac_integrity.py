@@ -97,6 +97,7 @@ def test_every_admin_route_uses_canonical_guard():
     }
     assert get_paths == {
         "/admin/stats",
+        "/admin/integrations/status",
         "/admin/projects-chart",
         "/admin/revenue-chart",
         "/admin/release-health",
