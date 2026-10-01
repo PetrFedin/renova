@@ -11,6 +11,7 @@
     "mobile:web": "npm run web --workspace=mobile",
     "dev": "bash scripts/start-dev.sh",
     "dev:worker": "bash scripts/start-dev.sh worker",
+    "dev:worker": "bash scripts/start-dev.sh worker",
     "preview": "bash scripts/open-iphone-preview.sh",
     "uat:customer": "bash scripts/uat-customer-iphone.sh",
     "postinstall": "node scripts/ensure-mobile-deps.js",
