@@ -162,9 +162,9 @@ export function ContractorProfileScreen() {
         <View style={ps.actionGap}>
           <PrimaryButton title="Документы объекта" variant="outline" onPress={() => pushOsNav('/documents', nav.from, 'contractor')} />
           <PrimaryButton title="Подписка Про" onPress={() => nav.href('/subscription')} />
-          {Platform.OS === 'web' && adminAccess === 'granted' ? (
+          {adminAccess === 'granted' ? (
             <PrimaryButton
-              title="Журнал аудита (веб-версия)"
+              title="Журнал аудита"
               variant="outline"
               onPress={() => nav.href('/audit')}
             />

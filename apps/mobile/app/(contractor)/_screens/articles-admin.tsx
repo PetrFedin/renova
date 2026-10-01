@@ -95,7 +95,7 @@ export default function ArticlesAdmin() {
         {list.map((a) => (
           <Pressable key={a.slug} style={s.row} onPress={() => void startEdit(a.slug)}>
             <Text style={s.rowT}>{a.title}{a.published === false ? ' (снята)' : ''}</Text>
-            <Pressable onPress={() => void unpublish(a)}><Text style={s.del}>✕</Text></Pressable>
+            <Pressable onPress={() => void unpublish(a)} accessibilityRole="button" accessibilityLabel={`Снять с публикации: ${a.title}`} style={{ minWidth: RenovaTheme.minTouch, minHeight: RenovaTheme.minTouch, alignItems: 'center', justifyContent: 'center' }}><Text style={s.del}>✕</Text></Pressable>
           </Pressable>
         ))}
         {loadingBody ? <Text style={s.rowT}>Загрузка статьи…</Text> : null}

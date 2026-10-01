@@ -1,5 +1,4 @@
-/** Web-only ссылки на внутренние admin-экраны */
-import { Platform } from 'react-native';
+/** Ссылки на внутренние admin-экраны — только подтверждённому админу (web и мобильное приложение) */
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useNavFromHere } from '@/lib/navigation';
 import { useAdminAccess } from '@/lib/hooks/useAdminAccess';
@@ -7,7 +6,7 @@ import { useAdminAccess } from '@/lib/hooks/useAdminAccess';
 export function AdminHubLink() {
   const nav = useNavFromHere();
   const access = useAdminAccess();
-  if (Platform.OS !== 'web' || access !== 'granted') return null;
+  if (access !== 'granted') return null;
 
   return (
     <>

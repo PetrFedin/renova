@@ -100,33 +100,46 @@ export default function OutboxDeadLettersScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [listFailed, setListFailed] = useState(false);
+  const [healthFailed, setHealthFailed] = useState(false);
 
   const load = useCallback(async (asRefresh = false) => {
     if (!user?.id) return;
     if (asRefresh) setRefreshing(true);
     else setLoading(true);
     setError(null);
-    try {
-      const [index, releaseHealth] = await Promise.all([
-        api.listOutboxDeadLetters(user.id, { limit: 100 }),
-        api.getReleaseHealth(user.id),
-      ]);
+    // INB-24: список и сводка здоровья грузятся независимо — сбой сводки не скрывает список
+    const [indexResult, healthResult] = await Promise.allSettled([
+      api.listOutboxDeadLetters(user.id, { limit: 100 }),
+      api.getReleaseHealth(user.id),
+    ]);
+    if (indexResult.status === 'fulfilled') {
+      const index = indexResult.value;
+      setListFailed(false);
       setItems(index.items);
       setTotal(index.total);
-      setHealth(releaseHealth?.integrations?.outbox || null);
       const visibleIds = new Set(index.items.map((item) => item.id));
       setClaims((current) => Object.fromEntries(
         Object.entries(current).filter(([id]) => visibleIds.has(id)),
       ));
       setConfirmReplayId((current) => (current && visibleIds.has(current) ? current : null));
       setOpenHistoryId((current) => (current && visibleIds.has(current) ? current : null));
-    } catch (loadError) {
-      reportError('app.contractor.outboxDeadLetters.load', loadError);
-      setError(operatorError(loadError));
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+    } else {
+      reportError('app.contractor.outboxDeadLetters.load', indexResult.reason);
+      setListFailed(true);
+      setError(operatorError(indexResult.reason));
     }
+    if (healthResult.status === 'fulfilled') {
+      setHealthFailed(false);
+      setHealth(healthResult.value?.integrations?.outbox || null);
+    } else {
+      reportError('app.contractor.outboxDeadLetters.health', healthResult.reason);
+      setHealthFailed(true);
+      setHealth(null);
+      if (indexResult.status === 'fulfilled') setError(operatorError(healthResult.reason));
+    }
+    setLoading(false);
+    setRefreshing(false);
   }, [user?.id]);
 
   useEffect(() => { load(); }, [load]);
@@ -134,10 +147,11 @@ export default function OutboxDeadLettersScreen() {
 
   const criticalCount = health?.poisoned ?? total;
   const statusLabel = useMemo(() => {
+    if (healthFailed) return 'Состояние неизвестно';
     if (criticalCount > 0 || health?.status === 'critical') return 'Требуется вмешательство';
     if ((health?.stale_leases ?? 0) > 0 || health?.status === 'degraded') return 'Есть просроченные захваты';
     return 'Очередь здорова';
-  }, [criticalCount, health?.stale_leases, health?.status]);
+  }, [criticalCount, healthFailed, health?.stale_leases, health?.status]);
 
   const claim = useCallback(async (item: OutboxDeadLetter) => {
     if (!user?.id) return;
@@ -300,7 +314,7 @@ export default function OutboxDeadLettersScreen() {
           </View>
         ) : null}
 
-        {!loading && items.length === 0 ? (
+        {!loading && !listFailed && items.length === 0 ? (
           <View style={styles.empty} testID="dead-letter-empty-state">
             <Text style={styles.emptyTitle}>Проблемных событий нет</Text>
             <Text style={styles.muted}>Все события доставлены или ожидают штатного повторения.</Text>

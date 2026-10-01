@@ -65,7 +65,7 @@ export default function TeamQrScreen() {
       showActionConfirm({
         title: 'Бригада',
         message: isPro
-          ? 'QR бригады доступен на Pro. Откройте «Подписка» или используйте staging с trial.'
+          ? 'QR бригады доступен на тарифе Про. Откройте «Подписка» — там можно попробовать Про бесплатно.'
           : msg,
         ...(isPro
           ? {
@@ -86,10 +86,10 @@ export default function TeamQrScreen() {
       <BackHeader title="Бригада QR" returnTo={returnTo} />
       <ScrollView style={s.wrap} contentContainerStyle={{ paddingBottom: 40 }}>
         <Text style={s.h}>Роль по ссылке</Text>
-        <Text style={s.sub}>Сканирует новый исполнитель → входит в вашу бригаду с выбранной ролью (H1.5). На staging без Pro invite может быть недоступен — см. подписку.</Text>
+        <Text style={s.sub}>Новый исполнитель сканирует код и входит в вашу бригаду с выбранной ролью. Приглашения доступны на тарифе Про — см. подписку.</Text>
         <View style={s.roles}>
           {ROLES.map((r) => (
-            <Pressable key={r.id} onPress={() => { setRole(r.id); setLink(''); }} style={[s.roleChip, role === r.id && s.roleOn]}>
+            <Pressable key={r.id} onPress={() => { setRole(r.id); setLink(''); }} style={[s.roleChip, role === r.id && s.roleOn]} accessibilityRole="button" accessibilityLabel={`Роль: ${r.label}`} accessibilityState={{ selected: role === r.id }}>
               <Text style={[s.roleT, role === r.id && s.roleTOn]}>{r.label}</Text>
               <Text style={s.roleHint}>{r.hint}</Text>
             </Pressable>
@@ -146,7 +146,7 @@ export default function TeamQrScreen() {
           />
         ) : null}
 
-        <PrimaryButton title={scan ? 'Стоп сканер' : 'Сканировать invite'} onPress={() => setScan(!scan)} />
+        <PrimaryButton title={scan ? 'Стоп сканер' : 'Сканировать приглашение'} onPress={() => setScan(!scan)} />
         {!perm?.granted && scan ? <PrimaryButton title="Разрешить камеру" onPress={req} /> : null}
         {scan && perm?.granted ? (
           <CameraView
