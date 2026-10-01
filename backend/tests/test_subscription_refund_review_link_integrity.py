@@ -135,7 +135,7 @@ async def test_already_linked_refund_cannot_move_to_another_checkout(tmp_path):
                 await resolve_review(
                     db,
                     refund_id=refund_id,
-                    actor_id=actor_id,
+                    actor_id=f"{actor_id}-approver",  # MKT-033: утверждает другой админ
                     expected_version=1,
                     decision_key="collision-decision-linked",
                     action="link_and_apply",
@@ -209,7 +209,7 @@ async def test_provider_payment_cannot_be_assigned_to_second_checkout(tmp_path):
                 await resolve_review(
                     db,
                     refund_id=refund_id,
-                    actor_id=actor_id,
+                    actor_id=f"{actor_id}-approver",  # MKT-033: утверждает другой админ
                     expected_version=1,
                     decision_key="provider-collision-decision",
                     action="link_and_apply",

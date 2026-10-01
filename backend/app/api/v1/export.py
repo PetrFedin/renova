@@ -234,7 +234,7 @@ async def export_kpi_weekly(project_id: str, user: User = Depends(get_current_us
     snaps = list(r.scalars().all())
     pdf = new_pdf()
     pdf_line(pdf, f"KPI week: {p.name}", size=14)
-    pdf_line(pdf, f"Marzha: {p.budget_planned - p.budget_spent:.0f}")
+    pdf_line(pdf, f"Remaining budget: {p.budget_planned - p.budget_spent:.0f}")
     vals = [s.margin_estimated for s in snaps] or [0]
     mx = max(vals) or 1
     pdf_line(pdf, "Sparkline:", size=11)

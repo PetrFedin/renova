@@ -106,14 +106,19 @@ async def final_report(db: AsyncSession, project_id: str) -> dict:
     expenses = await bud.list_expenses(db, project_id, limit=500)
     stages = (await db.execute(select(Stage).where(Stage.project_id == project_id))).scalars().all()
     works = [{"name": s.name, "status": s.status.value, "amount": s.payment_amount} for s in stages]
-    savings = round(summary["budget_planned"] - summary["budget_spent"], 2)
     over = max(0, summary["budget_spent"] - summary["budget_planned"])
-    by_category = await _expenses_by_category(db, project_id)
+    by_category = _expenses_by_category(expenses)
+    # MKT-019: отчёт «финальный» только когда все этапы закрыты; до этого — предварительный.
+    finished = bool(stages) and all(s.status == StageStatus.done for s in stages)
+    savings = _honest_savings(
+        summary["budget_planned"], summary["budget_spent"], finished=finished,
+    )
     return {
         "project_name": p.name,
+        "is_preliminary": not finished,
         "budget_planned": summary["budget_planned"],
         "budget_spent": summary["budget_spent"],
-        "savings": savings if savings > 0 else 0,
+        "savings": savings,
         "overrun": over,
         "forecast_total": summary["forecast_total"],
         "works": works,
@@ -125,6 +130,17 @@ async def final_report(db: AsyncSession, project_id: str) -> dict:
         "risks": risks[:10],
         "expenses_by_category": by_category,
     }
+
+
+def _honest_savings(planned: float, spent: float, *, finished: bool) -> float | None:
+    """Экономия «план − факт» осмысленна только для закрытого объекта с фактом.
+
+    Для нового проекта (факт 0) это весь бюджет, для идущего — просто неизрасходованный
+    остаток; в обоих случаях возвращаем None, а не «экономию» (docs/BUDGET_FACT.md).
+    """
+    if not finished or spent <= 0:
+        return None
+    return max(0.0, round(planned - spent, 2))
 
 
 EXPENSE_CATEGORY_LABELS = {
@@ -153,14 +169,14 @@ def parse_expense_categories(raw: str | None) -> set[str] | None:
     return picked or None
 
 
-async def _expenses_by_category(db: AsyncSession, project_id: str) -> list[dict]:
-    from app.models.entities import Receipt
-
-    receipts = list((await db.execute(select(Receipt).where(Receipt.project_id == project_id))).scalars().all())
+def _expenses_by_category(expenses) -> list[dict]:
+    """Разбивка из тех же Expense, что и expenses_total (единый источник, MKT-019)."""
     totals: dict[str, float] = {}
-    for rec in receipts:
-        cat = getattr(rec, "expense_category", "materials") or "materials"
-        totals[cat] = totals.get(cat, 0.0) + float(rec.amount or 0)
+    for exp in expenses:
+        if exp.status != "confirmed":
+            continue
+        cat = exp.category or "materials"
+        totals[cat] = totals.get(cat, 0.0) + float(exp.amount or 0)
     return [
         {
             "category": cat,
@@ -177,7 +193,10 @@ def build_final_pdf(data: dict, sections: set[str], categories: set[str] | None 
 
     pdf = new_pdf()
     name = data.get("project_name", "")
-    pdf_line(pdf, f"Финальный отчёт: {name}", size=14)
+    title = "Предварительный отчёт" if data.get("is_preliminary") else "Финальный отчёт"
+    pdf_line(pdf, f"{title}: {name}", size=14)
+    if data.get("is_preliminary"):
+        pdf_line(pdf, "Не все этапы закрыты — цифры могут измениться.", size=9)
 
     if "summary" in sections:
         pdf_line(pdf, "Сводка бюджета", size=12)

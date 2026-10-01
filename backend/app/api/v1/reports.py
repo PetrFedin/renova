@@ -13,11 +13,20 @@ from app.services.pdf_helper import new_pdf, pdf_line, pdf_response
 router = APIRouter(prefix="/projects/{project_id}/reports", tags=["reports"])
 
 
+def _parse_day(day: str | None) -> date | None:
+    """MKT-018: некорректная дата — 422, а не 500."""
+    if not day:
+        return None
+    try:
+        return date.fromisoformat(day)
+    except ValueError as error:
+        raise HTTPException(422, detail={"code": "invalid_day"}) from error
+
+
 @router.get("/daily")
 async def report_daily(project_id: str, day: str | None = None, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=False)
-    d = date.fromisoformat(day) if day else None
-    return await rep.daily_report(db, project_id, day=d)
+    return await rep.daily_report(db, project_id, day=_parse_day(day))
 
 
 @router.get("/weekly")
@@ -33,9 +42,9 @@ async def report_final(project_id: str, user: User = Depends(get_current_user), 
 
 
 @router.get("/daily.pdf")
-async def report_daily_pdf(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def report_daily_pdf(project_id: str, day: str | None = None, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=False)
-    data = await rep.daily_report(db, project_id)
+    data = await rep.daily_report(db, project_id, day=_parse_day(day))
     if not data:
         raise HTTPException(404)
     pdf = new_pdf()

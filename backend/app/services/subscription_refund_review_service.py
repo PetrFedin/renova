@@ -513,14 +513,22 @@ async def resolve_review(
         raise SubscriptionRefundReviewError("refund_review_not_actionable")
 
     now = utc_now()
-    active_claim = (
+    claim_alive = (
         row.review_status == "claimed"
-        and row.review_owner_id == actor_id
         and row.review_claim_expires_at is not None
         and row.review_claim_expires_at > now
     )
-    if not active_claim:
+    if action == "link_and_apply":
+        # MKT-033: разделение обязанностей. Привязка возврата меняет деньги и права
+        # покупателя, поэтому разбирающий (claim) и утверждающий (resolve) — разные
+        # администраторы. Закрытие без последствий (dismiss_*) остаётся за владельцем claim.
+        if not claim_alive:
+            raise SubscriptionRefundReviewError("refund_review_active_claim_required")
+        if row.review_owner_id == actor_id:
+            raise SubscriptionRefundReviewError("refund_review_second_admin_required")
+    elif not (claim_alive and row.review_owner_id == actor_id):
         raise SubscriptionRefundReviewError("refund_review_active_claim_required")
+    claimed_by_id = row.review_owner_id
     if int(expected_version) != int(row.review_version):
         raise SubscriptionRefundReviewError("refund_review_version_conflict")
 
@@ -559,6 +567,7 @@ async def resolve_review(
             "decision_key": decision_key,
             "note": note,
             "outcome": outcome,
+            "claimed_by": claimed_by_id,
             "version": row.review_version,
         },
     )

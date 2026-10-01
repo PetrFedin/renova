@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.admin_access import require_admin_user
@@ -22,27 +22,55 @@ async def stats(
     return {"projects": pc, "users": uc, "audit_events": ac}
 
 
+_CHART_GROUP_LIMIT = 20
+
+
+def _group_name(value) -> str:
+    return str(getattr(value, "value", value) or "other")[:20]
+
+
 @router.get("/projects-chart")
 async def projects_chart(
     user: User = Depends(require_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.models.entities import StageStatus
+    """Платформенный агрегат по типам ремонта (MKT-032): без названий и владельцев проектов."""
+    from app.models.entities import Stage, StageStatus
 
-    r = await db.execute(select(Project).where(Project.contractor_id == user.id))
+    project_counts = {
+        _group_name(kind): int(count)
+        for kind, count in (
+            await db.execute(
+                select(Project.renovation_type, func.count()).group_by(Project.renovation_type)
+            )
+        ).all()
+    }
+    stage_rows = (
+        await db.execute(
+            select(
+                Project.renovation_type,
+                func.count(Stage.id),
+                func.sum(case((Stage.status == StageStatus.done, 1), else_=0)),
+                func.avg(Stage.percent_complete),
+            )
+            .join(Stage, Stage.project_id == Project.id)
+            .group_by(Project.renovation_type)
+        )
+    ).all()
+    stages = {
+        _group_name(kind): (int(total or 0), int(done or 0), float(avg or 0))
+        for kind, total, done, avg in stage_rows
+    }
     out = []
-    for p in r.scalars().all():
-        await db.refresh(p, ["stages"])
-        done = sum(1 for s in p.stages if s.status == StageStatus.done)
+    for name, projects in sorted(project_counts.items(), key=lambda x: -x[1])[:_CHART_GROUP_LIMIT]:
+        total, done, avg = stages.get(name, (0, 0, 0.0))
         out.append(
             {
-                "name": p.name[:20],
+                "name": name,
+                "projects": projects,
                 "done": done,
-                "total": len(p.stages),
-                "progress": round(
-                    sum(s.percent_complete for s in p.stages)
-                    / (len(p.stages) or 1)
-                ),
+                "total": total,
+                "progress": round(avg),
             }
         )
     return out
@@ -53,28 +81,56 @@ async def revenue_chart(
     user: User = Depends(require_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.models.entities import LineType, PaymentStatus
+    """Платформенный агрегат по типам ремонта (MKT-032).
 
-    r = await db.execute(select(Project).where(Project.contractor_id == user.id))
+    ``materials_planned`` — плановые материалы по смете; ``plan_minus_materials`` — план
+    за вычетом плановых материалов (ранее называлось «margin», маржой не является).
+    """
+    from app.models.entities import EstimateLine, LineType, Payment, PaymentStatus
+
+    planned_rows = (
+        await db.execute(
+            select(Project.renovation_type, func.coalesce(func.sum(Project.budget_planned), 0.0))
+            .group_by(Project.renovation_type)
+        )
+    ).all()
+    paid = {
+        _group_name(kind): float(total or 0)
+        for kind, total in (
+            await db.execute(
+                select(Project.renovation_type, func.coalesce(func.sum(Payment.amount), 0.0))
+                .join(Payment, Payment.project_id == Project.id)
+                .where(Payment.status == PaymentStatus.confirmed)
+                .group_by(Project.renovation_type)
+            )
+        ).all()
+    }
+    materials = {
+        _group_name(kind): float(total or 0)
+        for kind, total in (
+            await db.execute(
+                select(
+                    Project.renovation_type,
+                    func.coalesce(func.sum(EstimateLine.quantity_planned * EstimateLine.unit_price), 0.0),
+                )
+                .join(EstimateLine, EstimateLine.project_id == Project.id)
+                .where(EstimateLine.line_type == LineType.material)
+                .group_by(Project.renovation_type)
+            )
+        ).all()
+    }
     out = []
-    for p in r.scalars().all():
-        await db.refresh(p, ["estimate_lines", "payments"])
-        mp = sum(
-            line.quantity_planned * line.unit_price
-            for line in p.estimate_lines
-            if line.line_type == LineType.material
-        )
-        paid = sum(
-            payment.amount
-            for payment in p.payments
-            if payment.status == PaymentStatus.confirmed
-        )
+    for kind, planned in sorted(planned_rows, key=lambda x: -float(x[1] or 0))[:_CHART_GROUP_LIMIT]:
+        name = _group_name(kind)
+        planned = float(planned or 0)
+        mat = materials.get(name, 0.0)
         out.append(
             {
-                "name": p.name[:20],
-                "margin": round(p.budget_planned - mp, 0),
-                "paid": round(paid, 0),
-                "planned": round(p.budget_planned, 0),
+                "name": name,
+                "planned": round(planned, 0),
+                "paid": round(paid.get(name, 0.0), 0),
+                "materials_planned": round(mat, 0),
+                "plan_minus_materials": round(planned - mat, 0),
             }
         )
     return out

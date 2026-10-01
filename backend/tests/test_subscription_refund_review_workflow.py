@@ -279,6 +279,7 @@ async def test_link_and_apply_repairs_missing_legacy_provider_link():
             checkout.provider_payment_id = None
             await db.commit()
 
+        approver_headers = await _add_admin("refund-approver-link")
         refund = await _unknown_refund(
             client,
             refund_id="review-link-refund",
@@ -293,7 +294,7 @@ async def test_link_and_apply_repairs_missing_legacy_provider_link():
         assert claim.status_code == 200, claim.text
         resolved = await client.post(
             f"/api/v1/admin/subscription-refunds/reviews/{refund_id}/resolve",
-            headers=headers,
+            headers=approver_headers,
             json={
                 "expected_version": 1,
                 "decision_key": "link-decision-0001",
@@ -348,6 +349,7 @@ async def test_failed_link_resolution_rolls_back_without_corrupting_entitlement(
             checkout.provider_payment_id = None
             await db.commit()
 
+        approver_headers = await _add_admin("refund-approver-over")
         refund = await _unknown_refund(
             client,
             refund_id="review-over-refund",
@@ -363,7 +365,7 @@ async def test_failed_link_resolution_rolls_back_without_corrupting_entitlement(
         assert claim.status_code == 200, claim.text
         failed = await client.post(
             f"/api/v1/admin/subscription-refunds/reviews/{refund_id}/resolve",
-            headers=headers,
+            headers=approver_headers,
             json={
                 "expected_version": 1,
                 "decision_key": "over-refund-decision-0001",
@@ -397,3 +399,45 @@ async def test_failed_link_resolution_rolls_back_without_corrupting_entitlement(
         assert ledger.review_status == "claimed"
         assert ledger.review_version == 1
         assert ledger.decision_key is None
+
+
+async def test_link_and_apply_requires_a_second_admin(monkeypatch):
+    """MKT-033: разбирающий (claim) не может сам утвердить привязку возврата."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        _, headers = await _demo_user(client, "contractor")
+        purchase = await _checkout(client, headers)
+        from app.db import session as sess
+
+        async with sess.SessionLocal() as db:
+            checkout = await db.get(SubscriptionCheckout, purchase["checkout_id"])
+            payment_id = checkout.provider_payment_id or purchase["payment_id"]
+            checkout.provider_payment_id = None
+            await db.commit()
+        refund = await _unknown_refund(client, refund_id="review-four-eyes", payment_id=payment_id)
+        refund_id = refund["subscription_refund_id"]
+        claim = await client.post(
+            f"/api/v1/admin/subscription-refunds/reviews/{refund_id}/claim",
+            headers=headers, json={"expected_version": 0},
+        )
+        assert claim.status_code == 200, claim.text
+        body = {
+            "expected_version": 1,
+            "decision_key": "four-eyes-decision-1",
+            "action": "link_and_apply",
+            "note": "Matched against the provider settlement export.",
+            "checkout_id": purchase["checkout_id"],
+        }
+        same = await client.post(
+            f"/api/v1/admin/subscription-refunds/reviews/{refund_id}/resolve",
+            headers=headers, json=body,
+        )
+        assert same.status_code == 409
+        assert same.json()["detail"]["code"] == "refund_review_second_admin_required"
+        approver = await _add_admin("refund-approver-eyes")
+        done = await client.post(
+            f"/api/v1/admin/subscription-refunds/reviews/{refund_id}/resolve",
+            headers=approver, json=body,
+        )
+        assert done.status_code == 200, done.text
+        assert done.json()["review_status"] == "resolved"
