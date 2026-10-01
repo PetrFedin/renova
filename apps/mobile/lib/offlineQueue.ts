@@ -15,7 +15,7 @@ import {
   OfflineQueueStorageError,
   parseOfflineQueueStorage,
 } from '@/lib/offlineQueueStorage';
-import { authHeaders } from '@/lib/api/client';
+import { authHeaders, getRefreshToken, invalidateCachesAfterMutation, refreshAccessToken } from '@/lib/api/client';
 import { currentSessionUserId } from '@/lib/domain/sessionAuthority';
 import { reportError } from '@/lib/reportError';
 
@@ -445,7 +445,9 @@ async function flushOnce(apiBase: string): Promise<OfflineFlushResult> {
 
     const expectedVersion = job.version ?? 0;
     try {
-      const response = await fetchWithTimeout(`${apiBase}${job.path}`, {
+      // Тело, X-Offline-Id и client_request_id при повторе остаются прежними —
+      // сервер дедуплицирует по ним; меняется только Authorization.
+      const send = () => fetchWithTimeout(`${apiBase}${job.path}`, {
         method: job.method,
         headers: {
           'Content-Type': 'application/json',
@@ -454,6 +456,13 @@ async function flushOnce(apiBase: string): Promise<OfflineFlushResult> {
         },
         body: job.body,
       });
+      let response = await send();
+      if (response.status === 401 && getRefreshToken()) {
+        // CMP-007: access-токен мог истечь за время офлайна. Один refresh и повтор
+        // того же задания; сбой сети при refresh попадёт в catch как обычная ошибка сети.
+        const refreshed = await refreshAccessToken();
+        if (refreshed) response = await send();
+      }
 
       const errorText = response.ok
         ? ''
@@ -479,6 +488,8 @@ async function flushOnce(apiBase: string): Promise<OfflineFlushResult> {
       if (decision.action === 'drop') {
         synced += 1;
         mutations.push({ id: job.id, expectedVersion, next: null });
+        // CMP-004: реплей — тоже успешная мутация, кэш GET проекта устарел.
+        await invalidateCachesAfterMutation(job.path, job.userId);
         continue;
       }
       if (decision.action === 'conflict') {
@@ -594,6 +605,23 @@ export function flush(apiBase: string): Promise<OfflineFlushResult> {
     activeFlush = null;
   });
   return activeFlush;
+}
+
+/**
+ * Выход пользователя (CMP-016): убрать из очереди задания этого пользователя, чтобы они
+ * не пережили аккаунт на общем устройстве. Задания других пользователей не трогаем.
+ */
+export async function dropJobsForUser(userId: string): Promise<number> {
+  if (!userId) return 0;
+  const dropped = await withQueueLock(async () => {
+    const queue = await getQueueUnlocked();
+    const next = queue.filter((job) => job.userId !== userId);
+    const count = queue.length - next.length;
+    if (count > 0) await setQueueUnlocked(next);
+    return count;
+  });
+  if (dropped > 0) await emitQueueChanged();
+  return dropped;
 }
 
 /** После archive/trash/purge — не replay мутации по этому project_id. */

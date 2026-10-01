@@ -16,8 +16,13 @@ const MAX_ATTEMPTS = 5;
 const RETRY_BASE_MS = 5_000;
 const RETRY_MAX_MS = 5 * 60_000;
 
+/**
+ * 401 не постоянная ошибка задания: чаще это просроченный access-токен (CMP-007).
+ * Раннер обновляет токен и повторяет то же задание; если 401 остаётся — задание уходит
+ * в обычный backoff и блокируется только по лимиту попыток, а не с первого ответа.
+ */
 export function isPermanentClientError(status: number): boolean {
-  return status >= 400 && status < 500 && ![408, 409, 425, 429].includes(status);
+  return status >= 400 && status < 500 && ![401, 408, 409, 425, 429].includes(status);
 }
 
 export function retryDelayMs(attempts: number, retryAfterMs?: number): number {

@@ -8,7 +8,10 @@ import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-c
 import { StatusBar } from 'expo-status-bar';
 import { RenovaProvider, useRenova } from '@/lib/context/RenovaContext';
 import { NavTracker } from '@/components/renova/NavTracker';
-import { flushOfflineOutbox } from '@/lib/offline';
+import { flushOfflineOutbox, isOnline, startOfflineFlushScheduler, subscribeOfflineFlush } from '@/lib/offline';
+import { getQueue } from '@/lib/offlineQueue';
+import { pollingResumesInMs } from '@/lib/api/client';
+import { currentSessionUserId } from '@/lib/domain/sessionAuthority';
 import { initLang } from '@/lib/i18n';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { initSentry } from '@/lib/sentryInit';
@@ -61,12 +64,23 @@ export default function RootLayout() {
     const unsubNet = NetInfo.addEventListener((state) => {
       if (state.isConnected) onOnline();
     });
+    // CMP-015: таймер на ближайший nextAttemptAt — отложенные задания уходят без ручной синхронизации.
+    const stopFlushScheduler = startOfflineFlushScheduler({
+      getJobs: getQueue,
+      flush: () => flushOfflineOutbox(apiBase),
+      isOnline,
+      subscribe: subscribeOfflineFlush,
+      getUserId: currentSessionUserId,
+      pausedForMs: pollingResumesInMs,
+      onError: reportCatch('offline.flushScheduler'),
+    });
     if (typeof window !== 'undefined') window.addEventListener('online', onOnline);
 
     return () => {
       disposed = true;
       removeNotificationListener();
       unsubNet();
+      stopFlushScheduler();
       if (typeof window !== 'undefined') window.removeEventListener('online', onOnline);
     };
   }, []);

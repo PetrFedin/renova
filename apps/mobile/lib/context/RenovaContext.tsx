@@ -18,7 +18,9 @@ function signalPreviewReady() {
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { CUSTOMER_PRO_LIMIT_NOTICE, canPurchasePro } from '@/lib/paywallPolicy';
 import { ApiError, api, isRateLimitError, ProjectDetail, ProjectSummary, User, UserRole } from '@/lib/api';
-import { getRefreshToken, setAccessToken, setRefreshToken } from '@/lib/api/client';
+import { clearAllCachedGets, getRefreshToken, invalidateProjectsCache, setAccessToken, setRefreshToken, setSessionHooks } from '@/lib/api/client';
+import { dropJobsForUser } from '@/lib/offlineQueue';
+import { router } from 'expo-router';
 import { isAuthoritativeSessionFailure } from '@/lib/api/failurePolicy';
 import { secureGet, secureSet, secureMultiRemove } from '@/lib/secureTokenStore';
 import {
@@ -29,6 +31,7 @@ import {
 import {
   bootstrapPreviewDemo,
   inferDemoRole,
+  isDemoEnabled,
   isDemoPhone,
   isPreviewFrame,
   listProjectsWithRetry,
@@ -69,6 +72,9 @@ function deferPushRegistration(userId: string) {
 
 import { syncCustomerBudgetOnLoad } from '@/lib/customerBudgetMigrate';
 import { buildProjectCreatePayload } from '@/lib/wizard/buildProjectCreatePayload';
+
+/** Сколько ждать выгрузки очереди перед выходом. */
+const LOGOUT_FLUSH_GRACE_MS = 3_000;
 
 const KEYS = {
   userId: 'renova_user_id',
@@ -170,7 +176,10 @@ type Ctx = {
   ensureActiveProject: () => Promise<void>;
   /** Идёт загрузка/восстановление активного объекта */
   projectResolving: boolean;
+  /** «Повторить»: перезагрузка данных текущей сессии, без смены аккаунта. */
   recoverSession: () => Promise<void>;
+  /** Явный демо-вход (только при EXPO_PUBLIC_DEMO=1). */
+  recoverDemo: () => Promise<void>;
   createProjectFromWizard: (extra?: Partial<WizardDraft>) => Promise<CreateProjectResult>;
   updateProjectProfile: (patch: ProjectProfilePatch) => Promise<void>;
   submitStage: (stageId: string) => Promise<void>;
@@ -393,38 +402,44 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     }
   }, [refreshTeamAccess, beginSession]);
 
+  /** Перезагрузка проектов/активного объекта текущего пользователя (CMP-008). */
   const recoverSession = useCallback(async () => {
+    const reachable = await pingApi();
+    setApiReachable(reachable);
+    if (!reachable || !user) return;
+    const storedRole = await AsyncStorage.getItem(KEYS.userRole);
+    const role = inferDemoRole(user, storedRole);
+    await invalidateProjectsCache(user.id);
+    await refreshTeamAccess(user);
+    const raw = await listProjectsWithRetry(user.id, 4);
+    const list = await enrichProjectsPendingPayments(user.id, raw, user.role);
+    setProjects(list);
+    const pending = await AsyncStorage.getItem(SESSION_KEYS.pendingProjectPick);
+    if (pending === '1') {
+      setActiveProject(null);
+      setReadOnly(false);
+      return;
+    }
+    if (list.length) {
+      let p = await loadActiveProject(user.id, list, await AsyncStorage.getItem(KEYS.projectId), role);
+      if (p) {
+        p = await syncCustomerBudgetOnLoad(user, p);
+        setActiveProject(p);
+        setReadOnly(!!p.read_only);
+      }
+    }
+  }, [user, refreshTeamAccess]);
+
+  /** Явное действие «Демо»: подменяет сессию демо-аккаунтом, поэтому только при EXPO_PUBLIC_DEMO=1. */
+  const recoverDemo = useCallback(async () => {
+    if (!isDemoEnabled()) return;
     const reachable = await pingApi();
     setApiReachable(reachable);
     if (!reachable) return;
     const storedRole = await AsyncStorage.getItem(KEYS.userRole);
-    const role = inferDemoRole(user, storedRole);
-    const recovered = await recoverDemoSession(role);
-    if (recovered) {
-      await applySession(recovered.user, recovered.projects);
-      return;
-    }
-    if (user) {
-      await refreshTeamAccess(user);
-      const raw = await listProjectsWithRetry(user.id, 4);
-      const list = user ? await enrichProjectsPendingPayments(user.id, raw, user.role) : raw;
-      setProjects(list);
-      const pending = await AsyncStorage.getItem(SESSION_KEYS.pendingProjectPick);
-      if (pending === '1') {
-        setActiveProject(null);
-        setReadOnly(false);
-        return;
-      }
-      if (list.length) {
-        let p = await loadActiveProject(user.id, list, await AsyncStorage.getItem(KEYS.projectId), role);
-        if (p) {
-          p = await syncCustomerBudgetOnLoad(user, p);
-          setActiveProject(p);
-          setReadOnly(!!p.read_only);
-        }
-      }
-    }
-  }, [user, applySession, refreshTeamAccess]);
+    const recovered = await recoverDemoSession(inferDemoRole(user, storedRole));
+    await applySession(recovered.user, recovered.projects);
+  }, [user, applySession]);
 
   useEffect(() => {
     (async () => {
@@ -487,6 +502,9 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
           ]);
           await secureMultiRemove([KEYS.userSnapshot]);
           await clearAccessToken();
+          // Без EXPO_PUBLIC_DEMO сессия окончена: остаёмся на экране входа, а не
+          // стучимся в demo-login, который в prod отвечает 404 (CMP-008).
+          if (!isDemoEnabled()) return;
           const recovered = await recoverDemoSession(inferDemoRole(null, storedRole));
           if (recovered) await applySession(recovered.user, recovered.projects);
           return;
@@ -499,7 +517,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
         // Пустой список или устаревший userId — пересинхронизация с демо
         if (list.length === 0) {
           const role = inferDemoRole(u, storedRole);
-          if (isDemoPhone(u.phone) || storedRole === 'customer' || storedRole === 'contractor') {
+          if (isDemoEnabled() && (isDemoPhone(u.phone) || storedRole === 'customer' || storedRole === 'contractor')) {
             const recovered = await recoverDemoSession(role);
             if (recovered) {
               u = recovered.user;
@@ -729,12 +747,25 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     });
   }, [loading, user?.id, activeProject?.id, projects.length, ensureActiveProject]);
 
+  const endReasonRef = useRef<'user' | 'expired'>('user');
+  const logoutRef = useRef<() => Promise<void>>(async () => undefined);
+
   const logout = useCallback(async () => {
+    const expired = endReasonRef.current === 'expired';
+    endReasonRef.current = 'user';
     // Серверный отзыв — ДО очистки локальных токенов (после неё refresh уже не достать).
     // Токен и поколение берём синхронно: если за время запроса вошёл другой аккаунт,
     // локальную очистку пропускаем — иначе снесём чужую новую сессию (#315).
     const refresh = getRefreshToken();
     const stamp = getSessionStamp();
+    if (refresh && !expired) {
+      // CMP-016: задания выходящего пользователя после выхода удаляются — даём очереди
+      // короткий шанс уйти на сервер (офлайн/сбой не задерживает выход дольше окна).
+      await Promise.race([
+        flushOfflineOutbox().catch(reportCatch('renovaContext.logoutFlush')),
+        new Promise<void>((resolve) => setTimeout(resolve, LOGOUT_FLUSH_GRACE_MS)),
+      ]);
+    }
     if (refresh) {
       try {
         await api.logout(refresh);
@@ -755,6 +786,16 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     ]);
     await secureMultiRemove([KEYS.userSnapshot]);
     await clearAccessToken();
+    // CMP-016: durable-кэш GET и очередь вышедшего пользователя не доживают до следующего аккаунта.
+    // При истечении сессии очередь сохраняем: после повторного входа владельца она уйдёт (#315).
+    await clearAllCachedGets();
+    if (!expired && stamp.userId) {
+      try {
+        await dropJobsForUser(stamp.userId);
+      } catch (error) {
+        reportError('renovaContext.logoutDropQueue', error, { userId: stamp.userId });
+      }
+    }
     beginSession(null);
     setUser(null);
     setProjects([]);
@@ -763,6 +804,30 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     setTeamAccess(NOT_APPLICABLE_TEAM_ACCESS);
     setWizardState(defaultWizard);
   }, []);
+
+  logoutRef.current = logout;
+
+  // CMP-002/CMP-003: клиент сообщает о ротации токенов и об окончательном отказе авторизации.
+  useEffect(() => setSessionHooks({
+    onTokensRotated: async (tokens, stamp) => {
+      if (getSessionStamp().generation !== stamp.generation) return;
+      // Сначала refresh: если запись оборвётся, пара «старый access + новый refresh» восстановима.
+      if (tokens.refresh) await secureSet(KEYS.refreshToken, tokens.refresh);
+      if (getSessionStamp().generation !== stamp.generation) return;
+      await secureSet(KEYS.accessToken, tokens.access);
+    },
+    onSessionExpired: async (stamp) => {
+      if (getSessionStamp().generation !== stamp.generation) return;
+      endReasonRef.current = 'expired';
+      await logoutRef.current();
+      showActionConfirm({ title: 'Сессия истекла', message: 'Сессия истекла. Войдите снова' });
+      try {
+        router.replace('/onboarding/role' as never);
+      } catch (error) {
+        reportError('renovaContext.sessionExpiredNav', error);
+      }
+    },
+  }), []);
 
   const value = useMemo(
     () => ({
@@ -783,6 +848,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       ensureActiveProject,
       projectResolving,
       recoverSession,
+      recoverDemo,
       createProjectFromWizard,
       updateProjectProfile,
       submitStage,
@@ -805,7 +871,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
         && activeProject.contractor_id === user.id
       ),
     }),
-    [loading, apiReachable, user, projects, activeProject, projectResolving, wizard, setWizard, demoLogin, register, loginWithSms, refreshProjects, refreshMe, clearActiveProject, loadProject, ensureActiveProject, recoverSession, createProjectFromWizard, updateProjectProfile, submitStage, acceptStage, rejectStage, logout, paywallVisible, effectiveReadOnly, teamRole, teamAccess.ownerLike],
+    [loading, apiReachable, user, projects, activeProject, projectResolving, wizard, setWizard, demoLogin, register, loginWithSms, refreshProjects, refreshMe, clearActiveProject, loadProject, ensureActiveProject, recoverSession, recoverDemo, createProjectFromWizard, updateProjectProfile, submitStage, acceptStage, rejectStage, logout, paywallVisible, effectiveReadOnly, teamRole, teamAccess.ownerLike],
   );
 
   return (

@@ -22,6 +22,10 @@ assert.deepEqual(decideFlushOutcome(422, 'invalid', 0, now), {
   attempts: 1,
 });
 
+// CMP-007: 401 — просроченный токен, не постоянная ошибка задания
+assert.equal(decideFlushOutcome(401, 'expired', 0, now).action, 'retry');
+assert.equal(decideFlushOutcome(403, 'forbidden', 0, now).action, 'block');
+
 const firstRetry = decideFlushOutcome(503, 'temporary', 0, now);
 assert.equal(firstRetry.action, 'retry');
 if (firstRetry.action === 'retry') {

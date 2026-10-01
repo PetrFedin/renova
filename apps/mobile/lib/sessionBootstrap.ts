@@ -62,6 +62,11 @@ export function inferDemoRole(user: User | null, storedRole: string | null): Use
   return 'customer';
 }
 
+/** Демо-вход разрешён только при явном EXPO_PUBLIC_DEMO=1 (в prod сервер отвечает 404 demo_disabled). */
+export function isDemoEnabled(): boolean {
+  return process.env.EXPO_PUBLIC_DEMO === '1';
+}
+
 export function isDemoPhone(phone?: string | null): boolean {
   return !!phone && (DEMO_PHONES as readonly string[]).includes(phone);
 }

@@ -20,18 +20,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { RenovaTheme } from '@/constants/Theme';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useStaleCacheStatus } from '@/lib/useStaleCacheStatus';
+import { isDemoEnabled } from '@/lib/sessionBootstrap';
 
 type Props = {
   /** Показать даже если API доступен, но нет проектов */
   showEmpty?: boolean;
 };
 
-const isDemoEnv = process.env.EXPO_PUBLIC_DEMO === '1' || __DEV__;
+const isDemoEnv = isDemoEnabled();
 
 type Level = 'danger' | 'warning' | 'subtle';
 
 export function DataStatusBanner({ showEmpty }: Props) {
-  const { apiReachable, projects, recoverSession, loading } = useRenova();
+  const { apiReachable, projects, recoverSession, recoverDemo, loading } = useRenova();
   const { stalePaths, isStale, refresh: refreshStale } = useStaleCacheStatus();
   const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -58,7 +59,7 @@ export function DataStatusBanner({ showEmpty }: Props) {
     level = 'subtle';
     title = 'Нет данных проекта';
     sub = isDemoEnv ? 'Нажмите «Загрузить демо» для восстановления данных.' : 'Создайте объект или войдите снова.';
-    if (isDemoEnv || !apiReachable) action = { label: 'Демо', onPress: recoverSession };
+    if (isDemoEnv) action = { label: 'Демо', onPress: recoverDemo };
   } else if (isStale) {
     level = 'warning';
     title = 'Данные могут быть устаревшими';

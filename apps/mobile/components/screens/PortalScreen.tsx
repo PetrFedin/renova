@@ -20,7 +20,7 @@ import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { PAYMENT_BLOCKED_ACCEPTANCE_MSG } from '@/constants/labels';
 import { listRowStyles, screenTypography } from '@/constants/screenTypography';
 import { api, ApiError, type Payment, type Stage } from '@/lib/api';
-import { setAccessToken } from '@/lib/api/client';
+import { registerPortalBearer } from '@/lib/api/client';
 import {
   buildPortalCapabilities,
   buildPortalPendingSummary,
@@ -250,6 +250,8 @@ export default function PortalScreen() {
 
   useEffect(() => {
     let cancelled = false;
+    // CMP-009/017: портальный JWT живёт только на время экрана и не подменяет глобальный Bearer.
+    let unregisterPortalBearer: (() => void) | undefined;
     void (async () => {
       const rawToken = typeof token === 'string' ? token : '';
       if (!rawToken) {
@@ -262,7 +264,13 @@ export default function PortalScreen() {
       try {
         setPortalToken(rawToken);
         const nextSession = await api.exchangePortalToken(rawToken);
-        if (nextSession.access_token) setAccessToken(nextSession.access_token);
+        if (nextSession.access_token) {
+          unregisterPortalBearer = registerPortalBearer(nextSession.user_id, nextSession.access_token);
+          if (cancelled) {
+            unregisterPortalBearer();
+            return;
+          }
+        }
         await AsyncStorage.setItem(PORTAL_USER_KEY, nextSession.user_id);
         const nextSnapshot = await api.portalSnapshot(nextSession.user_id, nextSession.project_id);
         if (cancelled) return;
@@ -282,7 +290,10 @@ export default function PortalScreen() {
         }
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      unregisterPortalBearer?.();
+    };
   }, [token, paid, paymentId]);
 
   useEffect(() => {

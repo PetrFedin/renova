@@ -5,6 +5,7 @@ import { isAuthoritativeRefreshRejection, shouldFallbackToDurableCache } from '.
 import { validationMessage, isHumanMessage } from './validationMessage';
 import { completionGateMessage } from '@/lib/domain/completionGate';
 import { currentSessionUserId, getSessionStamp } from '@/lib/domain/sessionAuthority';
+import type { SessionStamp } from '@/lib/domain/sessionFence';
 
 export class ApiError extends Error {
   status: number;
@@ -80,6 +81,11 @@ const OFFLINE_ROOMS = 'renova_cache_rooms';
 const OFFLINE_STAGES = 'renova_cache_stages';
 const OFFLINE_GET_PREFIX = 'renova_cache_get:';
 const _cache = new Map<string, { t: number; v: unknown }>();
+/**
+ * Эпоха записи: растёт после каждой успешной мутации. GET, начатый до мутации и
+ * завершившийся после неё, несёт устаревшие данные — в TTL-кэш он не пишется (CMP-004).
+ */
+let _mutationEpoch = 0;
 const CACHE_TTL = 30_000;
 const DURABLE_CACHE_TTL = 24 * 60 * 60 * 1000;
 
@@ -174,6 +180,81 @@ async function readDurableCache<T>(path: string, userId?: string): Promise<T | n
   }
 }
 
+/** Путь без `userId:`-префикса ключа кэша. */
+function pathOfCacheKey(k: string): string {
+  const i = k.indexOf(':/');
+  return i >= 0 ? k.slice(i + 1) : k;
+}
+
+function userOfCacheKey(k: string): string {
+  const i = k.indexOf(':/');
+  return i >= 0 ? k.slice(0, i) : '';
+}
+
+const PROJECT_PATH_RE = /^\/api\/v1\/projects\/([^/?#]+)/;
+
+/** Какие закэшированные GET делает неактуальными успешная мутация по `mutationPath`. */
+function isAffectedByMutation(cachedPath: string, mutationPath: string): boolean {
+  const mp = PROJECT_PATH_RE.exec(mutationPath);
+  if (!mp) return true; // вне проекта — последствия неизвестны, сбрасываем всё пользователя
+  const prefix = `/api/v1/projects/${mp[1]}`;
+  if (cachedPath === prefix || cachedPath.startsWith(`${prefix}/`) || cachedPath.startsWith(`${prefix}?`)) return true;
+  // Сопутствующие списки проектов (прогресс, статусы, счётчики).
+  if (cachedPath === '/api/v1/projects' || cachedPath.startsWith('/api/v1/projects?')) return true;
+  return false;
+}
+
+function mutationMatchesCacheUser(cacheUser: string, userId?: string): boolean {
+  return !userId || cacheUser === userId;
+}
+
+/**
+ * После УСПЕШНОЙ мутации сбрасывает закэшированные GET того же проекта и списки
+ * проектов (память + durable), а также «летящие» GET — иначе экран читает
+ * устаревшие данные до 30 с (CMP-004). Вызывается из `req` и из реплея офлайн-очереди.
+ */
+export async function invalidateCachesAfterMutation(mutationPath: string, userId?: string): Promise<void> {
+  _mutationEpoch += 1;
+  for (const k of [..._cache.keys()]) {
+    if (mutationMatchesCacheUser(userOfCacheKey(k), userId) && isAffectedByMutation(pathOfCacheKey(k), mutationPath)) {
+      _cache.delete(k);
+    }
+  }
+  for (const k of [..._inFlightGets.keys()]) {
+    if (mutationMatchesCacheUser(userOfCacheKey(k), userId) && isAffectedByMutation(pathOfCacheKey(k), mutationPath)) {
+      _inFlightGets.delete(k);
+    }
+  }
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const stale = keys.filter((key) => {
+      if (!key.startsWith(OFFLINE_GET_PREFIX)) return false;
+      const ck = key.slice(OFFLINE_GET_PREFIX.length);
+      return mutationMatchesCacheUser(userOfCacheKey(ck), userId) && isAffectedByMutation(pathOfCacheKey(ck), mutationPath);
+    });
+    if (stale.length) await AsyncStorage.multiRemove(stale);
+  } catch {
+    /* silent-catch-ok: durable invalidation is best-effort; in-memory cache is already cleared */
+  }
+}
+
+/** Полная очистка GET-кэша (память + `renova_cache_get:*`, комнаты, этапы) — при выходе (CMP-016). */
+export async function clearAllCachedGets(): Promise<void> {
+  _mutationEpoch += 1;
+  _cache.clear();
+  _inFlightGets.clear();
+  _cacheMeta.clear();
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const doomed = keys.filter(
+      (key) => key.startsWith(OFFLINE_GET_PREFIX) || key.startsWith(OFFLINE_ROOMS) || key.startsWith(OFFLINE_STAGES),
+    );
+    if (doomed.length) await AsyncStorage.multiRemove(doomed);
+  } catch {
+    /* silent-catch-ok: best-effort privacy cleanup; the in-memory cache is already cleared */
+  }
+}
+
 const PROJECT_LIST_PATHS = [
   '/api/v1/projects',
   '/api/v1/projects?bucket=active',
@@ -253,6 +334,7 @@ export async function cachedGet<T>(path: string, userId?: string): Promise<T> {
     // Провенанс едет вместе с запросом: `req` мог отдать значение из
     // долговременного кэша, и выдавать его за свежий ответ нельзя.
     const provenance: CacheProvenance = { servedFromDurableCache: false };
+    const epochAtStart = _mutationEpoch;
     const v = await req<T>(path, { provenance }, userId);
     if (provenance.servedFromDurableCache) {
       // Ни возраст, ни запись в кэш не обновляем: значение старое, и следующий
@@ -261,8 +343,11 @@ export async function cachedGet<T>(path: string, userId?: string): Promise<T> {
       return v;
     }
     const now = Date.now();
-    _cache.set(k, { t: now, v });
-    await saveDurableCache(path, userId, v);
+    // Мутация завершилась, пока шёл этот GET: ответ мог быть снят до неё — не кэшируем.
+    if (epochAtStart === _mutationEpoch) {
+      _cache.set(k, { t: now, v });
+      await saveDurableCache(path, userId, v);
+    }
     rememberCacheMeta({ path, fromCache: false, stale: false, cachedAt: now });
     return v;
   } catch (error) {
@@ -319,6 +404,47 @@ export function getAccessToken(): string | null {
 let _refreshToken: string | null = null;
 let _refreshInflight: Promise<boolean> | null = null;
 
+/**
+ * Мост клиента с владельцем сессии (RenovaContext), который знает про SecureStore
+ * и экран входа. Клиент живёт вне React-дерева, поэтому связь — через колбэки.
+ */
+export type SessionHooks = {
+  /** Ротация refresh: новые токены надо сохранить (CMP-002). `stamp` — сессия, которой они принадлежат. */
+  onTokensRotated?: (tokens: { access: string; refresh: string | null }, stamp: SessionStamp) => void | Promise<void>;
+  /** Окончательный отказ авторизации (CMP-003): сессию надо закончить и показать вход. */
+  onSessionExpired?: (stamp: SessionStamp) => void | Promise<void>;
+};
+let _sessionHooks: SessionHooks = {};
+/** Возвращает функцию отмены регистрации (снимает только свои хуки). */
+export function setSessionHooks(hooks: SessionHooks): () => void {
+  _sessionHooks = hooks;
+  return () => {
+    if (_sessionHooks === hooks) _sessionHooks = {};
+  };
+}
+
+async function reportHookFailure(scope: string, error: unknown): Promise<void> {
+  try {
+    const { reportError } = await import('@/lib/reportError');
+    reportError(scope, error);
+  } catch {
+    /* silent-catch-ok: telemetry must never break the auth flow */
+  }
+}
+
+/** Одно уведомление об окончании сессии на поколение — параллельные 401 не плодят выходы. */
+let _expiredNotifiedGeneration = -1;
+async function notifySessionExpired(stamp: SessionStamp): Promise<void> {
+  if (getSessionStamp().generation !== stamp.generation) return;
+  if (_expiredNotifiedGeneration === stamp.generation) return;
+  _expiredNotifiedGeneration = stamp.generation;
+  try {
+    await _sessionHooks.onSessionExpired?.(stamp);
+  } catch (error) {
+    await reportHookFailure('api.client.sessionExpiredHook', error);
+  }
+}
+
 export function setRefreshToken(token: string | null) {
   _refreshToken = token && token.trim() ? token.trim() : null;
 }
@@ -354,6 +480,7 @@ export async function refreshAccessToken(): Promise<boolean> {
           if (getSessionStamp().generation === stampAtStart.generation) {
             setAccessToken(null);
             setRefreshToken(null);
+            await notifySessionExpired(stampAtStart);
           }
           return false;
         }
@@ -382,6 +509,13 @@ export async function refreshAccessToken(): Promise<boolean> {
 
       const nextRefresh = typeof data.refresh_token === 'string' ? data.refresh_token.trim() : '';
       if (nextRefresh) setRefreshToken(nextRefresh);
+      // CMP-002: сервер отзывает прежний refresh при ротации — без записи в SecureStore
+      // холодный старт пошёл бы со старым токеном и разлогинил бы пользователя.
+      try {
+        await _sessionHooks.onTokensRotated?.({ access: nextAccess, refresh: nextRefresh || null }, stampAtStart);
+      } catch (error) {
+        await reportHookFailure('api.client.tokensRotatedHook', error);
+      }
       return true;
     } catch (error) {
       if (error instanceof ApiError) throw error;
@@ -396,9 +530,37 @@ export async function refreshAccessToken(): Promise<boolean> {
   return _refreshInflight;
 }
 
+/**
+ * Портал-гость (CMP-009/017): JWT из /auth/portal/session — не сессия пользователя и
+ * не должен подменять глобальный Bearer. Он привязан к user_id ссылки и подкладывается
+ * только запросам с этим `userId`, пока открыт экран портала. Реальная сессия того же
+ * пользователя имеет приоритет.
+ */
+const _portalBearers = new Map<string, string>();
+
+export function registerPortalBearer(portalUserId: string, token: string): () => void {
+  const t = token.trim();
+  if (!portalUserId || !t) return () => undefined;
+  _portalBearers.set(portalUserId, t);
+  return () => {
+    if (_portalBearers.get(portalUserId) === t) _portalBearers.delete(portalUserId);
+  };
+}
+
+function portalBearerFor(userId?: string | null): string | null {
+  if (!userId) return null;
+  if (_accessToken && userId === currentSessionUserId()) return null;
+  return _portalBearers.get(userId) ?? null;
+}
+
 /** Auth headers for fetch outside `req` (PDF, CSV, offline queue). */
 export function authHeaders(userId?: string | null): Record<string, string> {
   const h: Record<string, string> = {};
+  const portal = portalBearerFor(userId);
+  if (portal) {
+    h.Authorization = `Bearer ${portal}`;
+    return h;
+  }
   if (_accessToken) {
     // #315: `_accessToken` — один общий глобальный Bearer. Запрос с явным
     // `userId`, который не совпадает с активной сессией (устаревшее задание
@@ -440,7 +602,8 @@ export type ReqOptions = RequestInit & {
  * must both reach the server (idempotency there is handled by
  * `client_request_id`, not by collapsing the calls).
  */
-const _inFlightGets = new Map<string, Promise<unknown>>();
+type InFlightGet = { promise: Promise<unknown>; controller: AbortController; subscribers: number };
+const _inFlightGets = new Map<string, InFlightGet>();
 
 /** Number of GETs currently merged and waiting on the network — test hook. */
 export function inFlightGetCount(): number {
@@ -451,18 +614,77 @@ function inFlightKey(path: string, userId?: string): string {
   return `${userId || ''}:${path}`;
 }
 
+/** Ошибку получают сами ждущие; здесь лишь помечаем промис обработанным, чтобы отмена всех не давала unhandled rejection. */
+function settledForSubscribers(_error: unknown): void {
+  /* handled by each subscriber */
+}
+
+function abortError(): Error {
+  const e = new Error('Aborted');
+  e.name = 'AbortError';
+  return e;
+}
+
+/**
+ * CMP-024: общий сетевой запрос живёт на собственном AbortController. Отмена
+ * `signal` одного вызывателя отклоняет только его промис; сеть обрывается лишь когда
+ * отменили все, кто ждёт этот запрос. Вызыватель без `signal` держит запрос навсегда.
+ */
+function subscribeToInFlight<T>(entry: InFlightGet, signal?: AbortSignal | null): Promise<T> {
+  entry.subscribers += 1;
+  if (!signal) return entry.promise as Promise<T>;
+  return new Promise<T>((resolve, reject) => {
+    let done = false;
+    const release = () => {
+      entry.subscribers -= 1;
+      if (entry.subscribers <= 0) entry.controller.abort();
+    };
+    const onAbort = () => {
+      if (done) return;
+      done = true;
+      release();
+      reject(abortError());
+    };
+    if (signal.aborted) {
+      onAbort();
+      return;
+    }
+    signal.addEventListener('abort', onAbort, { once: true });
+    (entry.promise as Promise<T>).then(
+      (v) => {
+        signal.removeEventListener('abort', onAbort);
+        if (!done) { done = true; resolve(v); }
+      },
+      (e) => {
+        signal.removeEventListener('abort', onAbort);
+        if (!done) { done = true; reject(e); }
+      },
+    );
+  });
+}
+
 export async function req<T>(path: string, opts: ReqOptions = {}, userId?: string): Promise<T> {
-  if (!canUseDurableCache(opts)) return performReq<T>(path, opts, userId);
+  if (!canUseDurableCache(opts)) {
+    const result = await performReq<T>(path, opts, userId);
+    // CMP-004: мутация прошла — закэшированные GET того же проекта устарели.
+    await invalidateCachesAfterMutation(path, userId);
+    return result;
+  }
 
   const key = inFlightKey(path, userId);
   const existing = _inFlightGets.get(key);
-  if (existing) return existing as Promise<T>;
+  if (existing) return subscribeToInFlight<T>(existing, opts.signal);
 
-  const promise = performReq<T>(path, opts, userId).finally(() => {
-    _inFlightGets.delete(key);
+  const { signal: callerSignal, ...rest } = opts;
+  const controller = new AbortController();
+  const promise: Promise<unknown> = performReq<T>(path, { ...rest, signal: controller.signal }, userId).finally(() => {
+    // Мутация могла вытеснить запись и завести новую под тем же ключом — чужую не трогаем.
+    if (_inFlightGets.get(key)?.promise === promise) _inFlightGets.delete(key);
   });
-  _inFlightGets.set(key, promise);
-  return promise;
+  promise.catch(settledForSubscribers);
+  const entry: InFlightGet = { promise, controller, subscribers: 0 };
+  _inFlightGets.set(key, entry);
+  return subscribeToInFlight<T>(entry, callerSignal);
 }
 
 async function performReq<T>(path: string, opts: ReqOptions = {}, userId?: string): Promise<T> {
@@ -478,6 +700,11 @@ async function performReq<T>(path: string, opts: ReqOptions = {}, userId?: strin
   const isGet = canUseDurableCache(fetchOpts);
   let attempt = 0;
   let lastError: unknown;
+  // Портальный Bearer гостя не обновляется через refresh сессии (его там нет), а отказ
+  // по нему не означает конец сессии пользователя.
+  const usesPortalBearer = portalBearerFor(userId) !== null;
+  const stampAtRequest = getSessionStamp();
+  let refreshedInThisRequest = false;
 
   try {
     while (attempt < 3) {
@@ -503,13 +730,17 @@ async function performReq<T>(path: string, opts: ReqOptions = {}, userId?: strin
           const txt = await res.text();
           const parsed = parseApiErrorBody(txt, res.status);
           const err = new ApiError(res.status, parsed.message, parsed.code, parsed.detail);
-          if (res.status === 401 && attempt < 2 && !path.includes('/auth/refresh') && getRefreshToken()) {
+          if (res.status === 401 && attempt < 2 && !usesPortalBearer && !path.includes('/auth/refresh') && getRefreshToken()) {
             const ok = await refreshAccessToken();
             if (ok) {
               Object.assign(headers, authHeaders(userId));
               lastError = err;
+              refreshedInThisRequest = true;
               continue;
             }
+          } else if (res.status === 401 && refreshedInThisRequest && headers.Authorization && !usesPortalBearer && !path.includes('/auth/')) {
+            // CMP-003: 401 и после успешного refresh — сервер не принимает сессию.
+            await notifySessionExpired(stampAtRequest);
           }
           if (isRateLimitError(err)) {
             // Общий gate (#432): пауза поднимается для ЛЮБОГО 429, не только GET —

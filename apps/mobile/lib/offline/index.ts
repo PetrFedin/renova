@@ -13,3 +13,4 @@ export {
   clearSnapshot,
   offlineKeys,
 } from './offlineSync';
+export { startOfflineFlushScheduler, nextFlushDelayMs } from './flushScheduler';
