@@ -8,6 +8,6 @@ def test_request_id_created_once_before_network_attempt():
 def test_same_serialized_body_online_and_queue():
     block=_block(); assert block.count("body: serialized")==2 and "await enqueue({" in block
 def test_network_and_5xx_queue_but_4xx_do_not():
-    block=_block(); assert "e instanceof ApiError && e.status >= 400 && e.status < 500" in block and block.index("e.status >= 400")<block.index("await enqueue({")
+    block=_block(); assert "if (!isQueueableWriteError(e)) throw e;" in block and block.index("isQueueableWriteError(e)")<block.index("await enqueue({")
 def test_offline_flush_replays_stored_body():
     source=OFFLINE_QUEUE.read_text(encoding="utf-8"); assert "body: job.body" in source and "const sorted = [...snapshot].sort" in source and "updateJobBody" in source

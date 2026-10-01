@@ -295,7 +295,7 @@ Receipt QR scan → receipt evidence/reconcile flow; факт нельзя сч�
 
 # 6. Selections screen
 
-**VERIFIED. Source:** `OsSelectionsScreen.tsx` blob `928c6979f2a2a0d884d19210eb6980c690f331ac`.
+**VERIFIED. Source:** `OsSelectionsScreen.tsx` blob `269bdd0e7b32b506759b8bc9b2f18d452556bef7`.
 
 Business flow:
 
@@ -413,7 +413,7 @@ else:
 
 # 8. Customer Control view
 
-**VERIFIED. Source:** `CustomerControlView.tsx` blob `da4faeed719c936af4daf0b7b7b6b69b7c16c0e9`.
+**VERIFIED. Source:** `CustomerControlView.tsx` blob `22be4e32fffd1e93099cc8b5edfce3a58c4891d1`.
 
 Loads concurrently:
 
@@ -470,7 +470,7 @@ Rework stages are listed separately and link to stage details.
 
 # 9. Contractor Control view
 
-**VERIFIED. Source:** `ContractorControlView.tsx` blob `907887032766d02be6df17bafd6894384b96b0c3`.
+**VERIFIED. Source:** `ContractorControlView.tsx` blob `0b05707e415afce2d61dfc6f81bf721e88163bec`.
 
 Loads:
 
@@ -505,7 +505,7 @@ Rework stages link to stage detail.
 
 # 10. Technical Supervision Control view
 
-**VERIFIED. Source:** `TechnicalSupervisionControlView.tsx` blob `3f9ca8a779a96f74f25cef885004301b423a681e`.
+**VERIFIED. Source:** `TechnicalSupervisionControlView.tsx` blob `0378f2c0e952e907ede7d2ccbb0423eb030e2e91`.
 
 Access condition:
 

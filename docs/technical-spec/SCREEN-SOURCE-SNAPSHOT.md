@@ -9,12 +9,12 @@
 | `apps/mobile/components/screens/OsRepairHubScreen.tsx` | `5fe0e6229ad4cc82462ea4cfc1f7d213c7687305` | Repair hub |
 | `apps/mobile/components/screens/OsBudgetHubScreen.tsx` | `4e0e8267d68b600cf0d8bdf716a4c8eddaa3bcbd` | Budget hub |
 | `apps/mobile/components/screens/OsMaterialsScreen.tsx` | `f39ac1fc3a6b06fa027b0e32d8cd55d2f8031b04` | Materials/procurement hub + supply-aware next action |
-| `apps/mobile/components/renova/MaterialPickList.tsx` | `ab22a92c49fe72c20f81548ee0de39b32b046024` | material supply editor + approval + truthful supplier-price refresh UX; durable price provenance is governed by `MATERIAL-PRICE-TRUTH-CONTRACT.md` |
-| `apps/mobile/components/screens/OsSelectionsScreen.tsx` | `928c6979f2a2a0d884d19210eb6980c690f331ac` | Selections |
+| `apps/mobile/components/renova/MaterialPickList.tsx` | `7118d6b84c505ab300bd98f3daa0949f81c22e6e` | material supply editor + approval + truthful supplier-price refresh UX; durable price provenance is governed by `MATERIAL-PRICE-TRUTH-CONTRACT.md` |
+| `apps/mobile/components/screens/OsSelectionsScreen.tsx` | `269bdd0e7b32b506759b8bc9b2f18d452556bef7` | Selections |
 | `apps/mobile/components/screens/OsControlScreen.tsx` | `299b29fe2571900663e290c35bc0096854b8eb7f` | role/access-mode control router |
-| `apps/mobile/components/screens/control/CustomerControlView.tsx` | `3e7f4cdcfdb5ee9d52aee09db19659eb639caaf2` | customer acceptance/QC/warranty view |
-| `apps/mobile/components/screens/control/ContractorControlView.tsx` | `907887032766d02be6df17bafd6894384b96b0c3` | contractor acceptance/QC view |
-| `apps/mobile/components/screens/control/TechnicalSupervisionControlView.tsx` | `3f9ca8a779a96f74f25cef885004301b423a681e` | technical-supervision control view |
+| `apps/mobile/components/screens/control/CustomerControlView.tsx` | `22be4e32fffd1e93099cc8b5edfce3a58c4891d1` | customer acceptance/QC/warranty view |
+| `apps/mobile/components/screens/control/ContractorControlView.tsx` | `0b05707e415afce2d61dfc6f81bf721e88163bec` | contractor acceptance/QC view |
+| `apps/mobile/components/screens/control/TechnicalSupervisionControlView.tsx` | `0378f2c0e952e907ede7d2ccbb0423eb030e2e91` | technical-supervision control view |
 | `apps/mobile/components/renova/os/OsHubTabs.tsx` | `b04ac08459926439b0533db3decce28a4791843c` | hub tab geometry/progressive disclosure |
 
 При изменении любого source выше `technicalSpecAnnexContract.test.mjs` должен потребовать обновить соответствующий screen contract и этот snapshot. SHA является traceability marker, а не самостоятельным доказательством корректности UX.

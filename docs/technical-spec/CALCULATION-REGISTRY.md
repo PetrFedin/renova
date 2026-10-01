@@ -103,7 +103,7 @@ ServerFact — канонический server budget_spent. Tolerance — UI re
 
 ## 11. Budget Summary decision model
 
-Source `buildBudgetSummaryView.ts`, blob `68e96b02dc3f5e2cdda20b6d94871ff9145b9541`.
+Source `buildBudgetSummaryView.ts`, blob `957411d46266104a39ac2b0d16140a911ffb8351`.
 
 ```text
 planned = max(0, finite(input.planned, 0))
@@ -213,7 +213,7 @@ readyCount = readyPickIds(picks, purchases, role).length
 
 ## 17. Selection pending count
 
-Source `OsSelectionsScreen.tsx`, blob `928c6979f2a2a0d884d19210eb6980c690f331ac`.
+Source `OsSelectionsScreen.tsx`, blob `269bdd0e7b32b506759b8bc9b2f18d452556bef7`.
 
 ```text
 pending = count(SelectionItem.status == proposed)
