@@ -1,6 +1,6 @@
 """Integration: automation reminder tick — overdue stages + waste pickup."""
 from tests.helpers_flow import self_assign
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -16,6 +16,10 @@ from app.services.seed_demo import ensure_demo_users
 
 pytestmark = pytest.mark.asyncio
 
+
+
+def _utc_today() -> date:
+    return datetime.now(UTC).date()
 
 @pytest.fixture(autouse=True)
 async def setup_db(tmp_path, monkeypatch):
@@ -54,7 +58,7 @@ async def test_waste_reminder_on_tick():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         pid, cust_id, h_cust, _ = await _demo_project(client)
-        tomorrow = date.today() + timedelta(days=1)
+        tomorrow = _utc_today() + timedelta(days=1)
         async with sess.SessionLocal() as db:
             w = WasteOrder(
                 project_id=pid,
@@ -65,7 +69,7 @@ async def test_waste_reminder_on_tick():
             db.add(w)
             await db.commit()
 
-        result = await run_automation_reminder_tick(on_date=date.today())
+        result = await run_automation_reminder_tick(on_date=_utc_today())
         assert result["waste_sent"] >= 1
 
         async with sess.SessionLocal() as db:
@@ -91,10 +95,10 @@ async def test_overdue_stage_reminder_on_tick():
             overdue = stages[0]
             from app.models.entities import StageStatus
             overdue.status = StageStatus.active
-            overdue.planned_end = date.today() - timedelta(days=3)
+            overdue.planned_end = _utc_today() - timedelta(days=3)
             await db.commit()
 
-        result = await run_automation_reminder_tick(on_date=date.today())
+        result = await run_automation_reminder_tick(on_date=_utc_today())
         assert result["project_actions"] >= 1
 
         async with sess.SessionLocal() as db:
@@ -113,7 +117,7 @@ async def test_waste_reminders_manual_endpoint():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         pid, _, h_cust, h_cont = await _demo_project(client)
-        tomorrow = date.today() + timedelta(days=1)
+        tomorrow = _utc_today() + timedelta(days=1)
         async with sess.SessionLocal() as db:
             db.add(
                 WasteOrder(
