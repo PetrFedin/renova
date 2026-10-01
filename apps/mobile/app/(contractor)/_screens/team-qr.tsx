@@ -1,5 +1,5 @@
 import { BackHeader } from '@/components/renova/BackHeader';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Share, Pressable, ScrollView } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { pushOsNav } from '@/lib/pushOsNav';
@@ -11,8 +11,10 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { api } from '@/lib/api';
+import { reportError } from '@/lib/reportError';
 import { RenovaTheme } from '@/constants/Theme';
 import { QrCodeImage } from '@/components/renova/QrCodeImage';
+import { parseTeamInviteToken, requireSuccessfulTeamJoin, teamJoinErrorMessage } from '@/lib/teamJoinFlow';
 
 const ROLES = [
   { id: 'member', label: 'Рабочий', hint: 'Этапы, чеки, снабжение' },
@@ -30,6 +32,8 @@ export default function TeamQrScreen() {
   const [link, setLink] = useState('');
   const [scan, setScan] = useState(false);
   const [busy, setBusy] = useState(false);
+  // onBarcodeScanned стреляет многократно, пока камера видит код: один токен — одна попытка.
+  const joiningRef = useRef(false);
 
   const refreshLink = useCallback(async () => {
     if (!user) return;
@@ -117,11 +121,32 @@ export default function TeamQrScreen() {
             style={s.cam}
             barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
             onBarcodeScanned={async ({ data }) => {
-              const m = data.match(/join\/([^/?]+)/);
-              if (!m || !user) return;
+              if (joiningRef.current || !user) return;
+              const token = parseTeamInviteToken(data);
+              if (!token) return;
+              joiningRef.current = true;
               setScan(false);
-              await api.joinTeam(user.id, m[1]);
-              await syncProjectSideEffects({ user, project: activeProject });
+              try {
+                // joinTeam отвечает 200 {ok:false,message} на неверный/использованный токен —
+                // успех показываем только после requireSuccessfulTeamJoin.
+                requireSuccessfulTeamJoin(await api.joinTeam(user.id, token));
+              } catch (e: unknown) {
+                joiningRef.current = false;
+                showActionConfirm({
+                  title: 'Не удалось вступить в бригаду',
+                  message: teamJoinErrorMessage(e),
+                  primaryLabel: 'Понятно',
+                  onPrimary: () => undefined,
+                });
+                return;
+              }
+              try {
+                await syncProjectSideEffects({ user, project: activeProject });
+              } catch (syncError) {
+                // членство уже создано; обновление данных догонит следующий refresh
+                reportError('teamQr.syncAfterJoin', syncError, { userId: user.id });
+              }
+              joiningRef.current = false;
               // W130: бригада → главная / график
               alertTeamJoined('contractor');
               router.back();

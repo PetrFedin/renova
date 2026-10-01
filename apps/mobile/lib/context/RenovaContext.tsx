@@ -15,6 +15,8 @@ function signalPreviewReady() {
   }
 }
 
+import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { CUSTOMER_PRO_LIMIT_NOTICE, canPurchasePro } from '@/lib/paywallPolicy';
 import { ApiError, api, isRateLimitError, ProjectDetail, ProjectSummary, User, UserRole } from '@/lib/api';
 import { getRefreshToken, setAccessToken, setRefreshToken } from '@/lib/api/client';
 import { isAuthoritativeSessionFailure } from '@/lib/api/failurePolicy';
@@ -155,9 +157,10 @@ type Ctx = {
   activeProject: ProjectDetail | null;
   wizard: WizardDraft;
   setWizard: (p: Partial<WizardDraft>) => void;
-  demoLogin: (role: UserRole) => Promise<void>;
+  /** Возвращает пользователя из ответа сервера: реальная роль — user.role (ROLE-014). */
+  demoLogin: (role: UserRole) => Promise<User>;
   register: (phone: string, role: UserRole, extra?: { full_name?: string; inn?: string }) => Promise<void>;
-  loginWithSms: (phone: string, code: string, role: UserRole, extra?: { full_name?: string; inn?: string }) => Promise<void>;
+  loginWithSms: (phone: string, code: string, role: UserRole, extra?: { full_name?: string; inn?: string }) => Promise<User>;
   refreshProjects: () => Promise<void>;
   refreshMe: () => Promise<void>;
   /** Сброс активного объекта (корзина/архив текущего проекта) */
@@ -523,7 +526,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
   }, [applySession, applyDegradedIdentity]);
 
 
-  const demoLogin = useCallback(async (role: UserRole) => {
+  const demoLogin = useCallback(async (role: UserRole): Promise<User> => {
     const u = await withTimeout(api.demoLogin(role), LOGIN_TIMEOUT_MS, 'Превышено время ожидания сервера');
     await persistUserSession(u);
     beginSession(u.id);
@@ -545,10 +548,11 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.removeItem(KEYS.projectId);
     await AsyncStorage.removeItem(SESSION_KEYS.projectExplicitlyPicked);
     await AsyncStorage.setItem(SESSION_KEYS.pendingProjectPick, '1');
+    return u;
   }, [refreshTeamAccess, beginSession]);
 
 
-  const loginWithSms = useCallback(async (phone: string, code: string, role: UserRole, extra?: { full_name?: string; inn?: string }) => {
+  const loginWithSms = useCallback(async (phone: string, code: string, role: UserRole, extra?: { full_name?: string; inn?: string }): Promise<User> => {
     const u = await api.verifySmsCode(phone, code, role, extra);
     await persistUserSession(u);
     beginSession(u.id);
@@ -574,6 +578,7 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       await AsyncStorage.setItem(SESSION_KEYS.pendingProjectPick, '1');
     }
     deferPushRegistration(u.id);
+    return u;
   }, [refreshTeamAccess, beginSession]);
 
   const register = useCallback(async (phone: string, role: UserRole, extra?: { full_name?: string; inn?: string }) => {
@@ -785,7 +790,11 @@ export function RenovaProvider({ children }: { children: React.ReactNode }) {
       rejectStage,
       logout,
       paywallVisible,
-      showPaywall: () => setPaywallVisible(true),
+      // ROLE-011: покупать Pro может только исполнитель; заказчику — объяснение без кнопки покупки.
+      showPaywall: () => {
+        if (canPurchasePro(user?.role)) setPaywallVisible(true);
+        else showActionConfirm({ ...CUSTOMER_PRO_LIMIT_NOTICE, primaryLabel: 'Понятно', onPrimary: () => undefined });
+      },
       hidePaywall: () => setPaywallVisible(false),
       readOnly: effectiveReadOnly,
       teamRole,

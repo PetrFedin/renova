@@ -10,6 +10,7 @@ import { api } from '@/lib/api';
 import { navigateAfterLogin } from '@/lib/osEntry';
 import { reportError } from '@/lib/reportError';
 import { requireSuccessfulTeamJoin } from '@/lib/teamJoinFlow';
+import { resolveLoginRole } from '@/lib/loginRole';
 
 type Mode = 'demo' | 'sms';
 
@@ -33,8 +34,9 @@ export default function RoleScreen() {
   const [pendingTeamJoinUserId, setPendingTeamJoinUserId] = useState<string | null>(null);
   const teamJoinPending = Boolean(teamToken && role === 'contractor' && pendingTeamJoinUserId);
 
-  async function afterLogin(existingUserId?: string) {
-    if (teamToken && role === 'contractor') {
+  // effectiveRole — роль аккаунта с сервера (ROLE-014), а не тумблер на экране.
+  async function afterLogin(existingUserId?: string, effectiveRole: UserRole = role) {
+    if (teamToken && effectiveRole === 'contractor') {
       const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
       const id = existingUserId ?? await AsyncStorage.getItem('renova_user_id');
       if (!id) throw new Error('Не удалось подтвердить сессию для вступления в бригаду');
@@ -60,7 +62,7 @@ export default function RoleScreen() {
         reportError('onboarding.teamJoin.refreshAccess', refreshError, { userId: id, teamId });
       }
     }
-    await navigateAfterLogin(role);
+    await navigateAfterLogin(effectiveRole);
   }
 
   async function onContinue() {
@@ -72,9 +74,10 @@ export default function RoleScreen() {
         return;
       }
 
+      let loggedIn: { role: UserRole };
       if (mode === 'demo') {
         if (!DEMO_LOGIN_ENABLED) throw new Error('demo_login_disabled');
-        await demoLogin(role);
+        loggedIn = await demoLogin(role);
       } else {
         if (!codeSent) {
           const r = await api.sendSmsCode(phone);
@@ -83,9 +86,12 @@ export default function RoleScreen() {
           alertMessage('Код отправлен', r.demo_code && DEMO_LOGIN_ENABLED ? `Демо-код: ${r.demo_code}` : 'Проверьте SMS');
           return;
         }
-        await loginWithSms(phone, code, role, name ? { full_name: name } : undefined);
+        loggedIn = await loginWithSms(phone, code, role, name ? { full_name: name } : undefined);
       }
-      await afterLogin();
+      const resolved = resolveLoginRole(role, loggedIn.role);
+      if (resolved.role !== role) setRole(resolved.role);
+      if (resolved.mismatchMessage) alertMessage('Роль аккаунта', resolved.mismatchMessage);
+      await afterLogin(undefined, resolved.role);
     } catch (e: any) {
       const msg = e?.message || 'Сервер недоступен';
       setError(msg);

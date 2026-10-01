@@ -1,3 +1,4 @@
+import { CUSTOMER_PRO_LIMIT_NOTICE } from '@/lib/paywallPolicy';
 import { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Alert } from 'react-native';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -79,11 +80,10 @@ export function ContractorDirectory({
       const msg = apiErrorMessage(e, 'Проверьте подключение');
       // Investor P1: paywall/Pro — не маскируем как «сеть»
       const paywall = /pro|подписк|paywall|лимит|403/i.test(msg);
+      // ROLE-011: Pro — тариф исполнителя; заказчик его купить не может.
       Alert.alert(
-        paywall ? 'Нужна подписка Pro' : 'Не удалось подключить',
-        paywall
-          ? `${msg}\n\nНазначить исполнителя на staging/пилоте можно после Pro или trial.`
-          : msg,
+        paywall ? CUSTOMER_PRO_LIMIT_NOTICE.title : 'Не удалось подключить',
+        paywall ? CUSTOMER_PRO_LIMIT_NOTICE.message : msg,
       );
     } finally {
       setBusyId(null);

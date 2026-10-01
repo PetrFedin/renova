@@ -72,6 +72,10 @@ export const adminApi = {
   checkNpd: (inn: string) => req('/api/v1/fns/check-npd', { method: 'POST', body: JSON.stringify({ inn }) }),
   verifyNpdMe: (userId: string, inn: string) => req<{ is_npd: boolean; message: string; badge: string }>('/api/v1/fns/verify-me', { method: 'POST', body: JSON.stringify({ inn }) }, userId),
   setMemberRole: (userId: string, memberId: string, role: string) => req('/api/v1/teams/member-role', { method: 'PATCH', body: JSON.stringify({ user_id: memberId, role }) }, userId),
+  /** MKT-012: владелец убирает участника бригады. */
+  removeTeamMember: (userId: string, memberId: string) => req<{ ok: boolean; released_stage_assignments: number }>(`/api/v1/teams/members/${encodeURIComponent(memberId)}`, { method: 'DELETE' }, userId),
+  /** MKT-012: участник выходит из бригады (владелец — нет). */
+  leaveTeam: (userId: string) => req<{ ok: boolean; released_stage_assignments: number }>('/api/v1/teams/leave', { method: 'POST' }, userId),
   joinTeam: (userId: string, token: string) => req('/api/v1/teams/join', { method: 'POST', body: JSON.stringify({ token }) }, userId),
   getRevenueChart: (userId: string) => req<any[]>('/api/v1/admin/revenue-chart', {}, userId),
   getReleaseHealth: (userId: string) => req<any>('/api/v1/admin/release-health', {}, userId),

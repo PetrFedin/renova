@@ -260,6 +260,18 @@ export const paymentsApi = {
       { method: 'POST', body: JSON.stringify(body) },
       userId,
     ),
+  /** JRN-020: ответ исполнителя на спор заказчика (comment|agree|contest); статус платежа не меняется. */
+  respondPaymentDispute: (
+    userId: string,
+    projectId: string,
+    paymentId: string,
+    body: { response: 'comment' | 'agree' | 'contest'; comment: string },
+  ) =>
+    req<{ payment: Payment; changed: boolean; replayed: boolean }>(
+      `/api/v1/projects/${projectId}/payments/${paymentId}/dispute/respond`,
+      { method: 'POST', body: JSON.stringify(body) },
+      userId,
+    ),
   /** Отзыв спора также только online: сервер восстанавливает исходный статус из PaymentEvent. */
   resolvePaymentDispute: (
     userId: string,

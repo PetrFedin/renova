@@ -1,3 +1,4 @@
+import { requireSuccessfulTeamInvite } from '@/lib/teamJoinFlow';
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, View, Text, TextInput, Platform } from 'react-native';
 import { router } from 'expo-router';
@@ -54,10 +55,61 @@ function TeamSection() {
           <Text style={ps.userName}>{team.name}</Text>
           <Text style={ps.userMeta}>Участников: {team.members?.length || 0}</Text>
           {team.members?.map((m: any) => (
-            <Text key={m.user_id} style={ps.userMeta}>
-              {m.phone} · {m.role}
-            </Text>
+            <View key={m.user_id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <Text style={[ps.userMeta, { flexShrink: 1 }]}>
+                {m.phone} · {m.role}
+              </Text>
+              {team.owner_id === user.id && m.user_id !== user.id && m.role !== 'owner' ? (
+                <PrimaryButton
+                  title="Убрать"
+                  variant="outline"
+                  compact
+                  onPress={() =>
+                    showActionConfirm({
+                      title: 'Убрать из бригады?',
+                      message: `${m.phone} потеряет доступ к вашим объектам, открытые назначения на этапы будут сняты.`,
+                      primaryLabel: 'Убрать',
+                      onPrimary: async () => {
+                        try {
+                          await api.removeTeamMember(user.id, m.user_id);
+                          await syncProjectSideEffects({ user, project: activeProject });
+                          setTeam(await api.getTeam(user.id));
+                        } catch (e: unknown) {
+                          showActionConfirm({ title: 'Не удалось убрать', message: e instanceof Error ? e.message : 'Повторите позже' });
+                        }
+                      },
+                      secondaryLabel: 'Отмена',
+                      onSecondary: () => undefined,
+                    })
+                  }
+                />
+              ) : null}
+            </View>
           ))}
+          {team.owner_id !== user.id ? (
+            <PrimaryButton
+              title="Выйти из бригады"
+              variant="outline"
+              onPress={() =>
+                showActionConfirm({
+                  title: 'Выйти из бригады?',
+                  message: 'Вы потеряете доступ к объектам владельца бригады.',
+                  primaryLabel: 'Выйти',
+                  onPrimary: async () => {
+                    try {
+                      await api.leaveTeam(user.id);
+                      await syncProjectSideEffects({ user, project: activeProject });
+                      setTeam(null);
+                    } catch (e: unknown) {
+                      showActionConfirm({ title: 'Не удалось выйти', message: e instanceof Error ? e.message : 'Повторите позже' });
+                    }
+                  },
+                  secondaryLabel: 'Отмена',
+                  onSecondary: () => undefined,
+                })
+              }
+            />
+          ) : null}
           <TextInput
             style={ps.input}
             placeholder="+7..."
@@ -71,7 +123,8 @@ function TeamSection() {
             variant="outline"
             onPress={async () => {
               try {
-                await api.inviteTeamMember(user.id, phone);
+                // /teams/invite отвечает 200 {ok:false,message} — не показываем «отправлено» без ok:true.
+                requireSuccessfulTeamInvite(await api.inviteTeamMember(user.id, phone));
                 await syncProjectSideEffects({ user, project: activeProject });
                 setTeam(await api.getTeam(user.id));
                 setPhone('');
