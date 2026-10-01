@@ -1,6 +1,8 @@
 /** API: payments */
 import { req, API_BASE, ApiError, authHeaders } from './client';
-import { OFFLINE_PAYMENT_CREATE_BLOCKED } from '@/lib/offlineErrors';
+import { isQueueableWriteError } from './queueableError';
+import { OFFLINE_PAYMENT_CREATE_BLOCKED, WRITE_RESPONSE_UNKNOWN } from '@/lib/offlineErrors';
+import { createClientRequestId } from '@/lib/clientRequestId';
 import { reportError } from '@/lib/reportError';
 import type { Payment } from './types';
 
@@ -113,14 +115,24 @@ export const paymentsApi = {
       userId,
     ),
   createPayment: async (userId: string, projectId: string, body: object) => {
+    // Ключ минтится один раз; форма передаёт свой и держит его до успеха.
+    const requestBody = JSON.stringify({
+      ...body,
+      client_request_id: (body as { client_request_id?: string }).client_request_id || createClientRequestId('payment'),
+    });
     try {
       return await req<Payment>(
         `/api/v1/projects/${projectId}/payments`,
-        { method: 'POST', body: JSON.stringify(body) },
+        { method: 'POST', body: requestBody },
         userId,
       );
     } catch (e) {
-      if (!(e instanceof ApiError) || e.status >= 500) {
+      if (e instanceof ApiError && e.status >= 500) {
+        // Сервер ответил 5xx: он доступен, ответ мог потеряться. Ключ в теле
+        // стабилен (форма держит его до успеха), поэтому повтор безопасен.
+        throw new Error(WRITE_RESPONSE_UNKNOWN);
+      }
+      if (!(e instanceof ApiError) || e.status === 0) {
         throw new Error(OFFLINE_PAYMENT_CREATE_BLOCKED);
       }
       throw e;
@@ -164,7 +176,7 @@ export const paymentsApi = {
         userId,
       );
     } catch (e) {
-      if (e instanceof ApiError) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/payments/${paymentId}/confirm`,

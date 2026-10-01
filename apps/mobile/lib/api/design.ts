@@ -1,5 +1,6 @@
 /** API: design — W110 submit/create offline (approve уже в очереди) */
 import { req, cachedGet, API_BASE, ApiError } from './client';
+import { isQueueableWriteError } from './queueableError';
 import { createClientRequestId } from '@/lib/clientRequestId';
 
 export const designApi = {
@@ -20,7 +21,7 @@ export const designApi = {
         body: requestBody,
       }, userId);
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/design-packages`,
@@ -35,7 +36,7 @@ export const designApi = {
     try {
       return await req(`/api/v1/projects/${projectId}/design-packages/${id}/submit`, { method: 'POST' }, userId);
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/design-packages/${id}/submit`,
@@ -50,7 +51,7 @@ export const designApi = {
     try {
       return await req(`/api/v1/projects/${projectId}/design-packages/${id}/approve`, { method: 'POST' }, userId);
     } catch (e) {
-      if (e instanceof ApiError) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/design-packages/${id}/approve`,

@@ -1,5 +1,6 @@
 /** API: os */
 import { req, cachedGet, invalidateCachedGet, API_BASE, ApiError } from './client';
+import { isQueueableWriteError } from './queueableError';
 import type { ActivityItem, OsBudgetSummary, OsExpense, OsInsight, OsReport, OsRisk, User } from './types';
 import type { MaterialPick, Payment, ReceiptItem } from './types';
 
@@ -31,12 +32,12 @@ export const osApi = {
   osExpenses: (userId: string, projectId: string, status?: string) => req<OsExpense[]>(`/api/v1/projects/${projectId}/os/expenses${status ? `?status=${status}` : ''}`, {}, userId),
   deleteOsExpense: async (userId: string, projectId: string, expenseId: string) => {
     try { return await req<void>(`/api/v1/projects/${projectId}/os/expenses/${expenseId}`, { method: 'DELETE' }, userId); }
-    catch (e) { if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e; const { enqueue } = await import('@/lib/offlineQueue'); await enqueue({ path: `/api/v1/projects/${projectId}/os/expenses/${expenseId}`, method: 'DELETE', body: '{}', userId }); throw new Error('offline_queued'); }
+    catch (e) { if (!isQueueableWriteError(e)) throw e; const { enqueue } = await import('@/lib/offlineQueue'); await enqueue({ path: `/api/v1/projects/${projectId}/os/expenses/${expenseId}`, method: 'DELETE', body: '{}', userId }); throw new Error('offline_queued'); }
   },
   patchOsExpense: async (userId: string, projectId: string, expenseId: string, body: { amount?: number; title?: string; category?: string; room_id?: string | null; stage_id?: string | null }) => {
     const serialized = JSON.stringify(body);
     try { return await req<import('./types').OsExpense>(`/api/v1/projects/${projectId}/os/expenses/${expenseId}`, { method: 'PATCH', body: serialized }, userId); }
-    catch (e) { if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e; const { enqueue } = await import('@/lib/offlineQueue'); await enqueue({ path: `/api/v1/projects/${projectId}/os/expenses/${expenseId}`, method: 'PATCH', body: serialized, userId }); throw new Error('offline_queued'); }
+    catch (e) { if (!isQueueableWriteError(e)) throw e; const { enqueue } = await import('@/lib/offlineQueue'); await enqueue({ path: `/api/v1/projects/${projectId}/os/expenses/${expenseId}`, method: 'PATCH', body: serialized, userId }); throw new Error('offline_queued'); }
   },
   reportDaily: (userId: string, projectId: string) => req<OsReport>(`/api/v1/projects/${projectId}/reports/daily`, {}, userId),
   reportWeekly: (userId: string, projectId: string) => req<OsReport>(`/api/v1/projects/${projectId}/reports/weekly`, {}, userId),
@@ -67,7 +68,7 @@ export const osApi = {
       await invalidateCachedGet(`/api/v1/projects/${projectId}/warranty-claims`, userId);
       return created;
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/warranty-claims`, method: 'POST', body: serialized, userId });
       throw new Error('offline_queued');
@@ -75,7 +76,7 @@ export const osApi = {
   },
   /** Polled from several independent widgets (home digest, control screens, closeout) — общий TTL-кэш вместо параллельного опроса каждым (#432). */
   listWarrantyClaims: (userId: string, projectId: string) => cachedGet<{ items: { id: string; title: string; status: string; created_at?: string; overdue?: boolean }[]; open: number; overdue?: number; post_closeout_allowed?: boolean }>(`/api/v1/projects/${projectId}/warranty-claims`, userId),
-  closeWarrantyClaim: async (userId: string, projectId: string, issueId: string) => { try { const result = await req<{ ok: boolean }>(`/api/v1/projects/${projectId}/warranty-claims/${issueId}/close`, { method: 'POST' }, userId); await invalidateCachedGet(`/api/v1/projects/${projectId}/warranty-claims`, userId); return result; } catch (e) { if (e instanceof ApiError) throw e; const { enqueue } = await import('@/lib/offlineQueue'); await enqueue({ path: `/api/v1/projects/${projectId}/warranty-claims/${issueId}/close`, method: 'POST', body: '', userId }); throw new Error('offline_queued'); } },
+  closeWarrantyClaim: async (userId: string, projectId: string, issueId: string) => { try { const result = await req<{ ok: boolean }>(`/api/v1/projects/${projectId}/warranty-claims/${issueId}/close`, { method: 'POST' }, userId); await invalidateCachedGet(`/api/v1/projects/${projectId}/warranty-claims`, userId); return result; } catch (e) { if (!isQueueableWriteError(e)) throw e; const { enqueue } = await import('@/lib/offlineQueue'); await enqueue({ path: `/api/v1/projects/${projectId}/warranty-claims/${issueId}/close`, method: 'POST', body: '', userId }); throw new Error('offline_queued'); } },
   respondWarrantyClaim: async (userId: string, projectId: string, issueId: string, body: { decision: 'accept' | 'reject' | 'fixed'; comment?: string }) => {
     const path = `/api/v1/projects/${projectId}/warranty-claims/${issueId}/respond`;
     const serialized = JSON.stringify(body);
@@ -84,7 +85,7 @@ export const osApi = {
       await invalidateCachedGet(`/api/v1/projects/${projectId}/warranty-claims`, userId);
       return result;
     } catch (e) {
-      if (e instanceof ApiError) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path, method: 'POST', body: serialized, userId });
       throw new Error('offline_queued');
@@ -98,7 +99,7 @@ export const osApi = {
       await invalidateCachedGet(`/api/v1/projects/${projectId}/warranty-claims`, userId);
       return result;
     } catch (e) {
-      if (e instanceof ApiError) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path, method: 'POST', body: serialized, userId });
       throw new Error('offline_queued');

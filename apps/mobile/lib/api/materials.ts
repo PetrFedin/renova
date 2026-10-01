@@ -1,5 +1,6 @@
 /** API: materials */
 import { req, cachedGet, invalidateCachedGet, ApiError } from './client';
+import { isQueueableWriteError } from './queueableError';
 import type { MaterialPick, MaterialSupplySource, Purchase } from './types';
 import { createClientRequestId } from '@/lib/clientRequestId';
 export const materialsApi = {
@@ -17,7 +18,7 @@ export const materialsApi = {
       await invalidateCachedGet(`/api/v1/projects/${projectId}/material-picks`, userId);
       return created;
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/material-picks`, method: 'POST', body: serialized, userId });
       throw new Error('offline_queued');
@@ -29,7 +30,7 @@ export const materialsApi = {
       await invalidateCachedGet(`/api/v1/projects/${projectId}/material-picks`, userId);
       return result;
     } catch (e) {
-      if (e instanceof ApiError) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/material-picks/${id}/submit`, method: 'POST', body: '{}', userId });
       throw new Error('offline_queued');
@@ -41,7 +42,7 @@ export const materialsApi = {
       await invalidateCachedGet(`/api/v1/projects/${projectId}/material-picks`, userId);
       return result;
     } catch (e) {
-      if (e instanceof ApiError) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/material-picks/${id}/approve`, method: 'POST', body: '{}', userId });
       throw new Error('offline_queued');
@@ -54,7 +55,7 @@ export const materialsApi = {
       await invalidateCachedGet(`/api/v1/projects/${projectId}/material-picks`, userId);
       return result;
     } catch (e) {
-      if (e instanceof ApiError) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/material-picks/${id}/reject`, method: 'POST', body, userId });
       throw new Error('offline_queued');
@@ -101,7 +102,7 @@ export const materialsApi = {
     try {
       return await req<Purchase>(`/api/v1/projects/${projectId}/purchases`, { method: 'POST', body: serialized }, userId);
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/purchases`, method: 'POST', body: serialized, userId });
       throw new Error('offline_queued');
@@ -116,7 +117,7 @@ export const materialsApi = {
         userId,
       );
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/purchases/${purchaseId}/status`,
@@ -140,7 +141,7 @@ export const materialsApi = {
         userId,
       );
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 429) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/material-needs/from-estimate`,

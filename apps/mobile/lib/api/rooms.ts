@@ -1,5 +1,6 @@
 /** API: rooms */
 import { req, cachedGet, API_BASE, OFFLINE_ROOMS, ApiError } from './client';
+import { isQueueableWriteError } from './queueableError';
 import type { Room, RoomChangeRequest, RoomSnapshot, User } from './types';
 import { createClientRequestId } from '@/lib/clientRequestId';
 
@@ -56,7 +57,7 @@ export const roomsApi = {
     try {
       return await req<Room>(`/api/v1/projects/${projectId}/rooms/${roomId}`, { method: 'PATCH', body: JSON.stringify(body) }, userId);
     } catch (e) {
-      if (e instanceof ApiError) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/rooms/${roomId}`, method: 'PATCH', body: JSON.stringify(body), userId });
       throw new Error('offline_queued');
@@ -66,11 +67,11 @@ export const roomsApi = {
     // Same client_request_id and exact serialized body is sent on the first
     // attempt and on every offline replay so a lost response cannot create a
     // duplicate room/estimate/outbox effect set (#436, #316/#398 pattern).
-    const requestBody = JSON.stringify({ ...body, client_request_id: createClientRequestId('room-create') });
+    const requestBody = JSON.stringify({ ...body, client_request_id: (body as { client_request_id?: string }).client_request_id || createClientRequestId('room-create') });
     try {
       return await req<Room>(`/api/v1/projects/${projectId}/rooms`, { method: 'POST', body: requestBody }, userId);
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/rooms`,
@@ -108,7 +109,7 @@ export const roomsApi = {
     try {
       return await req(`/api/v1/projects/${projectId}/room-change-requests`, { method: 'POST', body: requestBody }, userId);
     } catch (e) {
-      if (e instanceof ApiError) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/room-change-requests`, method: 'POST', body: requestBody, userId });
       throw new Error('offline_queued');
@@ -118,7 +119,7 @@ export const roomsApi = {
     try {
       return await req<{ ok: boolean; room_id: string | null; estimate_frozen?: boolean }>(`/api/v1/projects/${projectId}/room-change-requests/${reqId}/approve`, { method: 'POST' }, userId);
     } catch (e) {
-      if (e instanceof ApiError) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/room-change-requests/${reqId}/approve`, method: 'POST', body: '{}', userId });
       throw new Error('offline_queued');
@@ -128,7 +129,7 @@ export const roomsApi = {
     try {
       return await req(`/api/v1/projects/${projectId}/room-change-requests/${reqId}/reject`, { method: 'POST' }, userId);
     } catch (e) {
-      if (e instanceof ApiError) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/room-change-requests/${reqId}/reject`, method: 'POST', body: '{}', userId });
       throw new Error('offline_queued');

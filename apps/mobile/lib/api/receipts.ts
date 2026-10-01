@@ -1,5 +1,6 @@
 /** API: receipts */
 import { req, ApiError } from './client';
+import { isQueueableWriteError } from './queueableError';
 import type { BudgetBreakdown, ReceiptItem } from './types';
 import { createClientRequestId } from '@/lib/clientRequestId';
 import { isAmbiguousWriteFailure } from './failurePolicy';
@@ -79,7 +80,7 @@ export const receiptsApi = {
         userId,
       );
     } catch (error) {
-      if (error instanceof ApiError && error.status >= 400 && error.status < 500) throw error;
+      if (!isQueueableWriteError(error)) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/receipts/${receiptId}`,
@@ -94,7 +95,7 @@ export const receiptsApi = {
     try {
       return await req<void>(`/api/v1/projects/${projectId}/receipts/${receiptId}`, { method: 'DELETE' }, userId);
     } catch (error) {
-      if (error instanceof ApiError && error.status >= 400 && error.status < 500) throw error;
+      if (!isQueueableWriteError(error)) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/receipts/${receiptId}`,

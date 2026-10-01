@@ -1,6 +1,7 @@
 /** API: Document Center (+ OCR / e-sign Wave 3d) */
 import { req, cachedGet, invalidateCachedGet, ApiError } from './client';
-import { OFFLINE_UPLOAD_BLOCKED } from '@/lib/offlineErrors';
+import { isQueueableWriteError } from './queueableError';
+import { OFFLINE_UPLOAD_BLOCKED, UPLOAD_RESPONSE_UNKNOWN } from '@/lib/offlineErrors';
 import type { ProjectDocumentsResponse } from './types';
 
 export type EsignProvider = {
@@ -40,7 +41,7 @@ export const documentsApi = {
       await invalidateCachedGet(`/api/v1/projects/${projectId}/documents`, userId);
       return created;
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       if (body.storage_key || body.href?.startsWith('data:')) {
         throw new Error(OFFLINE_UPLOAD_BLOCKED);
       }
@@ -71,7 +72,7 @@ export const documentsApi = {
         body,
       }, userId);
     } catch (e) {
-      if (e instanceof ApiError) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/documents/${documentId}/sign`,
@@ -122,7 +123,7 @@ export const documentsApi = {
       await invalidateCachedGet(`/api/v1/projects/${projectId}/documents`, userId);
       return result;
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/documents/${documentId}/archive`,
@@ -154,7 +155,11 @@ export const documentsApi = {
       return uploaded;
     } catch (e) {
       // Upload cannot be queued offline — explicit user-facing block
-      if (!(e instanceof ApiError) || e.status >= 500) {
+      if (e instanceof ApiError && e.status >= 500) {
+        // Сервер доступен, но ответ не получен: файл мог сохраниться (CMP-026).
+        throw new Error(UPLOAD_RESPONSE_UNKNOWN);
+      }
+      if (!(e instanceof ApiError) || e.status === 0) {
         throw new Error(OFFLINE_UPLOAD_BLOCKED);
       }
       throw e;

@@ -1,5 +1,6 @@
 /** API: estimate */
 import { req, cachedGet, invalidateCachedGet, API_BASE, ApiError } from './client';
+import { isQueueableWriteError } from './queueableError';
 import type { ChangeOrder, MaterialStats, User } from './types';
 import { createClientRequestId } from '@/lib/clientRequestId';
 export const estimateApi = {
@@ -12,7 +13,7 @@ export const estimateApi = {
         userId,
       );
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/estimate/lines/${lineId}`,
@@ -40,7 +41,7 @@ export const estimateApi = {
         userId,
       );
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 429) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/estimate/lines`,
@@ -74,7 +75,7 @@ export const estimateApi = {
         userId,
       );
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/estimate/lock`, method: 'POST', body: '{}', userId });
       throw new Error('offline_queued');
@@ -89,7 +90,7 @@ export const estimateApi = {
         userId,
       );
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/estimate/propose-lock`, method: 'POST', body: '{}', userId });
       throw new Error('offline_queued');
@@ -114,7 +115,7 @@ export const estimateApi = {
       await invalidateCachedGet(`/api/v1/projects/${projectId}/change-orders`, userId);
       return created;
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/change-orders`,
@@ -135,7 +136,7 @@ export const estimateApi = {
       await invalidateCachedGet(`/api/v1/projects/${projectId}/change-orders`, userId);
       return result;
     } catch (e) {
-      if (e instanceof ApiError) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/change-orders/${orderId}/approve`, method: 'POST', body: '{}', userId });
       throw new Error('offline_queued');
@@ -147,7 +148,7 @@ export const estimateApi = {
       await invalidateCachedGet(`/api/v1/projects/${projectId}/change-orders`, userId);
       return result;
     } catch (e) {
-      if (e instanceof ApiError) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/change-orders/${orderId}/reject`, method: 'POST', body: '{}', userId });
       throw new Error('offline_queued');
@@ -183,7 +184,7 @@ export const estimateApi = {
         userId,
       );
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/estimate/reject-lock`, method: 'POST', body, userId });
       throw new Error('offline_queued');
@@ -199,7 +200,7 @@ export const estimateApi = {
         userId,
       );
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/estimate/withdraw-lock`, method: 'POST', body, userId });
       throw new Error('offline_queued');

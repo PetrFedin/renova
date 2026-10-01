@@ -35,8 +35,8 @@ function block(source: string, startMarker: string, endMarker: string): string {
 const createLineBlock = block(estimateApi, 'addEstimateLine: async', 'materialStats:');
 must(createLineBlock.includes('const requestBody = JSON.stringify(body)'), 'mobile serializes the line body once, before the first attempt');
 must((createLineBlock.match(/body: requestBody/g) || []).length === 2, 'online request and queued offline replay send the identical serialized line body');
-must(createLineBlock.includes('e.status !== 429'), '429 is replay-safe and queues like transport/5xx, matching floor-plan/furniture create');
-must(createLineBlock.includes('e.status >= 400 && e.status < 500'), 'deterministic 4xx (except 429) is authoritative and must not be queued');
+must(createLineBlock.includes('isQueueableWriteError(e)') || createLineBlock.includes('e.status !== 429'), '429 is replay-safe and queues like transport/5xx, matching floor-plan/furniture create');
+must(createLineBlock.includes('!isQueueableWriteError(e)') || createLineBlock.includes('e.status >= 400 && e.status < 500'), 'deterministic 4xx (except 429) is authoritative and must not be queued');
 
 // The form is the canonical minter: it keeps one client_request_id across
 // the whole submit/offline-queue/retry lifecycle so a lost response after a

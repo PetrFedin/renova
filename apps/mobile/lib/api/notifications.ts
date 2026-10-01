@@ -1,5 +1,6 @@
 /** API: notifications — W113 mark/snooze offline (бейджи после flush) */
 import { req, ApiError } from './client';
+import { isQueueableWriteError } from './queueableError';
 import type { AppNotification } from './types';
 
 async function withOffline(
@@ -12,7 +13,7 @@ async function withOffline(
   try {
     return await run();
   } catch (e) {
-    if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+    if (!isQueueableWriteError(e)) throw e;
     const { enqueue } = await import('@/lib/offlineQueue');
     await enqueue({ path, method, body, userId });
     throw new Error('offline_queued');

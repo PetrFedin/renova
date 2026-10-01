@@ -1,5 +1,6 @@
 /** API: floor */
 import { req, cachedGet, API_BASE, ApiError } from './client';
+import { isQueueableWriteError } from './queueableError';
 import type { FloorPlan, FurnitureItem, WasteOrder } from './types';
 import { createClientRequestId } from '@/lib/clientRequestId';
 export const floorApi = {
@@ -14,7 +15,7 @@ export const floorApi = {
     try {
       return await req<FloorPlan>(`/api/v1/projects/${projectId}/floor-plans`, { method: 'POST', body: requestBody }, userId);
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 429) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/floor-plans`,
@@ -33,7 +34,7 @@ export const floorApi = {
     try {
       return await req(`/api/v1/projects/${projectId}/floor-plans/${planId}/pins`, { method: 'POST', body: requestBody }, userId);
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 429) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/floor-plans/${planId}/pins`,
@@ -49,7 +50,7 @@ export const floorApi = {
     try {
       return await req(`/api/v1/projects/${projectId}/floor-plans/${planId}/pins/${pinId}`, { method: 'PATCH', body: JSON.stringify(body) }, userId);
     } catch (e) {
-      if (e instanceof ApiError) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/floor-plans/${planId}/pins/${pinId}`, method: 'PATCH', body: JSON.stringify(body), userId });
       throw new Error('offline_queued');
@@ -68,7 +69,7 @@ export const floorApi = {
     try {
       return await req<FurnitureItem>(`/api/v1/projects/${projectId}/furniture`, { method: 'POST', body: requestBody }, userId);
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 429) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/furniture`,
@@ -84,7 +85,7 @@ export const floorApi = {
     try {
       return await req(`/api/v1/projects/${projectId}/furniture/${itemId}`, { method: 'PATCH', body: JSON.stringify(body) }, userId);
     } catch (e) {
-      if (e instanceof ApiError) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/furniture/${itemId}`, method: 'PATCH', body: JSON.stringify(body), userId });
       throw new Error('offline_queued');
@@ -106,7 +107,7 @@ export const floorApi = {
         userId,
       );
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 429) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/waste-orders`,
@@ -121,7 +122,7 @@ export const floorApi = {
     try {
       return await req(`/api/v1/projects/${projectId}/waste-orders/${id}/request`, { method: 'POST' }, userId);
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/waste-orders/${id}/request`,
@@ -136,7 +137,7 @@ export const floorApi = {
     try {
       return await req(`/api/v1/projects/${projectId}/waste-orders/${id}/approve`, { method: 'POST' }, userId);
     } catch (e) {
-      if (e instanceof ApiError) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/waste-orders/${id}/approve`, method: 'POST', body: '{}', userId });
       throw new Error('offline_queued');
@@ -146,7 +147,7 @@ export const floorApi = {
     try {
       return await req(`/api/v1/projects/${projectId}/waste-orders/${id}/complete`, { method: 'POST' }, userId);
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/waste-orders/${id}/complete`,

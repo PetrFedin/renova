@@ -1,5 +1,7 @@
 /** API: projects */
-import { req, cachedGet, API_BASE } from './client';
+import { req, cachedGet, API_BASE, ApiError } from './client';
+import { getAttemptKey, releaseAttemptKey } from './attemptKey';
+import { isQueueableWriteError } from './queueableError';
 import type { Dashboard, ProjectDetail, ProjectSummary } from './types';
 export type PurgeBlockReason = { code: string; message: string; count: number };
 export type SkippedTrashProject = {
@@ -9,6 +11,23 @@ export type SkippedTrashProject = {
   reasons: PurgeBlockReason[];
 };
 export type EmptyTrashResult = { deleted: number; skipped?: SkippedTrashProject[] };
+
+async function createOnce<T>(userId: string, scope: string, path: string, body: object): Promise<T> {
+  const given = (body as { client_request_id?: string }).client_request_id;
+  const base = JSON.stringify(body);
+  const key = given || getAttemptKey(userId, scope, base);
+  const requestBody = JSON.stringify({ ...body, client_request_id: key });
+  try {
+    const created = await req<T>(path, { method: 'POST', body: requestBody }, userId);
+    releaseAttemptKey(userId, scope, base);
+    return created;
+  } catch (e) {
+    // Исход неизвестен (обрыв/5xx/429) — ключ остаётся для повтора. Авторитетный
+    // отказ сервера закрывает попытку.
+    if (e instanceof ApiError && !isQueueableWriteError(e)) releaseAttemptKey(userId, scope, base);
+    throw e;
+  }
+}
 
 export const projectsApi = {
   listProjects: (userId: string) => cachedGet<ProjectSummary[]>("/api/v1/projects", userId),
@@ -32,8 +51,14 @@ export const projectsApi = {
       '/api/v1/projects/templates', {}, userId,
     ),
   createProjectFromTemplate: (userId: string, body: { template_id: string; name?: string }) =>
-    req<ProjectDetail>(`/api/v1/projects/from-template`, { method: 'POST', body: JSON.stringify(body) }, userId),
-  createProject: (userId: string, body: object) => req<ProjectDetail>('/api/v1/projects', { method: 'POST', body: JSON.stringify(body) }, userId),
+    createOnce<ProjectDetail>(userId, 'project-from-template', '/api/v1/projects/from-template', body),
+  /**
+   * CMP-005: сервер идемпотентен по client_request_id. Ключ один на попытку:
+   * «Повторить» после таймаута/сбоя следующего шага мастера шлёт тот же ключ
+   * и получает тот же проект, а не второй.
+   */
+  createProject: (userId: string, body: object) =>
+    createOnce<ProjectDetail>(userId, 'project-create', '/api/v1/projects', body),
   patchProject: (userId: string, projectId: string, body: object) =>
     req<ProjectDetail>(`/api/v1/projects/${projectId}`, { method: 'PATCH', body: JSON.stringify(body) }, userId),
   dashboard: (userId: string, id: string) => req<Dashboard>(`/api/v1/projects/${id}/dashboard`, {}, userId),

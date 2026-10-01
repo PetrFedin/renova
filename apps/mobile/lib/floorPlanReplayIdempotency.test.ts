@@ -30,8 +30,8 @@ must(createFloorPlanBlock.includes("createClientRequestId('floor-plan-create')")
 must(createFloorPlanBlock.includes('client_request_id:'), 'mobile sends the request id with the floor-plan body');
 must(createFloorPlanBlock.includes('const requestBody = JSON.stringify('), 'mobile serializes the floor-plan body once, before the first attempt');
 must((createFloorPlanBlock.match(/body: requestBody/g) || []).length === 2, 'online request and queued offline replay send the identical serialized floor-plan body');
-must(createFloorPlanBlock.includes("e.status !== 429"), '429 is replay-safe and queues like transport/5xx');
-must(createFloorPlanBlock.includes('e.status >= 400 && e.status < 500'), 'deterministic 4xx (except 429) is authoritative and must not be queued');
+must(createFloorPlanBlock.includes('isQueueableWriteError(e)') || createFloorPlanBlock.includes('e.status !== 429'), '429 is replay-safe and queues like transport/5xx');
+must(createFloorPlanBlock.includes('!isQueueableWriteError(e)') || createFloorPlanBlock.includes('e.status >= 400 && e.status < 500'), 'deterministic 4xx (except 429) is authoritative and must not be queued');
 
 // --- #475: pin upsert replay identity (mobile) -----------------------------
 
@@ -47,8 +47,8 @@ must(createFurnitureBlock.includes("createClientRequestId('furniture-create')"),
 must(createFurnitureBlock.includes('client_request_id:'), 'mobile sends the request id with the furniture body');
 must(createFurnitureBlock.includes('const requestBody = JSON.stringify('), 'mobile serializes the furniture body once, before the first attempt');
 must((createFurnitureBlock.match(/body: requestBody/g) || []).length === 2, 'online request and queued offline replay send the identical serialized furniture body');
-must(createFurnitureBlock.includes("e.status !== 429"), 'furniture create queues on 429 like transport/5xx');
-must(createFurnitureBlock.includes('e.status >= 400 && e.status < 500'), 'deterministic furniture 4xx (except 429) is authoritative and must not be queued');
+must(createFurnitureBlock.includes('isQueueableWriteError(e)') || createFurnitureBlock.includes('e.status !== 429'), 'furniture create queues on 429 like transport/5xx');
+must(createFurnitureBlock.includes('!isQueueableWriteError(e)') || createFurnitureBlock.includes('e.status >= 400 && e.status < 500'), 'deterministic furniture 4xx (except 429) is authoritative and must not be queued');
 
 // #468: the component must go through the canonical producer only — no
 // component-level catch-all that reconstructs a different/truncated payload

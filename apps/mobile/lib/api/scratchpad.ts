@@ -1,5 +1,6 @@
 /** API: черновик проекта — W111 offline queue (полевые заметки) */
 import { req, ApiError } from './client';
+import { isQueueableWriteError } from './queueableError';
 import type { ScratchpadData, ScratchpadLine } from './types/scratchpad';
 
 export const scratchpadApi = {
@@ -14,7 +15,7 @@ export const scratchpadApi = {
         body: JSON.stringify({ text }),
       }, userId);
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/scratchpad`,
@@ -33,7 +34,7 @@ export const scratchpadApi = {
         body: JSON.stringify(body),
       }, userId);
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/scratchpad/${lineId}`,
@@ -51,7 +52,7 @@ export const scratchpadApi = {
         method: 'DELETE',
       }, userId);
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/scratchpad/${lineId}`,

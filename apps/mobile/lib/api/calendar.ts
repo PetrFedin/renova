@@ -1,5 +1,8 @@
 /** API: calendar — даты этапов в офлайн-очереди (график golden path) */
 import { req, cachedGet, ApiError } from './client';
+import { exceedsQueueBodyLimit, isQueueableWriteError } from './queueableError';
+import { OFFLINE_UPLOAD_BLOCKED } from '@/lib/offlineErrors';
+import { createClientRequestId } from '@/lib/clientRequestId';
 import type { CalendarData, OsScheduleSummary } from './types';
 
 export type IcalImportResult = {
@@ -33,7 +36,7 @@ export const calendarApi = {
         userId,
       );
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/calendar/stages`,
@@ -47,7 +50,8 @@ export const calendarApi = {
 
   /** W116: импорт ICS — очередь офлайн (метаданные; большой файл — online only через 4xx) */
   importIcal: async (userId: string, projectId: string, content: string) => {
-    const payload = JSON.stringify({ content });
+    // CMP-014: сервер принимает client_request_id (calendar.py IcalImportIn).
+    const payload = JSON.stringify({ content, client_request_id: createClientRequestId('ical-import') });
     try {
       return await req<IcalImportResult>(
         `/api/v1/projects/${projectId}/calendar/import`,
@@ -55,7 +59,8 @@ export const calendarApi = {
         userId,
       );
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
+      if (exceedsQueueBodyLimit(payload)) throw new Error(OFFLINE_UPLOAD_BLOCKED);
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/calendar/import`,

@@ -1,4 +1,5 @@
 import { req, ApiError } from './client';
+import { isQueueableWriteError } from './queueableError';
 import { createClientRequestId } from '@/lib/clientRequestId';
 
 export type WorkScheduleStatus = 'draft' | 'submitted' | 'confirmed' | 'rejected' | 'archived';
@@ -107,7 +108,7 @@ export const workScheduleApi = {
         userId,
       );
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/work-schedules`, method: 'POST', body: payload, userId });
       throw new Error('offline_queued');
@@ -122,7 +123,7 @@ export const workScheduleApi = {
         userId,
       );
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/submit`,
@@ -142,7 +143,7 @@ export const workScheduleApi = {
         userId,
       );
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/confirm`,
@@ -163,7 +164,7 @@ export const workScheduleApi = {
         userId,
       );
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/reject`,
@@ -197,7 +198,7 @@ export const workScheduleApi = {
         userId,
       );
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/items/${itemId}/status`,

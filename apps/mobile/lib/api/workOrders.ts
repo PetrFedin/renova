@@ -1,5 +1,6 @@
 /** API: workOrders — W111 offline queue for field transitions */
 import { req, cachedGet, invalidateCachedGet, ApiError } from './client';
+import { isQueueableWriteError } from './queueableError';
 import type { WorkOrder } from './types';
 
 export type WorkOrderPatchBody = {
@@ -42,7 +43,7 @@ export const workOrdersApi = {
       await invalidateCachedGet(`/api/v1/projects/${projectId}/work-orders`, userId);
       return created;
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/work-orders`,
@@ -92,7 +93,7 @@ export const workOrdersApi = {
       await invalidateCachedGet(`/api/v1/projects/${projectId}/work-orders`, userId);
       return updated;
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/work-orders/${workOrderId}/transition`,

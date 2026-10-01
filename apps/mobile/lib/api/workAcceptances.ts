@@ -1,5 +1,6 @@
 /** API: приёмка работ */
 import { req, ApiError } from './client';
+import { isQueueableWriteError } from './queueableError';
 import type { WorkAcceptance } from './types';
 import { acceptanceDecisionBody } from '@/lib/acceptanceDecide';
 
@@ -34,7 +35,7 @@ export const workAcceptancesApi = {
         userId,
       );
     } catch (error) {
-      if (error instanceof ApiError && error.status >= 400 && error.status < 500) throw error;
+      if (!isQueueableWriteError(error)) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/work-acceptances`,
@@ -62,7 +63,7 @@ export const workAcceptancesApi = {
         userId,
       );
     } catch (error) {
-      if (error instanceof ApiError && error.status >= 400 && error.status < 500) throw error;
+      if (!isQueueableWriteError(error)) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/work-acceptances/${acceptanceId}/accept`,
@@ -89,7 +90,7 @@ export const workAcceptancesApi = {
         userId,
       );
     } catch (error) {
-      if (error instanceof ApiError && error.status >= 400 && error.status < 500) throw error;
+      if (!isQueueableWriteError(error)) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/work-acceptances/${acceptanceId}/return`,

@@ -1,5 +1,6 @@
 /** P2.2: selections tracker API — W109 offline queue for field propose/approve */
 import { req, cachedGet, invalidateCachedGet, ApiError } from './client';
+import { isQueueableWriteError } from './queueableError';
 import { createClientRequestId } from '@/lib/clientRequestId';
 
 export type SelectionItem = {
@@ -31,7 +32,7 @@ async function withOffline<T>(
   try {
     return await run();
   } catch (e) {
-    if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+    if (!isQueueableWriteError(e)) throw e;
     const { enqueue } = await import('@/lib/offlineQueue');
     await enqueue({ path: enqueuePath, method, body, userId });
     throw new Error('offline_queued');

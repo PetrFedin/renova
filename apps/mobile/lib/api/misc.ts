@@ -1,5 +1,6 @@
 /** API: misc */
 import { req, cachedGet, API_BASE, ApiError } from './client';
+import { isQueueableWriteError } from './queueableError';
 import type { ApprovalItem, ArticleDetail, ArticleSummary, ProjectDetail } from './types';
 export const miscApi = {
   listArticles: (category?: string) => req<ArticleSummary[]>(`/api/v1/articles${category ? `?category=${category}` : ''}`),
@@ -153,7 +154,7 @@ export const miscApi = {
     try {
       return await req(`/api/v1/projects/${projectId}/approvals/${itemId}/approve`, { method: 'POST', body: JSON.stringify(body) }, userId);
     } catch (e) {
-      if (e instanceof ApiError) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/approvals/${itemId}/approve`, method: 'POST', body: JSON.stringify(body), userId });
       throw new Error('offline_queued');
@@ -164,7 +165,7 @@ export const miscApi = {
     try {
       return await req(`/api/v1/projects/${projectId}/approvals/${itemId}/reject`, { method: 'POST', body: JSON.stringify(body) }, userId);
     } catch (e) {
-      if (e instanceof ApiError) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/approvals/${itemId}/reject`, method: 'POST', body: JSON.stringify(body), userId });
       throw new Error('offline_queued');

@@ -1,5 +1,7 @@
 /** API: stages */
 import { req, cachedGet, API_BASE, ApiError } from './client';
+import { exceedsQueueBodyLimit, isQueueableWriteError } from './queueableError';
+import { OFFLINE_UPLOAD_BLOCKED } from '@/lib/offlineErrors';
 import type { ProjectPlan, Stage, StageChecklistItem, StageDetail, StagePaymentPlan, WorkAcceptance, WorkCompletionCheck, WorkSnapshot } from './types';
 import { acceptanceDecisionBody } from '@/lib/acceptanceDecide';
 import { createClientRequestId } from '@/lib/clientRequestId';
@@ -26,7 +28,7 @@ export const stagesApi = {
     try {
       return await req(`/api/v1/projects/${projectId}/stages/${stageId}/comments`, { method: 'POST', body: requestBody }, userId);
     } catch (e) {
-      if (e instanceof ApiError) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/stages/${stageId}/comments`, method: 'POST', body: requestBody, userId });
       throw new Error('offline_queued');
@@ -45,10 +47,14 @@ export const stagesApi = {
     try {
       return await req(`/api/v1/projects/${projectId}/stages/${stageId}/photos`, { method: 'POST', body: JSON.stringify({ image_data, caption, storage_key, image_url }) }, userId);
     } catch (e) {
-      if (e instanceof ApiError) throw e;
-      if (image_data) {
+      if (!isQueueableWriteError(e)) throw e;
+      // CMP-027: файл уже в хранилище (storage_key) — в очередь идут только
+      // метаданные; иначе — inline base64 (CMP-028: с ограничением размера).
+      if (image_data || storage_key) {
+        const queuedBody = JSON.stringify(storage_key ? { caption, storage_key, image_url } : { image_data, caption });
+        if (exceedsQueueBodyLimit(queuedBody)) throw new Error(OFFLINE_UPLOAD_BLOCKED);
         const { enqueue } = await import('@/lib/offlineQueue');
-        await enqueue({ path: `/api/v1/projects/${projectId}/stages/${stageId}/photos`, method: 'POST', body: JSON.stringify({ image_data, caption }), userId });
+        await enqueue({ path: `/api/v1/projects/${projectId}/stages/${stageId}/photos`, method: 'POST', body: queuedBody, userId });
         throw new Error('offline_queued');
       }
       throw new Error('offline');
@@ -63,7 +69,7 @@ export const stagesApi = {
         userId,
       );
     } catch (error) {
-      if (error instanceof ApiError && error.status >= 400 && error.status < 500) throw error;
+      if (!isQueueableWriteError(error)) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/stages/${stageId}/ready`,
@@ -89,7 +95,7 @@ export const stagesApi = {
         userId,
       );
     } catch (error) {
-      if (error instanceof ApiError && error.status >= 400 && error.status < 500) throw error;
+      if (!isQueueableWriteError(error)) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/work-acceptances`,
@@ -125,7 +131,7 @@ export const stagesApi = {
         userId,
       );
     } catch (error) {
-      if (error instanceof ApiError && error.status >= 400 && error.status < 500) throw error;
+      if (!isQueueableWriteError(error)) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/work-acceptances/${acceptance.id}/return`,
@@ -165,7 +171,7 @@ export const stagesApi = {
         userId,
       );
     } catch (error) {
-      if (error instanceof ApiError && error.status >= 400 && error.status < 500) throw error;
+      if (!isQueueableWriteError(error)) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/work-acceptances/${acceptance.id}/accept`,
@@ -180,7 +186,7 @@ export const stagesApi = {
     try {
       return await req<Stage>(`/api/v1/projects/${projectId}/stages/${stageId}/start`, { method: 'POST' }, userId);
     } catch (error) {
-      if (error instanceof ApiError && error.status >= 400 && error.status < 500) throw error;
+      if (!isQueueableWriteError(error)) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/stages/${stageId}/start`,
@@ -196,20 +202,23 @@ export const stagesApi = {
     projectId: string,
     body: { name: string; planned_start?: string; planned_end?: string; room_ids?: string[]; work_type?: string },
   ) => {
-    // W112: новый этап с объекта — очередь офлайн
+    // W112: новый этап с объекта — очередь офлайн. CMP-014: сервер идемпотентен
+    // (stage_mutations.py), ключ и сериализованное тело едины для первой отправки
+    // и для повтора из очереди.
+    const requestBody = JSON.stringify({ ...body, client_request_id: createClientRequestId('stage-create') });
     try {
       return await req<Stage>(
         `/api/v1/projects/${projectId}/stages`,
-        { method: 'POST', body: JSON.stringify(body) },
+        { method: 'POST', body: requestBody },
         userId,
       );
     } catch (error) {
-      if (error instanceof ApiError && error.status >= 400 && error.status < 500) throw error;
+      if (!isQueueableWriteError(error)) throw error;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/stages`,
         method: 'POST',
-        body: JSON.stringify(body),
+        body: requestBody,
         userId,
       });
       throw new Error('offline_queued');
@@ -223,7 +232,7 @@ export const stagesApi = {
     try {
       return await req(`/api/v1/projects/${projectId}/stages/${stageId}/checklist/toggle`, { method: 'POST', body: JSON.stringify(body) }, userId);
     } catch (e) {
-      if (e instanceof ApiError) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/stages/${stageId}/checklist/toggle`, method: 'POST', body: JSON.stringify(body), userId });
       throw new Error('offline_queued');
@@ -235,7 +244,7 @@ export const stagesApi = {
     try {
       return await req(`/api/v1/projects/${projectId}/stages/${stageId}/rooms`, { method: 'PATCH', body: JSON.stringify(body) }, userId);
     } catch (e) {
-      if (e instanceof ApiError) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/stages/${stageId}/rooms`, method: 'PATCH', body: JSON.stringify(body), userId });
       throw new Error('offline_queued');
@@ -247,7 +256,7 @@ export const stagesApi = {
     try {
       return await req(`/api/v1/projects/${projectId}/stages/${stageId}/depends`, { method: 'PATCH', body: JSON.stringify(body) }, userId);
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/stages/${stageId}/depends`, method: 'PATCH', body: JSON.stringify(body), userId });
       throw new Error('offline_queued');
@@ -259,7 +268,7 @@ export const stagesApi = {
     try {
       return await req(`/api/v1/projects/${projectId}/stages/${stageId}/work-type`, { method: 'PATCH', body: JSON.stringify(body) }, userId);
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) throw e;
+      if (!isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({ path: `/api/v1/projects/${projectId}/stages/${stageId}/work-type`, method: 'PATCH', body: JSON.stringify(body), userId });
       throw new Error('offline_queued');
