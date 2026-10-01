@@ -159,3 +159,11 @@ Durable provider/background jobs не должны жить в API process ка�
 | `renova v1/` | архивный снимок | не использовать для новых функций |
 
 Любой старый локальный snapshot, stale branch или old PR сначала сравнивать с current `main`; не переносить legacy behavior обратно без red-team проверки.
+
+## Planned integration roadmap
+
+Canonical implementation plan:
+
+- [docs/RENOVA_INTEGRATION_MASTER_PLAN_2026-10-01.md](./docs/RENOVA_INTEGRATION_MASTER_PLAN_2026-10-01.md)
+
+This file is a **planned implementation source**, not evidence that all listed capabilities are already live. Future full-roadmap implementation should cite this filename explicitly and follow its phases, authority boundaries, dependencies and acceptance gates.
