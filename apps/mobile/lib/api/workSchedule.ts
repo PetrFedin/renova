@@ -175,6 +175,14 @@ export const workScheduleApi = {
     }
   },
 
+  /** STG-007: request a change of a confirmed schedule (creates a draft revision). */
+  requestWorkScheduleRevision: (userId: string, projectId: string, scheduleId: string) =>
+    req<WorkSchedule>(
+      `/api/v1/projects/${projectId}/work-schedules/${scheduleId}/revisions`,
+      { method: 'POST' },
+      userId,
+    ),
+
   updateWorkScheduleItemStatus: async (
     userId: string,
     projectId: string,

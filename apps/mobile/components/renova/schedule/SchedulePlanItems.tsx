@@ -102,7 +102,7 @@ export function SchedulePlanItems({
       <Text style={s.title}>Этапы плана</Text>
       <Text style={s.sub}>
         {schedule.status === 'confirmed'
-          ? 'Меняйте статус по ходу работ — синхронизируется с календарём'
+          ? 'Статус этапов следует за самим этапом: начинайте и сдавайте работы на экране этапа'
           : 'После согласования графика статусы этапов станут рабочими для поля'}
       </Text>
       {items
@@ -111,8 +111,11 @@ export function SchedulePlanItems({
         .map((item) => {
           const primary = showActions ? primaryScheduleItemAction(item.status, who) : null;
           // Customer only acts on submitted; manage only when confirmed/draft/rejected useful
+          // STG-003/004: a stage-linked item mirrors its stage — stage actions (start,
+          // submit, accept) live on the stage screen; the backend rejects status moves here.
           const allowPrimary =
             primary &&
+            !item.stage_id &&
             (who === 'customer'
               ? item.status === 'submitted'
               : schedule.status === 'confirmed' || schedule.status === 'draft');
