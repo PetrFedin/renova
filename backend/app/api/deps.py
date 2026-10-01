@@ -152,13 +152,42 @@ async def get_current_user(
 
 
 async def require_project(
-    db: AsyncSession, project_id: str, user: User, *, write: bool = False
+    db: AsyncSession,
+    project_id: str,
+    user: User,
+    *,
+    write: bool = False,
+    participant_ok: bool = False,
+    stage_id: str | None = None,
 ) -> Project:
+    """Доступ к проекту.
+
+    ``participant_ok`` открывает роут независимому исполнителю (ProjectParticipant)
+    только в пределах его scope: для записи или для конкретного ``stage_id``
+    этап обязан входить в scope участника (ROLE-008/MKT-011).
+    """
     p = await proj_svc.get_project(db, project_id)
     if not p:
         raise HTTPException(404, "Проект не найден")
 
-    has_access = await team_svc.can_access_project(db, user, p, write=write)
+    has_access = await team_svc.can_access_project(
+        db, user, p, write=write, participant_ok=participant_ok
+    )
+    if has_access and participant_ok:
+        mode, _ = await team_svc.project_access_mode(db, user, p)
+        if mode == "participant" and (write or stage_id):
+            from app.services import project_participant_service as part_svc
+
+            if not stage_id or not await part_svc.participant_may_act_on_stage(
+                db, project=p, user_id=user.id, stage_id=stage_id
+            ):
+                raise HTTPException(
+                    403,
+                    detail={
+                        "code": "participant_scope_forbidden",
+                        "message": "Этап вне вашей зоны работ на этом объекте",
+                    },
+                )
     if not has_access and not write:
         # Technical supervision is intentionally only a read fallback here.
         # Explicit technical writes use capability-checked canonical routes;

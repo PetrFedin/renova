@@ -142,11 +142,18 @@ async def stage_detail(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    project = await require_project(db, project_id, user, write=False)
+    project = await require_project(
+        db, project_id, user, write=False, participant_ok=True, stage_id=stage_id
+    )
     stage = await stage_svc.get_stage_full(db, stage_id)
     if not stage or stage.project_id != project_id:
         raise HTTPException(404, "Этап не найден")
     payload = stage_svc.stage_to_dict(stage)
+    if user.id != project.customer_id and user.id != project.contractor_id:
+        from app.services import team_service as _team
+
+        if (await _team.project_access_mode(db, user, project))[0] == "participant":
+            payload["payment_amount"] = 0.0  # деньги заказчика участнику не отдаём
     payload["capabilities"] = await stage_detail_capabilities(
         db,
         project=project,
@@ -164,7 +171,9 @@ async def add_comment(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_project(db, project_id, user, write=True)
+    await require_project(
+        db, project_id, user, write=True, participant_ok=True, stage_id=stage_id
+    )
     stage = await stage_svc.get_stage_full(db, stage_id)
     if not stage or stage.project_id != project_id:
         raise HTTPException(404, "Этап не найден")
@@ -196,7 +205,9 @@ async def add_photo(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_project(db, project_id, user, write=True)
+    await require_project(
+        db, project_id, user, write=True, participant_ok=True, stage_id=stage_id
+    )
     stage = await stage_svc.get_stage_full(db, stage_id)
     if not stage or stage.project_id != project_id:
         raise HTTPException(404, "Этап не найден")

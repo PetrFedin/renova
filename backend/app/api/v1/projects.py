@@ -43,14 +43,18 @@ def _project_out(
     # customer_budget — приватный лимит заказчика: исполнителю, команде, гостю
     # и технадзору он не отдаётся (ROLE-001); mobile трактует null как «не задан».
     customer_budget = getattr(p, "customer_budget", None) if access_mode == "owner" else None
+    # Независимый исполнитель (participant) не видит деньги заказчика и проекта.
+    hide_money = access_mode == "participant"
+    if hide_money:
+        pending = 0
     return ProjectOut(
         id=p.id,
         name=p.name,
         address=p.address,
         renovation_type=p.renovation_type,
         property_type=getattr(p, "property_type", "apartment") or "apartment",
-        budget_planned=p.budget_planned,
-        budget_spent=p.budget_spent,
+        budget_planned=0.0 if hide_money else p.budget_planned,
+        budget_spent=0.0 if hide_money else p.budget_spent,
         customer_budget=float(customer_budget) if customer_budget is not None else None,
         progress_percent=p.progress_percent,
         vat_rate=float(getattr(p, "vat_rate", 0) or 0),
@@ -98,6 +102,16 @@ async def _detail(db, p, user: User | None = None) -> ProjectDetail:
             db, user=user, project=p
         )
 
+    participant_stage_ids: set[str] | None = None
+    participant_room_ids: set[str] = set()
+    if user and access_mode == "participant":
+        from app.services import project_participant_service as part_svc
+
+        participant_stage_ids, participant_room_ids = await part_svc.participant_visible_scope(
+            db, project=p, user_id=user.id
+        )
+    hide_money = participant_stage_ids is not None
+
     lines = [
         EstimateLineOut(
             id=l.id,
@@ -106,19 +120,24 @@ async def _detail(db, p, user: User | None = None) -> ProjectDetail:
             unit=l.unit,
             quantity_planned=l.quantity_planned,
             quantity_actual=l.quantity_actual,
-            unit_price=l.unit_price,
+            unit_price=0.0 if hide_money else l.unit_price,
             room_name=l.room_name,
             room_id=l.room_id,
             category=l.category,
-            calc_detail=l.calc_detail,
-            total=round(l.quantity_planned * l.unit_price, 2),
+            calc_detail=None if hide_money else l.calc_detail,
+            total=0.0 if hide_money else round(l.quantity_planned * l.unit_price, 2),
         )
         for l in p.estimate_lines
+        if not hide_money or (l.room_id and l.room_id in participant_room_ids)
     ]
     stage_source = (
         sorted(p.stages or [], key=lambda x: x.sort_order)
         if user is None or access_mode == "supervisor"
-        else _filter_stages_for_user(p, user)
+        else (
+            [s for s in sorted(p.stages or [], key=lambda x: x.sort_order) if s.id in participant_stage_ids]
+            if hide_money
+            else _filter_stages_for_user(p, user)
+        )
     )
     stages = [
         StageOut(
@@ -127,7 +146,7 @@ async def _detail(db, p, user: User | None = None) -> ProjectDetail:
             sort_order=s.sort_order,
             status=s.status.value,
             percent_complete=s.percent_complete,
-            payment_amount=s.payment_amount,
+            payment_amount=0.0 if hide_money else s.payment_amount,
             weight_coefficient=getattr(s, 'weight_coefficient', 0) or 0,
             planned_start=s.planned_start.isoformat() if s.planned_start else None,
             planned_end=s.planned_end.isoformat() if s.planned_end else None,
@@ -143,7 +162,12 @@ async def _detail(db, p, user: User | None = None) -> ProjectDetail:
         )
         for s in stage_source
     ]
-    rooms = [RoomOut(**room_svc.room_detail(r)) for r in p.rooms if not getattr(r, "is_archived", False)] if p.rooms else []
+    rooms = [
+        RoomOut(**room_svc.room_detail(r))
+        for r in p.rooms
+        if not getattr(r, "is_archived", False)
+        and (not hide_money or r.id in participant_room_ids)
+    ] if p.rooms else []
     return ProjectDetail(
         **_project_out(
             p,
@@ -308,7 +332,7 @@ async def patch_project(project_id: str, body: ProjectUpdate, user: User = Depen
 
 @router.get("/{project_id}", response_model=ProjectDetail)
 async def get_project(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    p = await require_project(db, project_id, user, write=False)
+    p = await require_project(db, project_id, user, write=False, participant_ok=True)
     return await _detail(db, p, user)
 
 

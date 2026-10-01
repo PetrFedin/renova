@@ -14,6 +14,8 @@ from app.core.timeutil import utc_now
 from app.models.entities import (
     Project,
     ProjectViewer,
+    Stage,
+    StageStatus,
     Team,
     TeamInvite,
     TeamMember,
@@ -469,6 +471,22 @@ async def is_project_guest(db: AsyncSession, user_id: str, project_id: str) -> b
     return result.scalar_one_or_none() is not None
 
 
+async def is_project_participant(db: AsyncSession, user_id: str, project_id: str) -> bool:
+    """Активный не-лид ProjectParticipant (независимый исполнитель со scope)."""
+    from app.models.project_participants import ProjectParticipant
+
+    return (
+        await db.scalar(
+            select(ProjectParticipant.id).where(
+                ProjectParticipant.project_id == project_id,
+                ProjectParticipant.user_id == user_id,
+                ProjectParticipant.status == "active",
+                ProjectParticipant.participant_role == "contractor",
+            )
+        )
+    ) is not None
+
+
 async def project_access_mode(db: AsyncSession, user: User, project: Project) -> tuple[str, bool]:
     """Return explicit project access; unassigned projects are not contractor-readable."""
     if project.customer_id == user.id:
@@ -485,6 +503,11 @@ async def project_access_mode(db: AsyncSession, user: User, project: Project) ->
             return "contractor", membership.role == "viewer"
     if await is_project_guest(db, user.id, project.id):
         return "guest", True
+    if user.role == UserRole.contractor and await is_project_participant(db, user.id, project.id):
+        # Независимый исполнитель проекта (ROLE-008): доступ строго по scope.
+        # Режим «participant» не равен «contractor» — общие роуты его не пускают
+        # (can_access_project без participant_ok), каждый роут проверяет scope сам.
+        return "participant", True
     return "none", True
 
 
@@ -506,10 +529,20 @@ async def team_role_for_project(db: AsyncSession, user: User, project: Project) 
     return membership.role if membership is not None else None
 
 
-async def can_access_project(db: AsyncSession, user: User, project: Project, write: bool = False) -> bool:
+async def can_access_project(
+    db: AsyncSession,
+    user: User,
+    project: Project,
+    write: bool = False,
+    *,
+    participant_ok: bool = False,
+) -> bool:
     mode, read_only = await project_access_mode(db, user, project)
     if mode == "none":
         return False
+    if mode == "participant":
+        # Fail-closed: участник попадает только в роуты, которые сами проверяют scope.
+        return participant_ok
     if write and read_only:
         return False
     return True
@@ -729,3 +762,114 @@ async def set_member_role_as_owner(
     if team is None:
         return False
     return await set_member_role(db, team.id, owner_id, user_id, role)
+
+
+async def _release_member_stage_assignments(
+    db: AsyncSession, *, team: Team, user_id: str,
+) -> int:
+    """Снять незавершённые назначения участника на этапы объектов владельца бригады."""
+    owner_projects = select(Project.id).where(Project.contractor_id == team.owner_id)
+    result = await db.execute(
+        update(Stage)
+        .where(
+            Stage.project_id.in_(owner_projects),
+            Stage.assignee_id == user_id,
+            Stage.status != StageStatus.done,
+        )
+        .values(assignee_id=None)
+    )
+    return int(result.rowcount or 0)
+
+
+async def _remove_member(
+    db: AsyncSession,
+    *,
+    team: Team,
+    member: TeamMember,
+    title: str,
+    body: str,
+    notify_user_id: str,
+    source: str,
+) -> int:
+    released = await _release_member_stage_assignments(db, team=team, user_id=member.user_id)
+    await db.delete(member)
+    await _enqueue_notification(
+        db, team_id=team.id, user_id=notify_user_id, title=title, body=body,
+    )
+    await db.commit()
+    await _dispatch(db, source)
+    return released
+
+
+async def remove_member_as_owner(
+    db: AsyncSession, *, owner_id: str, user_id: str,
+) -> dict:
+    """MKT-012: владелец убирает участника; сам owner не удаляется никогда."""
+    owner = await _locked_user(db, owner_id)
+    if owner is None or owner.role != UserRole.contractor:
+        await db.rollback()
+        raise ValueError("team_owner_contractor_only")
+    team = await owned_team(db, owner_id)
+    if team is None:
+        await db.rollback()
+        raise ValueError("team_not_found")
+    team = await _locked_team(db, team.id)
+    member = await _locked_member(db, team_id=team.id, user_id=user_id)
+    if member is None:
+        await db.rollback()
+        raise ValueError("team_member_not_found")
+    if member.role == "owner" or member.user_id == team.owner_id:
+        await db.rollback()
+        raise ValueError("team_last_owner_cannot_be_removed")
+    try:
+        released = await _remove_member(
+            db, team=team, member=member,
+            title="Вы исключены из бригады",
+            body=f"Владелец убрал вас из «{team.name}»",
+            notify_user_id=member.user_id, source="team.member_removed",
+        )
+    except BaseException:
+        await db.rollback()
+        raise
+    return {"ok": True, "released_stage_assignments": released}
+
+
+async def leave_team(db: AsyncSession, *, user_id: str) -> dict:
+    """MKT-012: участник выходит из бригады; владелец выйти не может."""
+    user = await _locked_user(db, user_id)
+    if user is None or user.role != UserRole.contractor:
+        await db.rollback()
+        raise ValueError("team_owner_contractor_only")
+    memberships = list((await db.execute(
+        select(TeamMember).where(TeamMember.user_id == user_id)
+    )).scalars().all())
+    if not memberships:
+        await db.rollback()
+        raise ValueError("team_member_not_found")
+    team_ids = [m.team_id for m in memberships]
+    teams = {t.id: t for t in (await db.execute(select(Team).where(Team.id.in_(team_ids)))).scalars().all()}
+    if any(
+        m.role == "owner" or teams[m.team_id].owner_id == user_id
+        for m in memberships if m.team_id in teams
+    ):
+        await db.rollback()
+        raise ValueError("team_last_owner_cannot_be_removed")
+    released = 0
+    try:
+        for member in memberships:
+            team = teams.get(member.team_id)
+            if team is None:
+                continue
+            released += await _release_member_stage_assignments(db, team=team, user_id=user_id)
+            await db.delete(member)
+            await _enqueue_notification(
+                db, team_id=team.id, user_id=team.owner_id,
+                title="Участник покинул бригаду",
+                body=f"Исполнитель {user.phone} вышел из «{team.name}»",
+            )
+        await db.commit()
+    except BaseException:
+        await db.rollback()
+        raise
+    await _dispatch(db, "team.member_left")
+    return {"ok": True, "released_stage_assignments": released}

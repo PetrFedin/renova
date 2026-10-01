@@ -453,3 +453,41 @@ async def stage_assignee_allowed(
         if await scope_allows(db, project=project, user_id=user_id, room_id=room_id):
             return True
     return False
+
+
+async def participant_may_act_on_stage(
+    db: AsyncSession, *, project: Project, user_id: str, stage_id: str,
+) -> bool:
+    stage = await db.get(Stage, stage_id)
+    if stage is None or stage.project_id != project.id:
+        return False
+    return await stage_assignee_allowed(db, project=project, stage=stage, user_id=user_id)
+
+
+async def participant_visible_scope(
+    db: AsyncSession, *, project: Project, user_id: str,
+) -> tuple[set[str], set[str]]:
+    """Этапы и комнаты, доступные участнику (для фильтрации ответа проекта)."""
+    stages = list((await db.scalars(select(Stage).where(Stage.project_id == project.id))).all())
+    stage_ids: set[str] = set()
+    room_ids: set[str] = set()
+    for stage in stages:
+        if await stage_assignee_allowed(db, project=project, stage=stage, user_id=user_id):
+            stage_ids.add(stage.id)
+            if stage.room_ids_json:
+                try:
+                    raw = json.loads(stage.room_ids_json)
+                    if isinstance(raw, list):
+                        room_ids.update(str(v) for v in raw)
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    pass
+    participant = await active_participant(db, project_id=project.id, user_id=user_id)
+    if participant is not None:
+        if participant.all_scope:
+            room_ids.update((await db.scalars(select(Room.id).where(Room.project_id == project.id))).all())
+        else:
+            room_ids.update(
+                row.scope_ref for row in await participant_scopes(db, participant.id)
+                if row.scope_type == "room"
+            )
+    return stage_ids, room_ids

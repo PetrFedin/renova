@@ -1,7 +1,7 @@
 """Бизнес-логика проектов: создание, dashboard, приёмка этапов."""
 from app.core.timeutil import utc_now
 from datetime import date, datetime, timedelta
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -458,7 +458,14 @@ async def list_projects_for_user_bucket(db: AsyncSession, user: User, bucket: st
         return owned
     owners = await team_svc.team_owner_ids(db, user.id)
     contractor_ids = {user.id} | owners
-    q = q.where(Project.contractor_id.in_(contractor_ids))
+    from app.models.project_participants import ProjectParticipant
+
+    participating = select(ProjectParticipant.project_id).where(
+        ProjectParticipant.user_id == user.id,
+        ProjectParticipant.status == "active",
+        ProjectParticipant.participant_role == "contractor",
+    )
+    q = q.where(or_(Project.contractor_id.in_(contractor_ids), Project.id.in_(participating)))
     result = await db.execute(q.order_by(Project.created_at.desc()))
     return list(result.scalars().all())
 

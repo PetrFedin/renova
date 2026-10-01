@@ -44,7 +44,7 @@ def _team_error(error: ValueError) -> HTTPException:
     code = str(error)
     if code in {"team_owner_contractor_only", "team_owner_only"}:
         return HTTPException(403, detail={"code": code})
-    if code in {"team_owner_not_found", "team_not_found"}:
+    if code in {"team_owner_not_found", "team_not_found", "team_member_not_found"}:
         return HTTPException(404, detail={"code": code})
     if code in {
         "invalid_team_name",
@@ -187,6 +187,35 @@ async def member_role(
     if not changed:
         raise HTTPException(403, detail={"code": "team_role_change_forbidden"})
     return {"ok": True}
+
+
+@router.delete("/members/{member_user_id}")
+async def remove_member(
+    member_user_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Владелец бригады убирает участника (MKT-012)."""
+    _require_contractor(user)
+    try:
+        return await team_svc.remove_member_as_owner(
+            db, owner_id=user.id, user_id=member_user_id,
+        )
+    except ValueError as error:
+        raise _team_error(error) from error
+
+
+@router.post("/leave")
+async def leave(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Участник сам выходит из бригады; владелец — нет (MKT-012)."""
+    _require_contractor(user)
+    try:
+        return await team_svc.leave_team(db, user_id=user.id)
+    except ValueError as error:
+        raise _team_error(error) from error
 
 
 @router.post("/join")

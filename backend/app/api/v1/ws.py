@@ -57,7 +57,7 @@ async def _can_access_thread(user_id: str, thread_id: str) -> bool:
         if not user or not project or getattr(project, "trashed_at", None):
             return False
         mode, _ = await team_svc.project_access_mode(db, user, project)
-        return mode != "none"
+        return mode not in ("none", "participant")
 
 
 @router.websocket("/ws/chats/{thread_id}")

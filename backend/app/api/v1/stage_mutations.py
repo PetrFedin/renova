@@ -56,6 +56,7 @@ def _mutation_error(error: ValueError) -> HTTPException:
         "confirmed_schedule_controls_dates",
         "stage_configuration_locked",
         "stage_dependency_cycle",
+        "stage_dates_locked_done",
         "idempotency_conflict",
     }:
         return HTTPException(409, detail={"code": code})
@@ -67,7 +68,6 @@ def _mutation_error(error: ValueError) -> HTTPException:
 async def _stage_response(
     db: AsyncSession,
     result: mutations.StageMutationResult,
-        "stage_dates_locked_done",
 ) -> dict:
     loaded = await stage_service.get_stage_full(db, result.stage.id)
     if loaded is None:
@@ -109,7 +109,9 @@ async def start_stage(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_project(db, project_id, user, write=True)
+    await require_project(
+        db, project_id, user, write=True, participant_ok=True, stage_id=stage_id
+    )
     try:
         result, error = await mutations.start_stage(
             db,
@@ -139,7 +141,9 @@ async def mark_ready(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    project = await require_project(db, project_id, user, write=True)
+    project = await require_project(
+        db, project_id, user, write=True, participant_ok=True, stage_id=stage_id
+    )
     try:
         result, error = await stage_review_service.submit_for_review(
             db,
