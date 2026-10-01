@@ -26,7 +26,7 @@ import { TeamSection } from './TeamSection';
 import * as WebBrowser from 'expo-web-browser';
 import { reportCatch } from '@/lib/reportError';
 import { useBusyAction } from '@/lib/hooks/useBusyAction';
-import { buildRequisitesPatch, canSaveProfile, type ProfileLoadState, type RequisitesFields } from '@/lib/contractorProfileSave';
+import { buildRequisitesPatch, canSaveProfile, validateProfileFields, type ProfileLoadState, type ProfileFields } from '@/lib/contractorProfileSave';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { writeResultMessage } from '@/lib/offlineResultMessage';
 
@@ -44,8 +44,11 @@ export function ContractorProfileScreen() {
   const [msg, setMsg] = useState(user?.npd_verified ? 'НПД подтверждён' : '');
   const [payReq, setPayReq] = useState('');
   const [company, setCompany] = useState('');
+  const [specialties, setSpecialties] = useState('');
+  const [city, setCity] = useState('');
+  const [bio, setBio] = useState('');
   const [profileState, setProfileState] = useState<ProfileLoadState>('loading');
-  const profileBaseline = useRef<RequisitesFields>({ company_name: '', payment_requisites: '' });
+  const profileBaseline = useRef<ProfileFields>({ company_name: '', payment_requisites: '', specialties: '', city: '', bio: '' });
   const saveAction = useBusyAction();
   const reloadProfile = useCallback(() => {
     if (!user) return;
@@ -54,7 +57,13 @@ export function ContractorProfileScreen() {
       profileBaseline.current = {
         company_name: p.company_name || '',
         payment_requisites: p.payment_requisites || '',
+        specialties: p.specialties || '',
+        city: p.city || '',
+        bio: p.bio || '',
       };
+      setSpecialties(profileBaseline.current.specialties);
+      setCity(profileBaseline.current.city);
+      setBio(profileBaseline.current.bio);
       setPayReq(profileBaseline.current.payment_requisites);
       setCompany(profileBaseline.current.company_name);
       setProfileState('ready');
@@ -66,6 +75,8 @@ export function ContractorProfileScreen() {
   }, [user?.id]);
   useEffect(() => { reloadProfile(); }, [reloadProfile]);
   useProjectDataReload(reloadProfile);
+  const profileErrors = validateProfileFields({ company_name: company, payment_requisites: payReq, specialties, city, bio });
+  const profileErrorList = Object.values(profileErrors);
   const roleLabel = roleDisplayLabel(user?.role);
 
   return (
@@ -113,21 +124,39 @@ export function ContractorProfileScreen() {
               onChangeText={setPayReq}
               multiline
             />
+            <Text style={ps.userMeta}>Профиль в каталоге исполнителей</Text>
+            <TextInput
+              style={ps.input}
+              placeholder="Специализации (через запятую)"
+              value={specialties}
+              onChangeText={setSpecialties}
+            />
+            <TextInput style={ps.input} placeholder="Город" value={city} onChangeText={setCity} />
+            <TextInput
+              style={[ps.input, { minHeight: 88, textAlignVertical: 'top' }]}
+              placeholder="О себе: опыт, виды работ"
+              value={bio}
+              onChangeText={setBio}
+              multiline
+            />
+            {profileErrorList.map((m) => (
+              <Text key={m} style={ps.msg}>{m}</Text>
+            ))}
             <PrimaryButton
-              title="Сохранить реквизиты"
+              title="Сохранить профиль"
               variant="outline"
               loading={saveAction.busy}
-              disabled={!canSaveProfile(profileState)}
+              disabled={!canSaveProfile(profileState) || profileErrorList.length > 0}
               onPress={() => {
                 if (!user || !canSaveProfile(profileState)) return;
-                const patch = buildRequisitesPatch(profileBaseline.current, { company_name: company, payment_requisites: payReq });
+                const patch = buildRequisitesPatch(profileBaseline.current, { company_name: company, payment_requisites: payReq, specialties, city, bio });
                 if (Object.keys(patch).length === 0) {
-                  showActionConfirm({ title: 'Нечего сохранять', message: 'Реквизиты не изменились.' });
+                  showActionConfirm({ title: 'Нечего сохранять', message: 'Профиль не изменился.' });
                   return;
                 }
                 void saveAction.run(async () => {
                   await api.upsertContractorProfile(user.id, patch);
-                  profileBaseline.current = { company_name: company.trim(), payment_requisites: payReq.trim() };
+                  profileBaseline.current = { company_name: company.trim(), payment_requisites: payReq.trim(), specialties: specialties.trim(), city: city.trim(), bio: bio.trim() };
                   alertRequisitesSaved('contractor');
                 }, 'Не удалось сохранить реквизиты');
               }}

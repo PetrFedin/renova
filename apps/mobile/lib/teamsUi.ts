@@ -116,3 +116,11 @@ export function teamErrorMessage(error: unknown, fallback = 'Не удалось
   }
   return fallback;
 }
+
+/** MKT-012: подпись действующего приглашения владельца (без токена ссылки). */
+export function ownerInviteLabel(invite: { role: string; kind: 'personal' | 'link' | string; expires_at: string }): string {
+  const kind = invite.kind === 'personal' ? 'Личное приглашение' : 'Ссылка / QR';
+  const d = new Date(invite.expires_at);
+  const until = Number.isNaN(d.getTime()) ? '' : ` · до ${d.toLocaleDateString('ru-RU')}`;
+  return `${kind} · роль: ${teamRoleLabel(invite.role)}${until}`;
+}

@@ -3,6 +3,7 @@ import {
   canEditMember,
   canonicalInvitePhone,
   qrScreenMode,
+  ownerInviteLabel,
   resolveInviteRole,
   resolveTeamView,
   teamErrorMessage,
@@ -53,3 +54,7 @@ assert.equal(teamErrorMessage({ message: 'Сеть недоступна' }), 'С
 assert.equal(teamErrorMessage({ message: 'Ошибка сервера (HTTP 500). Попробуйте позже.' }, 'Не удалось'), 'Не удалось');
 
 console.log('teamsUi.test OK');
+
+// MKT-012: подпись действующего приглашения
+assert.match(ownerInviteLabel({ role: 'foreman', kind: 'personal', expires_at: '2030-01-05T00:00:00Z' }), /Личное приглашение · роль: /);
+assert.match(ownerInviteLabel({ role: 'member', kind: 'link', expires_at: 'bad' }), /^Ссылка \/ QR · роль: [^·]+$/);

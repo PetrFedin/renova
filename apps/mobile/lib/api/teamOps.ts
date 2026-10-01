@@ -9,6 +9,15 @@ export type TeamInvitation = {
   expires_at: string;
 };
 
+/** Действующее приглашение владельца бригады (GET /teams/invites, MKT-012). */
+export type OwnerTeamInvite = {
+  id: string;
+  role: string;
+  kind: 'personal' | 'link';
+  invitee_user_id: string | null;
+  expires_at: string;
+};
+
 export type TeamInviteAck = { ok: boolean; status?: string; message?: string };
 
 export type RefundReviewItem = {
@@ -57,6 +66,10 @@ const REFUNDS = '/api/v1/admin/subscription-refunds/reviews';
 export const teamOpsApi = {
   listTeamInvitations: (userId: string) =>
     req<{ items: TeamInvitation[] }>('/api/v1/teams/invitations', {}, userId),
+  listOwnerTeamInvites: (userId: string) =>
+    req<{ items: OwnerTeamInvite[] }>('/api/v1/teams/invites', {}, userId),
+  revokeOwnerTeamInvite: (userId: string, inviteId: string) =>
+    req<{ ok: boolean; id: string }>(`/api/v1/teams/invites/${encodeURIComponent(inviteId)}`, { method: 'DELETE' }, userId),
   respondTeamInvitation: (userId: string, invitationId: string, decision: 'accept' | 'decline') =>
     req<{ ok: boolean; status: string; team_id: string }>(
       `/api/v1/teams/invitations/${encodeURIComponent(invitationId)}/${decision}`,

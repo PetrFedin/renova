@@ -7,13 +7,14 @@ import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { useNavFromHere } from '@/lib/navigation';
 import { api } from '@/lib/api';
-import type { TeamInvitation } from '@/lib/api/teamOps';
+import type { OwnerTeamInvite, TeamInvitation } from '@/lib/api/teamOps';
 import { reportError } from '@/lib/reportError';
 import { requireSuccessfulTeamInvite } from '@/lib/teamJoinFlow';
 import {
   canEditMember,
   canManageTeam,
   canonicalInvitePhone,
+  ownerInviteLabel,
   resolveInviteRole,
   resolveTeamView,
   teamErrorMessage,
@@ -35,6 +36,7 @@ export function TeamSection() {
   const [inviteRole, setInviteRole] = useState<TeamRoleId>('member');
   const [outcome, setOutcome] = useState<TeamLoadOutcome | null>(null);
   const [invitations, setInvitations] = useState<TeamInvitation[]>([]);
+  const [ownerInvites, setOwnerInvites] = useState<OwnerTeamInvite[]>([]);
   const [busy, setBusy] = useState(false);
   const lastTeam = useRef<TeamLike | null>(null);
 
@@ -53,6 +55,13 @@ export function TeamSection() {
       setInvitations((await api.listTeamInvitations(user.id)).items);
     } catch (e) {
       reportError('components.screens.profile.TeamSection.invitations', e);
+    }
+    try {
+      setOwnerInvites((await api.listOwnerTeamInvites(user.id)).items);
+    } catch (e) {
+      // 403 для не-владельца и сбой сети: список просто не показываем (не «приглашений нет»).
+      reportError('components.screens.profile.TeamSection.ownerInvites', e);
+      setOwnerInvites([]);
     }
   }, [user?.id]);
   useEffect(() => { void reloadTeam(); }, [reloadTeam]);
@@ -89,6 +98,23 @@ export function TeamSection() {
     }
   };
 
+  const revokeInvite = (inv: OwnerTeamInvite) =>
+    showActionConfirm({
+      title: 'Отозвать приглашение?',
+      message: 'Ссылка или приглашение перестанет действовать, принять его будет нельзя.',
+      primaryLabel: 'Отозвать',
+      onPrimary: async () => {
+        try {
+          await api.revokeOwnerTeamInvite(user.id, inv.id);
+        } catch (e: unknown) {
+          showActionConfirm({ title: 'Не удалось отозвать', message: teamErrorMessage(e, writeResultMessage(e, 'Повторите позже')) });
+        }
+        await reloadTeam();
+      },
+      secondaryLabel: 'Отмена',
+      onSecondary: () => undefined,
+    });
+
   const sendInvite = async () => {
     const canonical = canonicalInvitePhone(phone);
     if (!canonical) {
@@ -101,6 +127,7 @@ export function TeamSection() {
       requireSuccessfulTeamInvite(await api.inviteTeamMember(user.id, canonical, resolveInviteRole(inviteRole)));
       setPhone('');
       alertTeamInviteSent('contractor');
+      await reloadTeam();
     } catch (e: unknown) {
       showActionConfirm({ title: 'Не удалось пригласить', message: teamErrorMessage(e, 'Повторите позже') });
     } finally {
@@ -212,6 +239,17 @@ export function TeamSection() {
               />
               <TeamRolePicker value={inviteRole} onChange={setInviteRole} disabled={busy} />
               <PrimaryButton title="Пригласить" variant="outline" disabled={busy} onPress={sendInvite} />
+              {ownerInvites.length > 0 ? (
+                <View style={{ gap: 6 }}>
+                  <Text style={ps.userName}>Действующие приглашения</Text>
+                  {ownerInvites.map((inv) => (
+                    <View key={inv.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                      <Text style={[ps.userMeta, { flexShrink: 1 }]}>{ownerInviteLabel(inv)}</Text>
+                      <PrimaryButton title="Отозвать" variant="outline" compact disabled={busy} onPress={() => revokeInvite(inv)} />
+                    </View>
+                  ))}
+                </View>
+              ) : null}
             </>
           ) : null}
           <PrimaryButton title="QR-код бригады" variant="outline" onPress={() => nav.href('/team-qr')} />
