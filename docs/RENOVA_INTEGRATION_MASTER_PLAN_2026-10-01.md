@@ -321,3 +321,119 @@ Do not capture project photos, document contents, payment data or chat message t
 
 **Sequencing:** ClamAV can precede Site Diary expansion; passkeys should follow stable identity/session flows; mobile Sentry can be introduced independently but must use privacy-safe defaults.
 
+## Additional wave — RFI, submittals, material traceability and warranty
+
+This wave closes four execution gaps that appear after Site Diary / Punch / Documents become reliable: unanswered technical questions, material approvals, interoperability with BIM issue workflows, and post-handover defect obligations.
+
+### RFI Authority — ADOPT
+
+Create a native Request for Information lifecycle:
+
+`draft -> issued -> assigned -> response due -> answered -> accepted/clarified -> superseded/closed`
+
+Fields:
+
+- project/work package/room;
+- drawing/spec/document references;
+- question;
+- requesting party;
+- responsible responder;
+- due date;
+- response;
+- attachments/evidence;
+- schedule/cost impact flag;
+- related change request;
+- revision history.
+
+An RFI answer may trigger a Change Impact evaluation, but it does not itself modify scope/budget/schedule until the existing approval command is executed.
+
+### Submittal / Material Approval Authority — ADOPT
+
+Lifecycle:
+
+`proposed material/product/sample -> technical docs -> contractor submission -> designer/customer review -> approved / approved with notes / revise / rejected -> procurement/use`
+
+Track:
+
+- specification requirement;
+- manufacturer/model/SKU;
+- finish/colour;
+- sample/batch;
+- certificates/docs;
+- approval status/version;
+- reviewer;
+- substitution reason;
+- linked purchase/work package.
+
+A purchase/use of a controlled material can require an approved submittal version.
+
+### Material Lot / Batch Traceability — ADOPT
+
+For materials where batch/lot matters, connect:
+
+`approved material -> purchase/delivery -> lot/batch -> storage/location -> installed work/room -> evidence/acceptance`
+
+Use QR/barcode identifiers where useful, but Renova's internal lot/install record remains authority.
+
+This enables questions such as "which rooms used the recalled/defective batch?" without introducing a warehouse ERP.
+
+### BCF issue interchange — ADAPT
+
+Use the open BIM Collaboration Format as an interchange boundary once IFC/BIM workflows are active.
+
+Map:
+
+`Renova Punch/RFI -> BCF issue snapshot -> external BIM tool -> returned comment/status -> reviewed Renova update`
+
+BCF import/export must preserve:
+
+- Renova issue ID/version;
+- model/element references;
+- viewpoint/snapshot;
+- comments;
+- external system ID;
+- import/export timestamp.
+
+External BIM tools never directly close a Renova acceptance/punch item.
+
+### Speckle collaboration bridge — DEFER/CONDITIONAL SIDECAR
+
+Reference: https://github.com/specklesystems/speckle-server
+
+Consider Speckle only after the IFC contextual layer and BCF contracts are stable, for projects that actually need multi-discipline model/version exchange.
+
+Boundary:
+
+`external model/change stream -> adapter/read projection -> Renova element/work linkage`
+
+Do not migrate project scope, payment, acceptance or evidence authorities into Speckle.
+
+### Warranty / Defects Liability Period — ADOPT
+
+After handover, create:
+
+`accepted work -> warranty term -> reported defect -> triage -> contractor obligation -> repair -> reinspection -> closed/waived`
+
+Track:
+
+- warranty start/end;
+- covered work/material;
+- responsible contractor/supplier;
+- defect report/evidence;
+- SLA/due date;
+- repair evidence;
+- cost responsibility;
+- accepted closure.
+
+Warranty issues must be distinguishable from pre-handover punch items but link back to the same work/evidence history.
+
+### Additional acceptance
+
+- RFI responses are versioned and cannot silently alter approved scope;
+- controlled material cannot be marked approved without reviewer/version;
+- installed lot/batch can be traced back to approval and delivery evidence;
+- BCF/Speckle round-trip cannot bypass Renova permissions/status rules;
+- warranty responsibility and closure evidence are auditable.
+
+**Sequencing:** Site Diary/Punch/Documents -> RFI/Submittal -> lot traceability -> BCF/Speckle if BIM demand exists -> warranty lifecycle as handover matures.
+
