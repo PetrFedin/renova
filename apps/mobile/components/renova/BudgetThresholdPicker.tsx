@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
+import { notifyError } from '@/lib/notify';
+import { reportCatch } from '@/lib/reportError';
 import { getBudgetThreshold, setBudgetThreshold } from '@/lib/budgetThreshold';
 
 const OPT = [5, 10, 15, 20];
@@ -8,7 +10,7 @@ const OPT = [5, 10, 15, 20];
 export function BudgetThresholdPicker({ embedded }: { embedded?: boolean }) {
   const [pct, setPct] = useState(10);
   useEffect(() => {
-    getBudgetThreshold().then(setPct);
+    getBudgetThreshold().then(setPct).catch(reportCatch('budgetThreshold.load'));
   }, []);
 
   return (
@@ -20,8 +22,12 @@ export function BudgetThresholdPicker({ embedded }: { embedded?: boolean }) {
             key={o}
             style={[s.chip, pct === o && s.on]}
             onPress={async () => {
-              await setBudgetThreshold(o);
-              setPct(o);
+              try {
+                await setBudgetThreshold(o);
+                setPct(o);
+              } catch (error) {
+                notifyError('Порог не сохранён', error, 'Не удалось сохранить порог. Повторите попытку.');
+              }
             }}
           >
             <Text style={[s.t, pct === o && s.tOn]}>{o}%</Text>

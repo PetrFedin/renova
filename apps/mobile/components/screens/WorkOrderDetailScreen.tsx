@@ -18,6 +18,7 @@ import {
   type WorkTransitionAction,
   waitingForText,
   workActions,
+  customerCanExecuteWork,
 } from '@/lib/domain/workLifecycle';
 import { isWorkArchived } from '@/lib/domain/workArchive';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
@@ -118,13 +119,21 @@ export function WorkOrderDetailScreen() {
 
   const status = (workOrder.status in WORK_STATUS_LABEL ? workOrder.status : 'draft') as WorkOrderStatus;
   const room = activeProject.rooms?.find((item) => item.id === workOrder.room_id);
-  const actions = canWrite ? workActions(status, role) : [];
+  // REP-02: заказчик без исполнителя (или на назначенной ему работе) ведёт её сам
+  const roleOpts = {
+    customerCanExecute: role === 'customer' && customerCanExecuteWork({
+      projectHasContractor: Boolean(activeProject.contractor_id),
+      assigneeId: workOrder.assignee_id,
+      userId: user.id,
+    }),
+  };
+  const actions = canWrite ? workActions(status, role, roleOpts) : [];
   /**
    * Когда у роли нет хода вперёд, заголовок «Следующий шаг» оставался
    * над единственной кнопкой «Отменить работу» — экран называл отмену
    * следующим шагом. Пишем, чей ход на самом деле.
    */
-  const waitingText = canWrite ? waitingForText(status, role) : null;
+  const waitingText = canWrite ? waitingForText(status, role, roleOpts) : null;
   const archived = isWorkArchived(status);
   const paymentAction = canWrite && hasCanonicalPaymentAction(status, role);
 

@@ -46,12 +46,37 @@ export const WORK_TRANSITIONS: Record<WorkOrderStatus, WorkOrderStatus[]> = {
   cancelled: [],
 };
 
+/** Исполнительские шаги, которые сервер разрешает заказчику, когда исполняет он сам. */
+const EXECUTOR_STEPS: ReadonlyArray<[WorkOrderStatus, WorkOrderStatus]> = [
+  ['approved', 'in_progress'],
+  ['in_progress', 'review'],
+];
+
+export type WorkRoleOptions = {
+  /** Заказчик исполняет работу сам (зеркало `customer_can_execute_work_order`). */
+  customerCanExecute?: boolean;
+};
+
+/**
+ * Зеркало backend: заказчик исполняет работу, если она назначена на него,
+ * либо в проекте нет исполнителя и работа ни на кого не назначена (REP-02).
+ */
+export function customerCanExecuteWork(input: {
+  projectHasContractor: boolean;
+  assigneeId?: string | null;
+  userId?: string | null;
+}): boolean {
+  if (input.assigneeId && input.userId && input.assigneeId === input.userId) return true;
+  return !input.projectHasContractor && !input.assigneeId;
+}
+
 export function workActions(
   status: WorkOrderStatus,
   role: 'customer' | 'contractor',
+  opts?: WorkRoleOptions,
 ): WorkTransitionAction[] {
   return (WORK_TRANSITIONS[status] || [])
-    .filter((next) => isTransitionAllowedForRole(status, next, role))
+    .filter((next) => isTransitionAllowedForRole(status, next, role, opts))
     .map((next) => ({
       next,
       label: actionLabel(status, next, role),
@@ -64,8 +89,10 @@ export function isTransitionAllowedForRole(
   from: WorkOrderStatus,
   to: WorkOrderStatus,
   role: 'customer' | 'contractor',
+  opts?: WorkRoleOptions,
 ): boolean {
   if (!(WORK_TRANSITIONS[from] || []).includes(to)) return false;
+  if (role === 'customer' && opts?.customerCanExecute && EXECUTOR_STEPS.some(([a, b]) => a === from && b === to)) return true;
   if (to === 'done') return role === 'customer';
   if (to === 'review') return role === 'contractor';
   if (to === 'approved') return role === 'customer';
@@ -111,17 +138,18 @@ function advancingTargets(status: WorkOrderStatus): WorkOrderStatus[] {
 export function waitingForRole(
   status: WorkOrderStatus,
   role: 'customer' | 'contractor',
+  opts?: WorkRoleOptions,
 ): 'customer' | 'contractor' | null {
   const forward = advancingTargets(status);
   if (!forward.length) return null;
-  if (forward.some((next) => isTransitionAllowedForRole(status, next, role))) return null;
+  if (forward.some((next) => isTransitionAllowedForRole(status, next, role, opts))) return null;
   const other: 'customer' | 'contractor' = role === 'customer' ? 'contractor' : 'customer';
   return forward.some((next) => isTransitionAllowedForRole(status, next, other)) ? other : null;
 }
 
 /** Что написать на экране вместо обещания следующего шага. */
-export function waitingForText(status: WorkOrderStatus, role: 'customer' | 'contractor'): string | null {
-  const who = waitingForRole(status, role);
+export function waitingForText(status: WorkOrderStatus, role: 'customer' | 'contractor', opts?: WorkRoleOptions): string | null {
+  const who = waitingForRole(status, role, opts);
   if (!who) return null;
   const actor = who === 'contractor' ? 'исполнителя' : 'заказчика';
   const what = nextStepHint(status, who);

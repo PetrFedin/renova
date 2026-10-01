@@ -160,7 +160,7 @@ export function WorkOrderDetailPanel({
             <Text style={s.linkTitle}>{link.title}</Text>
             <Text style={s.linkSub}>
               {disabled
-                ? (link.id === 'chat' ? 'Чат появится после публикации работы' : 'Этап не привязан')
+                ? (link.id === 'chat' ? 'Чат работы пока недоступен' : 'Этап не привязан')
                 : link.sub}
             </Text>
           </Pressable>
