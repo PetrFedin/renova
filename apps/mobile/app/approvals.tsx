@@ -19,6 +19,8 @@ import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { alertChangeOrderApproved } from '@/lib/procurementNav';
 import { alertApprovalApproved, alertApprovalRejected } from '@/lib/fieldCreateNav';
 import { reportCatch } from '@/lib/reportError';
+import { notifyError } from '@/lib/notify';
+import { ApiError } from '@/lib/api/client';
 
 export default function ApprovalsScreen() {
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
@@ -26,6 +28,7 @@ export default function ApprovalsScreen() {
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [items, setItems] = useState<ApprovalItem[]>([]);
   const isCustomer = user?.role === 'customer';
+  const role: OsRole = isCustomer ? 'customer' : 'contractor';
 
   const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'error'>('loading');
 
@@ -48,8 +51,22 @@ export default function ApprovalsScreen() {
   const key = (it: ApprovalItem) => `${it.type}-${it.id}`;
   const reason = (it: ApprovalItem) => reasons[key(it)] || '';
 
+  /** INB-05: кто решает — определяет сервер (allowed_actions): заказчик по смете/материалам, исполнитель по заявкам на комнаты */
+  const canDecide = (it: ApprovalItem) => !readOnly && Boolean(it.allowed_actions?.includes('approve'));
+
+  /** INB-06: очередь — отдельный диалог; отказ сервера — причина; после 404/409 список перечитывается */
+  const handleDecisionError = (e: unknown, queuedLabel: string, title: string) => {
+    if (isOfflineQueued(e)) {
+      notifyOfflineQueued(queuedLabel, role);
+      return;
+    }
+    reportCatch('app.approvals.decide')(e);
+    notifyError(title, e);
+    if (e instanceof ApiError && (e.status === 404 || e.status === 409)) load();
+  };
+
   const approve = async (it: ApprovalItem) => {
-    if (!user || !activeProject || !isCustomer || readOnly) return;
+    if (!user || !activeProject || !canDecide(it)) return;
     const { id: userId } = user;
     const pid = activeProject.id;
     try {
@@ -61,42 +78,47 @@ export default function ApprovalsScreen() {
       if (it.type === 'change_order') {
         alertChangeOrderApproved('customer', it.subtitle?.trim() || 'Доп. работы', undefined);
       } else {
-        alertApprovalApproved('customer', it.type);
+        alertApprovalApproved(role, it.type);
       }
     } catch (e) {
-      if (isOfflineQueued(e)) notifyOfflineQueued('Согласование');
+      handleDecisionError(e, 'Согласование', 'Не удалось согласовать');
     }
   };
 
   return (
     <>
-      <BackHeader title="Согласования" returnTo={returnTo} subtitle={isCustomer ? undefined : 'Только просмотр — решает заказчик'} />
+      <BackHeader title="Согласования" returnTo={returnTo} subtitle={readOnly ? 'Только просмотр' : isCustomer ? undefined : 'Заявки заказчика на изменение комнат'} />
       <ScrollView style={s.wrap} contentContainerStyle={{ paddingBottom: 24 }}>
-        {!isCustomer && items.length > 0 && (
-          <Text style={s.hint}>Отправлено заказчику на подтверждение. Вы получите уведомление после решения.</Text>
-        )}
+        {loadState === 'loading' && !items.length ? (
+          <Text style={s.empty} accessibilityRole="progressbar">Загрузка согласований…</Text>
+        ) : null}
         {loadState !== 'error' && items.map(it => (
           <View key={key(it)} style={s.card}>
             <Text style={s.type}>{APPROVAL_TYPE_LABEL[it.type] || it.type}</Text>
-            <Pressable onPress={() => navigateApproval(it, (isCustomer ? 'customer' : 'contractor') as OsRole, returnTo)}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${it.title}. Открыть источник`}
+              onPress={() => navigateApproval(it, role, returnTo)}
+            >
             <Text style={s.title}>{it.title}</Text>
-            {resolveApprovalHref(it, (isCustomer ? 'customer' : 'contractor') as OsRole) ? (
+            {resolveApprovalHref(it, role) ? (
               <Text style={s.link}>{approvalSourceLabel(it)}</Text>
             ) : null}
           </Pressable>
             {it.subtitle ? <Text style={s.sub}>{it.subtitle}</Text> : null}
             {readOnly ? (
               <Text style={s.wait}>Только просмотр — решения недоступны</Text>
-            ) : isCustomer ? (
+            ) : canDecide(it) ? (
               <>
                 <TextInput
                   style={s.inp}
                   placeholder="Комментарий при отклонении"
+                  accessibilityLabel="Комментарий при отклонении"
                   value={reason(it)}
                   onChangeText={(v: string) => setReasons(prev => ({ ...prev, [key(it)]: v }))}
                 />
                 <View style={s.actions}>
-                  <PrimaryButton title="Согласовать" onPress={() => {
+                  <PrimaryButton title="Согласовать" variant="accent" onPress={() => {
                     // Clarity S: approve тоже через sheet (симметрия с reject)
                     showActionConfirm({
                       title: 'Согласовать?',
@@ -108,7 +130,7 @@ export default function ApprovalsScreen() {
                     });
                   }} />
                   <PrimaryButton title="Отклонить" variant="outline" onPress={() => {
-                    if (!user || !activeProject || readOnly) return;
+                    if (!user || !activeProject || !canDecide(it)) return;
                     // Clarity R: confirm перед отклонением согласования
                     showActionConfirm({
                       title: 'Отклонить согласование?',
@@ -120,9 +142,9 @@ export default function ApprovalsScreen() {
                             await api.rejectApproval(user.id, activeProject.id, it.id, it.type, reason(it));
                             await syncProjectSideEffects({ user, project: activeProject });
                             load();
-                            alertApprovalRejected('customer', it.type);
+                            alertApprovalRejected(role, it.type);
                           } catch (e) {
-                            if (isOfflineQueued(e)) notifyOfflineQueued('Отклонение');
+                            handleDecisionError(e, 'Отклонение', 'Не удалось отклонить');
                           }
                         })();
                       },
@@ -133,14 +155,14 @@ export default function ApprovalsScreen() {
                 </View>
               </>
             ) : (
-              <Text style={s.wait}>Статус: ожидает заказчика</Text>
+              <Text style={s.wait}>Статус: ожидает решения {isCustomer ? 'исполнителя' : 'заказчика'}</Text>
             )}
           </View>
         ))}
         {loadState === 'error' && (
-          <LoadErrorState title="Не удалось загрузить согласования" onRetry={load} role={isCustomer ? 'customer' : 'contractor'} />
+          <LoadErrorState title="Не удалось загрузить согласования" onRetry={load} role={role} />
         )}
-        {loadState !== 'error' && !items.length && (
+        {loadState === 'loaded' && !items.length && (
           <View style={s.emptyBox}>
             <Text style={s.empty}>Нет ожидающих согласований</Text>
             {isCustomer ? (
@@ -162,7 +184,6 @@ export default function ApprovalsScreen() {
 
 const s = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: RenovaTheme.colors.background, padding: 16 },
-  hint: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginBottom: 12, lineHeight: 18 },
   card: { backgroundColor: RenovaTheme.colors.surface, padding: 14, borderRadius: 10, marginBottom: 10, borderWidth: 1, borderColor: RenovaTheme.colors.border },
   type: { fontSize: 11, color: RenovaTheme.colors.accent, fontWeight: '700' },
   title: { fontWeight: '700', marginTop: 4 },

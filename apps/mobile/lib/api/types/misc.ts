@@ -8,6 +8,8 @@ export type ApprovalItem = {
   room_id?: string | null;
   stage_id?: string | null;
   work_type?: string | null;
+  /** Действия, доступные текущему пользователю (решает сервер по роли) */
+  allowed_actions?: Array<'approve' | 'reject'>;
 };
 
 export type AppNotification = {

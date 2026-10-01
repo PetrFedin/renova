@@ -16,6 +16,7 @@ import { EmptyActionState } from '@/components/ui/EmptyActionState';
 import { flushOfflineOutbox } from '@/lib/offline';
 import { tabsRoute, type OsRole } from '@/constants/osSections';
 import { reportCatch } from '@/lib/reportError';
+import { notifyError, notifyInfo } from '@/lib/notify';
 
 function inboxSubtitle(badge: number, chatUnread: number): string {
   const chat = Math.max(0, chatUnread || 0);
@@ -92,8 +93,19 @@ export function UnifiedInboxScreen({ role, returnTo, heroKind: heroKindProp }: {
   const open = async (it: InboxItem) => {
     // W78: offline-строка → flush той же очереди, что OfflineSyncStatus
     if (it.kind === 'offline') {
-      await flushOfflineOutbox().catch(reportCatch('components.screens.UnifiedInboxScreen.1'));
-      await reload().catch(reportCatch('components.screens.UnifiedInboxScreen.2'));
+      // INB-37: результат отправки очереди виден человеку, а не только в журнале ошибок
+      try {
+        const result = await flushOfflineOutbox();
+        await reload().catch(reportCatch('components.screens.UnifiedInboxScreen.2'));
+        if (result.synced > 0 && result.failed === 0 && result.conflicts === 0) {
+          notifyInfo('Отправлено', `Изменений отправлено на сервер: ${result.synced}.`);
+        } else if (result.conflicts > 0 || result.failed > 0) {
+          notifyInfo('Не всё отправилось', 'Часть изменений осталась в очереди. Откройте «Очередь синхронизации», чтобы разобраться.');
+        }
+      } catch (error) {
+        reportCatch('components.screens.UnifiedInboxScreen.1')(error);
+        notifyError('Не удалось отправить изменения', error, 'Они сохранены на устройстве и отправятся при появлении сети.');
+      }
       return;
     }
 

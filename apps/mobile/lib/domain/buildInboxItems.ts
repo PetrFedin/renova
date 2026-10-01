@@ -277,6 +277,21 @@ export async function buildInboxItemsWithHealth(opts: BuildInboxOptions): Promis
       }
     }
   } else {
+    // INB-05: заявки заказчика на изменение комнат решает исполнитель (owner/foreman) — сервер отдаёт их в hub
+    const hub = await loadInboxSource('approval_hub', opts, issues, () => api.approvalHub(userId, projectId));
+    hub?.items
+      .filter((item) => item.allowed_actions?.includes('approve'))
+      .forEach((item) => {
+        next.push({
+          id: `ap-${item.type}-${item.id}`,
+          kind: 'approval',
+          title: item.title,
+          sub: item.subtitle || 'Заявка заказчика',
+          approval: item,
+          priority: 80,
+        });
+      });
+
     const payments = await loadInboxSource('payments', opts, issues, () => api.listPayments(userId, projectId));
     for (const payment of payments?.filter((item) => item.status === 'pending') ?? []) {
       next.push({
@@ -327,6 +342,20 @@ export async function buildInboxItemsWithHealth(opts: BuildInboxOptions): Promis
           : `${pendingChangeOrders.length} на согласовании`,
         href: `${objectTabHref(role, 'estimate')}&estimateLayer=changes`,
         priority: 83,
+      });
+    }
+
+    // INB-14: черновики документов подписывают обе стороны — исполнитель тоже видит строку «Подписать»
+    const contractorDocuments = await loadInboxSource('documents', opts, issues, () => api.listProjectDocuments(userId, projectId));
+    const contractorDrafts = (contractorDocuments?.items || []).filter((item) => item.status === 'draft');
+    if (contractorDrafts.length > 0) {
+      next.push({
+        id: 'docs-sign',
+        kind: 'document',
+        title: contractorDrafts.length === 1 ? 'Подписать документ' : `Подписать ${contractorDrafts.length} док.`,
+        sub: contractorDrafts[0]?.title || 'Черновики в Документах',
+        href: '/documents',
+        priority: 76,
       });
     }
 
