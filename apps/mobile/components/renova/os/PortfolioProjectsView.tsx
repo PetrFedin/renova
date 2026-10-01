@@ -21,7 +21,13 @@ import { reportError } from '@/lib/reportError';
 export function PortfolioProjectsView() {
   const { user, projects, activeProject, loadProject } = useRenova();
   // HOM-29: фильтр тестовых имён — только для демо-аккаунта, реальные объекты не скрываем.
-  const cleanProjects = isDemoPhone(user?.phone) ? filterOutJunkProjects(projects) : projects;
+  // useMemo: иначе для демо-аккаунта каждый рендер даёт новый массив → эффекты зависят от него и
+  // вызывают setState({}) → «Maximum update depth exceeded» (роняет всё приложение).
+  const demoPhone = isDemoPhone(user?.phone);
+  const cleanProjects = useMemo(
+    () => (demoPhone ? filterOutJunkProjects(projects) : projects),
+    [demoPhone, projects],
+  );
   const role: OsRole = user?.role === 'contractor' ? 'contractor' : 'customer';
   const allIds = useMemo(() => cleanProjects.map((p) => p.id), [cleanProjects]);
   const {
