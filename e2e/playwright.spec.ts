@@ -1,7 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { API, pickPrimaryDemoProject, authHeaders, type DemoUser } from './helpers';
+import { API, pickPrimaryDemoProject, authHeaders, createE2eChat, cleanupE2eArtifacts, type DemoUser } from './helpers';
 
 test.describe('Renova critical path (API)', () => {
+  test.afterAll(async () => {
+    await cleanupE2eArtifacts();
+  });
+
   test('full renovation cycle', async ({ request }) => {
     const cust = (await (await request.post(`${API}/api/v1/auth/demo`, { data: { role: 'customer' } })).json()) as DemoUser;
     const cont = (await (await request.post(`${API}/api/v1/auth/demo`, { data: { role: 'contractor' } })).json()) as DemoUser;
@@ -69,8 +73,8 @@ test.describe('Renova critical path (API)', () => {
     expect(csv.status()).toBe(200);
     expect(await csv.text()).toContain('Итого');
 
-    const chat = await request.post(`${API}/api/v1/projects/${pid}/chats`, { headers: hCust, data: { title: 'E2E', topic: 'general' } });
-    expect(chat.ok()).toBeTruthy();
+    const chat = await createE2eChat(request, cust, pid, 'E2E');
+    expect(chat.ok).toBeTruthy();
 
     const pdf = await request.get(`${API}/api/v1/projects/${pid}/estimate.pdf`, { headers: hCust });
     expect(pdf.status()).toBe(200);

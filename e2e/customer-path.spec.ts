@@ -5,7 +5,7 @@
  * Auth: JWT Bearer via authHeaders (staging forbids X-User-Id).
  */
 import { test, expect } from '@playwright/test';
-import { API, pickPrimaryDemoProject, authHeaders, type DemoUser } from './helpers';
+import { API, pickPrimaryDemoProject, authHeaders, createE2eChat, cleanupE2eArtifacts, type DemoUser } from './helpers';
 
 async function demoCustomer(request: import('@playwright/test').APIRequestContext) {
   const cust = (await (await request.post(`${API}/api/v1/auth/demo`, { data: { role: 'customer' } })).json()) as DemoUser;
@@ -17,6 +17,10 @@ async function demoCustomer(request: import('@playwright/test').APIRequestContex
 }
 
 test.describe('P0.1 Customer path checklist (API)', () => {
+  test.afterAll(async () => {
+    await cleanupE2eArtifacts();
+  });
+
   test('01 — вход demo + выбор объекта', async ({ request }) => {
     const { cust, pid, projects } = await demoCustomer(request);
     expect(cust.id).toBeTruthy();
@@ -112,12 +116,10 @@ test.describe('P0.1 Customer path checklist (API)', () => {
   });
 
   test('07 — чат: создать thread', async ({ request }) => {
-    const { h, pid } = await demoCustomer(request);
-    const chat = await request.post(`${API}/api/v1/projects/${pid}/chats`, {
-      headers: h,
-      data: { title: 'UAT checklist', topic: 'general' },
-    });
-    expect(chat.ok()).toBeTruthy();
+    const { cust, pid } = await demoCustomer(request);
+    // Чат в общем demo-проекте: архивируется в afterAll (cleanupE2eArtifacts).
+    const chat = await createE2eChat(request, cust, pid, 'UAT checklist');
+    expect(chat.ok).toBeTruthy();
   });
 
   test('08 — материалы', async ({ request }) => {

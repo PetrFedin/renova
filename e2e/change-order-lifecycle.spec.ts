@@ -3,7 +3,7 @@
  * replay-safety and terminal-conflict handling on fresh projects/data.
  */
 import { test, expect } from '@playwright/test';
-import { assignContractorViaRequest, API, authHeaders, DemoUser } from './helpers';
+import { assignContractorViaRequest, API, authHeaders, DemoUser, trackE2eProject, cleanupE2eArtifacts } from './helpers';
 
 async function createAssignedProject(
   request: import('@playwright/test').APIRequestContext,
@@ -24,6 +24,7 @@ async function createAssignedProject(
   });
   if (!created.ok()) throw new Error(`create project failed: ${created.status()}`);
   const pid = ((await created.json()) as { id: string }).id;
+  trackE2eProject(pid, hCust);
 
   await request.post(`${API}/api/v1/subscription/checkout`, { headers: hCont });
   await assignContractorViaRequest(request, pid, hCont, hCust);
@@ -52,6 +53,10 @@ async function linkedDocCount(
 }
 
 test.describe('#446 Change Order lifecycle', () => {
+  test.afterAll(async () => {
+    await cleanupE2eArtifacts();
+  });
+
   test('role authority, budget/document truth, replay and terminal conflict', async ({ request }) => {
     const cont = (await (await request.post(`${API}/api/v1/auth/demo`, { data: { role: 'contractor' } })).json()) as DemoUser;
     const cust = (await (await request.post(`${API}/api/v1/auth/demo`, { data: { role: 'customer' } })).json()) as DemoUser;

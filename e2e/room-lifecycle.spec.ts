@@ -11,7 +11,7 @@
  * project") and exercises the post-executor authority split.
  */
 import { test, expect } from '@playwright/test';
-import { assignContractorViaRequest, API, authHeaders, DemoUser } from './helpers';
+import { assignContractorViaRequest, API, authHeaders, DemoUser, trackE2eProject, cleanupE2eArtifacts } from './helpers';
 
 type RoomOut = {
   id: string;
@@ -55,6 +55,7 @@ async function createAssignedProject(
   });
   if (!created.ok()) throw new Error(`create project failed: ${created.status()}`);
   const pid = ((await created.json()) as { id: string }).id;
+  trackE2eProject(pid, hCust);
 
   await request.post(`${API}/api/v1/subscription/checkout`, { headers: hCont });
   await assignContractorViaRequest(request, pid, hCont, hCust);
@@ -83,6 +84,10 @@ async function listRooms(
 }
 
 test.describe('#439 Room lifecycle', () => {
+  test.afterAll(async () => {
+    await cleanupE2eArtifacts();
+  });
+
   test('contractor direct mutations + customer request path on a fresh assigned project', async ({ request }) => {
     const cont = (await (await request.post(`${API}/api/v1/auth/demo`, { data: { role: 'contractor' } })).json()) as DemoUser;
     const cust = (await (await request.post(`${API}/api/v1/auth/demo`, { data: { role: 'customer' } })).json()) as DemoUser;

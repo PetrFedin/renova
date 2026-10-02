@@ -1,5 +1,5 @@
 /** Общие хелперы E2E — один demo-customer на БД, стабильный проект не «Wizard Test». */
-import type { Page } from '@playwright/test';
+import { request as pwRequest, type APIRequestContext, type Page } from '@playwright/test';
 
 export const API = process.env.RENOVA_API ?? 'http://127.0.0.1:8100';
 export const WEB = process.env.RENOVA_WEB ?? 'http://127.0.0.1:8081';
@@ -195,6 +195,72 @@ export async function cleanupE2eGateProject(
     await request.post(`${API}/api/v1/projects/${projectId}/trash`, { headers });
   } catch {
     /* best-effort */
+  }
+}
+
+/**
+ * E2E-гигиена. Demo-API отдаёт одного общего заказчика (/auth/demo), поэтому отдельные учётки
+ * под тест не создать (регистрация идёт через OTP). Вместо этого каждый spec регистрирует всё,
+ * что создал, и убирает за собой в afterAll:
+ *   - проекты -> POST /projects/{id}/trash (корзина; 'Демо-квартира' не трогается);
+ *   - чаты -> POST /projects/{id}/chats/{tid}/archive.
+ * Не создавайте чаты в demo-проекте напрямую — только через createE2eChat.
+ * Маркер для скрипта backend/scripts/cleanup_e2e_demo_data.py: address начинается с «E2E».
+ *
+ * Использование:
+ *   test.afterAll(async () => { await cleanupE2eArtifacts(); });
+ *   const pid = ...create...; trackE2eProject(pid, cust);
+ */
+type TrackedProject = { projectId: string; headers: Record<string, string> };
+type TrackedChat = { projectId: string; threadId: string; headers: Record<string, string> };
+const trackedProjects: TrackedProject[] = [];
+const trackedChats: TrackedChat[] = [];
+
+export const E2E_ADDRESS_PREFIX = 'E2E';
+
+/** user: DemoUser, id строкой (dev) или уже готовые auth-заголовки заказчика-владельца. */
+export function trackE2eProject(projectId: string, user: DemoUser | string | Record<string, string>): string {
+  const headers =
+    typeof user === 'string'
+      ? { 'X-User-Id': user }
+      : 'id' in user && typeof (user as DemoUser).id === 'string'
+        ? authHeaders(user as DemoUser)
+        : (user as Record<string, string>);
+  trackedProjects.push({ projectId, headers });
+  return projectId;
+}
+
+/** Создать чат и зарегистрировать его на архивацию (для чатов в общем demo-проекте). */
+export async function createE2eChat(
+  request: APIRequestContext,
+  user: DemoUser,
+  projectId: string,
+  title: string,
+  topic = 'general',
+): Promise<{ ok: boolean; id?: string; status: number }> {
+  const headers = authHeaders(user);
+  const res = await request.post(`${API}/api/v1/projects/${projectId}/chats`, { headers, data: { title, topic } });
+  if (!res.ok()) return { ok: false, status: res.status() };
+  const id = ((await res.json()) as { id?: string }).id;
+  if (id) trackedChats.push({ projectId, threadId: id, headers });
+  return { ok: true, id, status: res.status() };
+}
+
+/** Убрать всё, что зарегистрировано в этом worker-процессе (best-effort, не валит тест). */
+export async function cleanupE2eArtifacts(): Promise<void> {
+  if (!trackedProjects.length && !trackedChats.length) return;
+  const ctx = await pwRequest.newContext();
+  try {
+    for (const c of trackedChats.splice(0)) {
+      await ctx
+        .post(`${API}/api/v1/projects/${c.projectId}/chats/${c.threadId}/archive`, { headers: c.headers })
+        .catch(() => undefined);
+    }
+    for (const p of trackedProjects.splice(0)) {
+      await ctx.post(`${API}/api/v1/projects/${p.projectId}/trash`, { headers: p.headers }).catch(() => undefined);
+    }
+  } finally {
+    await ctx.dispose();
   }
 }
 

@@ -2,9 +2,13 @@
  * P3-W12 — archive/trash lifecycle + documents list smoke (API E2E).
  */
 import { test, expect } from '@playwright/test';
-import { assignContractorViaRequest, API, authHeaders, DemoUser } from './helpers';
+import { assignContractorViaRequest, API, authHeaders, DemoUser, trackE2eProject, cleanupE2eArtifacts } from './helpers';
 
 test.describe('P3-W12 Project lifecycle', () => {
+  test.afterAll(async () => {
+    await cleanupE2eArtifacts();
+  });
+
   test('archive → trash → restore + guest forbidden + documents list', async ({ request }) => {
     const cust = await (await request.post(`${API}/api/v1/auth/demo`, { data: { role: 'customer' } })).json();
     const guest = await (await request.post(`${API}/api/v1/auth/demo/guest`, { data: {} })).json();
@@ -71,6 +75,7 @@ test.describe('P3-W12 Project lifecycle', () => {
       stages: { id: string }[];
     };
     const pid = createdBody.id;
+    trackE2eProject(pid, hCust);
     expect(createdBody.name).toBe(name);
     expect(createdBody.access_mode).toBe('owner');
     expect(createdBody.rooms.length).toBeGreaterThan(0);
@@ -212,6 +217,7 @@ test.describe('P3-W12 Project lifecycle', () => {
     });
     expect(created.ok(), `create project failed: ${created.status()}`).toBeTruthy();
     const pid = ((await created.json()) as { id: string }).id;
+    trackE2eProject(pid, hCust);
 
     // 2. before canonical assignment, contractor has no read access
     const preAssignRead = await request.get(`${API}/api/v1/projects/${pid}`, { headers: hCont });
