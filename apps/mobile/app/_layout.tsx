@@ -8,6 +8,7 @@ import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-c
 import { StatusBar } from 'expo-status-bar';
 import { RenovaProvider, useRenova } from '@/lib/context/RenovaContext';
 import { RenovaTheme } from '@/constants/Theme';
+import { WideScreenFrame } from '@/components/routing/WideScreenFrame';
 import { NavTracker } from '@/components/renova/NavTracker';
 import { flushOfflineOutbox, isOnline, startOfflineFlushScheduler, subscribeOfflineFlush } from '@/lib/offline';
 import { getQueue } from '@/lib/offlineQueue';
@@ -141,6 +142,7 @@ export default function RootLayout() {
           <StatusBar style="dark" />
           <NavTracker />
           <NotificationNavigationBridge />
+          <WideScreenFrame>
           <Stack screenOptions={ROOT_STACK_OPTIONS}>
             <Stack.Screen name="index" />
             <Stack.Screen name="onboarding/[step]" options={{ title: 'Онбординг' }} />
@@ -166,6 +168,7 @@ export default function RootLayout() {
             <Stack.Screen name="payment-return" options={{ headerShown: false }} />
             <Stack.Screen name="portal" options={{ headerShown: false }} />
           </Stack>
+          </WideScreenFrame>
         </SplashGate>
       </RenovaProvider>
     </SafeAreaProvider>

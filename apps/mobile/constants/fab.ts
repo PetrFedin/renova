@@ -17,8 +17,10 @@
  */
 import { Platform } from 'react-native';
 
-export const FAB_SIZE = 52;
-export const FAB_RIGHT = 16;
+export const FAB_SIZE = 44;
+export const FAB_RIGHT = 8;
+/** O-4: кнопка полупрозрачна, чтобы значения и кнопки правого края под ней оставались читаемыми при прокрутке. */
+export const FAB_OPACITY = 0.82;
 /** Отступ от низа экрана: на вебе выше, там нижняя панель толще. */
 export const FAB_BOTTOM = Platform.OS === 'web' ? 88 : 76;
 /** Сколько нижнего пространства прокручиваемый экран обязан оставить пустым. */
