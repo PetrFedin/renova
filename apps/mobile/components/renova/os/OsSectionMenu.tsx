@@ -104,7 +104,7 @@ export function OsSectionMenu({ role, iconOnly = true }: Props) {
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable style={s.backdrop} onPress={() => setOpen(false)}>
-          <View style={[s.menuWrap, { paddingTop: topInset + 56 }]} pointerEvents="box-none">
+          <View style={[s.menuWrap, { paddingTop: topInset + 56, pointerEvents: 'box-none' }]}>
             <View style={s.menu}>
               <Text style={s.menuHead}>Ещё</Text>
               {sections.map((sec) => {
@@ -188,9 +188,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: RenovaTheme.colors.border,
     paddingVertical: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
+    boxShadow: '0px 0px 12px rgba(0,0,0,0.12)',
     elevation: 8,
   },
   menuHead: {

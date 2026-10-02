@@ -1,6 +1,7 @@
 /** Единая главная Renova OS — заказчик и исполнитель */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FAB_SAFE_BOTTOM } from '@/constants/fab';
+import { fabOnScroll } from '@/lib/fabAutoHide';
 import { ScrollView, View, Text, StyleSheet, ActivityIndicator, RefreshControl } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -375,7 +376,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
   const moreHasContent = homeMoreHasVisibleContent(moreArgs);
 
   return (
-    <ScrollView style={s.container} contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
+    <ScrollView style={s.container} contentContainerStyle={s.content} onScroll={fabOnScroll} scrollEventThrottle={32} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
       {loadWarning && apiReachable && !globalCacheStale ? (
         <InfoBanner tone="warning" title="Главная обновлена частично" message={loadWarning} />
       ) : null}

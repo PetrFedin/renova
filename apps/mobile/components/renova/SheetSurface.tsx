@@ -71,9 +71,8 @@ export function SheetSurface({
           onPress={closeSafely}
         />
         <KeyboardAvoidingView
-          style={styles.keyboardLayer}
+          style={[styles.keyboardLayer, { pointerEvents: 'box-none' }]}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          pointerEvents="box-none"
         >
           <View
             style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, RenovaTheme.spacing.lg) }]}

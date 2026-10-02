@@ -1,5 +1,5 @@
 /** Единая точка «+» — расход (scan/manual) · работа · чат */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Modal, Platform, TextInput } from 'react-native';
 import { notifyError } from '@/lib/notify';
 import { usePathname } from 'expo-router';
@@ -16,6 +16,7 @@ import { tabsPrefix, budgetTabHref, type OsRole } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { useDetailLevel } from '@/lib/useDetailLevel';
 import { fabActionIdsForLevel } from '@/lib/detailLevelPolicy';
+import { reportFabScroll, resetFabHidden, subscribeFabHidden } from '@/lib/fabAutoHide';
 
 type Action = {
   id: string;
@@ -45,6 +46,32 @@ export function OsQuickFab({ role }: { role: OsRole }) {
       stageId: stageMatch?.[1],
     };
   }, [pathname]);
+
+  /** O-4: автоскрытие при прокрутке вниз. 0 = видна, 1 = спрятана. */
+  const [fabHidden, setFabHidden] = useState(false);
+  useEffect(() => {
+    const unsub = subscribeFabHidden((hidden) => {
+      setFabHidden(hidden);
+    });
+    let detach: (() => void) | undefined;
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      // scroll не всплывает — ловим на фазе захвата, любой прокручиваемый контейнер.
+      const onScroll = (e: Event) => {
+        const t = e.target as { scrollTop?: number; documentElement?: { scrollTop: number } } | null;
+        const y = t && typeof t.scrollTop === 'number' ? t.scrollTop : t?.documentElement?.scrollTop ?? 0;
+        reportFabScroll(y);
+      };
+      document.addEventListener('scroll', onScroll, true);
+      detach = () => document.removeEventListener('scroll', onScroll, true);
+    }
+    return () => {
+      unsub();
+      detach?.();
+      resetFabHidden();
+    };
+  }, []);
+  // Смена экрана — кнопка снова видна.
+  useEffect(() => { resetFabHidden(); }, [pathname]);
 
   if (!user || !activeProject || readOnly) return null;
 
@@ -95,9 +122,13 @@ export function OsQuickFab({ role }: { role: OsRole }) {
 
   return (
     <>
-      <Pressable style={s.fab} onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel="Быстрые действия">
-        <Ionicons name="add" size={28} color={RenovaTheme.colors.inverseText} />
-      </Pressable>
+      <View
+        style={[s.fabWrap, fabHidden ? s.fabWrapHidden : null]}
+      >
+        <Pressable style={s.fab} onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel="Быстрые действия">
+          <Ionicons name="add" size={28} color={RenovaTheme.colors.inverseText} />
+        </Pressable>
+      </View>
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable style={s.backdrop} onPress={() => setOpen(false)}>
           <View style={s.sheet}>
@@ -223,11 +254,14 @@ export function OsQuickFab({ role }: { role: OsRole }) {
 }
 
 const s = StyleSheet.create({
+  fabWrap: { position: 'absolute', right: FAB_RIGHT, bottom: FAB_BOTTOM, width: FAB_SIZE, height: FAB_SIZE, zIndex: 20, ...(Platform.OS === 'web' ? ({ transitionProperty: 'opacity, transform', transitionDuration: '180ms' } as object) : null) },
+  fabWrapHidden: {
+    pointerEvents: 'none',
+    opacity: 0,
+    transform: [{ translateY: FAB_SIZE + FAB_BOTTOM }],
+  },
   fab: {
-    position: 'absolute',
-    right: FAB_RIGHT,
     opacity: FAB_OPACITY,
-    bottom: FAB_BOTTOM,
     width: FAB_SIZE,
     height: FAB_SIZE,
     borderRadius: FAB_SIZE / 2,
@@ -235,11 +269,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    zIndex: 20,
+    boxShadow: '0px 2px 6px rgba(0,0,0,0.2)',
   },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: RenovaTheme.colors.surface, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, paddingBottom: 28 },

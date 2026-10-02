@@ -83,7 +83,7 @@ export function ChatImage({ uri, userId }: { uri: string; userId: string }) {
         />
       ) : null}
       {status === 'loading' ? (
-        <View style={s.overlay} pointerEvents="none">
+        <View style={[s.overlay, { pointerEvents: 'none' }]}>
           <ActivityIndicator color={RenovaTheme.colors.accent} />
         </View>
       ) : null}

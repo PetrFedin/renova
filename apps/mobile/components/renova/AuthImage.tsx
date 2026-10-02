@@ -91,7 +91,7 @@ export function AuthImage({
         />
       ) : null}
       {status === 'loading' ? (
-        <View style={s.overlay} pointerEvents="none">
+        <View style={[s.overlay, { pointerEvents: 'none' }]}>
           <ActivityIndicator color={RenovaTheme.colors.accent} />
         </View>
       ) : null}

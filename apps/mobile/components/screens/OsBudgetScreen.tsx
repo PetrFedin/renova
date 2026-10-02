@@ -25,6 +25,7 @@ import { budgetScreenStyles as s } from '@/components/screens/budget/budgetScree
 import type { BudgetTab, ExpenseView } from '@/constants/budgetTabs';
 import { normalizeBudgetTab } from '@/constants/budgetTabs';
 import { FAB_SAFE_BOTTOM } from '@/constants/fab';
+import { fabOnScroll } from '@/lib/fabAutoHide';
 
 export type { BudgetTab } from '@/constants/budgetTabs';
 
@@ -135,7 +136,7 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
 
   return (
     <>
-      <ScrollView style={s.wrap} contentContainerStyle={{ padding: 16, paddingBottom: FAB_SAFE_BOTTOM }}>
+      <ScrollView style={s.wrap} contentContainerStyle={{ padding: 16, paddingBottom: FAB_SAFE_BOTTOM }} onScroll={fabOnScroll} scrollEventThrottle={32}>
         <ReadOnlyBanner />
         {resolvedTab === 'summary' && (
           <BudgetSummarySection

@@ -93,7 +93,7 @@ function ProjectPickCard({
       : `${formatRub(p.budget_spent)} из ${formatRub(p.budget_planned)}`;
 
   return (
-    <View style={s.card} pointerEvents="box-none">
+    <View style={[s.card, { pointerEvents: 'box-none' }]}>
       <Pressable style={s.cardPress} onPress={onPress} accessibilityRole="button">
         <View style={s.cardHead}>
           <Text style={s.name} numberOfLines={2}>{p.name}</Text>

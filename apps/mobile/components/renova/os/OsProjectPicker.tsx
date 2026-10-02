@@ -86,7 +86,7 @@ function ProjectPickerRow({
   };
 }) {
   return (
-    <View style={[s.itemWrap, canManageProject && s.itemWithActions, active && s.itemOn]} pointerEvents="box-none">
+    <View style={[s.itemWrap, canManageProject && s.itemWithActions, active && s.itemOn, { pointerEvents: 'box-none' }]}>
       <Pressable
         style={s.item}
         onPress={() => onSelect(p.id)}
@@ -237,7 +237,7 @@ export function OsProjectPicker({ role }: { role: OsRole }) {
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <View style={s.backdrop}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setOpen(false)} accessibilityLabel="Закрыть" />
-          <View style={[s.menuWrap, { paddingTop: topInset + 56 }]} pointerEvents="box-none">
+          <View style={[s.menuWrap, { paddingTop: topInset + 56, pointerEvents: 'box-none' }]}>
             <ScrollView
               style={s.menuScroll}
               contentContainerStyle={s.menuScrollIn}
@@ -424,9 +424,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: RenovaTheme.colors.border,
     paddingVertical: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
+    boxShadow: '0px 0px 12px rgba(0,0,0,0.12)',
     elevation: 8,
   },
   menuHead: {

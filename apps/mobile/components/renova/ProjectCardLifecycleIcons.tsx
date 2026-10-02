@@ -57,7 +57,7 @@ export function ProjectCardLifecycleIcons({
   onPurge,
 }: Props) {
   return (
-    <View style={s.wrap} pointerEvents="box-none">
+    <View style={[s.wrap, { pointerEvents: 'box-none' }]}>
       {bucket === 'active' ? (
         <>
           <IconBtn name="archive-outline" color={RenovaTheme.colors.textMuted} onPress={onArchive} />
