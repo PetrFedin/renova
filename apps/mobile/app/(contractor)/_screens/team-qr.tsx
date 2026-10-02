@@ -1,3 +1,4 @@
+import { guardedScreen } from '@/components/routing/RouteAudienceGuard';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Share, Pressable, ScrollView } from 'react-native';
@@ -21,7 +22,7 @@ import { writeResultMessage } from '@/lib/offlineResultMessage';
 const ROLES = TEAM_ROLES;
 type RoleId = TeamRoleId;
 
-export default function TeamQrScreen() {
+function TeamQrScreen() {
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
   const { activeProject, user } = useRenova();
   const [perm, req] = useCameraPermissions();
@@ -210,3 +211,6 @@ const s = StyleSheet.create({
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginVertical: 10 },
   cam: { height: 240, marginTop: 12, borderRadius: 12, overflow: 'hidden' },
 });
+
+/** O-1: экран исполнителя — заказчику по прямой ссылке недоступен (guard по routeRegistry.audience). */
+export default guardedScreen('/team-qr', TeamQrScreen);

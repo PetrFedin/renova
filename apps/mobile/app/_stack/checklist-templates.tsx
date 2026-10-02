@@ -1,4 +1,5 @@
 /** Шаблоны чеклиста приёмки — из профиля исполнителя */
+import { guardedScreen } from '@/components/routing/RouteAudienceGuard';
 import { useCallback, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, TextInput } from 'react-native';
 import { notifyAlert, notifyError } from '@/lib/notify';
@@ -14,7 +15,7 @@ import { reportError } from '@/lib/reportError';
 
 type Tpl = { id: string; name: string; items: string[] };
 
-export default function ChecklistTemplatesScreen() {
+function ChecklistTemplatesScreen() {
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
   const { user } = useRenova();
   const [items, setItems] = useState<Tpl[]>([]);
@@ -102,3 +103,6 @@ const s = StyleSheet.create({
   item: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginTop: 2 },
   muted: { color: RenovaTheme.colors.textMuted },
 });
+
+/** O-1: экран исполнителя — заказчику по прямой ссылке недоступен (guard по routeRegistry.audience). */
+export default guardedScreen('/checklist-templates', ChecklistTemplatesScreen);
