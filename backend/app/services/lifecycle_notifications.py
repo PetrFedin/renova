@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+from app.core.money_format import format_rub
 import logging
 from datetime import timedelta
 from typing import Iterable
@@ -165,7 +166,7 @@ async def scan_unpaid_invoice_reminders(
             user_id=project.customer_id,
             notification_type="payment_pending",
             title="Счёт ждёт оплаты",
-            body=f"{payment.title}: {payment.amount:g} ₽. Оплатите или отметьте перевод.",
+            body=f"{payment.title}: {format_rub(payment.amount)}. Оплатите или отметьте перевод.",
             link_path="/(customer)/(tabs)/budget?tab=payments",
             return_to=_CUSTOMER,
         ):

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.money_format import format_rub
 from app.models.entities import EstimateLine, Project, Room, User, UserRole
 from app.services import outbox_service as outbox
 from app.services import room_service
@@ -186,7 +187,7 @@ async def _prepare_effects(
                         "project_id": project.id,
                         "notification_type": "change_order",
                         "title": "Превышение бюджета комнаты",
-                        "body": f"{room.name}: +{actual - planned:.2f} ₽",
+                        "body": f"{room.name}: +{format_rub(actual - planned)}",
                         "link_path": f"/room/{room.id}",
                         "return_to": "/(customer)/(tabs)/object?tab=rooms",
                     },

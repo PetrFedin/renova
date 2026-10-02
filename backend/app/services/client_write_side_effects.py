@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Iterable
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.money_format import format_rub
 from app.models.entities import ChangeOrder, Expense, FloorPlan, FurnitureItem, Payment, Project, ProjectIssue, Receipt, SelectionItem
 from app.models.payment_evidence import PaymentEvidence
 from app.services import outbox_service as outbox
@@ -44,7 +45,7 @@ async def prepare_client_write_side_effects(db: AsyncSession, *, scope: str, pro
         if not receipt:
             return effects
         expense = (await db.execute(select(Expense).where(Expense.receipt_id == receipt.id).order_by(Expense.created_at.asc()).limit(1))).scalar_one_or_none()
-        title = expense.title if expense else (receipt.qr_raw or f"Чек {receipt.amount:.0f} ₽")
+        title = expense.title if expense else (receipt.qr_raw or f"Чек {format_rub(receipt.amount)}")
         amount = expense.amount if expense else receipt.amount
         row = await outbox.enqueue(db, aggregate_type="receipt", aggregate_id=receipt.id, event_type=outbox.RECEIPT_CREATED_EVENT, payload={"project_id": project_id, "user_id": user_id, "kind": "ExpenseAdded", "title": title, "body": str(amount), "room_id": receipt.room_id, "link_path": "/(customer)/(tabs)/budget"})
         effects.append(PreparedSideEffect(effect_type="activity", outbox_id=row.id))
@@ -57,7 +58,7 @@ async def prepare_client_write_side_effects(db: AsyncSession, *, scope: str, pro
         activity_row = await outbox.enqueue(db, aggregate_type="change_order", aggregate_id=order.id, event_type=outbox.RECEIPT_CREATED_EVENT, payload={"project_id": project_id, "user_id": user_id, "kind": "ChangeOrderCreated", "title": f"Доп. работы: {order.title}", "body": order.description, "link_path": "/(customer)/(tabs)/object?tab=estimate&estimateLayer=changes"})
         effects.append(PreparedSideEffect(effect_type="activity", outbox_id=activity_row.id))
         if project.customer_id and project.customer_id != user_id:
-            notification_row = await outbox.enqueue(db, aggregate_type="change_order", aggregate_id=order.id, event_type=outbox.PAYMENT_CREATED_EVENT, payload={"user_id": project.customer_id, "project_id": project_id, "notification_type": "change_order", "title": f"Согласуйте доп. работы: {order.title}", "body": f"{order.amount:.0f} ₽ · смета → Доп. работы", "link_path": "/(customer)/(tabs)/object?tab=estimate&estimateLayer=changes", "return_to": "/(customer)/(tabs)/"})
+            notification_row = await outbox.enqueue(db, aggregate_type="change_order", aggregate_id=order.id, event_type=outbox.PAYMENT_CREATED_EVENT, payload={"user_id": project.customer_id, "project_id": project_id, "notification_type": "change_order", "title": f"Согласуйте доп. работы: {order.title}", "body": f"{format_rub(order.amount)} · смета → Доп. работы", "link_path": "/(customer)/(tabs)/object?tab=estimate&estimateLayer=changes", "return_to": "/(customer)/(tabs)/"})
             effects.append(PreparedSideEffect(effect_type="notification", outbox_id=notification_row.id, match_key=project.customer_id))
         return effects
     if scope == "selection.create":

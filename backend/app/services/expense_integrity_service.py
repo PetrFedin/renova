@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.money_format import format_rub
 from app.models.entities import Expense, Room, Stage
 
 _VALID_CATEGORIES = {"works", "materials", "delivery", "tools", "other"}
@@ -186,7 +187,7 @@ async def patch_expense(
                 "user_id": actor_id,
                 "kind": "ExpenseUpdated",
                 "title": f"Расход обновлён: {expense.title}",
-                "body": f"{expense.amount} ₽ · {expense.category}",
+                "body": f"{format_rub(expense.amount)} · {expense.category}",
                 "room_id": expense.room_id,
                 "link_path": "/(customer)/(tabs)/budget?tab=expenses",
             },
@@ -234,7 +235,7 @@ async def delete_expense(
             "user_id": actor_id,
             "kind": "ExpenseRemoved",
             "title": f"Расход удалён: {expense.title}",
-            "body": f"{expense.amount} ₽",
+            "body": format_rub(expense.amount),
             "room_id": expense.room_id,
             "link_path": "/(customer)/(tabs)/budget?tab=expenses",
         },

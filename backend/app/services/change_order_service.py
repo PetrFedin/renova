@@ -2,6 +2,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.money_format import format_rub
 from app.models.entities import ChangeOrder, ChangeOrderStatus, Payment, Project
 from app.models.project_documents import DocumentStatus, DocumentType, ProjectDocument
 from app.services.budget_service import apply_change_order_to_budget, sync_project_budget_planned
@@ -158,7 +159,7 @@ async def _prepare_approval_side_effects(
         {
             "kind": "DocumentDraftForSign",
             "title": f"Подпишите доп. работы: {order.title}",
-            "body": f"Документ {document_id} · {order.amount:.0f} ₽",
+            "body": f"Документ {document_id} · {format_rub(order.amount)}",
             "link_path": "/documents",
         },
         {
@@ -218,7 +219,7 @@ async def _prepare_approval_side_effects(
                 "project_id": project.id,
                 "notification_type": "document",
                 "title": f"Подпишите доп. работы: {order.title}",
-                "body": f"Черновик в Документах · {order.amount:.0f} ₽",
+                "body": f"Черновик в Документах · {format_rub(order.amount)}",
                 "link_path": "/documents",
                 "return_to": "/(customer)/(tabs)/",
             },
@@ -344,7 +345,7 @@ async def approve_with_sign_draft(
             # начала работ не входит (DOC-003/006/007).
             document_type=DocumentType.addendum.value,
             change_order_id=order.id,
-            notes=f"сумма {order.amount:.0f} ₽; черновик для подписи",
+            notes=f"сумма {format_rub(order.amount)}; черновик для подписи",
             # Содержание нужно, иначе подписать нельзя (contract_has_no_content):
             # документ рисуется по данным change order.
             href=f"/api/v1/projects/{project_id}/change-orders/{order.id}/document.pdf",

@@ -1,4 +1,5 @@
 """PDF и экспорт проекта — fpdf2 с транслитерацией кириллицы."""
+from app.core.money_format import format_rub
 from app.core.timeutil import utc_now
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -788,7 +789,7 @@ async def confirm_bank_statement_matches(
                 user_id=user.id,
                 kind="PaymentApproved",
                 title=f"Оплата подтверждена (выписка): {payment.title}",
-                body=f"{payment.amount} ₽",
+                body=format_rub(payment.amount),
                 link_path="/(customer)/(tabs)/budget?tab=payments",
                 stage_id=payment.stage_id,
             )

@@ -1,5 +1,6 @@
 """Платежи: авансы, этапы, материалы."""
 from collections.abc import Awaitable, Callable
+from app.core.money_format import format_rub
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -334,7 +335,7 @@ async def confirm_payment(
                 detail={
                     "code": "receipt_amount_below_invoice",
                     "message": (
-                        f"Сумма чека ({shortfall:g} ₽) меньше суммы счёта ({float(existing.amount):g} ₽). "
+                        f"Сумма чека ({format_rub(shortfall)}) меньше суммы счёта ({format_rub(existing.amount)}). "
                         "Приложите чек на полную сумму или отметьте перевод без чека."
                     ),
                     "receipt_amount": shortfall,
