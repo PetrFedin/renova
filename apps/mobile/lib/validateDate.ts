@@ -56,3 +56,21 @@ export function parseDateTimeInput(value: string): string | null {
   if (!date || h > 23 || min > 59) return null;
   return `${date}T${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}:00`;
 }
+
+/** «2026-06-28» → «28.06.2026»; не-ISO значение (пользователь ещё печатает) возвращается как есть. */
+export function isoToRuDate(value: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : value;
+}
+
+/**
+ * Маска ввода «ДД.ММ.ГГГГ»: оставляет цифры и добавляет точки сам. Если пользователь вставил/ввёл
+ * ISO («2026-06-28»), оставляет как есть, чтобы parseDateInput его принял.
+ */
+export function maskRuDateInput(value: string): string {
+  if (/^\d{4}-/.test(value)) return value.replace(/[^\d-]/g, '').slice(0, 10);
+  const d = value.replace(/\D/g, '').slice(0, 8);
+  if (d.length <= 2) return d;
+  if (d.length <= 4) return `${d.slice(0, 2)}.${d.slice(2)}`;
+  return `${d.slice(0, 2)}.${d.slice(2, 4)}.${d.slice(4)}`;
+}

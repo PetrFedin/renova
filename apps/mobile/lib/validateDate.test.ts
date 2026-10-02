@@ -1,8 +1,16 @@
-import { isIsoDate, normalizeIsoDateInput } from './validateDate';
+import { isIsoDate, isoToRuDate, maskRuDateInput, normalizeIsoDateInput } from './validateDate';
 
 if (!isIsoDate('2026-06-28')) throw new Error('valid date');
 if (isIsoDate('2026-13-01')) throw new Error('invalid month');
 if (normalizeIsoDateInput('2026-06-28abc') !== '2026-06-28') throw new Error('normalize');
+
+if (isoToRuDate('2026-06-28') !== '28.06.2026') throw new Error('isoToRu');
+if (isoToRuDate('28.0') !== '28.0') throw new Error('isoToRu passthrough');
+if (maskRuDateInput('28062026') !== '28.06.2026') throw new Error('mask full');
+if (maskRuDateInput('2806') !== '28.06') throw new Error('mask partial');
+if (maskRuDateInput('28.06.20269999') !== '28.06.2026') throw new Error('mask cap');
+if (maskRuDateInput('2026-06-28') !== '2026-06-28') throw new Error('mask keeps iso');
+if (parseDateInput(maskRuDateInput('01092026')) !== '2026-09-01') throw new Error('mask → parse');
 
 console.log('validateDate.test OK');
 

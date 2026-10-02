@@ -1,5 +1,6 @@
 /** Payload для POST /api/v1/projects — только поля ProjectCreate + rooms[] */
 import type { WizardRoomDraft } from '@/constants/roomTypes';
+import { parseDateInput } from '@/lib/validateDate';
 
 export type WizardProjectDraft = {
   name: string;
@@ -30,8 +31,9 @@ export function buildProjectCreatePayload(draft: WizardProjectDraft) {
     normalizeRoom,
   );
   const area = rooms.reduce((sum, r) => sum + r.length_m * r.width_m, 0);
-  const start = draft.planned_start_date?.trim();
-  const end = draft.planned_end_date?.trim();
+  // Поля дат показывают дд.мм.гггг: на сервер уходит только корректный ISO, мусор отбрасывается.
+  const start = draft.planned_start_date?.trim() ? parseDateInput(draft.planned_start_date) : null;
+  const end = draft.planned_end_date?.trim() ? parseDateInput(draft.planned_end_date) : null;
 
   return {
     name: draft.name.trim(),

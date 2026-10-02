@@ -1,7 +1,8 @@
 /** Поля профиля проекта — wizard создания и редактирование в «Объект → Профиль» */
+import { useEffect, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
-import { normalizeIsoDateInput } from '@/lib/validateDate';
+import { isoToRuDate, maskRuDateInput, parseDateInput } from '@/lib/validateDate';
 import { ObjectProfileSection } from '@/components/screens/object/ObjectProfileSection';
 import { CustomerBudgetField } from '@/components/renova/CustomerBudgetField';
 import { formMetaText } from '@/constants/formTypography';
@@ -82,6 +83,42 @@ function ChipRow({
         );
       })}
     </View>
+  );
+}
+
+/**
+ * Поле даты в русском формате «дд.мм.гггг». Наружу отдаёт ISO, когда дата полная и существует,
+ * иначе — набранный текст (валидацию делает экран при сохранении).
+ */
+function RuDateInput({
+  value, onChange, placeholder, style, editable,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  style: object;
+  editable: boolean;
+}) {
+  const [text, setText] = useState(() => isoToRuDate(value));
+  useEffect(() => {
+    // Внешнее изменение (загрузка объекта, сброс): синхронизируем, не трогая то, что пользователь печатает.
+    const typedIso = parseDateInput(text);
+    if (value !== text && value !== typedIso) setText(isoToRuDate(value));
+  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <TextInput
+      style={style}
+      placeholder={placeholder}
+      value={text}
+      keyboardType="numbers-and-punctuation"
+      maxLength={10}
+      onChangeText={(v: string) => {
+        const masked = maskRuDateInput(v);
+        setText(masked);
+        onChange(parseDateInput(masked) ?? masked);
+      }}
+      editable={editable}
+    />
   );
 }
 
@@ -188,21 +225,21 @@ export function ProjectProfileFields({
       <FieldLabel>Сроки</FieldLabel>
       <View style={s.dateRow}>
         <View style={s.dateCol}>
-          <TextInput
+          <RuDateInput
             style={s.dateInput}
-            placeholder="2026-06-01"
+            placeholder="дд.мм.гггг"
             value={values.planned_start_date || ''}
-            onChangeText={(v: string) => onChange({ planned_start_date: normalizeIsoDateInput(v) })}
+            onChange={(v) => onChange({ planned_start_date: v })}
             editable={editable}
           />
           <Text style={s.dateHint}>Старт</Text>
         </View>
         <View style={s.dateCol}>
-          <TextInput
+          <RuDateInput
             style={s.dateInput}
-            placeholder="2026-09-01"
+            placeholder="дд.мм.гггг"
             value={values.planned_end_date || ''}
-            onChangeText={(v: string) => onChange({ planned_end_date: normalizeIsoDateInput(v) })}
+            onChange={(v) => onChange({ planned_end_date: v })}
             editable={editable}
           />
           <Text style={s.dateHint}>Финиш</Text>
@@ -237,7 +274,7 @@ export function ProjectProfileFields({
           {vatBlock}
         </ObjectProfileSection>
         {showSchedule ? (
-          <ObjectProfileSection title="Сроки" hint="Формат YYYY-MM-DD. Влияет на план и календарь.">
+          <ObjectProfileSection title="Сроки" hint="Формат дд.мм.гггг. Влияет на план и календарь.">
             {scheduleBlock}
           </ObjectProfileSection>
         ) : null}

@@ -17,7 +17,7 @@ import { canEditProjectProfile } from '@/lib/domain/roleCapabilities';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { ObjectTabGuide } from '@/components/screens/object/ObjectTabGuide';
 import { useRenova } from '@/lib/context/RenovaContext';
-import { isIsoDate } from '@/lib/validateDate';
+import { parseDateInput } from '@/lib/validateDate';
 import { reportError } from '@/lib/reportError';
 import type { OsRole } from '@/constants/osSections';
 import { screenLayout } from '@/constants/screenLayout';
@@ -103,14 +103,17 @@ export function OsProjectProfileScreen({
       notifyAlert('Укажите название проекта');
       return;
     }
-    const start = profileValues.planned_start_date?.trim() || '';
-    const end = profileValues.planned_end_date?.trim() || '';
-    if (start && !isIsoDate(start)) {
-      notifyAlert('Дата старта', 'Формат: YYYY-MM-DD');
+    const startRaw = profileValues.planned_start_date?.trim() || '';
+    const endRaw = profileValues.planned_end_date?.trim() || '';
+    // Поле показывает дд.мм.гггг; наружу уходит ISO (парсер принимает и тот, и другой формат).
+    const start = startRaw ? parseDateInput(startRaw) : '';
+    const end = endRaw ? parseDateInput(endRaw) : '';
+    if (start === null) {
+      notifyAlert('Дата старта', 'Введите дату в формате дд.мм.гггг, например 01.09.2026');
       return;
     }
-    if (end && !isIsoDate(end)) {
-      notifyAlert('Дата финиша', 'Формат: YYYY-MM-DD');
+    if (end === null) {
+      notifyAlert('Дата финиша', 'Введите дату в формате дд.мм.гггг, например 01.12.2026');
       return;
     }
     if (start && end && start > end) {
