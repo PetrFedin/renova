@@ -30,3 +30,62 @@ def test_format_rub(value, expected):
 
 def test_format_amount_without_currency():
     assert format_amount(12000.0) == "12 000"
+
+
+from app.core.money_format import normalize_activity_body
+
+
+@pytest.mark.parametrize(
+    "kind,body,expected",
+    [
+        ("ExpenseRemoved", "1500.0", "1 500 ₽"),
+        ("ExpenseAdded", "1500.50", "1 500,50 ₽"),
+        ("ExpenseAdded", "1500", "1 500 ₽"),
+        ("PaymentApproved", "25000.00", "25 000 ₽"),
+        ("ExpenseAdded", "1 500 ₽ · Материалы", "1 500 ₽ · Материалы"),
+        ("ExpenseAdded", "1500.0 · Материалы", "1 500 ₽ · Материалы"),
+        ("MaterialCalculated", "12", "12"),
+        ("MaterialCalculated", "1500.0", "1500.0"),
+        ("MaterialPriceSet", "12.50 → 15.00 ₽ · вручную", "12,50 → 15 ₽ · вручную"),
+        ("ExpenseAdded", None, None),
+        ("ExpenseAdded", "", ""),
+    ],
+)
+def test_normalize_activity_body(kind, body, expected):
+    assert normalize_activity_body(kind, body) == expected
+    assert normalize_activity_body(kind, normalize_activity_body(kind, body)) == expected
+
+
+@pytest.mark.asyncio
+async def test_project_feed_normalizes_legacy_body():
+    """Старая запись с body='1500.0' отдаётся в ленте как «1 500 ₽» без миграции данных."""
+    from datetime import datetime
+    from types import SimpleNamespace
+
+    from app.services import activity_service
+
+    event = SimpleNamespace(
+        id="e1", kind="ExpenseRemoved", title="Чек удалён", body="1500.0",
+        work_type=None, room_id=None, link_path=None, created_at=datetime(2026, 1, 1),
+    )
+
+    class _Res:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def scalars(self):
+            return self
+
+        def all(self):
+            return self._rows
+
+    class _Db:
+        calls = 0
+
+        async def execute(self, _query):
+            _Db.calls += 1
+            return _Res([event] if _Db.calls == 1 else [])
+
+    items = await activity_service.project_feed(_Db(), "p1")
+    assert items[0]["body"] == "1 500 ₽"
+    assert event.body == "1500.0"

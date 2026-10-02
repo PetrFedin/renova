@@ -4,6 +4,7 @@ import json
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.money_format import normalize_activity_body
 from app.core.timeutil import utc_now
 from app.models.entities import ActivityEvent, DomainOutbox, RoomChangeLog
 from app.models.outbox_runtime import SideEffectDelivery
@@ -284,7 +285,7 @@ async def project_feed(
                 "id": event.id,
                 "kind": event.kind,
                 "title": event.title,
-                "body": event.body,
+                "body": normalize_activity_body(event.kind, event.body),
                 "work_type": event.work_type,
                 "room_id": event.room_id,
                 "link_path": event.link_path,

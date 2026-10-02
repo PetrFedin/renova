@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import re
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 RUB = "₽"
@@ -31,3 +32,25 @@ def format_amount(value: object) -> str:
 
 def format_rub(value: object) -> str:
     return f"{format_amount(value)} {RUB}"
+
+
+_MONEY_KIND_PREFIXES = ("Expense", "Payment", "BankImport", "Receipt")
+_BARE_NUMBER = re.compile(r"^-?\d+(?:\.\d+)?$")
+_PRICE_CHANGE = re.compile(r"(-?\d+\.\d+) → (-?\d+\.\d+) ₽")
+
+
+def normalize_activity_body(kind: str | None, body: str | None) -> str | None:
+    """Нормализует «сырые» суммы в тексте старых записей ленты при чтении.
+
+    Старые события писались как ``str(amount)`` («1500.0»). Данные не
+    мигрируем — приводим к «1 500 ₽» на лету. Консервативно: голые числа
+    трогаем только у денежных видов событий (``MaterialCalculated`` хранит
+    количество, а не рубли); уже отформатированный текст не меняется.
+    """
+    if not body:
+        return body
+    text = _PRICE_CHANGE.sub(lambda m: f"{format_amount(m.group(1))} → {format_rub(m.group(2))}", body)
+    if kind and kind.startswith(_MONEY_KIND_PREFIXES):
+        parts = text.split(" · ")
+        text = " · ".join(format_rub(p.strip()) if _BARE_NUMBER.match(p.strip()) else p for p in parts)
+    return text
