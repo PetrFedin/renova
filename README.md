@@ -107,6 +107,8 @@ npm run ci:playwright
 npm run typecheck:mobile
 ```
 
+Установка браузера Playwright (`npx playwright install chromium`), запуск e2e, лимит 400 rpm и гигиена e2e-данных: `docs/DEV-SETUP.md`.
+
 Полный GitHub CI, PostgreSQL Alembic lifecycle, dedicated concurrency/E2E/security/release workflows остаются authoritative CI evidence для соответствующих изменений. Локальный SQLite test-subset внутри `test-focused`/`test-full` не заменяет dedicated PostgreSQL race/migration evidence.
 
 ## Runtime architecture
