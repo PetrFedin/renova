@@ -55,7 +55,7 @@ const LABELS: Record<string, string> = {
   '/(customer)/(tabs)/rooms': 'Комнаты',
   '/(contractor)/(tabs)/': 'Главная',
   '/portfolio': 'Портфель',
-  '/activity': 'Архив ремонта',
+  '/activity': 'История проекта',
   '/documents': 'Документы',
 };
 

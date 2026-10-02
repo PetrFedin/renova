@@ -477,7 +477,7 @@ export function DocumentsHub({
       },
       activityPdf: {
         id: 'activity',
-        label: 'Архив ремонта',
+        label: 'История проекта',
         desc: 'Журнал событий по объекту',
         format: 'PDF',
         pdf: true,

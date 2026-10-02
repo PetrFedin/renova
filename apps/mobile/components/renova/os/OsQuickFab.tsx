@@ -4,7 +4,7 @@ import { View, Text, StyleSheet, Pressable, Modal, Platform, TextInput } from 'r
 import { notifyError } from '@/lib/notify';
 import { usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { FAB_BOTTOM, FAB_RIGHT, FAB_SIZE } from '@/constants/fab';
+import { FAB_BOTTOM, FAB_OPACITY, FAB_RIGHT, FAB_SIZE } from '@/constants/fab';
 import { RenovaTheme } from '@/constants/Theme';
 import { reportError } from '@/lib/reportError';
 import { useRenova } from '@/lib/context/RenovaContext';
@@ -226,6 +226,7 @@ const s = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: FAB_RIGHT,
+    opacity: FAB_OPACITY,
     bottom: FAB_BOTTOM,
     width: FAB_SIZE,
     height: FAB_SIZE,

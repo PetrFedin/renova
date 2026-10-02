@@ -78,7 +78,7 @@ export default function ActivityScreen() {
   if (!projects.length) {
     return (
       <>
-        <BackHeader title="Архив ремонта" returnTo={returnTo} />
+        <BackHeader title="История проекта" returnTo={returnTo} />
         <ProjectEmptyState role={role} hint="Создайте объект — архив событий привязан к проекту." />
       </>
     );
@@ -86,7 +86,7 @@ export default function ActivityScreen() {
 
   return (
     <>
-      <BackHeader title="Архив ремонта" subtitle={selectedName || undefined} returnTo={returnTo} />
+      <BackHeader title="История проекта" subtitle={selectedName || undefined} returnTo={returnTo} />
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }}>
         {selectedProjectId ? (
           <FilterDropdown

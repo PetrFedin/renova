@@ -1186,7 +1186,7 @@ const s = StyleSheet.create({
   wrap: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 24 },
   loadError: { textAlign: 'center', color: RenovaTheme.colors.textMuted },
-  topActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 4, gap: 8, flexWrap: 'wrap' },
+  topActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 4, gap: 8, rowGap: 4, flexWrap: 'wrap' },
   wsDot: { fontSize: 11, fontWeight: '700' },
   wsOn: { color: RenovaTheme.colors.success },
   wsOff: { color: RenovaTheme.colors.textMuted },

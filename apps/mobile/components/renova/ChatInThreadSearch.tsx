@@ -73,7 +73,7 @@ export function ChatInThreadSearch({
 }
 
 const s = StyleSheet.create({
-  wrap: { marginBottom: 8 },
+  wrap: { marginBottom: 8, marginHorizontal: 16 },
   input: {
     backgroundColor: RenovaTheme.colors.surface,
     borderRadius: 8,

@@ -22,8 +22,8 @@ export function OsAppHeader({ title, subtitle, left, right }: Props) {
         <View style={[s.sideLeft, !hasCenter && s.sideLeftWide]}>{left ?? null}</View>
         {hasCenter ? (
           <View style={s.center}>
-            <Text style={s.title} numberOfLines={1}>{title}</Text>
-            {subtitle ? <Text style={s.sub} numberOfLines={1}>{subtitle}</Text> : null}
+            <Text style={s.title} numberOfLines={2}>{title}</Text>
+            {subtitle ? <Text style={s.sub} numberOfLines={2}>{subtitle}</Text> : null}
           </View>
         ) : null}
         <View style={s.sideRight}>{right ?? null}</View>

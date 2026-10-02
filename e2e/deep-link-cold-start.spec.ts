@@ -67,3 +67,42 @@ for (const role of ['customer', 'contractor'] as const) {
     });
   }
 }
+
+/**
+ * O-1 (live-audit-2): экраны исполнителя не открываются заказчику по прямой ссылке — редирект на
+ * его экран без обращения к контракторским эндпоинтам (раньше: 403 `/teams/me` и «Не удалось загрузить»).
+ */
+const CONTRACTOR_ONLY: Array<[string, RegExp]> = [
+  ['/team-qr', /\/(index)?$|\/$/],
+  ['/checklist-templates', /\/(index)?$|\/$/],
+  ['/quality-control', /\/repair$/],
+];
+
+for (const [link, landing] of CONTRACTOR_ONLY) {
+  test(`customer cold link to contractor-only ${link} is redirected without 403s`, async ({ page, request }) => {
+    test.skip(!(await apiReachable()) || !(await webReachable()), 'Need API :8100 and web :8081');
+    const user = (await (await request.post(`${API}/api/v1/auth/demo`, { data: { role: 'customer' } })).json()) as DemoUser;
+    const projects = (await (await request.get(`${API}/api/v1/projects`, { headers: authHeaders(user) })).json()) as DemoProject[];
+    const project = pickPrimaryDemoProject(projects);
+    await seedDemoCustomerSession(page, user.id, project.id, user.access_token);
+    const forbidden: string[] = [];
+    page.on('response', (r) => { if (r.status() === 403) forbidden.push(r.url()); });
+
+    await page.goto(link, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(7_000);
+    expect(new URL(page.url()).pathname, `${link} must leave the contractor screen`).toMatch(landing);
+    expect(forbidden, `${link}: no 403 requests`).toEqual([]);
+    await expect(page.getByText('Не удалось загрузить бригаду')).toHaveCount(0);
+  });
+
+  test(`contractor still opens ${link}`, async ({ page, request }) => {
+    test.skip(!(await apiReachable()) || !(await webReachable()), 'Need API :8100 and web :8081');
+    const user = (await (await request.post(`${API}/api/v1/auth/demo`, { data: { role: 'contractor' } })).json()) as DemoUser;
+    const projects = (await (await request.get(`${API}/api/v1/projects`, { headers: authHeaders(user) })).json()) as DemoProject[];
+    const project = pickPrimaryDemoProject(projects);
+    await seedDemoContractorSession(page, user.id, project.id, user.access_token);
+    await page.goto(link, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(5_000);
+    expect(new URL(page.url()).pathname).toBe(link);
+  });
+}

@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 
 import { RenovaTheme, card } from '@/constants/Theme';
-import { flushOfflineOutbox, getOfflineOutboxStatus, subscribeOfflineFlush } from '@/lib/offline';
+import { flushOfflineOutbox, getOfflineOutboxStatus, isOnline, subscribeOfflineFlush } from '@/lib/offline';
 import { getQueue } from '@/lib/offlineQueue';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { reloadInboxSync } from '@/lib/inboxSyncStore';
@@ -31,9 +31,12 @@ export function OfflineSyncStatus({
   const [syncing, setSyncing] = useState(false);
   const [lastMessage, setLastMessage] = useState<string | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
+  // O-6: «данные из кэша» — только когда сети действительно нет.
+  const [online, setOnline] = useState(true);
   const { user, activeProject } = useRenova();
 
   const refresh = useCallback(async () => {
+    void isOnline().then(setOnline).catch(() => undefined);
     if (pathIncludes?.length) {
       try {
         const q = await getQueue();
@@ -108,14 +111,18 @@ export function OfflineSyncStatus({
           ? `${scope}Не синхронизировано: ${blocked} заблокированы`
           : unsynced > 0
             ? `${scope}Не синхронизировано: ${unsynced}`
-            : 'Офлайн-очередь пуста';
+            : online
+              ? 'Все изменения синхронизированы'
+              : 'Нет сети';
 
   const hint = readError || lastMessage || (
     conflicts > 0
       ? 'Сервер отклонил изменения (409). Откройте экран конфликтов.'
       : blocked > 0
         ? 'Сервер отклонил часть изменений. Они больше не отправляются автоматически.'
-        : 'Последние данные доступны из кэша. Изменения можно отправить вручную.'
+        : online
+          ? 'Ничего не ждёт отправки. Если пропадёт сеть, изменения сохранятся на устройстве и уйдут сами.'
+          : 'Показаны данные из кэша. Изменения сохранятся на устройстве и отправятся, когда появится сеть.'
   );
 
   const hasAttention = Boolean(readError) || conflicts > 0 || blocked > 0;
