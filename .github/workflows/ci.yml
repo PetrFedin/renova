@@ -346,6 +346,43 @@ jobs:
         working-directory: backend
         run: poetry run pytest -q tests/test_journey_regression.py
 
+  deep-link-e2e-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install workspace dependencies
+        run: npm ci
+      - name: Validate shell lifecycle syntax
+        run: bash -n scripts/ci-playwright.sh
+      - name: Deep-link spec is part of the UI E2E suite (not silently dropped)
+        run: |
+          set -euo pipefail
+          grep -q 'e2e/deep-link-cold-start.spec.ts' scripts/ci-playwright.sh
+      - name: Deep-link spec discovery (every route x both roles)
+        run: |
+          set -euo pipefail
+          npx playwright test -c e2e/playwright.config.ts e2e/deep-link-cold-start.spec.ts --list | tee /tmp/deep-link-list.txt
+          routes=$(grep -oE "const DEEP_LINKS = \[.*\];" e2e/deep-link-cold-start.spec.ts | grep -oE "'/[^']*'" | wc -l | tr -d ' ')
+          expected=$((routes * 2))
+          actual=$(grep -c 'cold deep link' /tmp/deep-link-list.txt)
+          echo "routes=${routes} expected=${expected} actual=${actual}"
+          test "$routes" -ge 6
+          test "$actual" -eq "$expected"
+          grep -q 'for customer' /tmp/deep-link-list.txt
+          grep -q 'for contractor' /tmp/deep-link-list.txt
+      - name: Spec must fail closed when services are down (skips are rejected by the report gate)
+        run: |
+          set -euo pipefail
+          grep -q -- '--max-skipped=0' scripts/ci-playwright.sh
+          node scripts/assert-playwright-report.test.mjs
+      - name: Mobile navigation TypeScript
+        run: npm run typecheck:mobile
+
   playwright-api-and-ui:
     runs-on: ubuntu-latest
     timeout-minutes: 45
