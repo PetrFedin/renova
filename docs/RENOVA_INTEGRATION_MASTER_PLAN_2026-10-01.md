@@ -437,3 +437,96 @@ Warranty issues must be distinguishable from pre-handover punch items but link b
 
 **Sequencing:** Site Diary/Punch/Documents -> RFI/Submittal -> lot traceability -> BCF/Speckle if BIM demand exists -> warranty lifecycle as handover matures.
 
+## Additional wave — open BIM requirements validation and structured handover
+
+This wave activates the BIM layer only after ordinary PDF/document, RFI, Submittal and Punch workflows are already useful.
+
+### IfcOpenShell model-processing worker — ADOPT/CONDITIONAL SIDECAR
+
+Reference: https://github.com/IfcOpenShell/IfcOpenShell
+
+Use a bounded worker to parse admitted IFC model versions and generate Renova read projections such as:
+
+- IFC project/storey/space hierarchy;
+- element GUID/type;
+- selected approved properties;
+- system/classification references;
+- quantities where reliably present;
+- element-to-room/work-package candidate links;
+- model version/fingerprint.
+
+Flow:
+
+admitted IFC file -> checksum/version -> IfcOpenShell parse -> validated projection -> reviewer/linking -> Renova work/package context
+
+The IFC file/model is design context. It must not become the source of payment, acceptance, project status or contractor obligation.
+
+### buildingSMART IDS requirement validation — ADOPT/ADAPT
+
+Specification/reference: https://github.com/buildingSMART/IDS
+
+Use Information Delivery Specification-style requirements for machine-checkable project/model constraints.
+
+Examples:
+
+- required property present for a class of elements;
+- classification/value requirements;
+- space/system metadata;
+- asset handover information required before completion.
+
+Store in Renova:
+
+- requirement-set ID/version;
+- project/scope;
+- source IDS artifact/checksum;
+- validation run;
+- model version;
+- pass/fail/not-applicable;
+- failing element references;
+- reviewer/waiver.
+
+A validation failure can create an RFI/Punch/Submittal task through explicit commands, but cannot automatically reject a payment milestone without the existing authority workflow.
+
+### BIM Revision Delta — ADOPT
+
+For consecutive admitted IFC versions, generate a reviewable delta:
+
+- added/removed element GUIDs;
+- changed selected properties;
+- moved/changed space association where detectable;
+- changed quantities;
+- invalidated Renova links.
+
+Every delta references both model checksums and parser version.
+
+Use it to highlight potential scope impact; do not automatically classify every model delta as contractual change.
+
+### COBie-style Handover Projection — ADAPT
+
+Where the customer/project requires structured asset handover, generate a bounded handover export from accepted Renova + IFC data.
+
+Possible fields:
+
+- space;
+- asset/component;
+- type/model;
+- serial/batch where available;
+- supplier;
+- install/acceptance date;
+- warranty;
+- approved document references.
+
+The handover file is a derivative export. Warranty/acceptance/document authorities stay in Renova.
+
+### Additional acceptance
+
+- every IFC projection traces to source checksum + parser version;
+- IDS validation is reproducible against a declared model and requirement set;
+- model revision delta never silently changes linked work/acceptance state;
+- generated handover data resolves to accepted Renova source records;
+- an IFC/IDS processing failure cannot block non-BIM project workflows unless the project explicitly requires the gate.
+
+**Sequencing:** Documents/RFI/Submittal -> IFC admission -> IfcOpenShell projection -> IDS validation -> revision delta -> structured handover.
+
+**Dependency note:** IfcOpenShell currently uses LGPL licensing; confirm the exact integration/deployment mode and current license before packaging/distribution.
+
