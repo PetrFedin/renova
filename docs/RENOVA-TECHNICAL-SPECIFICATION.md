@@ -29,7 +29,7 @@
 | `backend/app/services/seed_demo.py` | `c62ba920130a7ba7f6e2bd0a54e63feadce5c6cd` | Явный development seed |
 | `backend/scripts/verify_orm_schema_parity.py` | `ba08d0681df301f446b3adbf811ad9367eeb24b9` | Schema/ORM parity |
 | `backend/scripts/verify_current_migration_schema.py` | `13e63544564b41a13c52f9437b9bfbdfa290913b` | Enum/migration invariants |
-| `apps/mobile/lib/routeRegistry.ts` | `ec50835df6ca81a3175dafba8c1905d13b07e4dd` | Канонические navigation entries |
+| `apps/mobile/lib/routeRegistry.ts` | `be7d9b745b9be440bcd84ea9ac5211d8b6536972` | Канонические navigation entries |
 | `apps/mobile/constants/Theme.ts` | `6e66c4bf0db8c9d1b8c4a2d0355311145ca43b20` | Theme/touch geometry |
 | `apps/mobile/constants/typography.ts` | `8a96b7f290944ac2c566c0f1791c1f60ab90c68a` | Typography |
 | `apps/mobile/constants/screenTypography.ts` | `f91c9a659a1ab8603ae4d82eb46d76754627b5bb` | Screen typography |
@@ -41,7 +41,7 @@
 | `apps/mobile/components/screens/OsBudgetHubScreen.tsx` | `4e0e8267d68b600cf0d8bdf716a4c8eddaa3bcbd` | Budget hub |
 | `apps/mobile/constants/budgetTabs.ts` | `d02c05560176535e130d76960c2b67691bcbb3b7` | Budget tab canon |
 | `.cursor/rules/renova-design-system.mdc` | `2f48e46f5b348b8cbc3a370615a5a5e93d93421f` | UI rules |
-| `package.json` | `fcc4eb1543eab947d9f61e2e11fb840fbb16e11b` | Root commands/test entrypoints (+5 sessionFence tests wired into mobile:test) |
+| `package.json` | `ee25631202fe8f56179d710f01eb88ea8e3eede5` | Root commands/test entrypoints (+5 sessionFence tests wired into mobile:test) |
 | `.github/workflows/local-runtime-integrity.yml` | `63831ec7622794843ca724319178e2de18cdb971` | Local runtime proof |
 | `backend/alembic/versions/w16legacystatus01_legacy_status_enum_parity.py` | `d2137f2b87c1ac6f679093331bd034aff17c8188` | Legacy status repair |
 | `backend/alembic/versions/w17chatmessageenum01_chat_message_enum_parity.py` | `0537268c85e26b7a607d36f967a3402b8bba53c4` | Chat enum repair |
@@ -159,6 +159,7 @@ Dock: Главная, Объект, Ремонт, Бюджет/Деньги, о�
 | guide | /guide |
 | activity | /activity |
 | notification-center | /notification-center, колокольчик в шапке, обе роли |
+| team-qr | /team-qr, QR бригады, только исполнитель |
 | portal | /portal?token=, вход по ссылке |
 | reports | /reports |
 | project-analytics | redirect budget/deviations |

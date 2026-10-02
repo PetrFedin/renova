@@ -36,7 +36,9 @@ export function OfflineSyncStatus({
   const { user, activeProject } = useRenova();
 
   const refresh = useCallback(async () => {
-    void isOnline().then(setOnline).catch(() => undefined);
+    void isOnline()
+      .then(setOnline)
+      .catch((error) => reportError('offline.isOnline', error));
     if (pathIncludes?.length) {
       try {
         const q = await getQueue();
