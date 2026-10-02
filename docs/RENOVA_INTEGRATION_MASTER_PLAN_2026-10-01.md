@@ -530,3 +530,106 @@ The handover file is a derivative export. Warranty/acceptance/document authoriti
 
 **Dependency note:** IfcOpenShell currently uses LGPL licensing; confirm the exact integration/deployment mode and current license before packaging/distribution.
 
+## Additional integration wave — schema-driven inspection and handover forms
+
+This wave standardises repetitive inspection/acceptance workflows without hard-coding a new screen for every project checklist.
+
+### JSON Forms renderer — ADOPT/ADAPT
+
+Reference:
+
+https://github.com/eclipsesource/jsonforms
+
+Use JSON Schema + UI Schema as the rendering layer for versioned Renova inspection forms.
+
+Candidate form types:
+
+- room pre-inspection;
+- work completion checklist;
+- hold-point inspection;
+- material incoming inspection;
+- sample/submittal review;
+- commissioning/handover checklist;
+- warranty inspection;
+- site-day structured checklist.
+
+The form renderer is UI infrastructure only. Submitted answers become Renova-native inspection records/evidence.
+
+### Form Template Authority — ADOPT
+
+Create native entities:
+
+- form_template;
+- form_template_version;
+- project/work-type applicability;
+- schema;
+- UI schema;
+- required evidence rules;
+- required role/reviewer;
+- status/effective dates.
+
+Never edit an already-used template version in place.
+
+### Inspection Submission — ADOPT
+
+Submission stores:
+
+- project/work/room;
+- template/version;
+- respondent;
+- answers;
+- evidence attachments;
+- started/submitted timestamps;
+- review status;
+- reviewer;
+- failed requirement references.
+
+A failed answer may explicitly create:
+
+- Punch item;
+- RFI;
+- Submittal rework;
+- Hold Point;
+- Warranty defect.
+
+The form itself does not directly mutate these workflows without a domain command.
+
+### Conditional Evidence Rules — ADOPT
+
+Examples:
+
+- if answer = defect -> photo required;
+- if material batch differs -> batch/lot evidence required;
+- if inspection fails -> reason + assignee required;
+- if approved with deviation -> authorised note required.
+
+Rules are versioned with the template.
+
+### PDF / Handover Output — ADOPT
+
+Generate a human-readable immutable derivative from an accepted inspection submission for handover/export.
+
+The PDF contains:
+
+- template/version;
+- project/work identifiers;
+- answers;
+- referenced evidence IDs;
+- signatures/approvals where applicable;
+- generated_at/checksum.
+
+The PDF is derived evidence, not editable authority.
+
+### Additional acceptance
+
+- renderer cannot bypass role/project ACL;
+- completed submission always points to exact immutable template version;
+- schema validation runs server-side before acceptance;
+- generated Punch/RFI/etc. are idempotently linked to the originating inspection;
+- historical inspections remain readable after template evolution;
+- form failure does not overwrite acceptance/payment state.
+
+**Sequencing:** Punch/Hold/RFI/Submittal authorities first -> template/version model -> JSON Forms UI -> conditional evidence -> generated workflow links -> handover derivatives.
+
+**Dependency note:** JSON Forms is currently MIT-licensed upstream and should remain replaceable presentation infrastructure.
+
