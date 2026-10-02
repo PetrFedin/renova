@@ -731,3 +731,98 @@ Otherwise the capture is visual-only.
 
 **Sequencing:** media/evidence authority -> capture admission -> geometry registration -> deviation review -> progress twin -> optional photorealistic renderer.
 
+## Premium commercial wave — Home Digital Passport and preventive care
+
+Renova already has a real warranty authority. This wave **builds on it** and extends value after project closeout instead of creating another warranty system.
+
+### Home Digital Passport — ADOPT
+
+Create a post-handover passport for the completed object/home:
+
+- project/object;
+- room/zone;
+- accepted work packages;
+- installed materials/products/assets;
+- supplier/contractor;
+- lot/batch where tracked;
+- acceptance evidence;
+- manuals/certificates;
+- warranty links;
+- maintenance/care guidance;
+- approved drawings/IFC references;
+- before/after/progress evidence.
+
+Passport records are projections over accepted Renova source facts.
+
+### Installed Asset / Material Register — ADOPT
+
+Create an owner-facing view:
+
+room -> installed item/material -> model/spec -> install/acceptance date -> documents -> warranty -> maintenance
+
+Examples:
+
+- sanitary equipment;
+- appliances;
+- lighting;
+- flooring/finishes;
+- windows/doors;
+- HVAC/engineering equipment;
+- bespoke furniture where relevant.
+
+Do not turn this into generic warehouse inventory.
+
+### QR / Physical Asset Link — ADOPT
+
+Optional QR label can open the authorised asset/passport record:
+
+- what is installed;
+- manuals;
+- service history;
+- warranty;
+- contractor/supplier;
+- compatible replacement/maintenance information.
+
+QR contains an opaque identifier, never private project details directly.
+
+### Preventive Maintenance Plan — ADOPT
+
+For maintainable assets/work:
+
+- maintenance task type;
+- interval/date;
+- source: manufacturer / contractor / owner;
+- responsible service party;
+- required document/evidence;
+- reminder;
+- completion/service evidence.
+
+This creates recurring post-project engagement.
+
+### Service / Repair Continuation — ADOPT
+
+After closeout:
+
+maintenance due / warranty issue / owner repair request -> service case -> contractor/service provider -> evidence -> completion
+
+Warranty authority remains the existing Renova warranty domain. Non-warranty maintenance is a separate service case linked to the same asset/work history.
+
+### Property Transfer Export — ADOPT
+
+If the owner sells/transfers the property, generate a controlled handover/export package containing only approved transferable records.
+
+Private conversations, prices or personal data are excluded unless explicitly authorised.
+
+### Additional acceptance
+
+- passport facts resolve to accepted/source records;
+- current warranty implementation is reused, not duplicated;
+- QR cannot expose unauthorised project data;
+- maintenance tasks identify source/rule;
+- service case distinguishes warranty vs paid/non-warranty work;
+- owner can retain a useful passport even if advanced BIM/3D services are unavailable.
+
+**Sequencing:** acceptance/closeout + current Warranty + Documents -> installed asset/material register -> passport -> maintenance -> service continuation -> transfer export.
+
+**Commercial framing:** Renova becomes not only "manage my renovation" but a long-lived digital operating record for the finished home, enabling recurring service revenue.
+
