@@ -17,6 +17,12 @@ import { PortfolioSelectionPanel } from '@/components/renova/os/portfolio/Portfo
 import { PortfolioCategoryBreakdown } from '@/components/renova/os/portfolio/PortfolioCategoryBreakdown';
 import { PortfolioCompareList } from '@/components/renova/os/portfolio/PortfolioCompareList';
 import { reportError } from '@/lib/reportError';
+import { createTtlCache, mapWithConcurrency } from '@/lib/async/limitedPool';
+
+/** O-2: не более 3 запросов одновременно + кэш на минуту (перевыбор объектов не гонит сеть заново). */
+const PORTFOLIO_FETCH_CONCURRENCY = 3;
+const breakdownCache = createTtlCache<Awaited<ReturnType<typeof api.budgetBreakdown>>>(60_000);
+const pendingCache = createTtlCache<number>(60_000);
 
 export function PortfolioProjectsView() {
   const { user, projects, activeProject, loadProject } = useRenova();
@@ -55,22 +61,21 @@ export function PortfolioProjectsView() {
       return;
     }
     let cancelled = false;
-    void Promise.all(
-      closing.map(async (p) => {
+    void mapWithConcurrency(closing, PORTFOLIO_FETCH_CONCURRENCY, async (p) => {
         if (p.pending_payments != null) {
           return { projectId: p.id, value: p.pending_payments, failed: false } as const;
         }
         try {
-          const value = (await api.countPendingPayments(user.id, p.id)) || 0;
+          const value = await pendingCache.get(`${user.id}:${p.id}`, async () => (await api.countPendingPayments(user.id, p.id)) || 0);
           return { projectId: p.id, value, failed: false } as const;
         } catch (error) {
           reportError('portfolio.pendingPayments', error, { projectId: p.id });
           return { projectId: p.id, value: null, failed: true } as const;
         }
-      }),
-    )
-      .then((rows) => {
+      }, () => cancelled)
+      .then((maybeRows) => {
         if (cancelled) return;
+        const rows = maybeRows.filter((r): r is NonNullable<typeof r> => r !== undefined);
         const known = rows.filter(
           (row): row is { projectId: string; value: number; failed: false } => !row.failed && row.value !== null,
         );
@@ -111,18 +116,17 @@ export function PortfolioProjectsView() {
     }
     let cancelled = false;
     setCatLoading(true);
-    void Promise.all(
-      selectedProjects.map(async (p) => {
+    void mapWithConcurrency(selectedProjects, PORTFOLIO_FETCH_CONCURRENCY, async (p) => {
         try {
-          return { projectId: p.id, value: await api.budgetBreakdown(user.id, p.id), failed: false } as const;
+          return { projectId: p.id, value: await breakdownCache.get(`${user.id}:${p.id}`, () => api.budgetBreakdown(user.id, p.id)), failed: false } as const;
         } catch (error) {
           reportError('portfolio.budgetBreakdown', error, { projectId: p.id });
           return { projectId: p.id, value: null, failed: true } as const;
         }
-      }),
-    )
-      .then((results) => {
+      }, () => cancelled)
+      .then((maybeResults) => {
         if (cancelled) return;
+        const results = maybeResults.filter((r): r is NonNullable<typeof r> => r !== undefined);
         const rows = results
           .filter((result) => !result.failed && result.value !== null)
           .map((result) => result.value!);
