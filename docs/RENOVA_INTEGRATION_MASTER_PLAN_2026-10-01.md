@@ -633,3 +633,101 @@ The PDF is derived evidence, not editable authority.
 
 **Dependency note:** JSON Forms is currently MIT-licensed upstream and should remain replaceable presentation infrastructure.
 
+## Additional wave — reality capture and 3D progress twin
+
+This wave creates a premium remote-site/reality layer that can materially differentiate Renova from ordinary renovation/project-management products.
+
+### Reality Capture Admission — ADOPT
+
+Accept controlled capture sets:
+
+- project;
+- room/zone;
+- capture session;
+- source images/video/depth/point cloud;
+- device;
+- capture time;
+- coordinate/reference method;
+- checksums;
+- operator;
+- privacy review.
+
+Raw capture evidence remains immutable.
+
+### Open3D Geometry Worker — ADOPT/CONDITIONAL SIDECAR
+
+Reference: https://github.com/isl-org/Open3D
+
+Use for bounded geometry processing:
+
+- point-cloud cleanup/downsampling;
+- registration/alignment;
+- plane extraction;
+- distance/deviation calculation;
+- room/geometry comparison;
+- source-to-reference transforms.
+
+Outputs are derived evidence with processor/version/checksum lineage.
+
+### Plan / IFC Deviation Map — ADOPT
+
+Where a reliable reference exists:
+
+reality capture -> registration -> approved IFC/geometry -> deviation field -> reviewed issue candidate
+
+Potential findings:
+
+- wall/plane offset;
+- opening/location mismatch;
+- floor/ceiling level discrepancy;
+- installed-object position discrepancy.
+
+A geometric difference is not automatically a construction defect or contractual nonconformance. Human review decides whether to create Punch/RFI/Change.
+
+### 3D Progress Twin — ADOPT
+
+Create a time-based room/site view:
+
+capture T1 -> T2 -> T3
+
+Support:
+
+- remote walkthrough;
+- date comparison;
+- 3D-linked Punch/evidence;
+- corresponding work package/material/inspection context;
+- owner/customer remote review.
+
+The twin is a read/projection layer over Renova authority.
+
+### Photorealistic reconstruction — EXPERIMENT/DEFER
+
+Research reference: https://github.com/nerfstudio-project/nerfstudio
+
+Use only if a pilot proves that photorealistic reconstruction materially improves remote review beyond panoramas/point clouds.
+
+Source captures and calibrated geometry remain the auditable evidence.
+
+### Capture Quality Gate — ADOPT
+
+Measured deviation requires:
+
+- sufficient coverage;
+- acceptable registration residual;
+- reliable scale/reference;
+- declared reference model/version;
+- acceptable device/capture quality.
+
+Otherwise the capture is visual-only.
+
+### Additional acceptance
+
+- every geometry result traces to immutable source captures;
+- insufficient capture quality cannot yield authoritative measurements;
+- reference IFC/plan version is explicit;
+- deviation cannot auto-fail payment/acceptance;
+- 3D layer remains usable/rebuildable independently of an advanced renderer;
+- household/site imagery obeys project ACL/retention/privacy rules.
+
+**Sequencing:** media/evidence authority -> capture admission -> geometry registration -> deviation review -> progress twin -> optional photorealistic renderer.
+
