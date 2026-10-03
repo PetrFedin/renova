@@ -60,14 +60,12 @@
     "native_chat_export": {"status":"SOURCE_CONFIRMED_INCOMPLETE","issue":320}
   },
   "open_launch_blockers": [
-    {"issue":316,"priority":"P0","reason":"reachable offline retry/response-loss can duplicate financial/business operations without a complete atomic request ledger"},
     {"issue":233,"priority":"P0","reason":"persistent external staging and exact-artifact promotion are not proven"},
     {"issue":234,"priority":"P0","reason":"managed production backup/PITR and real restore DR are not proven"},
     {"issue":235,"priority":"P0","reason":"retained end-to-end external alert delivery is incomplete"},
     {"issue":247,"priority":"P0","reason":"main protection and required checks are not verified as enforced"},
     {"issue":315,"priority":"P1","reason":"session/token/context/queue actor isolation across account changes is incomplete"},
     {"issue":317,"priority":"P1","reason":"normalized transport errors and cache provenance break intended offline/freshness contracts"},
-    {"issue":318,"priority":"P1","reason":"budget period allocation and independent portfolio category facts are incomplete"},
     {"issue":319,"priority":"P1","reason":"non-empty project purge and retention-aware related graph handling are incomplete"},
     {"issue":320,"priority":"P1","reason":"reachable native chat document export has no complete native delivery outcome"},
     {"issue":300,"priority":"P1","reason":"full declared independent-contractor product scope is incomplete"},
