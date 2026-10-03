@@ -85,6 +85,18 @@ async def test_participant_sees_project_in_list_and_detail_without_money(db):
 
 
 @pytest.mark.asyncio
+async def test_connected_contractor_id_is_exposed_only_to_owner_and_lead(db):
+    """Mobile определяет «исполнитель назначен» и «главный исполнитель» по project.contractor_id."""
+    cust, lead, p, _ = await _seed(db)
+    for actor, expected in ((cust, lead.id), (lead, lead.id), (p, None)):
+        detail = await _call(db, actor, "GET", "/api/v1/projects/pa-proj")
+        assert detail.status_code == 200, detail.text
+        assert detail.json()["contractor_id"] == expected
+        listing = await _call(db, actor, "GET", "/api/v1/projects")
+        assert listing.json()[0]["contractor_id"] == expected
+
+
+@pytest.mark.asyncio
 async def test_participant_acts_only_inside_scope(db):
     cust, lead, p, _ = await _seed(db)
     ok = await _call(db, p, "GET", "/api/v1/projects/pa-proj/stages/pa-s1")

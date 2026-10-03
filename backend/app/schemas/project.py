@@ -203,6 +203,9 @@ class ProjectOut(BaseModel):
     estimate_locked_at: str | None = None
     estimate_lock_proposed_at: str | None = None
     estimate_lock_proposed_by: str | None = None
+    # Подключённый (ведущий) исполнитель: только владельцу и исполнителю; гостю, технадзору
+    # и независимому участнику не отдаётся. Mobile по нему отличает «исполнитель назначен».
+    contractor_id: str | None = None
     # owner | contractor | guest | supervisor | none — archive/trash только для owner
     access_mode: str = "owner"
     # Capabilities are explicit and empty unless access_mode == supervisor.
