@@ -127,3 +127,17 @@ def test_legacy_raw_field_names_are_localized_on_read():
     assert localize_field_names("Спальня: архив") == "Спальня: архив"
     assert localize_field_names("name of notes") == "name of notes"
     assert localize_field_names(None) is None
+
+
+def test_codes_in_notification_bodies_are_russian():
+    from app.core.legacy_text import localize_bare_code
+    from app.core.ru_labels import severity_text, signed_by_text
+
+    assert signed_by_text("contractor") == "Подписал: исполнитель"
+    assert signed_by_text("customer") == "Подписал: заказчик"
+    assert severity_text("medium") == "Серьёзность: средняя"
+    # старые записи: в теле лежал сырой код
+    assert localize_bare_code("contractor") == "Подписал: исполнитель"
+    assert localize_bare_code("medium") == "Серьёзность: средняя"
+    assert localize_bare_code("Трещина у окна") == "Трещина у окна"
+    assert localize_bare_code(None) is None

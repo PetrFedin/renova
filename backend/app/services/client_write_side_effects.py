@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Iterable
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.ru_labels import severity_text
 from app.core.money_format import format_rub
 from app.models.entities import ChangeOrder, Expense, FloorPlan, FurnitureItem, Payment, Project, ProjectIssue, Receipt, SelectionItem
 from app.models.payment_evidence import PaymentEvidence
@@ -77,7 +78,7 @@ async def prepare_client_write_side_effects(db: AsyncSession, *, scope: str, pro
         effects.append(PreparedSideEffect(effect_type="activity", outbox_id=activity_row.id))
         notify_targets = {uid for uid in (project.customer_id, project.contractor_id) if uid and uid != user_id}
         for target_id in notify_targets:
-            notification_row = await outbox.enqueue(db, aggregate_type="project_issue", aggregate_id=issue.id, event_type=outbox.NOTIFICATION_EVENT, payload={"user_id": target_id, "project_id": project_id, "notification_type": "issue", "title": f"Новое замечание: {issue.title}", "body": issue.description or issue.severity, "link_path": "/control", "return_to": None})
+            notification_row = await outbox.enqueue(db, aggregate_type="project_issue", aggregate_id=issue.id, event_type=outbox.NOTIFICATION_EVENT, payload={"user_id": target_id, "project_id": project_id, "notification_type": "issue", "title": f"Новое замечание: {issue.title}", "body": issue.description or severity_text(issue.severity), "link_path": "/control", "return_to": None})
             effects.append(PreparedSideEffect(effect_type="notification", outbox_id=notification_row.id, match_key=target_id))
         return effects
     if scope == "warranty_claim.create":

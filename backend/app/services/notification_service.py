@@ -311,7 +311,7 @@ def _return_to_of(link_path: str | None) -> str | None:
 
 
 def notif_dict(notification: AppNotification) -> dict:
-    from app.core.legacy_text import localize_field_names
+    from app.core.legacy_text import localize_bare_code, localize_field_names
     from app.core.money_format import normalize_notification_body
 
     return {
@@ -319,7 +319,7 @@ def notif_dict(notification: AppNotification) -> dict:
         "project_id": notification.project_id,
         "notification_type": notification.notification_type.value,
         "title": localize_field_names(notification.title),
-        "body": localize_field_names(normalize_notification_body(notification.body)),
+        "body": localize_field_names(localize_bare_code(normalize_notification_body(notification.body))),
         "link_path": notification.link_path,
         "return_to": _return_to_of(notification.link_path),
         "read": notification.read,

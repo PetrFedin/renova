@@ -5,6 +5,7 @@ from datetime import timedelta
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.ru_labels import severity_text
 from app.core.timeutil import utc_now
 from app.models.entities import FloorPlan, Project, ProjectIssue, Room, Stage, User
 from app.models.work_schedule import ProjectWorkSchedule, WorkScheduleStatus
@@ -106,7 +107,7 @@ async def create_quality_issue(
                 "user_id": actor.id,
                 "kind": "IssueCreated",
                 "title": issue.title,
-                "body": issue.description or issue.severity,
+                "body": issue.description or severity_text(issue.severity),
                 "room_id": issue.room_id,
                 "stage_id": issue.stage_id,
                 "link_path": "/control",
@@ -124,7 +125,7 @@ async def create_quality_issue(
                         "project_id": project.id,
                         "notification_type": "issue",
                         "title": f"Новое замечание: {issue.title}",
-                        "body": issue.description or issue.severity,
+                        "body": issue.description or severity_text(issue.severity),
                         "link_path": "/control",
                         "return_to": None,
                     },

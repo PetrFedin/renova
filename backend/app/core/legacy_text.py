@@ -20,3 +20,20 @@ def localize_field_names(text: str | None) -> str | None:
         return text
     pattern = re.compile(r"\b(" + "|".join(re.escape(k) for k in keys) + r")\b")
     return pattern.sub(lambda m: _FIELD_LABELS_RU[m.group(1)], text)
+
+
+_LEGACY_BARE_CODES = {
+    "customer": "Подписал: заказчик",
+    "contractor": "Подписал: исполнитель",
+    "low": "Серьёзность: низкая",
+    "medium": "Серьёзность: средняя",
+    "high": "Серьёзность: высокая",
+    "critical": "Серьёзность: критичная",
+}
+
+
+def localize_bare_code(text: str | None) -> str | None:
+    """Тело, состоящее из одного кода роли/серьёзности («contractor», «medium»), -> русская фраза."""
+    if not text:
+        return text
+    return _LEGACY_BARE_CODES.get(text.strip(), text)

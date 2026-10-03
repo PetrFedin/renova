@@ -4,6 +4,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.ru_labels import signed_by_text
 from app.models.entities import Project, User
 from app.models.project_documents import (
     DocumentSignature,
@@ -109,7 +110,7 @@ async def _enqueue_sign_effects(
             "user_id": actor.id,
             "kind": "DocumentSigned",
             "title": f"Подписан документ: {document.title}",
-            "body": role,
+            "body": signed_by_text(role),
             "link_path": "/documents",
         },
     )
@@ -127,7 +128,7 @@ async def _enqueue_sign_effects(
                 "project_id": project.id,
                 "notification_type": "document",
                 "title": f"Документ подписан: {document.title}",
-                "body": role,
+                "body": signed_by_text(role),
                 "link_path": "/documents",
                 "return_to": (
                     "/(customer)/(tabs)/"

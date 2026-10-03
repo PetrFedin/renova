@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.ru_labels import signed_by_text
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import AcceptanceStatus, DesignPackage, Payment, Receipt, Stage, User, WorkAcceptance
@@ -385,7 +386,7 @@ async def sign_project_document(
                 project_id=project_id,
                 notification_type="document",
                 title=f"Документ подписан: {doc.title}",
-                body=getattr(user.role, "value", str(user.role)),
+                body=signed_by_text(user.role),
                 link_path="/documents",
                 return_to="/(customer)/(tabs)/" if recipient_id == proj.customer_id else "/(contractor)/(tabs)/",
             )
