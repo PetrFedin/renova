@@ -71,3 +71,18 @@
 - План этажа: загрузка обеими ролями (`upload-url` → PUT → `POST /floor-plans`), гость — 404.
 - Профиль исполнителя: специализации/город/о себе сохраняются через «Сохранить профиль» и попадают в каталог (`/contractors?city=…`); значения демо-профиля возвращены. P3: после сохранения лист называется «Реквизиты сохранены».
 - Отзыв приглашений команды: «Отозвать» → лист «Отозвать приглашение?» → `DELETE /teams/invites/{id}`, список 2 → 1.
+
+## Охват и метод
+- Свой headless Chromium (Playwright), demo-логин, проект «AUDIT3 Квартира» (адрес «E2E audit3»); исполнитель — SPA-обход 35 маршрутов × 375/768/1280, заказчик — 33 маршрута × 375/1280, детектор: горизонтальный скролл, ISO-даты, snake_case, `NaN/undefined/null`, сырые числа, 4xx/5xx. Горизонтального скролла нет; 4xx — только 429 при общем лимите 400 rpm.
+- Проект убран за собой: заказчик → `/trash`, пробный проект гостя → `/trash`; профиль демо-исполнителя возвращён; отозванные ссылки/приглашения. Чаты в корзине вместе с проектом (`/archive` чата вернул 422).
+- Проверка закрытий волн: `npm run mobile:test` (полностью) и `npm run typecheck:mobile` — зелёные; backend — только затронутые файлы (`test_money_format`, `test_project_participant_access`, `test_money_role_acl`, `test_notification*`, `test_activity_*`, `test_cross_domain_notify`, `test_contract_gate_golden_path`, `test_document_lifecycle_atomicity`, `test_technical_supervision_actions`).
+
+## Открыто (по приоритету)
+- **P0/P1 (требует действия на стенде):** перезапустить backend на :8100 — он запущен без `--reload`, исправление A3-03 (`contractor_id` в проекте) и тексты A3-05..A3-08 на живом стенде не видны до рестарта; без него у исполнителя «Отправить смету на согласование» выключена.
+- **P2:** E2E-мусор у демо-заказчика/исполнителя (24–27 объектов, 17 «активных проектов», 8 неурегулированных платежей) — перегружает портфель, чат и блокирует `deletion-check` (O-12 из аудита 2).
+- **P2:** в UI гостя «только просмотр» остаются формулировки и CTA для заказчика («Оплатить 2 счёта», «Примите этап…», «приложите чек…»).
+- **P3:** отзыв портальной ссылки заказчиком без подтверждения; после «Начать» этап на долю секунды остаётся кнопка «Начать»/подпись «Не начат · 0%»; «Этап принят» упоминает метку на плане этажа без плана; названия чеков/выписок «Чек 1500 ₽» без разрядов; PDF-отчёты без разрядов в суммах; дробные числа с точкой («12.5%», «13.2 м²») в портале/планировщике; вывоз «scheduled» без даты; «Реквизиты сохранены» после сохранения профиля каталога; повторяющееся «○ Запланирован» в шапке этапа; в истории чата уже созданные сообщения со старым форматом даты («до 2026-10-05»).
+
+## Изменённые файлы
+backend: `app/core/money_format.py`, `app/core/legacy_text.py` (новый), `app/core/ru_labels.py` (новый), `app/schemas/project.py`, `app/api/v1/projects.py`, `app/api/v1/documents.py`, `app/services/{chat_service,notification_service,activity_service,project_create_service,document_lifecycle_service,client_write_side_effects,technical_supervision_action_service}.py`; тесты `tests/test_money_format.py`, `tests/test_project_participant_access.py`.
+mobile: `constants/osSections.ts`, `lib/{formatScheduleDate,offlineUi,offlineQueuedMessage(новый)}.ts`, `lib/domain/{invoiceCountLabel(новый),buildProjectOsSnapshot,buildHomeKpiDetail,paymentHistory}.ts`, `lib/auditThree.test.ts` (новый), компоненты `WorkStageCard`, `UnifiedAcceptanceList`, `ActivityFeed`, `RoomDiffTimeline`, `LeadChat`, `PaymentDetailSheet`, `chat/ChatThreadView`, `screens/{StageDetailScreen,PortalScreen}`, `screens/stage/StageDetailHero`, `screens/control/ContractorControlView`, `screens/estimate/{EstimateSummaryLayer,ContractorEstimateView}`; `package.json` (тест в `mobile:test`). Спека (blob-SHA) не менялась, миграций нет.
