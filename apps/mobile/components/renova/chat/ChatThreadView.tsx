@@ -103,6 +103,7 @@ function MessageBubble({
   onTask,
   onConfirm,
   onPay,
+  payLabel,
   onEdit,
   onDelete,
   actions,
@@ -127,6 +128,8 @@ function MessageBubble({
   onTask?: () => void;
   onConfirm?: () => void;
   onPay?: () => void;
+  /** Для исполнителя счёт не «к оплате» — он его выставил. */
+  payLabel?: string;
   onEdit?: () => void;
   onDelete?: () => void;
   /** Что разрешено над этим сообщением (messageActions). */
@@ -205,7 +208,7 @@ function MessageBubble({
       ) : null}
       {editedLabel(m) ? <Text style={s.edited}>{editedLabel(m)}</Text> : null}
       {m.message_type === 'payment' && m.confirmed !== true && onPay && (
-        <PrimaryButton title="Перейти к оплате" compact onPress={onPay} />
+        <PrimaryButton title={payLabel || 'Перейти к оплате'} compact onPress={onPay} />
       )}
       {m.message_type === 'confirm' && m.confirmed !== true && onConfirm && (
         <PrimaryButton title="Подтвердить" compact onPress={onConfirm} />
@@ -920,6 +923,7 @@ export function ChatThreadView({
             } : undefined}
             repliedTo={m.reply_to_id ? chat.messages.find((x) => x.id === m.reply_to_id) ?? null : null}
             onOpenReplied={m.reply_to_id ? () => router.setParams({ highlightId: m.reply_to_id! }) : undefined}
+            payLabel={role === 'contractor' ? 'Открыть счёт' : undefined}
             onPay={canViewProjectActions && m.message_type === 'payment' ? () => {
               const meta = (m as { meta?: { payment_id?: string }; payment_id?: string });
               openPaymentFlow(meta.meta?.payment_id || meta.payment_id);
