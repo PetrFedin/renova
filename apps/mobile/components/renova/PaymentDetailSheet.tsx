@@ -34,12 +34,13 @@ import {
   validateDisputeResponseComment,
   type DisputeResponseKind,
 } from '@/lib/domain/paymentDisputeResponse';
+import { parseServerInstant } from '@/lib/formatScheduleDate';
 
 export { PAYMENT_TYPE_LABEL, PAYMENT_STATUS_LABEL } from '@/constants/labels';
 
 function fmtDate(iso: string | null | undefined) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+  return (parseServerInstant(iso) ?? new Date(iso)).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 /** Clarity I: gate приёмки — sheet с CTA, не Alert */

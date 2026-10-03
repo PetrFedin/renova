@@ -7,12 +7,13 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { RenovaTheme } from '@/constants/Theme';
 import { notifyError } from '@/lib/notify';
 import { reportError } from '@/lib/reportError';
+import { parseServerInstant } from '@/lib/formatScheduleDate';
 
 type Msg = { id: string; user_id: string; text: string; at: string };
 
 function stamp(at: string): string {
-  const date = new Date(at);
-  if (Number.isNaN(date.getTime())) return '';
+  const date = parseServerInstant(at);
+  if (!date) return '';
   return date.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 

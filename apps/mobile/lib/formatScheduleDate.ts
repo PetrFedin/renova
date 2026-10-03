@@ -52,13 +52,30 @@ export function formatScheduleWorkSpan(
  * Момент события для ленты: «02.10.2026 00:36» в часовом поясе пользователя.
  * Сервер отдаёт время без пояса (UTC), поэтому без суффикса считаем его UTC.
  */
-export function formatEventDateTime(iso: string | null | undefined): string {
-  if (!iso) return '—';
+/**
+ * Сервер отдаёт моменты времени без пояса (UTC): `2026-10-03T20:53:31`. Конструктор Date
+ * читает такую строку как местное время, и пользователь в Москве видит на 3 часа раньше.
+ * Без суффикса пояса считаем строку UTC.
+ */
+export function parseServerInstant(iso: string | null | undefined): Date | null {
+  if (!iso) return null;
   const normalized = iso.replace(' ', 'T');
   const hasZone = /(Z|[+-]\d{2}:?\d{2})$/.test(normalized);
   const d = new Date(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(normalized) && !hasZone ? `${normalized}Z` : normalized);
-  if (Number.isNaN(d.getTime())) return iso;
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+export function formatEventDateTime(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = parseServerInstant(iso);
+  if (!d) return iso;
   const date = d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const time = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
   return `${date} ${time}`;
+}
+
+/** «23:53» в часовом поясе пользователя (время сообщения чата, комментария). */
+export function formatClockTime(iso: string | null | undefined): string {
+  const d = parseServerInstant(iso);
+  return d ? d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '';
 }

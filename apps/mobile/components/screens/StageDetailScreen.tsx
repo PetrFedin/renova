@@ -38,6 +38,7 @@ import { STAGE_STATUS_LABEL } from '@/constants/labels';
 import { reportError, reportCatch } from '@/lib/reportError';
 import { StageDetailExecutorChecklist } from '@/components/screens/stage/StageDetailExecutorChecklist';
 import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
+import { formatEventDateTime } from '@/lib/formatScheduleDate';
 
 // Шаблоны только для обычных комментариев: сдачу на приёмку запускает кнопка «Готово — на приёмку».
 const TEMPLATES = ['Работы выполнены по смете', 'Нужен доступ на объект', 'Задержка из-за материалов'];
@@ -540,7 +541,7 @@ export function StageDetailScreen() {
               <Text style={styles.commentRole}>{c.author_role === 'contractor' ? 'Исполнитель' : c.author_role === 'supervisor' ? 'Технадзор' : 'Заказчик'}</Text>
               {renderComment(c.text)}
               <CommentReactions id={c.id} stageId={stage.id} counts={reactCounts[c.id]} />
-              <Text style={styles.meta}>{c.created_at.slice(0, 16).replace('T', ' ')}</Text>
+              <Text style={styles.meta}>{formatEventDateTime(c.created_at)}</Text>
             </Pressable>
           ))}
           {replyTo ? (

@@ -2,6 +2,7 @@
 import type { Payment, PaymentEvent } from '@/lib/api';
 import { PAYMENT_STATUS_LABEL, PAYMENT_TYPE_LABEL } from '@/constants/labels';
 import { DISPUTE_RESPONSE_TITLE, disputeResponseKindOf } from '@/lib/domain/paymentDisputeResponse';
+import { parseServerInstant } from '@/lib/formatScheduleDate';
 
 export type PaymentHistoryEvent = {
   id: string;
@@ -11,7 +12,7 @@ export type PaymentHistoryEvent = {
 };
 
 function fmt(iso: string) {
-  return new Date(iso).toLocaleDateString('ru-RU', {
+  return (parseServerInstant(iso) ?? new Date(iso)).toLocaleDateString('ru-RU', {
     day: 'numeric',
     month: 'short',
     year: 'numeric',

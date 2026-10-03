@@ -1,5 +1,6 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
+import { formatEventDateTime } from '@/lib/formatScheduleDate';
 
 type Log = { field: string; old: string; new: string; at: string };
 export function RoomDiffTimeline({ logs }: { logs: Log[] }) {
@@ -9,7 +10,7 @@ export function RoomDiffTimeline({ logs }: { logs: Log[] }) {
       <Text style={s.head}>Хронология изменений</Text>
       {logs.map((l, i) => (
         <View key={i} style={s.row}>
-          <Text style={s.date}>{l.at.slice(0, 16).replace('T', ' ')}</Text>
+          <Text style={s.date}>{formatEventDateTime(l.at)}</Text>
           <Text style={s.change}>{l.field}: <Text style={s.old}>{l.old}</Text> → <Text style={s.new}>{l.new}</Text></Text>
         </View>
       ))}

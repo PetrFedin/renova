@@ -1,8 +1,9 @@
+process.env.TZ = 'Europe/Moscow';
 /** Живой аудит 3: подписи и формат дат, найденные в обходе исполнителя. */
 import assert from 'node:assert/strict';
 import { buildBreadcrumb } from './breadcrumb';
 import { offlineQueuedMessage } from './offlineQueuedMessage';
-import { formatScheduleDayFull, formatEventDateTime } from './formatScheduleDate';
+import { formatScheduleDayFull, formatEventDateTime, formatClockTime, parseServerInstant } from './formatScheduleDate';
 
 // A3-02: крошка экрана «Профиль» не называется «Данные объекта» (это вкладка Объект → Данные объекта).
 for (const role of ['customer', 'contractor'] as const) {
@@ -20,5 +21,12 @@ assert.match(formatEventDateTime('2026-10-03 20:32:00'), /^\d{2}\.\d{2}\.\d{4} \
 // A3-04: подпись действия в офлайн-сообщении не склоняется как подлежащее.
 assert.match(offlineQueuedMessage('Приёмка'), /^Действие «Приёмка» поставлено в очередь/);
 assert.match(offlineQueuedMessage(), /^Действие поставлено в очередь/);
+
+// A3-05: время без пояса — это UTC; в Москве 20:53 UTC = 23:53 (чат, счета, комментарии).
+assert.equal(formatClockTime('2026-10-03T20:53:31.917400'), '23:53');
+assert.equal(formatClockTime('2026-10-03T20:53:31+03:00'), '20:53');
+assert.equal(formatClockTime(null), '');
+assert.equal(parseServerInstant('2026-10-03 20:53')?.toISOString(), '2026-10-03T20:53:00.000Z');
+assert.equal(formatEventDateTime('2026-10-03T20:53:31'), '03.10.2026 23:53');
 
 console.log('auditThree.test OK');

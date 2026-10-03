@@ -46,6 +46,7 @@ import {
   participantRoleLabel,
   type MessageActions,
 } from '@/lib/chatActions';
+import { formatClockTime } from '@/lib/formatScheduleDate';
 
 const REACTIONS = ['👍', '✅', '❤️', '🔥', '❓'];
 
@@ -143,7 +144,7 @@ function MessageBubble({
     return (
       <View style={s.systemWrap} onLayout={(e: { nativeEvent: { layout: { y: number } } }) => onLayoutY?.(e.nativeEvent.layout.y)}>
         <Text style={s.systemText}>{m.text}</Text>
-        <Text style={s.systemTime}>{m.created_at.slice(11, 16)}</Text>
+        <Text style={s.systemTime}>{formatClockTime(m.created_at)}</Text>
       </View>
     );
   }
@@ -156,7 +157,7 @@ function MessageBubble({
       >
         <Text style={s.role}>{roleLabel}</Text>
         <Text style={s.deletedText}>Сообщение удалено</Text>
-        <Text style={s.time}>{m.created_at.slice(11, 16)}</Text>
+        <Text style={s.time}>{formatClockTime(m.created_at)}</Text>
       </View>
     );
   }
@@ -267,7 +268,7 @@ function MessageBubble({
           <MessageAction icon="checkbox-outline" label="Создать задачу из сообщения" onPress={onTask} />
         ) : null}
         <Text style={[s.time, s.timeInRow]}>
-          {m.created_at.slice(11, 16)}{mine && m.read ? ' ✓✓' : ''}
+          {formatClockTime(m.created_at)}{mine && m.read ? ' ✓✓' : ''}
         </Text>
       </View>
     </Pressable>
