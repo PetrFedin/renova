@@ -69,7 +69,7 @@ const projectId = process.env.RENOVA_EAS_PROJECT_ID || app.expo?.extra?.eas?.pro
 if (!v || v !== pkg.version) throw new Error(`app/package version mismatch: app=${v} package=${pkg.version}`);
 if (bid !== 'ru.renova.app') throw new Error(`unexpected bundleIdentifier: ${bid}`);
 if (!projectId || typeof projectId !== 'string') {
-  throw new Error('EAS project is not linked: set RENOVA_EAS_PROJECT_ID (read by apps/mobile/app.config.ts) or expo.extra.eas.projectId in app.json');
+  throw new Error('EAS project is not linked: set RENOVA_EAS_PROJECT_ID (read by apps/mobile/app.config.js) or expo.extra.eas.projectId in app.json');
 }
 console.log(`OK: version=${v} bundle=${bid} EAS project linked`);
 NODE

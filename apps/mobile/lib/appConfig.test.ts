@@ -1,4 +1,4 @@
-/** Контракт app.config.ts: env-слой поверх app.json, PLACEHOLDER-заглушки, fail-closed для store-профилей. */
+/** Контракт app.config.js: env-слой поверх app.json, PLACEHOLDER-заглушки, fail-closed для store-профилей. */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

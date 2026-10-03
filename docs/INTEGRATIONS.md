@@ -12,7 +12,7 @@
 | Статус для админа | `GET /api/v1/admin/integrations/status` |
 | Сводка из терминала | `scripts/integrations-status.py` |
 | Шаблон окружения production | `backend/.env.production.example` |
-| Мобильная конфигурация | `apps/mobile/app.config.ts` (поверх `app.json`), `apps/mobile/eas.json` |
+| Мобильная конфигурация | `apps/mobile/app.config.js` (поверх `app.json`), `apps/mobile/eas.json` |
 | Подстановка реквизитов в `eas.json` | `scripts/apply-release-env.mjs` |
 
 Где хранить значения. Бэкенд: секрет-менеджер вашего хостинга (переменные окружения процессов `renova-api` и `renova-worker`, оба из одного образа, значения одинаковые). Мобильное приложение: EAS secrets/переменные (`eas env:create` или раздел Environment variables в проекте на expo.dev) и секреты GitHub Actions для workflow `eas-build.yml`. Значения в репозиторий не коммитьте.
@@ -194,7 +194,7 @@ OPS_ALERT_EMAIL=<адрес дежурного>
 
 ## 9. Мобильное приложение: идентификаторы и сборка
 
-Конфигурация собирается из `apps/mobile/app.json` (версия, номера сборки, иконки) и `apps/mobile/app.config.ts` (значения из окружения). Заглушки в коде содержат слово `PLACEHOLDER` и не выдаются за настоящие.
+Конфигурация собирается из `apps/mobile/app.json` (версия, номера сборки, иконки) и `apps/mobile/app.config.js` (значения из окружения). Заглушки в коде содержат слово `PLACEHOLDER` и не выдаются за настоящие.
 
 | Переменная | Что это | Где взять |
 |---|---|---|
@@ -208,9 +208,9 @@ OPS_ALERT_EMAIL=<адрес дежурного>
 | `RENOVA_GOOGLE_SERVICE_ACCOUNT_KEY_PATH` | ключ сервис-аккаунта Google Play | Play Console → API access |
 
 Шаги:
-1. Занесите значения в EAS environment variables (для `RENOVA_*`, читаемых `app.config.ts`) и в окружение CI.
+1. Занесите значения в EAS environment variables (для `RENOVA_*`, читаемых `app.config.js`) и в окружение CI.
 2. Перед сборкой в CI/локально выполните `node scripts/apply-release-env.mjs` — она впишет адреса API и поля submit в `eas.json` (рабочая копия). Проверка: `node scripts/apply-release-env.mjs --check` (код 1, пока остались `PLACEHOLDER`).
-3. Профили `production` и `testflight` **не соберутся**, пока остаются незаполненные значения (`app.config.ts` падает с перечнем, какие именно). Обход только для отладки: `RENOVA_ALLOW_PLACEHOLDER_CONFIG=1`.
+3. Профили `production` и `testflight` **не соберутся**, пока остаются незаполненные значения (`app.config.js` падает с перечнем, какие именно). Обход только для отладки: `RENOVA_ALLOW_PLACEHOLDER_CONFIG=1`.
 4. Камера: плагин `expo-camera` и разрешение `CAMERA` добавлены; `RECORD_AUDIO` заблокирован. После `eas build` проверьте итоговый Android-манифест (C6).
 5. Проверка итоговой конфигурации: `cd apps/mobile && npx expo config --json --type public` — в `extra.releaseConfigGaps` должен быть пустой список.
 6. `npm run testflight:preflight` проходит.
