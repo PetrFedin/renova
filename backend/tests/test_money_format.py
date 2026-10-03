@@ -106,3 +106,14 @@ def test_chat_task_due_date_is_russian():
     assert _ru_date("2026-10-05") == "05.10.2026"
     assert _ru_date("2026-10-05T10:00:00Z") == "05.10.2026"
     assert _ru_date("скоро") == "скоро"
+
+
+def test_chat_invoice_text_uses_russian_money_format():
+    import inspect
+
+    from app.core.money_format import format_rub
+    from app.services import chat_service
+
+    assert format_rub(1234.5) == "1 234,50 ₽"
+    src = inspect.getsource(chat_service)
+    assert "{amount:.0f} ₽" not in src and "format_rub(amount)" in src

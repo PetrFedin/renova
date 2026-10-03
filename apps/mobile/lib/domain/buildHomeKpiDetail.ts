@@ -1,4 +1,5 @@
 /** Детализация KPI-плитки главной — sheet без ухода с экрана */
+import { invoiceCountLabel } from './invoiceCountLabel';
 import { formatRub } from '../../constants/Theme';
 import { budgetTabRoute, calendarTabRoute, repairTabRoute, type OsRole } from '../../constants/osSections';
 import type { OsNavHref, ProjectOsSnapshot } from './osTypes';
@@ -33,11 +34,7 @@ export type HomeKpiDetail = {
 };
 
 function paymentWord(count: number): string {
-  const mod10 = count % 10;
-  const mod100 = count % 100;
-  if (mod10 === 1 && mod100 !== 11) return `${count} счёт`;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return `${count} счёта`;
-  return `${count} счетов`;
+  return invoiceCountLabel(count);
 }
 
 function budgetDetail(snap: ProjectOsSnapshot, role: OsRole, closing: boolean): HomeKpiDetail {

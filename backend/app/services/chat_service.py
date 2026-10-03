@@ -1409,7 +1409,9 @@ async def create_payment_message(
         request_id=request_id,
         scope="chat.invoice.payment",
     )
-    text = f"💳 Счёт: {title} · {amount:.0f} ₽"
+    from app.core.money_format import format_rub
+
+    text = f"💳 Счёт: {title} · {format_rub(amount)}"
     meta = {"payment_id": pay.id, "amount": amount}
     msg = await _send_service_message(
         db, thread, user_id, role, text, "payment", meta=meta, request_id=request_id,

@@ -3,6 +3,7 @@ import { buildAttention } from '@/lib/attention';
 import type { Dashboard, MaterialPick, OsBudgetSummary, OsRisk, OsScheduleSummary, ProjectDetail, Purchase, ReceiptItem } from '@/lib/api';
 import { resolveBudgetFigures } from '@/lib/useOsBudgetFigures';
 import { formatRub } from '@/constants/Theme';
+import { invoiceCountLabel } from './invoiceCountLabel';
 import type { ProjectOsSnapshot } from './osTypes';
 import { computeProjectHealth, forecastFinalCost, capOverrunRisk } from './projectHealth';
 import { sanitizeRiskImpact } from './sanitizeRiskImpact';
@@ -106,7 +107,7 @@ export function buildProjectOsSnapshot(
         score: 90,
         level: 'attention',
         label: 'Закрытие',
-        factors: [`${unpaid} счетов к оплате`],
+        factors: [`${invoiceCountLabel(unpaid)} к оплате`],
       };
     } else if (wOpen > 0) {
       health = {
@@ -175,10 +176,10 @@ export function buildProjectOsSnapshot(
     if (unpaid > 0) {
       nextAction = role === 'customer'
         ? {
-          title: unpaid === 1 ? 'Оплатить 1 счёт' : `Оплатить ${unpaid} счетов`,
+          title: `Оплатить ${invoiceCountLabel(unpaid)}`,
           subtitle: pendingPaymentTotal > 0
             ? `${formatRub(pendingPaymentTotal)} к оплате`
-            : `${unpaid} счёт(ов)`,
+            : invoiceCountLabel(unpaid),
           button: 'Оплатить',
           href: budgetTabRoute(role, 'payments', { openPayment: '1' }),
           kind: 'payment',
@@ -251,7 +252,7 @@ export function buildProjectOsSnapshot(
     };
   } else if (unpaid > 0 && role === 'customer') {
     nextAction = {
-      title: unpaid === 1 ? 'Оплатить 1 счёт' : `Оплатить ${unpaid} счетов`,
+      title: `Оплатить ${invoiceCountLabel(unpaid)}`,
       subtitle: pendingPaymentTotal > 0
         ? `${formatRub(pendingPaymentTotal)} к оплате`
         : 'Счёт после приёмки',

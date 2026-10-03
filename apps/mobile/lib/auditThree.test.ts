@@ -2,6 +2,7 @@ process.env.TZ = 'Europe/Moscow';
 /** Живой аудит 3: подписи и формат дат, найденные в обходе исполнителя. */
 import assert from 'node:assert/strict';
 import { buildBreadcrumb } from './breadcrumb';
+import { invoiceCountLabel } from './domain/invoiceCountLabel';
 import { offlineQueuedMessage } from './offlineQueuedMessage';
 import { formatScheduleDayFull, formatEventDateTime, formatClockTime, parseServerInstant } from './formatScheduleDate';
 
@@ -28,5 +29,8 @@ assert.equal(formatClockTime('2026-10-03T20:53:31+03:00'), '20:53');
 assert.equal(formatClockTime(null), '');
 assert.equal(parseServerInstant('2026-10-03 20:53')?.toISOString(), '2026-10-03T20:53:00.000Z');
 assert.equal(formatEventDateTime('2026-10-03T20:53:31'), '03.10.2026 23:53');
+
+// A3-06: «Оплатить 2 счетов» → «Оплатить 2 счёта».
+assert.deepEqual([1, 2, 4, 5, 11, 12, 21, 22].map(invoiceCountLabel), ['1 счёт', '2 счёта', '4 счёта', '5 счетов', '11 счетов', '12 счетов', '21 счёт', '22 счёта']);
 
 console.log('auditThree.test OK');
