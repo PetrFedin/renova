@@ -156,7 +156,7 @@ Webhook: в кабинете Контура укажите `https://<API_HOST>/a
 ```
 S3_ENDPOINT=https://<endpoint провайдера>
 S3_ACCESS_KEY=<access key>
-S3_SECRET_KEY=<secret key>
+S3_SECRET_KEY=<секретный ключ из панели провайдера>
 S3_BUCKET=renova
 S3_PUBLIC_URL=<внешний URL для ссылок, если отличается от S3_ENDPOINT>
 ```

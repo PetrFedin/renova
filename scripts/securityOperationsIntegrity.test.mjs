@@ -34,7 +34,7 @@ test("security tooling versions are exact and reviewed", () => {
 });
 
 test("JWT runtime uses direct PyJWT and carries no python-jose dependency", () => {
-  assert.match(backendPyproject, /^pyjwt = "2\.13\.0"$/m);
+  assert.match(backendPyproject, /^pyjwt = "2\.15\.0"$/m);
   assert.doesNotMatch(backendPyproject, /python-jose/);
   assert.match(jwtSecurity, /^import jwt$/m);
   assert.match(jwtSecurity, /InvalidTokenError as JWTError/);
