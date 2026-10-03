@@ -1,4 +1,5 @@
 /** Список чеков — категория, комната, редактирование */
+import { enteredByLabel } from '@/lib/domain/expenseAnalytics';
 import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { notifyError } from '@/lib/notify';
@@ -91,6 +92,7 @@ export function ReceiptList({
               {r.room_id && rooms ? ` · ${rooms.find((x) => x.id === r.room_id)?.name || 'комната'}` : ''}{r.stage_id && stages ? ` · ${stages.find((x) => x.id === r.stage_id)?.name || 'этап'}` : ''}
               {' · '}{formatScheduleDayFull(r.receipt_at || r.created_at)}
               {r.description && r.source === 'manual' ? ` · ${r.description}` : ''}{r.fn && r.fn !== 'MANUAL' ? ` · ФН ${r.fn.slice(-4)}` : ''}
+              {enteredByLabel({ enteredByRole: r.entered_by_role, enteredByName: r.entered_by_name }) ? ` · ${enteredByLabel({ enteredByRole: r.entered_by_role, enteredByName: r.entered_by_name })}` : ''}
             </Text>
             {editable && (
               <View style={s.editRow}>
@@ -137,7 +139,7 @@ export function ReceiptList({
             <Text style={[s.badge, r.verified ? s.ok : s.pending]}>
               {r.verified
                 ? (fnsLive === false ? '✓ demo' : '✓ ФНС')
-                : r.source === 'manual' ? 'Внесён вручную' : 'Не проверен'}
+                : r.source === 'manual' ? 'Вручную · без проверки ФНС' : 'Не проверен ФНС'}
             </Text>
           ) : (
             <Pressable onPress={() => reverify(r)} hitSlop={8}>

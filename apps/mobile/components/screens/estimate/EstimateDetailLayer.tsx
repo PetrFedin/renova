@@ -1,4 +1,5 @@
 /** Слой «Детализация» — работы и материалы по комнатам с фильтрами */
+import { formatPercentRu } from '@/lib/formatDecimal';
 import { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
@@ -77,7 +78,7 @@ export function EstimateDetailLayer({
             <Text>
               План: {formatRub(stats.planned)} · Факт: {formatRub(stats.actual)}
             </Text>
-            <Text style={s.overrun}>Отклонение: {stats.overrun_percent}%</Text>
+            <Text style={s.overrun}>Отклонение: {formatPercentRu(stats.overrun_percent)}</Text>
           </View>
         </ObjectSection>
       )}

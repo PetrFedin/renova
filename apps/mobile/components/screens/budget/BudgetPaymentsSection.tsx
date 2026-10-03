@@ -1,4 +1,6 @@
 /** Вкладка «Бюджет → Оплаты» — создание, фильтры, история */
+import { paymentCheckLabel } from '@/lib/domain/paymentReceiptCheck';
+import { READ_ONLY_PAYMENTS_HINT } from '@/lib/domain/readOnlyCopy';
 import { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { formatRub, RenovaTheme } from '@/constants/Theme';
@@ -73,7 +75,9 @@ export function BudgetPaymentsSection({
   return (
     <>
       <Text style={s.dataHint}>
-        {role === 'contractor'
+        {readOnly
+          ? READ_ONLY_PAYMENTS_HINT
+          : role === 'contractor'
           ? 'Счета — запрос оплаты за работы или материалы. Заказчик переводит деньги вне приложения и прикладывает чек; в подтверждённый расход сумма попадёт после того, как вы подтвердите получение. Ошибочный счёт можно отозвать, пока он не оплачен.'
           : 'Счета — оплата работ или материалов исполнителю. После ручного перевода приложите чек на полную сумму или дождитесь подтверждения получения исполнителем: в подтверждённый расход сумма попадёт только после этого.'}
       </Text>
@@ -163,7 +167,9 @@ export function BudgetPaymentsSection({
           && stageAllowsPaymentEvidence
           && (payment.status === 'pending' || payment.status === 'paid_unverified');
         // Кому что делать дальше: без этого «оплачено без чека» и «в обработке» были тупиком.
-        const actionHint = role === 'contractor' && payment.status === 'paid_unverified'
+        const actionHint = readOnly
+          ? (payment.status === 'paid_unverified' ? 'Перевод отмечен, ждёт подтверждения получения' : null)
+          : role === 'contractor' && payment.status === 'paid_unverified'
           ? 'Заказчик отметил перевод — подтвердите, что деньги пришли'
           : role === 'customer' && payment.status === 'paid_unverified'
             ? 'Приложите чек на полную сумму или дождитесь подтверждения исполнителя'
@@ -188,6 +194,7 @@ export function BudgetPaymentsSection({
                   {PAYMENT_TYPE_LABEL[payment.payment_type] || payment.payment_type} · {formatRub(payment.amount)}
                   {confirmedDate ? ` · ${confirmedDate}` : ''}
                 </Text>
+                {paymentCheckLabel(payment) ? <Text style={[s.rowMeta, { color: RenovaTheme.colors.warningText }]}>Чек {paymentCheckLabel(payment)}</Text> : null}
                 {actionHint ? <Text style={[s.rowMeta, { color: RenovaTheme.colors.warningText }]}>{actionHint}</Text> : null}
               </View>
               <Text style={[s.status, { color: statusColor }]}>

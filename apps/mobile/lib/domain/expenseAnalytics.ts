@@ -18,6 +18,9 @@ export type ExpenseDetailRow = {
   kind: 'receipt' | 'expense' | 'material';
   hasDocument: boolean;
   verified?: boolean;
+  /** Ручной расход/чек: кто внёс (MNY-003). */
+  enteredByRole?: 'customer' | 'contractor' | 'other' | null;
+  enteredByName?: string | null;
 };
 
 export type ExpenseGroup = {
@@ -71,6 +74,8 @@ export function buildExpenseDetailRows(
       kind: 'receipt',
       hasDocument: true,
       verified: r.verified,
+      enteredByRole: r.entered_by_role ?? null,
+      enteredByName: r.entered_by_name ?? null,
     });
   }
 
@@ -90,6 +95,8 @@ export function buildExpenseDetailRows(
       stageName: stageName(stages, e.stage_id),
       kind: 'expense',
       hasDocument: e.status !== 'pending_receipt',
+      enteredByRole: e.entered_by_role ?? null,
+      enteredByName: e.entered_by_name ?? null,
     });
   }
 
@@ -134,9 +141,23 @@ export function buildExpenseDetailRows(
   return rows.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 }
 
+/** MNY-003: подпись автора ручного расхода («внесён подрядчиком»); null — автор неизвестен или не ручной ввод. */
+export function enteredByLabel(row: Pick<ExpenseDetailRow, 'enteredByRole' | 'enteredByName'>): string | null {
+  const who = row.enteredByRole === 'contractor' ? 'подрядчиком'
+    : row.enteredByRole === 'customer' ? 'заказчиком'
+    : row.enteredByRole === 'other' ? 'участником'
+    : null;
+  if (!who) return null;
+  return `внесён ${who}${row.enteredByName ? ` (${row.enteredByName})` : ''}`;
+}
+
+/** BUD-19: подпись чека без проверки ФНС (расход при этом учитывается как раньше). */
+export const NO_FNS_CHECK_LABEL = 'без проверки ФНС';
+
 /** Кто оплатил трату — для прозрачности «сам / подрядчик» */
 export function expensePayerLabel(row: ExpenseDetailRow): string {
   if (row.kind === 'material') return 'Подрядчик';
+  if (row.enteredByRole === 'contractor') return 'Подрядчик';
   if (row.kind === 'receipt') return 'Вы';
   return 'Учёт';
 }

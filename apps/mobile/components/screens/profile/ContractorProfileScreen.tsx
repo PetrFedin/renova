@@ -157,7 +157,7 @@ export function ContractorProfileScreen() {
                 void saveAction.run(async () => {
                   await api.upsertContractorProfile(user.id, patch);
                   profileBaseline.current = { company_name: company.trim(), payment_requisites: payReq.trim(), specialties: specialties.trim(), city: city.trim(), bio: bio.trim() };
-                  alertRequisitesSaved('contractor');
+                  alertRequisitesSaved('contractor', 'payment_requisites' in patch || 'company_name' in patch);
                 }, 'Не удалось сохранить реквизиты');
               }}
             />

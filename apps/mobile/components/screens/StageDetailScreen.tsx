@@ -1,4 +1,5 @@
 /** Экран этапа: приёмка above fold, вторичное — в accordion */
+import { formatPercentRu } from '@/lib/formatDecimal';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { ScrollView, View, Text, TextInput, StyleSheet, Pressable, Image } from 'react-native';
 import { notifyAlert, notifyError } from '@/lib/notify';
@@ -29,12 +30,11 @@ import { StageDetailAccordion } from '@/components/screens/stage/StageDetailAcco
 import { DecisionHistoryPanel } from '@/components/renova/DecisionHistoryPanel';
 import { repairTabRoute, objectTabHref } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
-import { alertStageAccepted } from '@/lib/acceptanceNav';
+import { alertStageAcceptedForProject } from '@/lib/acceptanceNav';
 import { notifyOfflineQueued, isOfflineQueued } from '@/lib/offlineUi';
 import { OFFLINE_UPLOAD_BLOCKED } from '@/lib/offlineErrors';
 import { isQueueableWriteError } from '@/lib/api/queueableError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
-import { STAGE_STATUS_LABEL } from '@/constants/labels';
 import { reportError, reportCatch } from '@/lib/reportError';
 import { StageDetailExecutorChecklist } from '@/components/screens/stage/StageDetailExecutorChecklist';
 import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
@@ -195,7 +195,7 @@ export function StageDetailScreen() {
       });
       await reload();
       await loadProject(activeProject!.id);
-      alertStageAccepted(role);
+      void alertStageAcceptedForProject(role, user!.id, activeProject!.id);
     } catch (e: unknown) {
       if (isOfflineQueued(e)) notifyOfflineQueued('Приёмка');
       else {
@@ -402,7 +402,8 @@ export function StageDetailScreen() {
       <BackHeader
         title={stage.name}
         returnTo={returnTo}
-        subtitle={`${STAGE_STATUS_LABEL[stage.status] || stage.status}${isArchived ? ' · Архив' : ''}`}
+        // Статус показывает карточка этапа ниже — в шапке не дублируем.
+        subtitle={isArchived ? 'Архив' : undefined}
       />
       <ReadOnlyBanner />
       <ScrollView style={styles.wrap} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
@@ -583,7 +584,7 @@ export function StageDetailScreen() {
         </StageDetailAccordion>
 
         {workSnap ? (
-          <StageDetailAccordion title="Прогресс" summary={`${workSnap.percent_complete}%`}>
+          <StageDetailAccordion title="Прогресс" summary={formatPercentRu(workSnap.percent_complete)}>
             <Text style={styles.meta}>
               Работ: {workSnap.works_done ?? workSnap.checklist_progress?.done ?? 0}/{workSnap.works_total ?? workSnap.checklist_progress?.total ?? 0}
               {' · '}материалы {workSnap.materials_count}

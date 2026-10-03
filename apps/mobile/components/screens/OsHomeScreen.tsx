@@ -296,13 +296,14 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
       pendingPaymentTotal,
       { status: workScheduleStatus, warrantyOpen, warrantyOverdue, pendingChangeOrders, pendingSignDocs, offlinePending, offlineBlocked,
         closeoutReady, closeoutArchived, closeoutNext, closeoutAllStagesDone },
+      readOnly,
     );
   }, [
     activeProject, dash, loadedProjectId, receipts, picks, purchases, apiRisks, osSchedule, snapRole, osBudget,
     pendingAcceptance, pendingPayments, pendingPaymentTotal, workScheduleStatus,
     warrantyOpen, warrantyOverdue, pendingChangeOrders, pendingSignDocs,
     offlinePending, offlineBlocked,
-    closeoutReady, closeoutArchived, closeoutNext, closeoutAllStagesDone,
+    closeoutReady, closeoutArchived, closeoutNext, closeoutAllStagesDone, readOnly,
   ]);
 
   useEffect(() => {

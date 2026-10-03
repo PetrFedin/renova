@@ -22,6 +22,8 @@ export type Payment = {
   created_at: string;
   /** Чек, прикреплённый к счёту (API) */
   receipt_id?: string | null;
+  /** BUD-19: чек приложен, но ФНС его не проверяла (счёт он при этом подтверждает). */
+  receipt_unverified?: boolean;
   /** Каноническая доказательная история PaymentEvent. */
   events?: PaymentEvent[];
 };
@@ -111,6 +113,9 @@ export type ReceiptItem = {
   source?: 'scan' | 'manual';
   payment_id?: string | null;
   description?: string | null;
+  /** MNY-003: кто внёс ручной чек (только для source=manual). */
+  entered_by_role?: 'customer' | 'contractor' | 'other' | null;
+  entered_by_name?: string | null;
 };
 
 export type MaterialStats = { planned: number; actual: number; overrun_percent: number };

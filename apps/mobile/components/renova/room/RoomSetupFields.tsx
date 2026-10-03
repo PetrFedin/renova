@@ -1,4 +1,5 @@
 /** Поля настройки комнаты — фильтры, габариты с подписями, подсказки */
+import { formatDecimal, formatSqm } from '@/lib/formatDecimal';
 import { View, Text, TextInput, StyleSheet } from 'react-native';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';
@@ -176,7 +177,7 @@ export function RoomDimensionsSection({
       {preview ? (
         <View style={s.preview}>
           <Text style={s.previewTitle}>{ROOM_FORM_HINTS.preview}</Text>
-          <Text style={s.previewLine}>Пол {preview.floor_sq_m} м² · Стены {preview.wall_sq_m} м² · Периметр {preview.perimeter_m} м</Text>
+          <Text style={s.previewLine}>Пол {formatSqm(preview.floor_sq_m)} · Стены {formatSqm(preview.wall_sq_m)} · Периметр {formatDecimal(preview.perimeter_m)} м</Text>
         </View>
       ) : null}
     </View>

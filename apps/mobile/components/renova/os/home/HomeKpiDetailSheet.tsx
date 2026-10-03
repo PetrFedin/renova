@@ -8,6 +8,7 @@ import { buildHomeKpiDetail, type HomeKpiBar } from '@/lib/domain/buildHomeKpiDe
 import type { ProjectOsSnapshot } from '@/lib/domain/osTypes';
 import type { OsRole } from '@/constants/osSections';
 import { useOsNavFromHere } from '@/lib/navigation';
+import { useRenova } from '@/lib/context/RenovaContext';
 
 const BAR_COLORS: Record<NonNullable<HomeKpiBar['tone']>, string> = {
   good: RenovaTheme.colors.success,
@@ -31,9 +32,10 @@ function stopPropagation(event: unknown): void {
 
 export function HomeKpiDetailSheet({ widgetId, snap, role, onClose }: Props) {
   const { pushNav } = useOsNavFromHere(role);
+  const { readOnly } = useRenova();
   if (!widgetId) return null;
 
-  const detail = buildHomeKpiDetail(widgetId, snap, role);
+  const detail = buildHomeKpiDetail(widgetId, snap, role, readOnly);
   if (!detail) return null;
 
   return (

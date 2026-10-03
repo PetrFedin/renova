@@ -1,3 +1,4 @@
+import { paymentCheckLabel } from '@/lib/domain/paymentReceiptCheck';
 import { reportError } from '@/lib/reportError';
 /** Оплата этапа — после приёмки, без scroll до счёта */
 import { useCallback, useEffect, useState } from 'react';
@@ -107,13 +108,15 @@ export function StageDetailPaymentBlock({
             <View style={{ flex: 1 }}>
               <Text style={s.amount}>{formatRub(payment.amount)}</Text>
               <Text style={s.sub}>{payment.title}</Text>
+              {paymentCheckLabel(payment) ? <Text style={s.sub}>Чек {paymentCheckLabel(payment)}</Text> : null}
             </View>
             <Text style={s.status}>{PAYMENT_STATUS_LABEL[payment.status] ?? payment.status}</Text>
           </Pressable>
         ))}
-        {isCustomer && pending ? (
-          <PrimaryButton title="Оплатить" variant="accent" onPress={() => setSelected(pending)} disabled={readOnly} />
+        {isCustomer && pending && !readOnly ? (
+          <PrimaryButton title="Оплатить" variant="accent" onPress={() => setSelected(pending)} />
         ) : null}
+        {isCustomer && pending && readOnly ? <Text style={s.hint}>Ожидает оплаты заказчиком</Text> : null}
         {!isCustomer && pending ? <Text style={s.hint}>Ожидает оплаты заказчиком</Text> : null}
         {needsRecipient ? (
           <Text style={s.hint}>Заказчик отметил перевод — подтвердите, что деньги пришли (откройте счёт).</Text>

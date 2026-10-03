@@ -124,7 +124,17 @@ export function alertTeamCreated(role: OsRole = 'contractor') {
 }
 
 /** Реквизиты исполнителя → оплаты заказчика */
-export function alertRequisitesSaved(role: OsRole = 'contractor') {
+export function alertRequisitesSaved(role: OsRole = 'contractor', requisitesChanged = true) {
+  if (!requisitesChanged) {
+    // Сохранили только профиль каталога (специализации/город/о себе) — реквизиты не трогали.
+    showActionConfirm({
+      title: 'Профиль сохранён',
+      message: 'Изменения появятся в каталоге исполнителей.',
+      primaryLabel: 'Понятно',
+      onPrimary: () => undefined,
+    });
+    return;
+  }
   showActionConfirm({
     title: 'Реквизиты сохранены',
     message: 'Заказчик увидит их при оплате по СБП / реквизитам.',

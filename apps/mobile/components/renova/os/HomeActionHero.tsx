@@ -36,7 +36,8 @@ export function HomeActionHero({ role, snap, insights, showHero, showInbox, show
   const hero = snap.nextAction;
   const phase = resolveProjectPhase(snap);
   const inboxForLink = inboxLinkItems(items, hero.kind);
-  const secondary = (showInbox ? items : [])
+  // Гость «только просмотр»: очередь дел — это решения заказчика, не показываем.
+  const secondary = (showInbox && !readOnly ? items : [])
     .filter((it) => !duplicatesHero(it, hero))
     .filter((it) => phase !== 'closing' || isClosingPhaseSecondary(it.kind))
     .slice(0, 2);

@@ -4,6 +4,7 @@ import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import type { ExpenseDetailRow } from '@/lib/domain/expenseAnalytics';
 import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
+import { enteredByLabel } from '@/lib/domain/expenseAnalytics';
 
 const KIND_LABEL: Record<string, string> = {
   receipt: 'Чек',
@@ -36,10 +37,11 @@ export function UnifiedExpenseList({
               {row.roomName ? ` · ${row.roomName}` : ''}
               {row.stageName ? ` · ${row.stageName}` : ''}
               {row.date ? ` · ${formatScheduleDayFull(row.date)}` : ''}
+              {enteredByLabel(row) ? ` · ${enteredByLabel(row)}` : ''}
             </Text>
           </View>
           {row.kind === 'receipt' ? (
-            <Text style={[s.badge, row.verified ? s.ok : s.pending]}>{row.verified ? '✓ ФНС' : 'Чек'}</Text>
+            <Text style={[s.badge, row.verified ? s.ok : s.pending]}>{row.verified ? '✓ ФНС' : 'Без проверки ФНС'}</Text>
           ) : row.kind === 'material' ? (
             <Text style={[s.badge, s.material]}>Мат.</Text>
           ) : (

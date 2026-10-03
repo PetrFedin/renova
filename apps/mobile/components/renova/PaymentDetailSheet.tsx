@@ -1,4 +1,5 @@
 /** Детализация счёта — sheet по tap из «Бюджет → Оплаты» */
+import { paymentCheckLabel } from '@/lib/domain/paymentReceiptCheck';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
@@ -909,7 +910,17 @@ export function PaymentDetailSheet({
           title="Оплачено без проверки"
           message={isContractor
             ? `Заказчик отметил перевод на ${formatRub(payment.amount)}. Если деньги пришли, подтвердите — сумма войдёт в факт бюджета. Если нет — счёт вернётся заказчику.`
-            : 'Сумма пока не в подтверждённом факте. Приложите чек на полную сумму счёта или дождитесь, пока исполнитель подтвердит получение денег.'}
+            : readOnly
+              ? 'Сумма пока не в подтверждённом факте: ждёт подтверждения получения исполнителем.'
+              : 'Сумма пока не в подтверждённом факте. Приложите чек на полную сумму счёта или дождитесь, пока исполнитель подтвердит получение денег.'}
+        />
+      ) : null}
+
+      {paymentCheckLabel(payment) ? (
+        <InfoBanner
+          tone="info"
+          title="Чек без проверки ФНС"
+          message="Счёт подтверждён приложенным чеком, но налоговая его не проверяла (чек внесён вручную или проверка не выполнялась)."
         />
       ) : null}
 

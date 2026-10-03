@@ -7,6 +7,7 @@ import { screenTypography, listRowStyles, filterChipStyles } from '@/constants/s
 import {
   buildExpenseDetailRows,
   expensePayerLabel,
+  enteredByLabel,
   groupExpenseRows,
   type ExpenseGroupMode,
   type ExpenseDetailRow,
@@ -32,6 +33,7 @@ function RowLine({ row, onPress }: { row: ExpenseDetailRow; onPress?: (row: Expe
         <Text style={s.lineTitle} numberOfLines={1}>{row.title}</Text>
         <Text style={s.lineMeta} numberOfLines={1}>
           {date} · {row.categoryLabel} · {expensePayerLabel(row)}
+          {enteredByLabel(row) ? ` · ${enteredByLabel(row)}` : ''}
           {row.roomName ? ` · ${row.roomName}` : ''}
           {row.hasDocument ? ' · 📄' : ''}
         </Text>

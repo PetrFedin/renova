@@ -13,6 +13,7 @@ import type { OsRole } from '@/constants/osSections';
 import { alertPortalLinkShared } from '@/lib/shareAccessNav';
 import { portalLinkRowLabel, type PortalLinkRow } from '@/lib/domain/portalLinks';
 import { reportCatch } from '@/lib/reportError';
+import { showActionConfirm } from '@/lib/actionConfirmBus';
 
 type Props = {
   userId: string;
@@ -54,6 +55,17 @@ export function PortalSharePanel({ userId, projectId, role, embedded }: Props) {
       setBusy(false);
     }
   };
+
+  const confirmRevoke = (link: PortalLinkRow) =>
+    showActionConfirm({
+      title: 'Отозвать ссылку?',
+      message: `${portalLinkRowLabel(link)}. Ссылка и открытые по ней сеансы перестанут работать — доступ по ней будет закрыт.`,
+      primaryLabel: 'Отозвать',
+      primaryDestructive: true,
+      onPrimary: () => { void revoke(link.id); },
+      secondaryLabel: 'Отмена',
+      onSecondary: () => undefined,
+    });
 
   const share = async () => {
     setBusy(true);
@@ -114,7 +126,7 @@ export function PortalSharePanel({ userId, projectId, role, embedded }: Props) {
       {links.map((l) => (
         <View key={l.id} style={s.row}>
           <Text style={s.label}>{portalLinkRowLabel(l)}</Text>
-          <PrimaryButton title="Отозвать" variant="outline" disabled={busy} onPress={() => revoke(l.id)} />
+          <PrimaryButton title="Отозвать" variant="outline" disabled={busy} onPress={() => confirmRevoke(l)} />
         </View>
       ))}
       {busy ? <ActivityIndicator style={{ marginTop: 8 }} color={RenovaTheme.colors.primary} /> : null}

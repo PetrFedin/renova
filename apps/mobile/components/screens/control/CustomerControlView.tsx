@@ -1,3 +1,4 @@
+import { READ_ONLY_ACCEPTANCE_HINT } from '@/lib/domain/readOnlyCopy';
 import { reportError } from '@/lib/reportError';
 /** Контроль — приёмка, замечания, качество */
 import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
@@ -284,8 +285,8 @@ export function CustomerControlView() {
       {/* Investor P1: focus=warranty — блок гарантий первым */}
       {focusWarranty ? warrantyBlock : null}
 
-      <Text style={s.section}>Решение</Text>
-      <Text style={s.decisionHint}>Примите этап или верните на доработку. Оценка — только если реально проверили.</Text>
+      <Text style={s.section}>{readOnly ? 'Приёмка' : 'Решение'}</Text>
+      <Text style={s.decisionHint}>{readOnly ? READ_ONLY_ACCEPTANCE_HINT : 'Примите этап или верните на доработку. Оценка — только если реально проверили.'}</Text>
       <UnifiedAcceptanceList
         stages={activeProject.stages}
         acceptances={acceptances}

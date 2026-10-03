@@ -15,7 +15,7 @@ import { pushOsNav } from '@/lib/pushOsNav';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { useRenova } from '@/lib/context/RenovaContext';
-import { alertStageAccepted } from '@/lib/acceptanceNav';
+import { alertStageAcceptedForProject } from '@/lib/acceptanceNav';
 import { reportCatch } from '@/lib/reportError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { ActionConfirmSheet } from '@/components/renova/ActionConfirmSheet';
@@ -76,7 +76,7 @@ export function UnifiedAcceptanceList({
         await syncProjectSideEffects({ user, project: activeProject });
         onChanged?.();
         // W125: оплата / план с ✓ pin (единый SoT с карточкой этапа)
-        alertStageAccepted(role);
+        void alertStageAcceptedForProject(role, userId, projectId);
       } else {
         const reason = opts.reason?.trim();
         if (!reason) return false; // причина возврата обязательна (проверяет и RejectStageModal)

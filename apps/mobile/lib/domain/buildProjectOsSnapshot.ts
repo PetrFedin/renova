@@ -4,6 +4,7 @@ import type { Dashboard, MaterialPick, OsBudgetSummary, OsRisk, OsScheduleSummar
 import { resolveBudgetFigures } from '@/lib/useOsBudgetFigures';
 import { formatRub } from '@/constants/Theme';
 import { invoiceCountLabel } from './invoiceCountLabel';
+import { neutralizeNextActionForReadOnly } from './readOnlyCopy';
 import type { ProjectOsSnapshot } from './osTypes';
 import { computeProjectHealth, forecastFinalCost, capOverrunRisk } from './projectHealth';
 import { sanitizeRiskImpact } from './sanitizeRiskImpact';
@@ -67,6 +68,7 @@ export function buildProjectOsSnapshot(
   pendingPaymentCount = 0,
   pendingPaymentTotal = 0,
   workSchedule?: WorkScheduleHint | null,
+  readOnly = false,
 ): ProjectOsSnapshot {
   const today = todayIso();
   const stages = project.stages || [];
@@ -433,6 +435,13 @@ export function buildProjectOsSnapshot(
       href: repairTabRoute(role, 'works'),
       kind: 'work',
     };
+  }
+
+  if (readOnly) {
+    nextAction = neutralizeNextActionForReadOnly(nextAction, {
+      unpaid,
+      pendingPaymentTotalLabel: pendingPaymentTotal > 0 ? formatRub(pendingPaymentTotal) : undefined,
+    });
   }
 
   const roomName = (id?: string | null) => project.rooms?.find((r) => r.id === id)?.name;

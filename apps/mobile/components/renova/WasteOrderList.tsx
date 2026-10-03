@@ -1,3 +1,5 @@
+import { formatDecimal } from '@/lib/formatDecimal';
+import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
 import { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TextInput } from 'react-native';
 import { api, WasteOrder } from '@/lib/api';
@@ -12,7 +14,7 @@ import { RenovaTheme, formatRub } from '@/constants/Theme';
 import { reportCatch } from '@/lib/reportError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { writeResultMessage } from '@/lib/offlineResultMessage';
-import { WASTE_STATUS_LABEL, parseWasteForm, wasteActions } from '@/lib/domain/wasteOrderPolicy';
+import { WASTE_STATUS_LABEL, parseWasteForm, wasteActions, wasteDateLabel } from '@/lib/domain/wasteOrderPolicy';
 import { useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 
 /** W114: UI офлайн для вывоза мусора (API уже в offlineQueue) */
@@ -59,7 +61,7 @@ export function WasteOrderList({ userId, projectId, role }: { userId: string; pr
   const confirmCancel = (w: WasteOrder) => {
     showActionConfirm({
       title: 'Отменить вывоз?',
-      message: `${w.volume_m3} м³ · ${formatRub(w.total || 0)}. Заявка будет закрыта, расход не появится.`,
+      message: `${formatDecimal(w.volume_m3)} м³ · ${formatRub(w.total || 0)}. Заявка будет закрыта, расход не появится.`,
       primaryLabel: 'Отменить вывоз',
       primaryDestructive: true,
       onPrimary: () => {
@@ -82,8 +84,9 @@ export function WasteOrderList({ userId, projectId, role }: { userId: string; pr
         const act = wasteActions(role, selfManaged, w.status);
         return (
         <View key={w.id} style={s.row}>
-          <Text style={s.n}>{w.volume_m3} м³ · {WASTE_STATUS_LABEL[w.status] ?? 'Статус уточняется'}</Text>
+          <Text style={s.n}>{formatDecimal(w.volume_m3)} м³ · {WASTE_STATUS_LABEL[w.status] ?? 'Статус уточняется'}</Text>
           <Text style={s.m}>{formatRub(w.total || 0)}{w.price ? ` · ${formatRub(w.price)} за м³` : ''}</Text>
+          {wasteDateLabel(w, formatScheduleDayFull) ? <Text style={s.m}>{wasteDateLabel(w, formatScheduleDayFull)}</Text> : null}
           {canWrite && act.request && (
             <PrimaryButton
               title="Заказать"
@@ -98,7 +101,7 @@ export function WasteOrderList({ userId, projectId, role }: { userId: string; pr
                 // Clarity W: money/obligation — pre-confirm перед approve
                 showActionConfirm({
                   title: 'Согласовать вывоз?',
-                  message: `${w.volume_m3} м³ · ${formatRub(w.total || 0)}. Расход попадёт в бюджет, когда вывоз будет отмечен выполненным.`,
+                  message: `${formatDecimal(w.volume_m3)} м³ · ${formatRub(w.total || 0)}. Расход попадёт в бюджет, когда вывоз будет отмечен выполненным.`,
                   primaryLabel: 'Согласовать',
                   onPrimary: () => {
                     void runWasteAction(

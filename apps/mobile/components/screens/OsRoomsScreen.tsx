@@ -1,4 +1,5 @@
 /** Комнаты объекта — список по этажам (вкладка «Объект → Комнаты») */
+import { formatSqm } from '@/lib/formatDecimal';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { notifyError } from '@/lib/notify';
 import { ScrollView, View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
@@ -607,7 +608,7 @@ function RoomRequestCard({
       <Pressable accessibilityRole="button" accessibilityLabel={`Открыть комнату ${room.name}`} style={styles.roomHead} onPress={onOpen} disabled={submitting}>
         <View style={styles.roomHeadText}>
           <Text style={styles.name}>{room.name}</Text>
-          <Text style={styles.meta}>{roomTypeLabel(room.room_type)}{(room.floor_level ?? 1) > 1 ? ` · ${room.floor_level} эт.` : ''} · {room.floor_sq_m} м²</Text>
+          <Text style={styles.meta}>{roomTypeLabel(room.room_type)}{(room.floor_level ?? 1) > 1 ? ` · ${room.floor_level} эт.` : ''} · {formatSqm(room.floor_sq_m)}</Text>
         </View>
         <Text style={styles.chevron}>›</Text>
       </Pressable>
@@ -667,7 +668,7 @@ function RoomListRow({
         <View style={styles.roomHeadText}>
           <Text style={styles.name}>{room.name}</Text>
           <Text style={styles.meta}>
-            {roomTypeLabel(room.room_type)} · пол {room.floor_sq_m} м² · стены {room.wall_sq_m} м²
+            {roomTypeLabel(room.room_type)} · пол {formatSqm(room.floor_sq_m)} · стены {formatSqm(room.wall_sq_m)}
           </Text>
         </View>
         <Text style={styles.chevron}>›</Text>

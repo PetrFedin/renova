@@ -75,6 +75,9 @@ export type OsExpense = {
   material_pick_id?: string | null;
   receipt_id?: string | null;
   payment_id?: string | null;
+  /** MNY-003: кто внёс ручной расход (иначе null). */
+  entered_by_role?: 'customer' | 'contractor' | 'other' | null;
+  entered_by_name?: string | null;
 };
 
 export type OsReport = Record<string, unknown>;

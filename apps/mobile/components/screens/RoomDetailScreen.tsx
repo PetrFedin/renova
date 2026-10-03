@@ -1,4 +1,5 @@
 /** Комната — Digital Twin: паспорт сверху, детали по запросу */
+import { formatSqm } from '@/lib/formatDecimal';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
 import { useLocalSearchParams, usePathname } from 'expo-router';
@@ -286,8 +287,8 @@ export function RoomDetailScreen() {
         )}
         {roomSnap ? <RoomPassport snap={roomSnap} role={role} /> : (
           <View style={s.metrics}>
-            <View style={s.metric}><Text style={s.metricN}>{preview.floor_sq_m} м²</Text><Text style={s.metricL}>Пол</Text></View>
-            <View style={s.metric}><Text style={s.metricN}>{preview.wall_sq_m} м²</Text><Text style={s.metricL}>Стены</Text></View>
+            <View style={s.metric}><Text style={s.metricN}>{formatSqm(preview.floor_sq_m)}</Text><Text style={s.metricL}>Пол</Text></View>
+            <View style={s.metric}><Text style={s.metricN}>{formatSqm(preview.wall_sq_m)}</Text><Text style={s.metricL}>Стены</Text></View>
           </View>
         )}
 

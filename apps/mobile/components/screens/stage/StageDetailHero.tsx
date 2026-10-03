@@ -1,4 +1,5 @@
 /** Верх экрана этапа: статус, главное действие, краткий прогресс */
+import { formatPercentRu } from '@/lib/formatDecimal';
 import { View, Text, StyleSheet } from 'react-native';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -50,7 +51,11 @@ export function StageDetailHero({
 }: Props) {
   const role: OsRole = isContractor ? 'contractor' : 'customer';
   const stageReturn = `/stage/${stage.id}`;
-  const statusLabel = stageStatusText(stage, STAGE_STATUS_LABEL);
+  // Оптимистичное «В работе»: между ответом startStage и перечитыванием этапа
+  // не показываем старую кнопку «Начать» и подпись «Не начат».
+  const [starting, setStarting] = useState(false);
+  const optimisticStarted = starting && stage.status === 'planned';
+  const statusLabel = optimisticStarted ? STAGE_STATUS_LABEL.active ?? 'В работе' : stageStatusText(stage, STAGE_STATUS_LABEL);
   const acts = acceptanceActions({
     role,
     stageStatus: stage.status,
@@ -70,11 +75,11 @@ export function StageDetailHero({
   return (
     <View style={s.box}>
       <Text style={s.status}>{statusLabel}</Text>
-      {workSnap ? (
+      {workSnap && !optimisticStarted ? (
         <Text style={s.meta}>
           {workSnap.display_status_label || workSnap.status_label}
           {workSnap.room_name ? ` · ${workSnap.room_name}` : ''}
-          {' · '}{workSnap.percent_complete}%
+          {' · '}{formatPercentRu(workSnap.percent_complete)}
         </Text>
       ) : null}
       {stage.planned_start ? (
@@ -158,8 +163,11 @@ export function StageDetailHero({
       {canStart ? (
         <PrimaryButton
           disabled={!canWrite || blocked?.blocked}
-          title={workSnap?.next_action?.button || 'Начать этап'}
+          title={starting ? 'Запускаем этап…' : workSnap?.next_action?.button || 'Начать этап'}
+          loading={starting}
           onPress={async () => {
+            if (starting) return;
+            setStarting(true);
             try {
               await api.startStage(userId, projectId, stage.id);
               await onReload();
@@ -201,6 +209,8 @@ export function StageDetailHero({
                   });
                 }
               } else throw e;
+            } finally {
+              setStarting(false);
             }
           }}
         />

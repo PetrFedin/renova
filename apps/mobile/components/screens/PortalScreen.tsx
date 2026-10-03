@@ -1,3 +1,4 @@
+import { formatPercentRu } from '@/lib/formatDecimal';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
@@ -347,7 +348,7 @@ export default function PortalScreen() {
     const message = [
       `Renova · ${snapshot.project.name}`,
       snapshot.project.address || '',
-      `Прогресс ${progress}%`,
+      `Прогресс ${formatPercentRu(progress)}`,
       snapshot.contractor_company_name ? `Исполнитель: ${snapshot.contractor_company_name}` : '',
       pending.total > 0 ? `Сейчас: ${pending.label}` : 'Срочных действий нет',
       `Документов: ${snapshot.documents_total}`,
@@ -647,7 +648,7 @@ export default function PortalScreen() {
               Исполнитель · {snapshot.contractor_company_name || snapshot.contractor_recipient_name}
             </Text>
           ) : null}
-          <Text style={styles.progressLabel}>Прогресс · {progress}%</Text>
+          <Text style={styles.progressLabel}>Прогресс · {formatPercentRu(progress)}</Text>
           <View style={styles.progressTrack}>
             <View style={[styles.progressFill, { width: `${progress}%` }]} />
           </View>
@@ -822,7 +823,7 @@ export default function PortalScreen() {
 
         <PortalSection title="Расписание">
           <Text style={styles.line}>Этап: {schedule.current_stage || '—'}</Text>
-          <Text style={styles.line}>Прогресс: {progress}%</Text>
+          <Text style={styles.line}>Прогресс: {formatPercentRu(progress)}</Text>
           {schedule.planned_end ? <Text style={styles.line}>План окончания: {formatScheduleDayFull(schedule.planned_end)}</Text> : null}
         </PortalSection>
 

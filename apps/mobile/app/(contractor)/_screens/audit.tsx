@@ -1,3 +1,4 @@
+import { formatEventDateTime } from '@/lib/formatScheduleDate';
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text, StyleSheet } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
@@ -20,7 +21,7 @@ export default function AuditScreen() {
   useProjectDataReload(reload);
   return (<>
       <BackHeader title="Журнал аудита" returnTo={returnTo} /><ScrollView style={s.wrap}>{logs.map((l) => (
-    <Text key={l.id} style={s.row}>{l.created_at.slice(0,16)} {l.method} {l.path} → {l.status_code}</Text>
+    <Text key={l.id} style={s.row}>{formatEventDateTime(l.created_at)} {l.method} {l.path} → {l.status_code}</Text>
   ))}</ScrollView></>);
 }
 const s = StyleSheet.create({ wrap: { flex: 1, padding: 16, backgroundColor: RenovaTheme.colors.background }, row: { fontSize: 11, marginBottom: 6 } });

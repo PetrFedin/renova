@@ -1,4 +1,5 @@
 /** Заявки marketplace — КП → проект (W119 SoT + W130 CTAs + W140 форма) */
+import { formatSqm } from '@/lib/formatDecimal';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
 import { api } from '@/lib/api';
@@ -326,7 +327,7 @@ export function JobLeadsBoard({ userId, role }: { userId: string; role: string }
             {[
               renovationTypeLabel(l.renovation_type),
               l.address || l.location_public,
-              l.area_sqm != null ? `${l.area_sqm} м²` : null,
+              l.area_sqm != null ? formatSqm(l.area_sqm) : null,
               l.budget_hint != null ? formatRub(l.budget_hint) : null,
             ]
               .filter(Boolean)

@@ -1,5 +1,6 @@
 /** Отчёты Renova OS — просмотр in-app + PDF (открыть / поделиться / скачать).
  * JSON preview sources are independent and must never turn load failure into fake loading/empty truth. */
+import { formatPercentRu } from '@/lib/formatDecimal';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, ScrollView, View, Text, StyleSheet } from 'react-native';
 import { notifyAlert, notifyError, confirmAction } from '@/lib/notify';
@@ -181,7 +182,7 @@ export default function ReportsScreen() {
           ) : null}
           {asyncHasData(weeklyResource) && weekly ? (
             <>
-              <Text style={s.line}>Прогресс: {weekly.progress_percent}%</Text>
+              <Text style={s.line}>Прогресс: {formatPercentRu(weekly.progress_percent)}</Text>
               <Text style={s.meta}>План {formatRub(budget.budget_planned || 0)} · Факт {formatRub(budget.budget_spent || 0)}</Text>
               <Text style={s.meta}>Открытых замечаний: {weekly.open_issues_count ?? 0}</Text>
             </>

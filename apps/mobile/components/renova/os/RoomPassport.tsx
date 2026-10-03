@@ -1,4 +1,5 @@
 /** Digital Twin комнаты — паспорт + этапы + связь с бюджетом */
+import { formatPercentRu, formatSqm } from '@/lib/formatDecimal';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { usePathname, router } from 'expo-router';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
@@ -30,7 +31,7 @@ export function RoomPassport({ snap, role }: { snap: RoomSnapshot; role?: OsRole
       <View style={s.hero}>
         <Text style={s.title}>{snap.name}</Text>
         <Text style={s.meta}>
-          {snap.metrics.floor_sq_m} м² пол · {snap.works_done}/{snap.works_total} работ · {snap.progress_percent}%
+          {formatSqm(snap.metrics.floor_sq_m)} пол · {snap.works_done}/{snap.works_total} работ · {formatPercentRu(snap.progress_percent)}
         </Text>
         <View style={s.bar}>
           <View style={[s.fill, { width: `${Math.min(100, snap.progress_percent)}%` }]} />

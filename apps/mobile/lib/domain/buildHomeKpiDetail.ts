@@ -37,7 +37,7 @@ function paymentWord(count: number): string {
   return invoiceCountLabel(count);
 }
 
-function budgetDetail(snap: ProjectOsSnapshot, role: OsRole, closing: boolean): HomeKpiDetail {
+function budgetDetail(snap: ProjectOsSnapshot, role: OsRole, closing: boolean, readOnly = false): HomeKpiDetail {
   const { planned, spent, remaining, forecast } = snap.budget;
   const pct = planned > 0 ? Math.round((spent / planned) * 100) : 0;
 
@@ -45,7 +45,7 @@ function budgetDetail(snap: ProjectOsSnapshot, role: OsRole, closing: boolean): 
     return {
       title: 'Оплаты',
       lead: snap.pendingPaymentTotal > 0
-        ? `${formatRub(snap.pendingPaymentTotal)} к оплате`
+        ? `${formatRub(snap.pendingPaymentTotal)} ${readOnly ? 'ожидают оплаты' : 'к оплате'}`
         : paymentWord(snap.pendingPayments),
       rows: [
         { label: 'Ожидают оплаты', value: paymentWord(snap.pendingPayments) },
@@ -54,8 +54,8 @@ function budgetDetail(snap: ProjectOsSnapshot, role: OsRole, closing: boolean): 
         { label: 'План сметы', value: formatRub(planned) },
       ],
       bars: planned > 0 ? [{ label: `Освоено ${pct}% плана`, percent: Math.min(pct, 100), tone: pct > 90 ? 'warn' : 'good' }] : undefined,
-      actionLabel: 'Оплатить →',
-      actionHref: budgetTabRoute(role, 'payments', { openPayment: '1' }),
+      actionLabel: readOnly ? 'Счета →' : 'Оплатить →',
+      actionHref: budgetTabRoute(role, 'payments', readOnly ? undefined : { openPayment: '1' }),
     };
   }
 
@@ -74,7 +74,7 @@ function budgetDetail(snap: ProjectOsSnapshot, role: OsRole, closing: boolean): 
   };
 }
 
-function scheduleDetail(snap: ProjectOsSnapshot, role: OsRole, closing: boolean, complete: boolean): HomeKpiDetail {
+function scheduleDetail(snap: ProjectOsSnapshot, role: OsRole, closing: boolean, complete: boolean, readOnly = false): HomeKpiDetail {
   const pct = snap.schedule.progressPercent;
 
   if (closing) {
@@ -88,8 +88,8 @@ function scheduleDetail(snap: ProjectOsSnapshot, role: OsRole, closing: boolean,
         { label: 'Статус', value: 'Закрытие проекта' },
       ],
       bars: [{ label: 'Этапы выполнены', percent: 100, tone: 'good' }],
-      actionLabel: 'Оплатить →',
-      actionHref: budgetTabRoute(role, 'payments', { openPayment: '1' }),
+      actionLabel: readOnly ? 'Счета →' : 'Оплатить →',
+      actionHref: budgetTabRoute(role, 'payments', readOnly ? undefined : { openPayment: '1' }),
     };
   }
 
@@ -155,15 +155,15 @@ function qualityDetail(snap: ProjectOsSnapshot, role: OsRole): HomeKpiDetail {
   };
 }
 
-export function buildHomeKpiDetail(widgetId: string, snap: ProjectOsSnapshot, role: OsRole): HomeKpiDetail | null {
+export function buildHomeKpiDetail(widgetId: string, snap: ProjectOsSnapshot, role: OsRole, readOnly = false): HomeKpiDetail | null {
   const closing = snap.isComplete && snap.pendingPayments > 0;
   const complete = snap.isComplete && snap.pendingPayments === 0;
 
   switch (widgetId) {
     case 'kpi_budget':
-      return budgetDetail(snap, role, closing);
+      return budgetDetail(snap, role, closing, readOnly);
     case 'kpi_schedule':
-      return scheduleDetail(snap, role, closing, complete);
+      return scheduleDetail(snap, role, closing, complete, readOnly);
     case 'kpi_materials':
       return materialsDetail(snap, role);
     case 'kpi_quality':

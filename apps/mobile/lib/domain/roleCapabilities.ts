@@ -44,8 +44,8 @@ export function canEditEstimateLines(ctx: RoleContext): boolean {
 }
 
 /** Единая Action Queue на главной (Sprint IA) — не путать с «Ещё» / dock */
-export function homeHeroLabel(_ctx: RoleContext): string {
-  return 'Очередь дел';
+export function homeHeroLabel(ctx: RoleContext): string {
+  return ctx.readOnly ? 'Состояние проекта' : 'Очередь дел';
 }
 
 export function objectProfileHint(ctx: RoleContext): string {

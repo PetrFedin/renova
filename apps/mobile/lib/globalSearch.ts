@@ -1,3 +1,4 @@
+import { formatSqm } from '@/lib/formatDecimal';
 import { ProjectDetail } from '@/lib/api';
 // Словарь здесь дословно повторял `stageStatusLabel`: тот же этап читался
 // одинаково, но из двух мест — и разойтись они могли в любой момент.
@@ -16,7 +17,7 @@ export function searchProject(project: ProjectDetail, q: string, chatTitles: Rec
   }
   for (const r of project.rooms || []) {
     if (r.name.toLowerCase().includes(s))
-      hits.push({ id: r.id, type: 'room', title: r.name, sub: `${r.floor_sq_m} м²`, href: `/room/${r.id}` });
+      hits.push({ id: r.id, type: 'room', title: r.name, sub: formatSqm(r.floor_sq_m), href: `/room/${r.id}` });
   }
   for (const [tid, title] of Object.entries(chatTitles)) {
     if (title.toLowerCase().includes(s))

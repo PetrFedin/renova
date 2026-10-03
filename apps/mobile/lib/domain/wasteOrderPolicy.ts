@@ -12,6 +12,17 @@ export const WASTE_STATUS_LABEL: Record<string, string> = {
   cancelled: 'Отменён',
 };
 
+/** Подпись даты вывоза: «Согласован» без даты не оставляем без пояснения. */
+export function wasteDateLabel(
+  order: { status: string; scheduled_date?: string | null },
+  formatDay: (iso: string) => string,
+): string | null {
+  const date = order.scheduled_date?.trim();
+  if (date) return `Дата вывоза: ${formatDay(date)}`;
+  if (order.status === 'scheduled') return 'Дата не назначена';
+  return null;
+}
+
 export type WasteActions = {
   create: boolean;
   request: boolean;

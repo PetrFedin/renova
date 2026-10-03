@@ -1,4 +1,5 @@
 /** §4.18 Vertical timeline этапов на экране комнаты */
+import { formatPercentRu } from '@/lib/formatDecimal';
 import { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { usePathname } from 'expo-router';
@@ -45,7 +46,7 @@ export function RoomStageTimeline({ stages, role = 'customer' }: { stages: RoomS
               </View>
               {isOpen ? (
                 <>
-                  <Text style={s.meta}>{st.works_done}/{st.works_total} работ · {st.percent_complete}%{st.overdue_days ? ` · +${st.overdue_days} дн.` : ''}</Text>
+                  <Text style={s.meta}>{st.works_done}/{st.works_total} работ · {formatPercentRu(st.percent_complete)}{st.overdue_days ? ` · +${st.overdue_days} дн.` : ''}</Text>
                   <View style={s.bar}><View style={[s.fill, { width: `${Math.min(100, st.percent_complete)}%` }]} /></View>
                   {st.planned_start && st.planned_end && <Text style={s.dates}>{formatScheduleDayFull(st.planned_start)} → {formatScheduleDayFull(st.planned_end)}</Text>}
                   <View style={s.actions}>
@@ -59,7 +60,7 @@ export function RoomStageTimeline({ stages, role = 'customer' }: { stages: RoomS
                   </View>
                 </>
               ) : (
-                <Text style={s.collapsedMeta}>{st.percent_complete}% · {st.works_done}/{st.works_total}</Text>
+                <Text style={s.collapsedMeta}>{formatPercentRu(st.percent_complete)} · {st.works_done}/{st.works_total}</Text>
               )}
             </Pressable>
           </View>
