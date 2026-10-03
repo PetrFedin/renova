@@ -131,8 +131,8 @@ export function UnifiedAcceptanceList({
   if (!items.length && !reworkItems.length) {
     return (
       <EmptyActionState
-        title={isContractor ? 'Нет этапов на приёмке' : 'Сейчас ничего не ждёт решения'}
-        hint={isContractor ? 'Когда сдадите этап — статус появится здесь. Вернут на доработку — причина и срок тоже.' : 'Когда исполнитель сдаст этап — решите здесь.'}
+        title={isContractor || readOnly ? 'Нет этапов на приёмке' : 'Сейчас ничего не ждёт решения'}
+        hint={isContractor ? 'Когда сдадите этап — статус появится здесь. Вернут на доработку — причина и срок тоже.' : readOnly ? 'Когда исполнитель сдаст этап, он появится здесь со статусом.' : 'Когда исполнитель сдаст этап — решите здесь.'}
         icon="checkmark-done-outline"
         actionLabel="Открыть этапы"
         actionVariant="accent"

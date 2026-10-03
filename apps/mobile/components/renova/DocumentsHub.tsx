@@ -208,8 +208,8 @@ export function DocumentsHub({
   const recentDocs = useMemo(() => (docIndex?.items || []).slice(0, 8), [docIndex]);
   /** Clarity D: черновики ждут подписи — pinned сверху */
   const needsSignDocs = useMemo(
-    () => (docIndex?.items || []).filter((d) => awaitsMySignature(d, user?.id)),
-    [docIndex, user?.id],
+    () => (readOnly ? [] : (docIndex?.items || []).filter((d) => awaitsMySignature(d, user?.id))),
+    [docIndex, user?.id, readOnly],
   );
   /** Clarity D: секции свёрнуты по умолчанию — меньше шума */
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
@@ -528,7 +528,7 @@ export function DocumentsHub({
     return [
       {
         title: 'Главное',
-        hint: 'То, что чаще всего нужно заказчику',
+        hint: readOnly ? 'Отчёты и смета для просмотра' : 'То, что чаще всего нужно заказчику',
         rows: [rows.estimatePdf, rows.projectPdf, rows.expensesCsv, rows.portalShare].filter((row) => !(readOnly && (row as DocRow).write)),
       },
       {
@@ -906,21 +906,25 @@ export function DocumentsHub({
         }}
       />
     <View style={s.wrap}>
-      <Text style={s.sub}>Сначала подпишите черновики — остальные разделы ниже по запросу</Text>
+      <Text style={s.sub}>{readOnly ? 'Документы проекта — только просмотр и скачивание' : 'Сначала подпишите черновики — остальные разделы ниже по запросу'}</Text>
       <OfflineSyncStatus compact />
 
       {contractGate && !contractGate.ok && contractGate.reason === 'no_contract' ? (
         <View style={s.signPin} accessibilityLabel="Договор ещё не создан">
           <Text style={s.signPinTitle}>Договор ещё не создан</Text>
-          <Text style={s.signPinHint}>{contractGate.message || 'Без подписанного договора этапы не стартуют'}</Text>
-          <PrimaryButton
-            title="Создать договор"
-            variant="accent"
-            compact
-            loading={contractCreating}
-            disabled={isArchived || readOnly}
-            onPress={() => { void createContract(); }}
-          />
+          <Text style={s.signPinHint}>
+            {readOnly ? 'Договор создаёт заказчик или исполнитель' : (contractGate.message || 'Без подписанного договора этапы не стартуют')}
+          </Text>
+          {!readOnly ? (
+            <PrimaryButton
+              title="Создать договор"
+              variant="accent"
+              compact
+              loading={contractCreating}
+              disabled={isArchived}
+              onPress={() => { void createContract(); }}
+            />
+          ) : null}
         </View>
       ) : null}
 

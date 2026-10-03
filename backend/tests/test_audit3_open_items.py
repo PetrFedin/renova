@@ -91,6 +91,11 @@ async def test_manual_expense_shows_who_entered_it(db):
     assert by_title["Краска подрядчика"]["entered_by_name"] == "Подрядчик Тест"
     assert by_title["Клей заказчика"]["entered_by_role"] == "customer"
 
+    hub = (await _call(db, customer, "GET", f"/api/v1/projects/{PID}/budget-summary")).json()
+    hub_by_desc = {x["description"]: x for x in hub["receipts"]}
+    assert hub_by_desc["Краска подрядчика"]["entered_by_role"] == "contractor"
+    assert {row["entered_by_role"] for row in hub["expenses"] if row["title"] == "Клей заказчика"} == {"customer"}
+
     receipts = (await _call(db, customer, "GET", f"/api/v1/projects/{PID}/receipts")).json()
     by_desc = {x["description"]: x for x in receipts}
     assert by_desc["Краска подрядчика"]["entered_by_role"] == "contractor"

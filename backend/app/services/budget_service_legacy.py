@@ -724,9 +724,16 @@ async def budget_hub(db: AsyncSession, project_id: str, *, threshold_pct: float 
 
     receipt_rows = (await db.execute(select(Receipt).where(Receipt.project_id == project_id))).scalars().all()
     receipts = []
+    receipt_authors = await manual_entry_authors(
+        db,
+        project_id,
+        [(r.id, (r.qr_raw or "Ручной расход"), r.amount, r.created_at) for r in receipt_rows if r.fn == "MANUAL"],
+    )
     for r in receipt_rows:
         meta = receipt_meta(r.qr_raw)
         receipts.append({
+            "entered_by_role": (receipt_authors.get(r.id) or {}).get("role"),
+            "entered_by_name": (receipt_authors.get(r.id) or {}).get("name"),
             "id": r.id,
             "amount": r.amount,
             "verified": r.fns_verified,
