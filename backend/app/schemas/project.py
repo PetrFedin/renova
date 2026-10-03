@@ -160,6 +160,8 @@ class PaymentOut(BaseModel):
     confirmed_at: str | None
     created_at: str
     receipt_id: str | None = None
+    # BUD-19: приложен чек, но ФНС его не проверяла (счёт он при этом подтверждает).
+    receipt_unverified: bool = False
     events: list[PaymentEventOut] = Field(default_factory=list)
 
 

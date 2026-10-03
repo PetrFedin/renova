@@ -68,7 +68,7 @@ def _dispute_http_error(exc: ValueError) -> HTTPException:
 async def _payment_dispute_out(db: AsyncSession, result: disputes.PaymentDisputeResult) -> PaymentDisputeOut:
     receipt_id = await payments.receipt_id_for_payment(db, result.payment.id)
     return PaymentDisputeOut(
-        payment=PaymentOut(**payments.payment_dict(result.payment, receipt_id=receipt_id)),
+        payment=PaymentOut(**payments.payment_dict(result.payment, receipt_id=receipt_id, receipt_unverified=await payments.receipt_unverified_for_payment(db, result.payment.id))),
         changed=result.changed,
         replayed=result.replayed,
     )

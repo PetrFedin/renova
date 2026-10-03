@@ -1,6 +1,7 @@
 """Чаты заказчик ↔ исполнитель + расширения OS."""
 from __future__ import annotations
 
+from app.core.legacy_text import localize_due_dates
 from app.core.timeutil import utc_now
 import json
 import secrets
@@ -508,7 +509,7 @@ def msg_dict(
         "author_name": (author_names or {}).get(m.user_id),
         "author_role": m.author_role,
         "message_type": m.message_type.value,
-        "text": None if deleted else m.text,
+        "text": None if deleted else localize_due_dates(m.text),
         "image_url": None if deleted else m.image_url,
         "deleted": deleted,
         "deleted_at": meta.get("deleted_at"),

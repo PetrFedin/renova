@@ -1,5 +1,5 @@
 """PDF и экспорт проекта — fpdf2 с транслитерацией кириллицы."""
-from app.core.money_format import format_rub
+from app.core.money_format import format_amount, format_rub
 from app.core.timeutil import utc_now
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -56,8 +56,8 @@ async def export_pdf(project_id: str, user: User = Depends(get_current_user), db
     pdf_line(pdf, f"Смета: {p.name}", size=14)
     for line in p.estimate_lines:
         total = line.quantity_planned * line.unit_price
-        pdf_line(pdf, f"{line.name} | {line.quantity_planned} {line.unit} x {line.unit_price} = {total:.0f} RUB")
-    pdf_line(pdf, f"ИТОГО: {p.budget_planned:.0f} ₽", size=11)
+        pdf_line(pdf, f"{line.name} | {format_amount(line.quantity_planned)} {line.unit} x {format_amount(line.unit_price)} = {format_amount(total)} RUB")
+    pdf_line(pdf, f"ИТОГО: {format_rub(p.budget_planned)}", size=11)
     return pdf_response(pdf, f"estimate-{project_id[:8]}.pdf")
 
 
@@ -72,7 +72,7 @@ async def export_acceptance(project_id: str, stage_id: str, checks: str | None =
     pdf = new_pdf()
     pdf_line(pdf, f"Priyomka: {stage.name}", size=14)
     pdf_line(pdf, f"Status: {stage.status.value}")
-    pdf_line(pdf, f"Oplata: {stage.payment_amount:.0f} RUB")
+    pdf_line(pdf, f"Oplata: {format_amount(stage.payment_amount)} RUB")
     if stage.customer_accepted_at:
         pdf_line(pdf, f"Prinyato: {stage.customer_accepted_at.isoformat()[:10]}")
     if checks:
@@ -106,7 +106,7 @@ async def export_change_order_document(
     pdf_line(pdf, f"Наименование: {order.title}")
     if order.description:
         pdf_line(pdf, f"Описание: {order.description}")
-    pdf_line(pdf, f"Стоимость: {order.amount:.0f} RUB")
+    pdf_line(pdf, f"Стоимость: {format_amount(order.amount)} RUB")
     pdf_line(pdf, f"Статус согласования: {getattr(order.status, 'value', order.status)}")
     return pdf_response(pdf, f"change-order-{order_id[:8]}.pdf")
 
@@ -160,7 +160,7 @@ async def export_project_pdf(project_id: str, user: User = Depends(get_current_u
     p = await require_project(db, project_id, user, write=False)
     pdf = new_pdf()
     pdf_line(pdf, f"Проект: {p.name}", size=14)
-    pdf_line(pdf, f"Бюджет: {p.budget_planned:.0f} / {p.budget_spent:.0f} ₽")
+    pdf_line(pdf, f"Бюджет: {format_amount(p.budget_planned)} / {format_rub(p.budget_spent)}")
     for room in getattr(p, "rooms", None) or []:
         pdf_line(pdf, f"Комната: {room.name}")
     for st in p.stages or []:
@@ -257,14 +257,14 @@ async def export_kpi_weekly(project_id: str, user: User = Depends(get_current_us
     snaps = list(r.scalars().all())
     pdf = new_pdf()
     pdf_line(pdf, f"KPI week: {p.name}", size=14)
-    pdf_line(pdf, f"Remaining budget: {p.budget_planned - p.budget_spent:.0f}")
+    pdf_line(pdf, f"Remaining budget: {format_amount(p.budget_planned - p.budget_spent)}")
     vals = [s.margin_estimated for s in snaps] or [0]
     mx = max(vals) or 1
     pdf_line(pdf, "Sparkline:", size=11)
     bar = "".join(chr(9608) * max(1, int(v / mx * 8)) if v else "." for v in vals)
     pdf_line(pdf, f"BAR {bar}", size=9)
     for s in snaps:
-        pdf_line(pdf, f"{s.recorded_at.date()}: {s.margin_estimated:.0f}")
+        pdf_line(pdf, f"{s.recorded_at.date()}: {format_amount(s.margin_estimated)}")
     return pdf_response(pdf, f"kpi-{project_id[:8]}.pdf")
 
 
@@ -289,9 +289,9 @@ async def full_dossier(project_id: str, user: User = Depends(get_current_user), 
     items = await act.project_feed(db, project_id, limit=50)
     pdf = new_pdf()
     pdf_line(pdf, f"Full dossier: {p.name}", size=14)
-    pdf_line(pdf, f"Byudzhet: {p.budget_planned:.0f} / spent {p.budget_spent:.0f}")
+    pdf_line(pdf, f"Byudzhet: {format_amount(p.budget_planned)} / spent {format_amount(p.budget_spent)}")
     for line in p.estimate_lines[:30]:
-        pdf_line(pdf, f"- {line.name}: {line.quantity_planned * line.unit_price:.0f}")
+        pdf_line(pdf, f"- {line.name}: {format_amount(line.quantity_planned * line.unit_price)}")
     pdf_line(pdf, "Activity:", size=11)
     for it in items[:40]:
         pdf_line(pdf, f"{it.get('at', '')[:10]} {it.get('title', '')}", size=8)

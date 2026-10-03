@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.money_format import format_rub
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import (
@@ -136,7 +137,7 @@ async def approval_hub(
                     "id": order.id,
                     "type": "change_order",
                     "title": order.title,
-                    "subtitle": f"{order.amount:.0f} ₽",
+                    "subtitle": format_rub(order.amount),
                     "status": _status(order.status),
                     "room_id": None,
                     "work_type": None,

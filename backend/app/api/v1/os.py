@@ -386,7 +386,7 @@ async def os_expenses(project_id: str, status: str | None = None, user: User = D
     await bud.refresh_budget_facts(db, project_id)
     await db.commit()
     items = await bud.list_expenses(db, project_id, status=status)
-    return [bud.expense_dict(e) for e in items]
+    return await bud.expense_dicts_with_authors(db, project_id, items)
 
 class ExpensePatch(BaseModel):
     amount: float | None = None

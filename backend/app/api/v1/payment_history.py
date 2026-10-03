@@ -22,11 +22,13 @@ async def list_payments_with_history(
     payment_ids = [payment.id for payment in items]
     receipt_map = await history.receipt_ids_by_payment(db, payment_ids)
     event_map = await history.events_by_payment(db, payment_ids)
+    unverified_ids = await payments.receipts_without_fns_check(db, payment_ids)
     return [
         PaymentOut(
             **payments.payment_dict(
                 payment,
                 receipt_id=receipt_map.get(payment.id),
+                receipt_unverified=payment.id in unverified_ids,
             ),
             events=event_map.get(payment.id, []),
         )

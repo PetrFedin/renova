@@ -7,6 +7,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.money_format import format_rub
 from app.models.entities import (
     BudgetLine,
     ChangeOrder,
@@ -176,7 +177,7 @@ async def expense_from_receipt(
         stage_id=rec.stage_id,
         receipt_id=rec.id,
         payment_id=getattr(rec, "payment_id", None),
-        title=title or f"Чек {rec.amount:.0f} ₽",
+        title=title or f"Чек {format_rub(rec.amount)}",
         category=rec.expense_category,
         amount=rec.amount,
         status=await _receipt_expense_status(db, rec),

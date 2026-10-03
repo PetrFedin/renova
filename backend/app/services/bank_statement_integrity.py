@@ -15,6 +15,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.money_format import format_rub
 from app.core.config import settings
 from app.core.timeutil import utc_now
 from app.models.entities import (
@@ -220,7 +221,7 @@ async def create_expenses_from_rows(
                 expense_date = datetime.strptime(str(row["date"]), "%Y-%m-%d")
             except ValueError:
                 expense_date = None
-        title = (_normalized_description(row.get("description")) or f"Банк {amount:.0f} ₽")[:255]
+        title = (_normalized_description(row.get("description")) or f"Банк {format_rub(amount)}")[:255]
         expense = await budget.expense_from_bank_row(
             db,
             project_id=project_id,

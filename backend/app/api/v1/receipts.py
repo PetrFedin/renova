@@ -524,11 +524,21 @@ async def list_receipts(
             )
         ).scalars().all()
     )
+    from app.services import budget_service as budget
+
+    authors = await budget.manual_entry_authors(
+        db,
+        project_id,
+        [(r.id, (r.qr_raw or "Ручной расход"), r.amount, r.created_at) for r in receipts if r.fn == "MANUAL"],
+    )
     out = []
     for receipt in receipts:
         meta = receipt_meta(receipt.qr_raw)
+        author = authors.get(receipt.id) or {}
         out.append(
             {
+                "entered_by_role": author.get("role"),
+                "entered_by_name": author.get("name"),
                 "id": receipt.id,
                 "amount": receipt.amount,
                 "verified": receipt.fns_verified,

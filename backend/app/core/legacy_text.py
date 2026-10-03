@@ -37,3 +37,13 @@ def localize_bare_code(text: str | None) -> str | None:
     if not text:
         return text
     return _LEGACY_BARE_CODES.get(text.strip(), text)
+
+
+_LEGACY_DUE_DATE = re.compile(r"\bдо (\d{4})-(\d{2})-(\d{2})(?:[T ][\d:.]+)?(?!\d)")
+
+
+def localize_due_dates(text: str | None) -> str | None:
+    """«… · до 2026-10-05» (старые сообщения-задачи) -> «… · до 05.10.2026»."""
+    if not text or "до 20" not in text:
+        return text
+    return _LEGACY_DUE_DATE.sub(lambda m: f"до {m.group(3)}.{m.group(2)}.{m.group(1)}", text)

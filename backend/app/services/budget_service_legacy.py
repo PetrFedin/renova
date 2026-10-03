@@ -1,6 +1,7 @@
 """Бюджет Renova OS: BudgetLine, Expense, прогноз и отклонения."""
 from __future__ import annotations
 
+from app.core.money_format import format_rub
 from app.core.timeutil import utc_now
 from datetime import datetime
 
@@ -47,6 +48,81 @@ def expense_dict(e: Expense) -> dict:
         "purchase_id": e.purchase_id,
         "expense_date": e.expense_date.isoformat() if e.expense_date else None,
     }
+
+
+async def manual_entry_authors(
+    db: AsyncSession,
+    project_id: str,
+    entries: list[tuple[str, str, float, datetime]],
+) -> dict[str, dict]:
+    """Кто внёс ручной расход/чек (MNY-003): id записи -> {role, name}.
+
+    Автор в расходе и чеке не хранится (миграций нет), но при создании ручного
+    расхода пишется событие `ExpenseAdded` с автором. Сопоставляем по названию и
+    сумме; при нескольких совпадениях берём ближайшее по времени.
+    entries: (id, title, amount, created_at). Не найденные в результат не попадают.
+    """
+    from app.models.entities import ActivityEvent, Project, User
+
+    if not entries:
+        return {}
+    events = (
+        await db.execute(
+            select(ActivityEvent).where(
+                ActivityEvent.project_id == project_id,
+                ActivityEvent.kind == "ExpenseAdded",
+                ActivityEvent.user_id.is_not(None),
+            )
+        )
+    ).scalars().all()
+    by_key: dict[tuple[str, float], list] = {}
+    for ev in events:
+        try:
+            amount = round(float(ev.body or ""), 2)
+        except ValueError:
+            continue
+        by_key.setdefault((ev.title, amount), []).append(ev)
+    author_ids: dict[str, str] = {}
+    for entry_id, title, amount, created_at in entries:
+        candidates = by_key.get((title, round(float(amount), 2)))
+        if not candidates:
+            continue
+        best = min(candidates, key=lambda ev: abs((ev.created_at - created_at).total_seconds()))
+        author_ids[entry_id] = best.user_id
+    if not author_ids:
+        return {}
+    project = await db.get(Project, project_id)
+    rows = await db.execute(select(User.id, User.full_name).where(User.id.in_(set(author_ids.values()))))
+    names = {uid: (name or "").strip() or None for uid, name in rows.all()}
+    out: dict[str, dict] = {}
+    for entry_id, uid in author_ids.items():
+        role = "other"
+        if project is not None:
+            role = "contractor" if uid == project.contractor_id else "customer" if uid == project.customer_id else "other"
+        out[entry_id] = {"role": role, "name": names.get(uid)}
+    return out
+
+
+async def expense_dicts_with_authors(db: AsyncSession, project_id: str, expenses: list[Expense]) -> list[dict]:
+    """expense_dict + `entered_by_role`/`entered_by_name` для ручных расходов (иначе None)."""
+    out = [expense_dict(e) for e in expenses]
+    for row in out:
+        row["entered_by_role"] = None
+        row["entered_by_name"] = None
+    receipt_ids = [e.receipt_id for e in expenses if e.receipt_id]
+    if not receipt_ids:
+        return out
+    manual_receipts = set(
+        (await db.execute(select(Receipt.id).where(Receipt.id.in_(receipt_ids), Receipt.fn == "MANUAL"))).scalars().all()
+    )
+    manual = [e for e in expenses if e.receipt_id in manual_receipts]
+    authors = await manual_entry_authors(db, project_id, [(e.id, e.title, e.amount, e.created_at) for e in manual])
+    for row in out:
+        info = authors.get(row["id"])
+        if info:
+            row["entered_by_role"] = info["role"]
+            row["entered_by_name"] = info["name"]
+    return out
 
 
 def budget_line_dict(b: BudgetLine) -> dict:
@@ -227,7 +303,7 @@ async def expense_from_receipt(db: AsyncSession, rec: Receipt, *, title: str | N
         stage_id=rec.stage_id,
         receipt_id=rec.id,
         payment_id=getattr(rec, "payment_id", None),
-        title=title or f"Чек {rec.amount:.0f} ₽",
+        title=title or f"Чек {format_rub(rec.amount)}",
         category=rec.expense_category,
         amount=rec.amount,
         status=expense_status_for_receipt(rec),
@@ -252,7 +328,7 @@ async def expense_from_bank_row(
     """W74: строка банковской выписки без матча → расход (факт без эквайринга)."""
     exp = Expense(
         project_id=project_id,
-        title=(title or f"Выписка {amount:.0f} ₽")[:255],
+        title=(title or f"Выписка {format_rub(amount)}")[:255],
         category="other",
         amount=abs(float(amount)),
         status="confirmed",
@@ -637,11 +713,13 @@ async def budget_hub(db: AsyncSession, project_id: str, *, threshold_pct: float 
     from app.services import payment_service as pay_svc
 
     summary = await budget_summary(db, project_id)
-    expenses = [expense_dict(e) for e in await list_expenses(db, project_id)]
+    expenses = await expense_dicts_with_authors(db, project_id, await list_expenses(db, project_id))
     payments = []
-    for item in await pay_svc.list_payments(db, project_id):
+    payment_items = await pay_svc.list_payments(db, project_id)
+    unverified_ids = await pay_svc.receipts_without_fns_check(db, [item.id for item in payment_items])
+    for item in payment_items:
         receipt_id = await pay_svc.receipt_id_for_payment(db, item.id)
-        payments.append(pay_svc.payment_dict(item, receipt_id=receipt_id))
+        payments.append(pay_svc.payment_dict(item, receipt_id=receipt_id, receipt_unverified=item.id in unverified_ids))
     from app.services.fns.receipt_verify import receipt_meta
 
     receipt_rows = (await db.execute(select(Receipt).where(Receipt.project_id == project_id))).scalars().all()

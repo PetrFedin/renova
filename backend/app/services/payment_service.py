@@ -419,6 +419,33 @@ async def receipt_id_for_payment(db: AsyncSession, payment_id: str) -> str | Non
     return result.scalar_one_or_none()
 
 
+async def receipts_without_fns_check(db: AsyncSession, payment_ids: list[str]) -> set[str]:
+    """Счета, к которым приложен чек, но ни один из них не проверен ФНС (BUD-19).
+
+    Такой чек по-прежнему подтверждает счёт (сценарий оплаты не менялся) — UI
+    честно подписывает платёж «без проверки ФНС».
+    """
+    from sqlalchemy import case, func
+
+    from app.models.entities import Receipt
+
+    ids = [pid for pid in payment_ids if pid]
+    if not ids:
+        return set()
+    rows = (
+        await db.execute(
+            select(Receipt.payment_id, func.max(case((Receipt.fns_verified.is_(True), 1), else_=0)))
+            .where(Receipt.payment_id.in_(ids), Receipt.verification_status.not_in(_RECEIPT_REJECTED_STATUSES))
+            .group_by(Receipt.payment_id)
+        )
+    ).all()
+    return {pid for pid, any_verified in rows if not any_verified}
+
+
+async def receipt_unverified_for_payment(db: AsyncSession, payment_id: str) -> bool:
+    return payment_id in await receipts_without_fns_check(db, [payment_id])
+
+
 # Чек подтверждает счёт, только если покрывает его сумму (допуск на округление 1 ₽).
 RECEIPT_COVERAGE_TOLERANCE = 1.0
 _RECEIPT_REJECTED_STATUSES = ("invalid", "verification_failed")
@@ -474,7 +501,7 @@ async def list_payments(db: AsyncSession, project_id: str) -> list[Payment]:
     return list(result.scalars().all())
 
 
-def payment_dict(payment: Payment, *, receipt_id: str | None = None) -> dict:
+def payment_dict(payment: Payment, *, receipt_id: str | None = None, receipt_unverified: bool = False) -> dict:
     return {
         "id": payment.id,
         "title": payment.title,
@@ -486,6 +513,8 @@ def payment_dict(payment: Payment, *, receipt_id: str | None = None) -> dict:
         "confirmed_at": payment.confirmed_at.isoformat() if payment.confirmed_at else None,
         "created_at": payment.created_at.isoformat(),
         "receipt_id": receipt_id,
+        # BUD-19: чек приложен, но ФНС его не проверяла (счёт он при этом подтверждает).
+        "receipt_unverified": bool(receipt_id) and receipt_unverified,
     }
 
 

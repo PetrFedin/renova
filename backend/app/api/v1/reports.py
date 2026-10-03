@@ -4,6 +4,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.money_format import format_amount, format_rub
 from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import User
@@ -50,7 +51,7 @@ async def report_daily_pdf(project_id: str, day: str | None = None, user: User =
     pdf = new_pdf()
     pdf_line(pdf, f"Ежедневный отчёт: {data.get('project_name', '')}", size=14)
     pdf_line(pdf, f"Дата: {data.get('date', '')}", size=11)
-    pdf_line(pdf, f"Расходы: {data.get('expenses_today', 0):.0f} ₽", size=11)
+    pdf_line(pdf, f"Расходы: {format_rub(data.get('expenses_today', 0))}", size=11)
     pdf_line(pdf, "Сделано:", size=11)
     for t in data.get("done_today", [])[:8]:
         pdf_line(pdf, f"  • {t}", size=9)
@@ -68,9 +69,9 @@ async def report_weekly_pdf(project_id: str, user: User = Depends(get_current_us
         raise HTTPException(404)
     pdf = new_pdf()
     pdf_line(pdf, f"Недельный отчёт: {data.get('project_name', '')}", size=14)
-    pdf_line(pdf, f"Прогресс: {data.get('progress_percent', 0)}%", size=11)
+    pdf_line(pdf, f"Прогресс: {format_amount(data.get('progress_percent', 0))} %", size=11)
     b = data.get("budget", {})
-    pdf_line(pdf, f"План: {b.get('budget_planned', 0):.0f} · Факт: {b.get('budget_spent', 0):.0f}", size=11)
+    pdf_line(pdf, f"План: {format_rub(b.get('budget_planned', 0))} · Факт: {format_rub(b.get('budget_spent', 0))}", size=11)
     pdf_line(pdf, f"Открытых замечаний: {data.get('open_issues_count', 0)}", size=11)
     return pdf_response(pdf, f"weekly-{project_id[:8]}.pdf")
 

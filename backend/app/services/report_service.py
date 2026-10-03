@@ -1,6 +1,7 @@
 """Отчёты Renova OS: ежедневный, еженедельный, финальный."""
 from __future__ import annotations
 
+from app.core.money_format import format_amount, format_rub
 from app.core.timeutil import utc_now
 from datetime import date, datetime, timedelta
 
@@ -200,13 +201,13 @@ def build_final_pdf(data: dict, sections: set[str], categories: set[str] | None 
 
     if "summary" in sections:
         pdf_line(pdf, "Сводка бюджета", size=12)
-        pdf_line(pdf, f"План: {data.get('budget_planned', 0):.0f} ₽", size=11)
-        pdf_line(pdf, f"Факт: {data.get('budget_spent', 0):.0f} ₽", size=11)
+        pdf_line(pdf, f"План: {format_rub(data.get('budget_planned', 0))}", size=11)
+        pdf_line(pdf, f"Факт: {format_rub(data.get('budget_spent', 0))}", size=11)
         if data.get("overrun"):
-            pdf_line(pdf, f"Перерасход: {data['overrun']:.0f} ₽", size=11)
+            pdf_line(pdf, f"Перерасход: {format_rub(data['overrun'])}", size=11)
         elif data.get("savings"):
-            pdf_line(pdf, f"Экономия: {data['savings']:.0f} ₽", size=11)
-        pdf_line(pdf, f"Прогноз: {data.get('forecast_total', 0):.0f} ₽", size=11)
+            pdf_line(pdf, f"Экономия: {format_rub(data['savings'])}", size=11)
+        pdf_line(pdf, f"Прогноз: {format_rub(data.get('forecast_total', 0))}", size=11)
 
     if "works" in sections:
         works = data.get("works", [])
@@ -222,7 +223,7 @@ def build_final_pdf(data: dict, sections: set[str], categories: set[str] | None 
         if not items:
             pdf_line(pdf, "  Нет данных по выбранным статьям", size=9)
         for row in items:
-            pdf_line(pdf, f"  • {row.get('label', row.get('category'))}: {row.get('total', 0):.0f} ₽", size=10)
+            pdf_line(pdf, f"  • {row.get('label', row.get('category'))}: {format_rub(row.get('total', 0))}", size=10)
         pdf_line(pdf, f"Всего операций: {data.get('expenses_count', 0)}", size=10)
 
     if "risks" in sections:

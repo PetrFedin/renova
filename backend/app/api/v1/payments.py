@@ -103,9 +103,14 @@ async def list_payments(
     await require_project(db, project_id, user, write=False)
     items = await pay_svc.list_payments(db, project_id)
     out = []
+    unverified_ids = await pay_svc.receipts_without_fns_check(db, [item.id for item in items])
     for item in items:
         receipt_id = await pay_svc.receipt_id_for_payment(db, item.id)
-        out.append(PaymentOut(**pay_svc.payment_dict(item, receipt_id=receipt_id)))
+        out.append(PaymentOut(**pay_svc.payment_dict(
+            item,
+            receipt_id=receipt_id,
+            receipt_unverified=item.id in unverified_ids,
+        )))
     return out
 
 
@@ -285,7 +290,7 @@ async def create_payment(
     if not payment:
         raise HTTPException(500, detail={"code": "committed_payment_missing"})
     receipt_id = await pay_svc.receipt_id_for_payment(db, persisted_payment_id)
-    return PaymentOut(**pay_svc.payment_dict(payment, receipt_id=receipt_id))
+    return PaymentOut(**pay_svc.payment_dict(payment, receipt_id=receipt_id, receipt_unverified=await pay_svc.receipt_unverified_for_payment(db, payment.id)))
 
 
 class ConfirmPaymentIn(BaseModel):
@@ -419,7 +424,7 @@ async def confirm_payment(
     if not payment:
         raise HTTPException(500, detail={"code": "committed_payment_missing"})
     receipt_id = await pay_svc.receipt_id_for_payment(db, persisted_payment_id)
-    return PaymentOut(**pay_svc.payment_dict(payment, receipt_id=receipt_id))
+    return PaymentOut(**pay_svc.payment_dict(payment, receipt_id=receipt_id, receipt_unverified=await pay_svc.receipt_unverified_for_payment(db, payment.id)))
 
 
 class PaymentCancelIn(BaseModel):
@@ -439,7 +444,7 @@ class RecipientResponseIn(BaseModel):
 
 async def _payment_out(db: AsyncSession, payment) -> PaymentOut:
     receipt_id = await pay_svc.receipt_id_for_payment(db, payment.id)
-    return PaymentOut(**pay_svc.payment_dict(payment, receipt_id=receipt_id))
+    return PaymentOut(**pay_svc.payment_dict(payment, receipt_id=receipt_id, receipt_unverified=await pay_svc.receipt_unverified_for_payment(db, payment.id)))
 
 
 async def _contractor_side_may_manage(db: AsyncSession, user: User, project, payment) -> bool:
