@@ -470,7 +470,7 @@ Rework stages are listed separately and link to stage details.
 
 # 9. Contractor Control view
 
-**VERIFIED. Source:** `ContractorControlView.tsx` blob `6c5cd6b869f38502caf180b2e77b2dfa598958dd`.
+**VERIFIED. Source:** `ContractorControlView.tsx` blob `2ceff127e38bb570d53b40ef3fd4506ce54419e0`.
 
 Loads:
 
