@@ -117,3 +117,13 @@ def test_chat_invoice_text_uses_russian_money_format():
     assert format_rub(1234.5) == "1 234,50 ₽"
     src = inspect.getsource(chat_service)
     assert "{amount:.0f} ₽" not in src and "format_rub(amount)" in src
+
+
+def test_legacy_raw_field_names_are_localized_on_read():
+    from app.core.legacy_text import localize_field_names
+
+    assert localize_field_names("Спальня: is_archived") == "Спальня: архив"
+    assert localize_field_names("outlets_count, width_m") == "розетки, ширина"
+    assert localize_field_names("Спальня: архив") == "Спальня: архив"
+    assert localize_field_names("name of notes") == "name of notes"
+    assert localize_field_names(None) is None
