@@ -34,6 +34,7 @@ import {
   type EstimateLineTypeFilter,
 } from '@/lib/domain/estimateFilters';
 import { writeResultMessage } from '@/lib/offlineResultMessage';
+import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
 
 export function ContractorEstimateView() {
   const pathname = usePathname();
@@ -143,7 +144,7 @@ export function ContractorEstimateView() {
           <Text style={styles.totalLabel}>Смета проекта</Text>
           <Text style={styles.total}>{formatRub(project.budget_planned)}</Text>
           {project.estimate_locked_at ? (
-            <Text style={styles.locked}>Зафиксирована · {project.estimate_locked_at.slice(0, 10)}</Text>
+            <Text style={styles.locked}>Зафиксирована · {formatScheduleDayFull(project.estimate_locked_at)}</Text>
           ) : null}
           <Text style={styles.breakdown}>
             Работы {formatRub(totals.works)} ({totals.worksCount}) · Материалы {formatRub(totals.materials)} ({totals.materialsCount})

@@ -1,6 +1,7 @@
 /** Человеческие сообщения для офлайн-очереди — без технического offline_queued (W66 #24).
  * Clarity E: sheet вместо Alert. */
 import { OFFLINE_MESSAGES } from '@/lib/offlineErrors';
+import { offlineQueuedMessage } from '@/lib/offlineQueuedMessage';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import type { OsRole } from '@/constants/osSections';
@@ -18,7 +19,7 @@ export function isOfflineBlocked(e: unknown): string | null {
 export function notifyOfflineQueued(actionLabel = 'Действие', role: OsRole = 'customer'): void {
   showActionConfirm({
     title: 'Нет сети',
-    message: `${actionLabel} поставлено в очередь и выполнится при появлении интернета. Не закрывайте приложение сразу.`,
+    message: offlineQueuedMessage(actionLabel),
     primaryLabel: 'Очередь',
     onPrimary: () => pushOsNav('/conflicts', undefined, role),
     secondaryLabel: 'Понятно',

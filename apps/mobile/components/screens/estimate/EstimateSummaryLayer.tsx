@@ -10,6 +10,7 @@ import type { ProjectDetail } from '@/lib/api';
 import { estimateTotals } from '@/lib/domain/estimateFilters';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { writeResultMessage } from '@/lib/offlineResultMessage';
+import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
 
 type Props = {
   project: ProjectDetail;
@@ -71,9 +72,9 @@ export function EstimateSummaryLayer({
           <Text style={s.breakdown}>Без НДС (ставка 0%)</Text>
         )}
         {lockedAt ? (
-          <Text style={s.locked}>Согласована · зафиксирована {lockedAt.slice(0, 10)}</Text>
+          <Text style={s.locked}>Согласована · зафиксирована {formatScheduleDayFull(lockedAt)}</Text>
         ) : project.estimate_lock_proposed_at ? (
-          <Text style={s.unlocked}>На согласовании у заказчика · {project.estimate_lock_proposed_at.slice(0, 10)}</Text>
+          <Text style={s.unlocked}>На согласовании у заказчика · {formatScheduleDayFull(project.estimate_lock_proposed_at)}</Text>
         ) : (
           <Text style={s.unlocked}>Черновик — сумма ещё не согласована</Text>
         )}
