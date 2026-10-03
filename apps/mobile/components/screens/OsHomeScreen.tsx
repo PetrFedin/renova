@@ -343,7 +343,9 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
     );
   }
 
-  if (loading && !dash) {
+  // Пока идёт загрузка, снимок появляется только после ответа всех источников (отметка объекта в finally).
+  // Раньше при `dash` без `snap` показывалась ложная ошибка, хотя данные ещё грузились.
+  if (loading && (!dash || !snap)) {
     return <View style={s.center}><ActivityIndicator color={RenovaTheme.colors.primary} /></View>;
   }
 
