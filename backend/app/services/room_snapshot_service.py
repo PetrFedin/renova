@@ -26,7 +26,7 @@ def _stages_for_room(project, room_id: str) -> list[Stage]:
 
 async def _stage_card(db, stage: Stage, project, *, role: str = "customer") -> dict:
     """§4.4 Карточка этапа для vertical timeline."""
-    blocked = await dep_svc.evaluate_stage(db, stage)
+    blocked = await dep_svc.evaluate_stage(db, stage, commit=False, persist_status=False)
     picks = (await db.execute(select(MaterialPick).where(MaterialPick.stage_id == stage.id))).scalars().all()
     waiting_materials = any(getattr(p.status, "value", p.status) in ("draft", "pending", "ordered") for p in picks)
     works_total, works_done = st_status.works_counts(stage)
