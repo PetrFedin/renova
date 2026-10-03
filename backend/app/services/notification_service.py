@@ -64,6 +64,7 @@ async def notify(
     link_path: str | None = None,
     return_to: str | None = None,
 ) -> AppNotification | None:
+    from app.core.money_format import normalize_notification_body
     from app.services.client_write_side_effects import (
         payment_transition_side_effects_suppressed,
         take_client_write_side_effect,
@@ -75,6 +76,7 @@ async def notify(
     ):
         return None
 
+    body = normalize_notification_body(body) or ""
     outbox_id = take_client_write_side_effect("notification", match_key=user_id)
     if outbox_id:
         return await notify_from_outbox(
@@ -151,6 +153,9 @@ async def notify_from_outbox(
     return_to: str | None = None,
     role: str | None = None,
 ) -> AppNotification:
+    from app.core.money_format import normalize_notification_body
+
+    body = normalize_notification_body(body) or ""
     role = role or await recipient_role(db, user_id)
     link_path = link_for_role(link_path, role)
     return_to = link_for_role(return_to, role)
@@ -306,12 +311,14 @@ def _return_to_of(link_path: str | None) -> str | None:
 
 
 def notif_dict(notification: AppNotification) -> dict:
+    from app.core.money_format import normalize_notification_body
+
     return {
         "id": notification.id,
         "project_id": notification.project_id,
         "notification_type": notification.notification_type.value,
         "title": notification.title,
-        "body": notification.body,
+        "body": normalize_notification_body(notification.body),
         "link_path": notification.link_path,
         "return_to": _return_to_of(notification.link_path),
         "read": notification.read,

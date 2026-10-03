@@ -12,6 +12,7 @@ import { reportError } from '@/lib/reportError';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { EmptyActionState } from '@/components/ui/EmptyActionState';
+import { formatEventDateTime } from '@/lib/formatScheduleDate';
 
 
 export function ActivityFeed({
@@ -95,7 +96,7 @@ export function ActivityFeed({
             <View key={it.id} style={[s.row, s.rowMuted]}>
               <Text style={s.t}>{it.title}</Text>
               {it.body ? <Text style={s.b} numberOfLines={2}>{it.body}</Text> : null}
-              <Text style={s.d}>{it.at.slice(0, 16).replace('T', ' ')}</Text>
+              <Text style={s.d}>{formatEventDateTime(it.at)}</Text>
             </View>
           );
         }
@@ -103,7 +104,7 @@ export function ActivityFeed({
           <Pressable key={it.id} style={s.row} onPress={() => openItem(it)} accessibilityRole="button">
             <Text style={s.t}>{it.title}</Text>
             {it.body ? <Text style={s.b} numberOfLines={2}>{it.body}</Text> : null}
-            <Text style={s.d}>{it.at.slice(0, 16).replace('T', ' ')}</Text>
+            <Text style={s.d}>{formatEventDateTime(it.at)}</Text>
           </Pressable>
         );
       })

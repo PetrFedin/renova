@@ -823,7 +823,7 @@ export default function PortalScreen() {
         <PortalSection title="Расписание">
           <Text style={styles.line}>Этап: {schedule.current_stage || '—'}</Text>
           <Text style={styles.line}>Прогресс: {progress}%</Text>
-          {schedule.planned_end ? <Text style={styles.line}>План окончания: {schedule.planned_end}</Text> : null}
+          {schedule.planned_end ? <Text style={styles.line}>План окончания: {formatScheduleDayFull(schedule.planned_end)}</Text> : null}
         </PortalSection>
 
         <PortalSection

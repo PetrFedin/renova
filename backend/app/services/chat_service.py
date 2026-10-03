@@ -42,6 +42,15 @@ def normalize_chat_title(title: str) -> str:
     return " ".join((title or "").strip().split()).lower()
 
 
+def _ru_date(iso: str) -> str:
+    """«2026-10-05[T…]» -> «05.10.2026»; нераспознанное отдаём как есть."""
+    head = (iso or "")[:10]
+    parts = head.split("-")
+    if len(parts) == 3 and all(p.isdigit() for p in parts):
+        return f"{parts[2]}.{parts[1]}.{parts[0]}"
+    return head
+
+
 async def find_thread_by_title(db: AsyncSession, project_id: str, title: str) -> ChatThread | None:
     norm = normalize_chat_title(title)
     if not norm:
@@ -1327,7 +1336,7 @@ async def create_task_from_message(
         wo.assignee_id = assignee_id
         await db.commit()
 
-    text = f"📋 Задача: {title}" + (f" · до {due_at[:10]}" if due_at else "")
+    text = f"📋 Задача: {title}" + (f" · до {_ru_date(due_at)}" if due_at else "")
     meta = {"work_order_id": wo.id, "assignee_id": assignee_id, "due_at": due_at}
     # COM-034: тот же надёжный путь, что и обычные сообщения (outbox, идемпотентность).
     msg = await _send_service_message(

@@ -5,6 +5,7 @@ import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { WORK_CARD_STATUS_LABEL } from '@/constants/labels';
 import { todayIso } from '@/lib/localDate';
+import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
 
 type StageLike = {
   id: string; name: string; status: string; planned_end?: string | null; payment_amount?: number;
@@ -56,7 +57,7 @@ export function WorkStageCard({ stage, roomLabel, onOpen, onPrimary, primaryLabe
         {stage.overdue_days ? ` · +${stage.overdue_days} дн.` : ''}
         {blockedReason ? ` · ${blockedReason}` : ''}
         {' · '}
-        {stage.planned_end || 'без срока'}
+        {stage.planned_end ? formatScheduleDayFull(stage.planned_end) : 'без срока'}
         {overdue ? ' · просрочка' : ''}
         {' · '}
         {formatRub(stage.payment_amount || 0)}

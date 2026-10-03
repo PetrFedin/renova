@@ -8,6 +8,7 @@ import json
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.money_format import format_rub
 from app.models.entities import Project, Stage, StageStatus
 from app.services import outbox_service as outbox
 from app.services import project_participant_service as participant_service
@@ -294,7 +295,7 @@ async def _prepare_activity(
             "title": f"Создан объект: {project.name}",
             "body": (
                 f"Комнат: {rooms_count}; этапов: {stages_count}; "
-                f"план: {float(project.budget_planned or 0):.2f} ₽"
+                f"план: {format_rub(project.budget_planned or 0)}"
                 + (f"; {origin_summary}" if origin_summary else "")
             ),
             "link_path": "/(customer)/(tabs)/object",

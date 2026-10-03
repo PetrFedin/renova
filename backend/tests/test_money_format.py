@@ -89,3 +89,20 @@ async def test_project_feed_normalizes_legacy_body():
     items = await activity_service.project_feed(_Db(), "p1")
     assert items[0]["body"] == "1 500 ₽"
     assert event.body == "1500.0"
+
+
+def test_notification_body_bare_number_is_formatted():
+    from app.core.money_format import normalize_activity_body, normalize_notification_body
+
+    assert normalize_notification_body("15000.0") == "15 000 ₽"
+    assert normalize_notification_body("Документ 1 · 1 500 ₽") == "Документ 1 · 1 500 ₽"
+    assert normalize_notification_body(None) is None
+    assert normalize_activity_body("ChangeOrderApproved", "15000.0") == "15 000 ₽"
+
+
+def test_chat_task_due_date_is_russian():
+    from app.services.chat_service import _ru_date
+
+    assert _ru_date("2026-10-05") == "05.10.2026"
+    assert _ru_date("2026-10-05T10:00:00Z") == "05.10.2026"
+    assert _ru_date("скоро") == "скоро"

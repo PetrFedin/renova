@@ -21,6 +21,7 @@ import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { ActionConfirmSheet } from '@/components/renova/ActionConfirmSheet';
 import { buildReworkItems, effectiveAcceptanceRole, type ReworkItem } from '@/lib/domain/acceptanceActions';
 import { submitStageWithFeedback } from '@/lib/submitStageUi';
+import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
 
 export function UnifiedAcceptanceList({
   stages,
@@ -251,7 +252,7 @@ function ReworkRow({ item, onOpen, onResubmit, readOnly }: { item: ReworkItem; o
         <Text style={s.title}>{item.title}</Text>
         <Text style={s.meta}>Возвращено на доработку</Text>
         <Text style={s.meta}>Причина: {item.reason || 'не указана — уточните в комментариях этапа'}</Text>
-        {item.deadline ? <Text style={s.meta}>Срок доработки: {item.deadline}</Text> : null}
+        {item.deadline ? <Text style={s.meta}>Срок доработки: {formatScheduleDayFull(item.deadline)}</Text> : null}
       </Pressable>
       <View style={s.btnRow}>
         {!readOnly ? <PrimaryButton title="Сдать повторно" variant="accent" compact onPress={onResubmit} /> : null}

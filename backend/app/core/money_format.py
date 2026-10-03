@@ -34,7 +34,7 @@ def format_rub(value: object) -> str:
     return f"{format_amount(value)} {RUB}"
 
 
-_MONEY_KIND_PREFIXES = ("Expense", "Payment", "BankImport", "Receipt")
+_MONEY_KIND_PREFIXES = ("Expense", "Payment", "BankImport", "Receipt", "ChangeOrder")
 _BARE_NUMBER = re.compile(r"^-?\d+(?:\.\d+)?$")
 _PRICE_CHANGE = re.compile(r"(-?\d+\.\d+) → (-?\d+\.\d+) ₽")
 
@@ -54,3 +54,14 @@ def normalize_activity_body(kind: str | None, body: str | None) -> str | None:
         parts = text.split(" · ")
         text = " · ".join(format_rub(p.strip()) if _BARE_NUMBER.match(p.strip()) else p for p in parts)
     return text
+
+
+def normalize_notification_body(body: str | None) -> str | None:
+    """Тело уведомления из голого числа («15000.0») -> «15 000 ₽».
+
+    Источники писали ``str(amount)``; текст с пояснением не меняется.
+    """
+    if body is None:
+        return body
+    text = body.strip()
+    return format_rub(text) if _BARE_NUMBER.match(text) else body

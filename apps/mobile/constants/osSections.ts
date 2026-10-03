@@ -65,7 +65,7 @@ const ROUTE_TITLES: Record<string, { customer: string; contractor: string }> = {
   calendar: { customer: 'Сроки', contractor: 'Сроки' },
   estimate: { customer: 'Смета', contractor: 'Смета' },
   rooms: { customer: 'Комнаты', contractor: 'Комнаты' },
-  profile: { customer: 'Данные объекта', contractor: 'Данные объекта' },
+  profile: { customer: 'Профиль', contractor: 'Профиль' },
   finance: { customer: 'Деньги', contractor: 'Финансы' },
   budget: { customer: 'Деньги', contractor: 'Бюджет' },
   guide: { customer: 'Справка', contractor: 'Справка' },

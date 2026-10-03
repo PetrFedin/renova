@@ -26,6 +26,7 @@ import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { writeResultMessage } from '@/lib/offlineResultMessage';
+import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
 
 export function ContractorControlView() {
   const pathname = usePathname();
@@ -102,7 +103,7 @@ export function ContractorControlView() {
           disabled={!iss.stage_id}
         >
           <Text style={s.title}>{iss.title}</Text>
-          <Text style={s.meta}>{issueSeverityLabel(iss.severity)} · {issueStatusLabel(iss.status)}{iss.due_at ? ` · до ${iss.due_at.slice(0, 10)}` : ''}{iss.stage_id ? ' · → этап' : ''}</Text>
+          <Text style={s.meta}>{issueSeverityLabel(iss.severity)} · {issueStatusLabel(iss.status)}{iss.due_at ? ` · до ${formatScheduleDayFull(iss.due_at)}` : ''}{iss.stage_id ? ' · → этап' : ''}</Text>
           {!readOnly && contractorCanMarkFixed(iss.status, iss.title || '') ? (
             <PrimaryButton
               title="Исправлено"

@@ -16,6 +16,7 @@ import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { apiErrorMessage } from '@/lib/formatPhone';
 import { StageContextSummary } from '@/components/screens/stage/StageContextSummary';
 import { ReworkExtensionRequestCard } from '@/components/screens/stage/ReworkExtensionRequestCard';
+import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
 
 type Props = {
   stage: StageDetail;
@@ -77,7 +78,7 @@ export function StageDetailHero({
         </Text>
       ) : null}
       {stage.planned_start ? (
-        <Text style={s.meta}>План: {stage.planned_start} → {stage.planned_end || '—'}</Text>
+        <Text style={s.meta}>План: {formatScheduleDayFull(stage.planned_start)} → {formatScheduleDayFull(stage.planned_end)}</Text>
       ) : null}
       {stage.contractor_ready && stage.status !== 'active' ? <Text style={s.ok}>Исполнитель отметил готовность</Text> : null}
       {isContractor && stage.status === 'review' && acts.statusText ? <Text style={s.meta}>{acts.statusText}</Text> : null}
@@ -86,7 +87,7 @@ export function StageDetailHero({
         <View style={s.warnBox}>
           <Text style={s.warnHead}>{isContractor ? 'Заказчик вернул этап на доработку' : 'Этап возвращён исполнителю на доработку'}</Text>
           <Text style={s.warnItem}>Причина: {reworkReason || 'не указана — уточните в комментариях'}</Text>
-          {stage.rework_deadline ? <Text style={s.warnItem}>Срок доработки: {stage.rework_deadline.slice(0, 10)}</Text> : null}
+          {stage.rework_deadline ? <Text style={s.warnItem}>Срок доработки: {formatScheduleDayFull(stage.rework_deadline)}</Text> : null}
         </View>
       ) : null}
 
