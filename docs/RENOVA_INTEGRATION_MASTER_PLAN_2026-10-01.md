@@ -826,3 +826,99 @@ Private conversations, prices or personal data are excluded unless explicitly au
 
 **Commercial framing:** Renova becomes not only "manage my renovation" but a long-lived digital operating record for the finished home, enabling recurring service revenue.
 
+## Premium enterprise wave — automated quantity takeoff and verified progress measurement
+
+This wave connects IFC, estimate, reality capture and acceptance into a premium measured-progress capability.
+
+### Quantity Baseline Authority — ADOPT
+
+Create a versioned baseline linked to:
+
+- project/work package;
+- estimate line;
+- room/zone;
+- IFC/model element or drawing reference;
+- quantity type;
+- unit;
+- planned quantity;
+- measurement method/source;
+- revision;
+- reviewer/status.
+
+Examples: area, length, count, volume, installed-component count.
+
+Scope/design changes create new baseline revisions through Change authority.
+
+### IFC Quantity Takeoff — ADAPT
+
+Reuse:
+
+https://github.com/IfcOpenShell/IfcOpenShell
+
+Extract candidate quantities from admitted IFC versions.
+
+Store:
+
+- model checksum/version;
+- element set;
+- extraction rule/version;
+- candidate quantity;
+- validation status.
+
+Model-derived quantities require review before becoming commercial baseline.
+
+### Reality-capture Progress Measurement — ADAPT
+
+Reuse the Open3D / Reality Capture layer where quality and reference geometry are sufficient.
+
+approved baseline -> capture -> registration -> measured candidate -> reviewer -> accepted progress observation
+
+Low-quality capture falls back to manual evidence.
+
+### Installed Progress Ledger — ADOPT
+
+Record:
+
+- observed/completed quantity;
+- observation date;
+- method;
+- evidence;
+- reviewer;
+- accepted/rejected state;
+- cumulative progress;
+- previous observation link.
+
+Geometry never auto-approves money.
+
+### Estimate / Schedule / Acceptance Bridge — ADOPT
+
+Show:
+
+planned quantity -> installed/accepted quantity -> remaining -> schedule implication -> cost/payment context
+
+Measured progress may support progress report, contractor review, acceptance preparation and change analysis.
+
+### Quantity Variance / Scope Drift — ADOPT
+
+Detect:
+
+- model vs estimate quantity;
+- approved baseline vs installed;
+- design revision effect;
+- unexplained over/under quantity.
+
+Variance can create RFI/Change/Punch through explicit commands.
+
+### Additional acceptance
+
+- every quantity has unit/source/revision;
+- IFC extraction is reproducible;
+- reality measurement requires quality gate;
+- automated quantity never approves invoice/payment;
+- scope change creates new baseline;
+- manual measurement remains supported.
+
+**Sequencing:** Estimate + IFC + Change + Reality Capture -> quantity baseline -> IFC takeoff -> measured progress -> acceptance/payment support -> variance analysis.
+
+**Commercial framing:** auditable measured digital progress control connecting quantity, geometry, evidence and cost.
+
