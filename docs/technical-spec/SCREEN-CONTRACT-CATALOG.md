@@ -413,7 +413,7 @@ else:
 
 # 8. Customer Control view
 
-**VERIFIED. Source:** `CustomerControlView.tsx` blob `7f84cebb1e7743f7e7d5200c9db4ee0593a6d6bb`.
+**VERIFIED. Source:** `CustomerControlView.tsx` blob `3d78b00a8bb1429ff7cde3b57b4135f4d25e5a8f`.
 
 Loads concurrently:
 

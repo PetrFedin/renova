@@ -12,7 +12,7 @@
 | `apps/mobile/components/renova/MaterialPickList.tsx` | `ae24469347576b0675b683545017960711198ad2` | material supply editor + approval + truthful supplier-price refresh UX; durable price provenance is governed by `MATERIAL-PRICE-TRUTH-CONTRACT.md` |
 | `apps/mobile/components/screens/OsSelectionsScreen.tsx` | `8a52566cfd463083b5055318871cc9668f1edf39` | Selections |
 | `apps/mobile/components/screens/OsControlScreen.tsx` | `299b29fe2571900663e290c35bc0096854b8eb7f` | role/access-mode control router |
-| `apps/mobile/components/screens/control/CustomerControlView.tsx` | `7f84cebb1e7743f7e7d5200c9db4ee0593a6d6bb` | customer acceptance/QC/warranty view |
+| `apps/mobile/components/screens/control/CustomerControlView.tsx` | `3d78b00a8bb1429ff7cde3b57b4135f4d25e5a8f` | customer acceptance/QC/warranty view |
 | `apps/mobile/components/screens/control/ContractorControlView.tsx` | `2ceff127e38bb570d53b40ef3fd4506ce54419e0` | contractor acceptance/QC view |
 | `apps/mobile/components/screens/control/TechnicalSupervisionControlView.tsx` | `c0d8856adeb78bdbd856ea8612a244b852af87c9` | technical-supervision control view |
 | `apps/mobile/components/renova/os/OsHubTabs.tsx` | `b04ac08459926439b0533db3decce28a4791843c` | hub tab geometry/progressive disclosure |
