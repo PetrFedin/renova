@@ -922,3 +922,126 @@ Variance can create RFI/Change/Punch through explicit commands.
 
 **Commercial framing:** auditable measured digital progress control connecting quantity, geometry, evidence and cost.
 
+## Moat wave — insurance restoration and claim-evidence workspace
+
+This wave opens a new B2B/B2B2C market: property-loss restoration for owners, adjusters, insurers and restoration contractors.
+
+### Loss Event Authority — ADOPT
+
+Create:
+
+- property/project;
+- loss event;
+- event type/cause as reported;
+- occurrence/discovery time;
+- affected rooms/assets;
+- claimant/owner;
+- insurer/claim reference;
+- adjuster/provider;
+- evidence state;
+- status.
+
+Renova records facts/evidence; it does not determine insurance coverage.
+
+### Pre-loss Baseline — REUSE
+
+Reuse Home Digital Passport, accepted work, installed assets, prior condition and documents as the best available pre-loss baseline.
+
+This is a major moat: verified construction history can reduce ambiguity after a loss.
+
+### Damage Capture — ADOPT
+
+Capture:
+
+- photos/video/3D;
+- affected zone;
+- observed damage;
+- measurement/quantity;
+- material/asset;
+- moisture/technical reading where manually/instrumentally supplied;
+- source/device;
+- timestamp;
+- reviewer.
+
+Reality Capture/Open3D may generate candidate geometry/quantity differences only through existing quality gates.
+
+### Restoration Scope — ADOPT
+
+Build a versioned restoration scope:
+
+- remove/demolish;
+- dry/clean/repair;
+- replace;
+- inspect/test;
+- quantity;
+- unit;
+- estimate line;
+- dependency;
+- responsible party;
+- status.
+
+Scope versions never overwrite the original loss record.
+
+### Claim Evidence Pack — ADOPT
+
+Generate a reproducible package:
+
+- loss timeline;
+- pre-loss passport references;
+- damage evidence;
+- quantity takeoff;
+- restoration estimate;
+- contractor quotations;
+- approvals/changes;
+- progress/acceptance;
+- invoice/payment references;
+- checksums.
+
+### Adjuster / Insurer Review Workspace — ADOPT
+
+Provide scoped external review:
+
+- request more evidence;
+- accept/question line;
+- attach assessment;
+- mark review state;
+- ask for inspection.
+
+Review does not directly alter Renova contractor scope/payment authority.
+
+### Restoration Progress — REUSE
+
+Reuse:
+
+- Quantity Progress;
+- Change;
+- RFI/Punch;
+- Evidence;
+- Acceptance;
+- Warranty.
+
+No separate construction engine is created.
+
+### Coverage / Settlement Boundary — REQUIRED
+
+Renova must not infer:
+
+- whether policy covers the event;
+- legal liability;
+- insurer payment obligation.
+
+Those remain external insurer/legal decisions.
+
+### Additional acceptance
+
+- loss evidence is immutable/versioned;
+- pre-loss and post-loss states are distinguishable;
+- insurer/adjuster access is scoped;
+- automated measurements never determine coverage;
+- restoration scope changes are auditable;
+- claim pack resolves to exact source evidence.
+
+**Sequencing:** Home Passport + Evidence + Quantity/Estimate -> Loss Event -> Damage Capture -> Scope -> external review -> restoration execution -> claim closeout.
+
+**Commercial framing:** opens insurer, loss-adjuster, restoration-company and property-management markets using Renova's existing evidence/digital-twin moat.
+
