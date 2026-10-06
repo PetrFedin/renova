@@ -10,8 +10,8 @@ The pinned runtime base in `backend/Dockerfile` is `python:3.12.13-slim-bookworm
 
 The refreshed Trivy database reported the final runtime image carrying Debian `libpcre2-8-0 10.42-1` with two fixed HIGH findings:
 
-- `CVE-2026-86145` — fixed by Debian package `10.42-1+deb12u1`;
-- `CVE-2026-89161` — fixed by Debian package `10.42-1+deb12u1`.
+- `CVE-2026-86145` — fixed by Debian package `10.42-1+deb12u2`;
+- `CVE-2026-89161` — fixed by Debian package `10.42-1+deb12u2`.
 
 The same failed workflow had already passed image build, immutable revision metadata, command and non-root checks before the vulnerability gate. Therefore this task is a supply-chain remediation and does not redefine the recovery/business logic under test.
 
@@ -21,8 +21,8 @@ The Python base digest remains unchanged. The runtime stage performs:
 
 ```text
 apt-get update
-apt-get install --no-install-recommends libpcre2-8-0=10.42-1+deb12u1
-assert installed version == 10.42-1+deb12u1
+apt-get install --no-install-recommends libpcre2-8-0=10.42-1+deb12u2
+assert installed version == 10.42-1+deb12u2
 remove /var/lib/apt/lists/*
 ```
 
