@@ -1,6 +1,6 @@
-/** Максимальная ширина колонки контента на широких экранах (web ≥ 1024). 768 планшета помещается целиком. */
 /**
- * Web work area. 1040 keeps forms readable while giving tablet/desktop
- * dashboards enough room for deliberate multi-column composition.
+ * Web application shell. Tablet uses the available width; desktop stops at 1240px.
+ * With the expanded 216px navigation rail this leaves ~1024px for the workspace:
+ * enough for real desktop composition without turning forms and actions into full-screen strips.
  */
-export const MAX_CONTENT_WIDTH = 1040;
+export const MAX_CONTENT_WIDTH = 1240;

@@ -1,10 +1,11 @@
 /** Нижняя панель — 5 кнопок, dynamic preset или настройки пользователя */
 import { useCallback, useMemo, useState, useEffect } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet, useWindowDimensions } from 'react-native';
 import type { PressableStateCallbackType } from 'react-native';
 import { router, usePathname, useFocusEffect, useGlobalSearchParams } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { TabIcon } from '@/components/renova/TabIcon';
+import { Ionicons } from '@expo/vector-icons';
 import { ChatBadge } from '@/components/renova/chat/ChatBadge';
 import { DOCK_BY_ID, type DockItemId } from '@/constants/dockBar';
 import { getDockBar, subscribeDockBar } from '@/lib/dockBarPrefs';
@@ -27,6 +28,9 @@ import { activeDockItemId, getBudgetHubLabel } from '@/lib/navigation/navigation
 
 export function OsDockBar({ role, orientation = 'bottom' }: { role: OsRole; orientation?: 'bottom' | 'side' }) {
   const pathname = usePathname();
+  const { width } = useWindowDimensions();
+  const [sideExpanded, setSideExpanded] = useState(width >= 1180);
+  const [sideUserSet, setSideUserSet] = useState(false);
   // Именно global: док рисует **макет** `(tabs)`, а `tab=estimate` принадлежит
   // открытому экрану. Локальный хук отдаёт параметры своего маршрута, то есть
   // макета, и до дока `tab` не доходил вовсе — кнопка «Смета» никогда не
@@ -76,6 +80,12 @@ export function OsDockBar({ role, orientation = 'bottom' }: { role: OsRole; orie
     if (!dynamicItems) reloadPrefs();
   }), [dynamicItems, reloadPrefs]);
 
+  useEffect(() => {
+    if (orientation !== 'side' || sideUserSet) return;
+    // Tablet starts compact; desktop uses the wider labelled navigation by default.
+    setSideExpanded(width >= 1180);
+  }, [orientation, sideUserSet, width]);
+
   const activeId = activeDockItemId(items, { pathname, params });
 
   const go = (id: DockItemId) => {
@@ -88,8 +98,33 @@ export function OsDockBar({ role, orientation = 'bottom' }: { role: OsRole; orie
     router.navigate(tabsRoute(role, item.routeName, item.hubTab) as never);
   };
 
+  const isSide = orientation === 'side';
+
   return (
-    <View style={[s.bar, orientation === 'side' && s.sideBar, { paddingBottom: orientation === 'side' ? 0 : bottomPad }]}>
+    <View
+      testID={isSide ? 'os-side-nav' : 'os-bottom-nav'}
+      style={[
+        s.bar,
+        isSide && s.sideBar,
+        isSide && (sideExpanded ? s.sideBarExpanded : s.sideBarCollapsed),
+        { paddingBottom: isSide ? 0 : bottomPad },
+      ]}
+    >
+      {isSide ? (
+        <Pressable
+          testID="os-side-nav-toggle"
+          style={({ pressed }: PressableStateCallbackType) => [s.sideToggle, pressed && s.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel={sideExpanded ? 'Свернуть панель разделов' : 'Развернуть панель разделов'}
+          onPress={() => {
+            setSideUserSet(true);
+            setSideExpanded((value) => !value);
+          }}
+        >
+          <Ionicons name={sideExpanded ? 'chevron-back-outline' : 'chevron-forward-outline'} size={20} color={RenovaTheme.colors.textMuted} />
+          {sideExpanded ? <Text style={s.sideToggleLabel}>Разделы</Text> : null}
+        </Pressable>
+      ) : null}
       {items.map((id) => {
         const item = DOCK_BY_ID[id];
         if (!item) return null;
@@ -100,7 +135,14 @@ export function OsDockBar({ role, orientation = 'bottom' }: { role: OsRole; orie
         return (
           <Pressable
             key={id}
-            style={({ pressed }: PressableStateCallbackType) => [s.tab, orientation === 'side' && s.sideTab, pressed && s.pressed]}
+            testID={`os-dock-${id}${active ? '-active' : ''}`}
+            style={({ pressed }: PressableStateCallbackType) => [
+              s.tab,
+              isSide && s.sideTab,
+              isSide && sideExpanded && s.sideTabExpanded,
+              active && isSide && s.sideTabActive,
+              pressed && s.pressed,
+            ]}
             onPress={() => go(id)}
             accessibilityRole="button"
             accessibilityLabel={
@@ -118,7 +160,9 @@ export function OsDockBar({ role, orientation = 'bottom' }: { role: OsRole; orie
                 <ChatBadge count={todayTasks} />
               )}
             </View>
-            <Text style={[s.label, active && s.labelOn]} numberOfLines={1}>{label}</Text>
+            {!isSide || sideExpanded ? (
+              <Text style={[s.label, isSide && s.sideLabel, active && s.labelOn]} numberOfLines={1}>{label}</Text>
+            ) : null}
           </Pressable>
         );
       })}
@@ -137,13 +181,26 @@ const s = StyleSheet.create({
   },
   sideBar: {
     flexDirection: 'column',
-    width: 88,
     minHeight: 0,
-    paddingTop: 12,
+    paddingTop: 10,
+    paddingHorizontal: 8,
     borderTopWidth: 0,
     borderRightWidth: 1,
     borderRightColor: RenovaTheme.colors.border,
+    gap: 4,
   },
+  sideBarCollapsed: { width: 72 },
+  sideBarExpanded: { width: 216 },
+  sideToggle: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: RenovaTheme.radius.sm,
+    marginBottom: 4,
+  },
+  sideToggleLabel: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.textMuted },
   tab: {
     flex: 1,
     alignItems: 'center',
@@ -155,10 +212,19 @@ const s = StyleSheet.create({
   sideTab: {
     flex: 0,
     width: '100%',
-    minHeight: 64,
+    minHeight: 52,
     paddingHorizontal: 6,
-    paddingVertical: 8,
+    paddingVertical: 6,
+    borderRadius: RenovaTheme.radius.sm,
   },
+  sideTabExpanded: {
+    minHeight: 48,
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    paddingHorizontal: 12,
+    gap: 8,
+  },
+  sideTabActive: { backgroundColor: RenovaTheme.colors.surfaceMuted },
   pressed: { opacity: 0.65 },
   iconWrap: {
     position: 'relative',
@@ -176,5 +242,6 @@ const s = StyleSheet.create({
     color: RenovaTheme.colors.tabInactive,
     textAlign: 'center',
   },
+  sideLabel: { fontSize: 13, lineHeight: 18, marginTop: 0, textAlign: 'left', flexShrink: 1 },
   labelOn: { color: RenovaTheme.colors.tabActive },
 });

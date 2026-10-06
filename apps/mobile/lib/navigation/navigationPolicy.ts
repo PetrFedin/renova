@@ -91,9 +91,33 @@ export type DockRouteState = { pathname: string; params?: Record<string, string 
 
 /** Active dock state is exclusive, including setup's Object + Estimate shortcut. */
 export function activeDockItemId(items: readonly DockItemId[], state: DockRouteState): DockItemId | null {
-  const seg = state.pathname.split('/').filter(Boolean).pop() || 'index';
+  const pathname = state.pathname || '/';
+  const seg = pathname.split('/').filter(Boolean).pop() || 'index';
   const rawTab = state.params?.tab;
   const tab = Array.isArray(rawTab) ? rawTab[0] : rawTab;
+  const rawReturnTo = state.params?.returnTo;
+  const returnTo = Array.isArray(rawReturnTo) ? rawReturnTo[0] : rawReturnTo;
+
+  const detailCandidate: DockItemId | null =
+    pathname.startsWith('/room/') ? 'object'
+      : pathname.startsWith('/stage/') || pathname.startsWith('/material/') || pathname.startsWith('/purchase/') || pathname.startsWith('/work-order/') ? 'repair'
+        : pathname.startsWith('/chat/') ? 'chat'
+          : pathname === '/scan-receipt' || pathname === '/payment-return' ? 'budget'
+            : null;
+  if (detailCandidate) {
+    return items.includes(detailCandidate) && DOCK_BY_ID[detailCandidate] ? detailCandidate : null;
+  }
+
+  // Secondary surfaces must not falsely claim that Home is active. If they carry
+  // an explicit return context, keep that parent section highlighted instead.
+  if (['/documents', '/activity', '/inbox', '/notification-center', '/reports', '/approvals'].includes(pathname)) {
+    if (returnTo?.startsWith('/object')) return items.includes('object') ? 'object' : null;
+    if (returnTo?.startsWith('/repair')) return items.includes('repair') ? 'repair' : null;
+    if (returnTo?.startsWith('/budget')) return items.includes('budget') ? 'budget' : null;
+    if (returnTo?.startsWith('/chat')) return items.includes('chat') ? 'chat' : null;
+    return null;
+  }
+
   const objectRoute = ['object', 'rooms', 'estimate', 'plan'].includes(seg);
   const candidate: DockItemId =
     (objectRoute && tab === 'estimate' && items.includes('estimate')) ? 'estimate'

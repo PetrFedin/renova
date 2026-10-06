@@ -30,22 +30,22 @@ function OsTabsChromeHeader({ role }: { role: OsRole }) {
 
 function OsRoleTabsNavigatorImpl({ role }: Props) {
   const { width } = useWindowDimensions();
-  const desktopRail = Platform.OS === 'web' && width >= 1000;
+  // Wide web gets its persistent left rail from WideScreenFrame; phone keeps the bottom dock here.
+  const wideShell = Platform.OS === 'web' && width >= 768;
 
   return (
     <View style={shell.root}>
       <ActiveProjectSync />
       <OsPendingProjectPickEffect />
       <OsTabsChromeHeader role={role} />
-      <View style={[shell.main, desktopRail && shell.mainDesktop]}>
-        {desktopRail ? <OsDockBar role={role} orientation="side" /> : null}
+      <View style={shell.main}>
         <View style={shell.body}>
           {/* Текущий экран из app/(role)/(tabs)/* — без BottomTabNavigator */}
           <Slot />
         </View>
       </View>
       <OsQuickFab role={role} />
-      {!desktopRail ? <OsDockBar role={role} /> : null}
+      {!wideShell ? <OsDockBar role={role} /> : null}
     </View>
   );
 }
@@ -55,6 +55,5 @@ export const OsRoleTabsNavigator = memo(OsRoleTabsNavigatorImpl);
 const shell = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#F8FAFC' },
   main: { flex: 1, minHeight: 0 },
-  mainDesktop: { flexDirection: 'row' },
   body: { flex: 1, minHeight: 0, paddingBottom: Platform.OS === 'web' ? 4 : 0, overflow: 'hidden' },
 });

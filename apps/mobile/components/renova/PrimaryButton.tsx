@@ -1,4 +1,4 @@
-import { Pressable, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { Pressable, Text, StyleSheet, ActivityIndicator, Platform, useWindowDimensions } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { RenovaTheme } from '@/constants/Theme';
 import { reportCatch } from '@/lib/reportError';
@@ -50,6 +50,8 @@ export function PrimaryButton({
   accessibilityLabel,
   accessibilityHint,
 }: Props) {
+  const { width } = useWindowDimensions();
+  const wide = Platform.OS === 'web' && width >= 768;
   const sz = size ?? (compact ? 'sm' : 'md');
   const pad = sizePad[sz];
   const isDanger = variant === 'danger' || variant === 'dangerOutline';
@@ -70,6 +72,8 @@ export function PrimaryButton({
         styles.btn,
         { paddingVertical: pad.v, paddingHorizontal: pad.h },
         fullWidth && styles.fullWidth,
+        wide && !fullWidth && styles.wideButton,
+        wide && fullWidth && styles.wideFullWidth,
         isSecondary && styles.secondary,
         isAccent && styles.accent,
         isOutline && !isDanger && styles.outline,
@@ -116,6 +120,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   fullWidth: { alignSelf: 'stretch', width: '100%' },
+  /** Tablet/desktop: actions stay comfortably scannable instead of becoming 700–1000px bars. */
+  wideButton: { alignSelf: 'flex-start', maxWidth: 360 },
+  wideFullWidth: { alignSelf: 'flex-start', width: '100%', maxWidth: 440 },
   secondary: { backgroundColor: RenovaTheme.colors.surfaceMuted },
   /** Единственный акцентный CTA на экран — самое важное действие. */
   accent: { backgroundColor: RenovaTheme.colors.accent },
