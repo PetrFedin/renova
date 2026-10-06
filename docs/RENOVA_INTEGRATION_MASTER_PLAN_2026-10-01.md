@@ -1164,3 +1164,99 @@ Payment/commission logic must remain separate from work acceptance truth.
 
 **Commercial framing:** Renova becomes a verified contractor/service network whose moat is real execution history, not anonymous review stars.
 
+## Defensibility wave — Verified Execution Record and contractor capability credentials
+
+This wave converts Renova's evidence, quantity, inspection, acceptance and warranty history into a proprietary execution standard that can travel with the property and contractor network.
+
+### Renova Verified Execution Record — ADOPT
+
+For an accepted work package generate a versioned record containing:
+
+- project/object;
+- work package;
+- scope/specification version;
+- contractor/provider;
+- planned and accepted quantity;
+- material/batch references where tracked;
+- inspection/hold-point results;
+- evidence references;
+- acceptance decision;
+- defects/rework history;
+- completed_at;
+- warranty reference;
+- record version/hash.
+
+This is not a generic "quality certificate"; it proves exactly which Renova process/evidence was completed.
+
+### Execution Evidence Levels — ADOPT
+
+Define explicit levels based on available evidence, for example:
+
+- E0: administrative record only;
+- E1: photo/document evidence;
+- E2: structured inspection + evidence;
+- E3: quantity/geometry verified;
+- E4: accepted + warranty/passport linkage.
+
+Names/levels may change during product design, but requirements must be machine-testable and transparent.
+
+No project is penalised for using a lower level if the work type does not require advanced geometry.
+
+### Contractor Capability Credential — ADOPT
+
+Issue scoped credentials only from verified history, e.g.:
+
+- bathroom waterproofing execution evidenced;
+- electrical installation evidence-ready;
+- BIM/IFC evidence workflow capable;
+- warranty-response history verified;
+- insurance-restoration evidence capable.
+
+Credential includes:
+
+- contractor/provider;
+- capability;
+- qualifying work count/period;
+- evidence requirements;
+- standard version;
+- issued_at/review date/status.
+
+It does not claim general contractor superiority.
+
+### Property / Asset Execution Passport — REUSE
+
+Home Digital Passport can surface the verified execution records attached to installed work/assets.
+
+A property transfer can therefore include an auditable execution history rather than only invoices/photos.
+
+### Network Trust Dimensions — ADOPT
+
+For contractor/service discovery show explainable facts:
+
+- identity verification;
+- category credentials;
+- accepted work count;
+- first-pass acceptance;
+- rework/warranty response;
+- evidence completeness;
+- last verified activity.
+
+No opaque star ranking.
+
+### External Verification — CONDITIONAL
+
+Insurer/property manager/owner may verify a record or credential by ID without receiving unrelated project data.
+
+### Additional acceptance
+
+- execution record binds to immutable accepted source versions;
+- evidence level requirements are explicit/versioned;
+- contractor credential scope is narrow and evidence-backed;
+- revoked/expired credential preserves historical qualification evidence;
+- public verification reveals minimum necessary fields;
+- work acceptance remains the existing project authority.
+
+**Sequencing:** inspections + quantity + acceptance + warranty -> execution standard -> signed/versioned records -> contractor credentials -> passport/network verification.
+
+**Moat:** every completed project compounds a verified execution history that improves contractor selection, insurance/restoration workflows and property trust.
+
