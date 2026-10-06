@@ -28,6 +28,7 @@ from app.api.v1 import technical_supervision_actions
 from app.api.v1 import technical_supervision_chat
 from app.api.v1 import technical_supervision_schedule
 from app.api.v1 import warranty
+from app.api.v1 import execution_trust
 from app.api.v1 import verified_execution_records
 from app.api.v1 import (
     auth, activity, scratchpad, chat_inbox, work_orders, work_acceptances,
@@ -68,6 +69,7 @@ api_router.include_router(work_types.router)
 api_router.include_router(work_orders.router)
 api_router.include_router(work_acceptances.router)
 api_router.include_router(verified_execution_records.router)
+api_router.include_router(execution_trust.router)
 api_router.include_router(issue_transitions.router)
 api_router.include_router(budget_planner.router)
 api_router.include_router(activity.router)
