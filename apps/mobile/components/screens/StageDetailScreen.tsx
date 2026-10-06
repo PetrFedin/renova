@@ -14,7 +14,7 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
 import { api, StageDetail, VerifiedExecutionRecord, WorkSnapshot } from '@/lib/api';
-import { isRateLimitError } from '@/lib/api/client';
+import { ApiError, isRateLimitError } from '@/lib/api/client';
 import { compressUri } from '@/lib/compressImage';
 import { checklistForStage } from '@/lib/checklistTemplates';
 import { StageExpensePanel } from '@/components/renova/StageExpensePanel';
@@ -130,10 +130,11 @@ export function StageDetailScreen() {
             setExecutionRecord(record);
             setExecutionRecordUnavailable(false);
           })
-          .catch((error) => {
+          .catch((error: unknown) => {
             setExecutionRecord(null);
-            setExecutionRecordUnavailable(error?.status === 409);
-            if (error?.status !== 409) reportError('stage.verifiedExecutionRecord', error, { stageId: id });
+            const notAccepted = error instanceof ApiError && error.status === 409;
+            setExecutionRecordUnavailable(notAccepted);
+            if (!notAccepted) reportError('stage.verifiedExecutionRecord', error, { stageId: id });
           })
           .finally(() => setExecutionRecordLoading(false));
       } else {
