@@ -14,8 +14,27 @@ export function computePendingAcceptanceCount(
 }
 
 export type UnifiedAcceptanceItem =
-  | { kind: 'acceptance'; id: string; stageId: string; title: string; sub: string; acceptanceId: string }
-  | { kind: 'stage'; id: string; stageId: string; title: string; sub: string };
+  | {
+      kind: 'acceptance';
+      id: string;
+      stageId: string;
+      title: string;
+      sub: string;
+      acceptanceId: string;
+      checklistProgress: number | null;
+      roomCount: number;
+      paymentAmount: number;
+    }
+  | {
+      kind: 'stage';
+      id: string;
+      stageId: string;
+      title: string;
+      sub: string;
+      checklistProgress: number | null;
+      roomCount: number;
+      paymentAmount: number;
+    };
 
 function stageAcceptanceSubtitle(stage: Stage | undefined): string {
   if (typeof stage?.checklist_progress === 'number' && Number.isFinite(stage.checklist_progress) && stage.checklist_progress > 0) {
@@ -46,6 +65,9 @@ export function buildUnifiedAcceptanceItems(
       acceptanceId: acceptance.id,
       title: stage?.name || 'Этап',
       sub: stageAcceptanceSubtitle(stage),
+      checklistProgress: typeof stage?.checklist_progress === 'number' ? stage.checklist_progress : null,
+      roomCount: stage?.room_ids?.length || 0,
+      paymentAmount: stage?.payment_amount || 0,
     };
   });
   for (const stage of stageList) {
@@ -56,6 +78,9 @@ export function buildUnifiedAcceptanceItems(
         stageId: stage.id,
         title: stage.name,
         sub: stageAcceptanceSubtitle(stage),
+        checklistProgress: typeof stage.checklist_progress === 'number' ? stage.checklist_progress : null,
+        roomCount: stage.room_ids?.length || 0,
+        paymentAmount: stage.payment_amount || 0,
       });
     }
   }

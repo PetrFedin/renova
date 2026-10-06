@@ -5,6 +5,7 @@ import { notifyError } from '@/lib/notify';
 import { pushStageDetail } from '@/lib/navigation';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
+import { formatRub } from '@/constants/Theme';
 import { AcceptanceDecisionButtons } from '@/components/renova/AcceptanceDecisionButtons';
 import { EmptyActionState } from '@/components/ui/EmptyActionState';
 import { buildUnifiedAcceptanceItems, type UnifiedAcceptanceItem } from '@/lib/domain/acceptancePending';
@@ -225,6 +226,13 @@ function AcceptanceRow({
             {item.sub}
             {isContractor ? ' · ждёт решения заказчика' : orphan ? ' · запрос на приёмку не найден' : ' · ждёт вашего решения'}
           </Text>
+          <Text style={s.scopeMeta}>
+            Scope: {item.roomCount ? `${item.roomCount} помещ.` : 'без привязки к помещению'}
+            {item.paymentAmount > 0 ? ` · после приёмки ${formatRub(item.paymentAmount)}` : ' · платёж этапа не задан'}
+          </Text>
+          {!isContractor ? (
+            <Text style={s.evidenceHint}>Evidence и полный чеклист — в карточке этапа перед решением.</Text>
+          ) : null}
         </Pressable>
         <PrimaryButton title="Открыть этап" compact variant="outline" onPress={onOpen} />
       </View>
@@ -272,6 +280,8 @@ const s = StyleSheet.create({
   rowTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { ...screenTypography.listTitle },
   meta: { ...screenTypography.listMeta },
+  scopeMeta: { ...screenTypography.listMeta, color: '#334155', marginTop: 2 },
+  evidenceHint: { ...screenTypography.listMeta, marginTop: 2, fontStyle: 'italic' },
   actions: { gap: 8 },
   btnRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
 });
