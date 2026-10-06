@@ -840,7 +840,7 @@ export function PaymentDetailSheet({
   );
 
   return (
-    <SheetSurface visible value={formatRub(payment.amount)} title={payment.title} subtitle={`${statusLabel} · ${typeLabel}`} busy={busy} onClose={closeSafely} accessibilityLabel="Детали счёта" footer={footer}>
+    <SheetSurface visible value={formatRub(payment.amount)} title={payment.title} subtitle={`${statusLabel} · ${typeLabel}`} busy={busy} onClose={closeSafely} accessibilityLabel="Детали счёта" footer={footer} desktopMaxWidth={760}>
       {canConfirm ? <Text style={formMetaText.caption}>Шаг {step === 'info' ? 1 : step === 'transfer' ? 2 : 3} из 3 · перевод → подтверждение</Text> : null}
 
       {canConfirm && step === 'info' ? (

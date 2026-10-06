@@ -259,7 +259,7 @@ export function ChatListView() {
         />
       ) : null}
 
-      {canCreate ? (
+      {canCreate && displayThreads.length > 0 ? (
         <View style={s.createBtn}>
           <PrimaryButton
             title="Создать чат"

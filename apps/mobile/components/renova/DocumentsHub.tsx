@@ -25,7 +25,7 @@ import { OfflineSyncStatus } from '@/components/renova/OfflineSyncStatus';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { pushOsNav } from '@/lib/pushOsNav';
-import { budgetTabRoute, calendarTabRoute, repairTabRoute, type OsRole } from '@/constants/osSections';
+import { budgetTabRoute, calendarTabRoute, objectTabRoute, repairTabRoute, type OsRole } from '@/constants/osSections';
 import { documentSectionTarget } from '@/lib/documentSectionNav';
 import { shareRenovaLink } from '@/lib/messengerShare';
 import { BankStatementImportSheet } from '@/components/renova/BankStatementImportSheet';
@@ -101,6 +101,8 @@ export function DocumentsHub({
 }) {
   const { user, activeProject, loadProject, readOnly } = useRenova();
   const isContractor = user?.role === 'contractor';
+  const documentsRole: OsRole = isContractor ? 'contractor' : 'customer';
+  const estimateLocked = Boolean(activeProject?.estimate_locked_at);
   const isArchived = Boolean(activeProject?.is_archived);
   const [busy, setBusy] = useState<string | null>(null);
   const [bankImportOpen, setBankImportOpen] = useState(false);
@@ -911,19 +913,33 @@ export function DocumentsHub({
 
       {contractGate && !contractGate.ok && contractGate.reason === 'no_contract' ? (
         <View style={s.signPin} accessibilityLabel="Договор ещё не создан">
-          <Text style={s.signPinTitle}>Договор ещё не создан</Text>
+          <Text style={s.signPinTitle}>{estimateLocked ? 'Договор ещё не создан' : 'Сначала зафиксируйте смету'}</Text>
           <Text style={s.signPinHint}>
-            {readOnly ? 'Договор создаёт заказчик или исполнитель' : (contractGate.message || 'Без подписанного договора этапы не стартуют')}
+            {readOnly
+              ? 'Договор создаёт заказчик или исполнитель после готовности коммерческой базы.'
+              : estimateLocked
+                ? (contractGate.message || 'Смета зафиксирована. Создайте договор, затем подпишите его обеими сторонами.')
+                : 'Черновая смета ещё не является договорной базой. Согласуйте и зафиксируйте её перед созданием договора.'}
           </Text>
           {!readOnly ? (
-            <PrimaryButton
-              title="Создать договор"
-              variant="accent"
-              compact
-              loading={contractCreating}
-              disabled={isArchived}
-              onPress={() => { void createContract(); }}
-            />
+            estimateLocked ? (
+              <PrimaryButton
+                title="Создать договор"
+                variant="accent"
+                compact
+                loading={contractCreating}
+                disabled={isArchived}
+                onPress={() => { void createContract(); }}
+              />
+            ) : (
+              <PrimaryButton
+                title="К смете"
+                variant="accent"
+                compact
+                disabled={isArchived}
+                onPress={() => pushOsNav(objectTabRoute(documentsRole, 'estimate'), '/documents', documentsRole)}
+              />
+            )
           ) : null}
         </View>
       ) : null}
