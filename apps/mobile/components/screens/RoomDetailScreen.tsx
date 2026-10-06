@@ -16,7 +16,7 @@ import { roomTypeLabel } from '@/constants/roomTypes';
 import { snapshotRoom } from '@/lib/roomDiff';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { RenovaTheme, formatRub } from '@/constants/Theme';
-import { budgetTabRoute, objectTabHref } from '@/constants/osSections';
+import { budgetTabRoute, objectTabHref, repairTabRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { roomSpentUnified } from '@/lib/domain/expenseAnalytics';
 import { calcRoomMetrics } from '@/lib/roomMetrics';
@@ -150,6 +150,7 @@ export function RoomDetailScreen() {
   }, [loadProject, load]);
 
   const lines = (activeProject?.estimate_lines || []).filter(l => l.room_id ? l.room_id === room?.id : l.room_name === room?.name);
+  const roomPlan = lines.reduce((sum, line) => sum + line.quantity_planned * line.unit_price, 0);
 
   const toggleArchive = () => {
     if (!user || !activeProject || !room || !isContractor || mutationRef.current) return;
@@ -292,6 +293,38 @@ export function RoomDetailScreen() {
           </View>
         )}
 
+        <View style={[s.card, s.executionCard]}>
+          <Text style={s.h}>Контур комнаты</Text>
+          <Text style={s.executionSummary}>
+            {lines.length > 0
+              ? `Смета: ${lines.length} поз. · ${formatRub(roomPlan)}`
+              : 'Смета: позиции для комнаты пока не привязаны'}
+          </Text>
+          <Text style={s.executionHint}>
+            Комната связывает коммерческий baseline, этапы, evidence и приёмку. Изменение scope должно проходить через смету/изменения, а не переписывать историю.
+          </Text>
+          <View style={s.row}>
+            <PrimaryButton
+              title={lines.length > 0 ? `Смета · ${lines.length}` : 'Смета'}
+              variant="outline"
+              compact
+              onPress={() => pushOsNav(objectTabHref(role, 'estimate'), pathname)}
+            />
+            <PrimaryButton
+              title="Этапы"
+              variant="outline"
+              compact
+              onPress={() => pushOsNav(repairTabRoute(role, 'works'), pathname, role)}
+            />
+            <PrimaryButton
+              title="Приёмка"
+              variant="outline"
+              compact
+              onPress={() => pushOsNav(repairTabRoute(role, 'control'), pathname, role)}
+            />
+          </View>
+        </View>
+
         <RoomDiagramInteractive room={room} />
 
         <View style={s.card}>
@@ -407,6 +440,9 @@ const s = StyleSheet.create({
   emptyState:{ gap:12, padding:24 }, emptyHint:{ maxWidth:420, textAlign:'center', color:RenovaTheme.colors.textMuted, lineHeight:19 },
   metrics:{ flexDirection:'row', flexWrap:'wrap', gap:8, marginBottom:12 }, metric:{ flex:1, minWidth:'45%', backgroundColor:RenovaTheme.colors.surface, borderWidth:1, borderColor:'#E5E7EB', borderRadius:14, padding:12, alignItems:'center' }, metricN:{ fontSize:18, fontWeight:'800' }, metricL:{ fontSize:11, color: RenovaTheme.colors.textMuted, marginTop:2 },
   card:{ backgroundColor:RenovaTheme.colors.surface, padding:14, borderRadius:12, marginBottom:10 }, h:{ fontWeight:'800', marginBottom:8 },
+  executionCard:{ borderWidth:1, borderColor:RenovaTheme.colors.border },
+  executionSummary:{ fontSize:14, fontWeight:'700', color:RenovaTheme.colors.text, marginBottom:4 },
+  executionHint:{ fontSize:12, lineHeight:17, color:RenovaTheme.colors.textMuted },
   field:{ marginBottom:8 }, lbl:{ fontSize:12, color: RenovaTheme.colors.textMuted }, input:{ backgroundColor:'#f9fafb', borderRadius:8, padding:10, marginTop:4, borderWidth:1, borderColor:RenovaTheme.colors.border }, line:{ paddingVertical:6, fontSize:13 },
   warn:{ marginBottom:10, backgroundColor:'#fef2f2', padding:12, borderRadius:10 }, warnT:{ fontWeight:'700', color:'#991b1b', marginBottom:4 },
   over:{ color: RenovaTheme.colors.warning, fontWeight:'700', marginVertical:4 },

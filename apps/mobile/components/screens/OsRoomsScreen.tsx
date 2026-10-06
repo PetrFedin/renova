@@ -586,6 +586,7 @@ function RoomRequestCard({
   const pathname = usePathname();
   const canWrite = useWriteAllowed();
   const [msg, setMsg] = useState('');
+  const [requestOpen, setRequestOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
 
@@ -596,7 +597,10 @@ function RoomRequestCard({
     setSubmitting(true);
     try {
       const accepted = await onSubmit(message, {});
-      if (accepted) setMsg('');
+      if (accepted) {
+        setMsg('');
+        setRequestOpen(false);
+      }
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
@@ -623,20 +627,44 @@ function RoomRequestCard({
       </Pressable>
       {canWrite && requestOnly && (
         <View style={styles.requestBlock}>
-          <TextInput
-            style={styles.input}
-            placeholder="Запрос изменения…"
-            value={msg}
-            onChangeText={setMsg}
-            editable={!submitting}
-          />
-          <PrimaryButton
-            title="Отправить запрос"
-            variant="outline"
-            loading={submitting}
-            disabled={!msg.trim() || submitting}
-            onPress={() => { void submit(); }}
-          />
+          {!requestOpen ? (
+            <PrimaryButton
+              title="Запросить изменение"
+              variant="outline"
+              compact
+              disabled={submitting}
+              onPress={() => setRequestOpen(true)}
+            />
+          ) : (
+            <>
+              <Text style={styles.requestHint}>Изменение этой комнаты уйдёт исполнителю на согласование.</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Что нужно изменить?"
+                value={msg}
+                onChangeText={setMsg}
+                editable={!submitting}
+                autoFocus
+              />
+              <View style={styles.requestActions}>
+                <PrimaryButton
+                  title="Отправить"
+                  variant="outline"
+                  compact
+                  loading={submitting}
+                  disabled={!msg.trim() || submitting}
+                  onPress={() => { void submit(); }}
+                />
+                <PrimaryButton
+                  title="Отмена"
+                  variant="outline"
+                  compact
+                  disabled={submitting}
+                  onPress={() => { setMsg(''); setRequestOpen(false); }}
+                />
+              </View>
+            </>
+          )}
         </View>
       )}
       {canWrite && !requestOnly && (
@@ -705,8 +733,10 @@ const styles = StyleSheet.create({
   chevron: { fontSize: 22, color: RenovaTheme.colors.textMuted },
   name: { ...screenTypography.listTitle, fontSize: 16 },
   meta: { ...screenTypography.listMeta },
-  input: { backgroundColor: '#f9f9f9', borderRadius: 8, padding: 10, marginTop: 8, borderWidth: 1, borderColor: RenovaTheme.colors.border },
-  requestBlock: { gap: 8 },
+  input: { backgroundColor: '#f9f9f9', borderRadius: 8, padding: 10, borderWidth: 1, borderColor: RenovaTheme.colors.border },
+  requestBlock: { gap: 8, marginTop: 2 },
+  requestHint: { fontSize: 12, lineHeight: 17, color: RenovaTheme.colors.textMuted },
+  requestActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   section: { ...screenTypography.section, marginTop: 16 },
   req: { ...listRowStyles.row },
   reqPending: { backgroundColor: RenovaTheme.colors.warningBg, padding: 12, borderRadius: 10, marginBottom: 12 },

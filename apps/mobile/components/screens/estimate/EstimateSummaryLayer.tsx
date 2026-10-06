@@ -7,7 +7,7 @@ import { EstimateSourceLegend } from '@/components/renova/estimate/EstimateSourc
 import { budgetTabRoute, objectTabRoute, repairTabRoute } from '@/constants/osSections';
 import { pushOsNav } from '@/lib/pushOsNav';
 import type { ProjectDetail } from '@/lib/api';
-import { estimateTotals } from '@/lib/domain/estimateFilters';
+import { estimateLineSource, estimateTotals } from '@/lib/domain/estimateFilters';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { writeResultMessage } from '@/lib/offlineResultMessage';
 import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
@@ -59,6 +59,15 @@ export function EstimateSummaryLayer({
   lockDiff,
 }: Props) {
   const lockedAt = project.estimate_locked_at;
+  const estimateLines = project.estimate_lines || [];
+  const autoLines = estimateLines.filter((line) => estimateLineSource(line) === 'auto').length;
+  const manualLines = estimateLines.length - autoLines;
+  const unitsCount = new Set(estimateLines.map((line) => line.unit).filter(Boolean)).size;
+  const baselineState = lockedAt
+    ? 'Зафиксирован'
+    : project.estimate_lock_proposed_at
+      ? 'На согласовании'
+      : 'Черновик';
   return (
     <View style={s.wrap}>
       <View style={s.totalBox}>
@@ -89,6 +98,21 @@ export function EstimateSummaryLayer({
               : 'С момента отправки сметы изменений нет'}
           </Text>
         ) : null}
+      </View>
+
+      <View style={s.baselineBox}>
+        <View style={s.baselineHead}>
+          <Text style={s.baselineTitle}>Коммерческий baseline</Text>
+          <Text style={[s.baselineState, lockedAt && s.baselineStateLocked]}>{baselineState}</Text>
+        </View>
+        <Text style={s.baselineMeta}>
+          {estimateLines.length} поз. · авто из комнат {autoLines} · ручные {manualLines} · единиц измерения {unitsCount || '—'}
+        </Text>
+        <Text style={s.baselineHint}>
+          {lockedAt
+            ? 'Зафиксированная база не переписывается: новые scope/price изменения должны проходить через «Изменения».'
+            : 'До фиксации это рабочая коммерческая база. Источник строки и единица измерения остаются видимыми в детализации.'}
+        </Text>
       </View>
 
       <View style={s.metaRow}>
@@ -247,6 +271,19 @@ const s = StyleSheet.create({
   locked: { fontSize: 12, color: RenovaTheme.colors.warningText, marginTop: 4, fontWeight: '700' },
   unlocked: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 4, lineHeight: 16 },
   breakdown: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 4, lineHeight: 17 },
+  baselineBox: {
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: RenovaTheme.colors.border,
+    backgroundColor: RenovaTheme.colors.surface,
+  },
+  baselineHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  baselineTitle: { fontSize: 13, fontWeight: '800', color: RenovaTheme.colors.text },
+  baselineState: { fontSize: 11, fontWeight: '700', color: RenovaTheme.colors.warningText },
+  baselineStateLocked: { color: RenovaTheme.colors.success },
+  baselineMeta: { fontSize: 12, color: RenovaTheme.colors.text, marginTop: 6, lineHeight: 17 },
+  baselineHint: { fontSize: 12, color: RenovaTheme.colors.textMuted, marginTop: 4, lineHeight: 17 },
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
     flexGrow: 1,
