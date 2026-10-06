@@ -1,5 +1,5 @@
 /** Настройка нижней панели — 2 обязательных + 3 из 4 дополнительных */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { screenTypography } from '@/constants/screenTypography';
@@ -17,6 +17,9 @@ import { TabIcon } from '@/components/renova/TabIcon';
 import type { OsRole } from '@/constants/osSections';
 import { reportCatch } from '@/lib/reportError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { useDetailLevel } from '@/lib/useDetailLevel';
+import { minimalSnapFromProject, resolveDynamicDockItems } from '@/lib/domain/resolveDynamicDock';
 
 function DockPreview({ selected }: { selected: DockItemId[] }) {
   return (
@@ -67,6 +70,30 @@ function DockRow({
 export function DockBarSettings({ role, embedded }: { role: OsRole; embedded?: boolean }) {
   const [selected, setSelected] = useState<DockItemId[]>([]);
   const [expanded, setExpanded] = useState(!embedded);
+  const { activeProject } = useRenova();
+  const detailLevel = useDetailLevel();
+
+  /**
+   * Что в панели на самом деле.
+   *
+   * Пока объект настраивается, `OsDockBar` подставляет свой набор и настройки
+   * человека не применяет вовсе. Этот экран показывал сохранённые настройки
+   * как действующие: в предпросмотре стояли «Ремонт» и «Деньги», а внизу того
+   * же экрана — «Смета» и «Исполнитель». Переключатель отвечал «Панель
+   * обновлена», и панель не менялась. Считаем ровно тем же расчётом, что и
+   * сама панель, чтобы показанное и действующее не могли разойтись снова.
+   */
+  const autoItems = useMemo(() => {
+    if (!activeProject) return null;
+    return resolveDynamicDockItems(
+      activeProject,
+      minimalSnapFromProject(activeProject),
+      role,
+      detailLevel,
+    );
+  }, [activeProject, role, detailLevel]);
+
+  const effective: DockItemId[] = autoItems ? [...autoItems] : selected;
 
   useEffect(() => { getDockBar(role).then(setSelected).catch(reportCatch('components.renova.os.DockBarSettings.1')); }, [role]);
 
@@ -85,9 +112,14 @@ export function DockBarSettings({ role, embedded }: { role: OsRole; embedded?: b
       const { ids, replaced } = await toggleDockItem(role, id);
       setSelected(ids);
       if (replaced && ids.includes(id)) {
+        // Пока действует автоматический набор, панель на экране не изменится.
+        // Обещать «панель обновлена» в этот момент — неправда: человек закроет
+        // окно и увидит внизу ровно то же, что было.
         showActionConfirm({
-          title: 'Панель обновлена',
-          message: `«${DOCK_BY_ID[replaced]?.label}» заменён на «${DOCK_BY_ID[id]?.label}».`,
+          title: autoItems ? 'Набор сохранён' : 'Панель обновлена',
+          message: autoItems
+            ? `«${DOCK_BY_ID[replaced]?.label}» заменён на «${DOCK_BY_ID[id]?.label}». Панель сейчас собирается автоматически, ваш набор включится после настройки объекта.`
+            : `«${DOCK_BY_ID[replaced]?.label}» заменён на «${DOCK_BY_ID[id]?.label}».`,
         });
       }
     } catch (e: any) {
@@ -120,7 +152,14 @@ export function DockBarSettings({ role, embedded }: { role: OsRole; embedded?: b
       <Text style={s.count}>
         Дополнительно: {optionalOn.length}/{DOCK_OPTIONAL_SLOTS} · всего {selected.length}/{DOCK_MAX}
       </Text>
-      {selected.length === DOCK_MAX ? <DockPreview selected={selected} /> : null}
+      {effective.length === DOCK_MAX ? <DockPreview selected={effective} /> : null}
+      {autoItems ? (
+        <Text style={s.autoNote}>
+          Пока идёт ремонт, разделы подставляются автоматически: во время настройки объекта — «Смета»
+          и «Исполнитель», во время работ — «Деньги» и «Ремонт». Ваш набор ниже сохраняется и
+          применяется, когда объект завершён.
+        </Text>
+      ) : null}
 
       {embedded && !expanded ? (
         <Pressable onPress={() => setExpanded(true)} style={s.expand}>
@@ -157,6 +196,7 @@ const s = StyleSheet.create({
   hint: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 17, marginBottom: 6 },
   subHint: { fontSize: 11, color: RenovaTheme.colors.textMuted, lineHeight: 16, marginBottom: 6 },
   count: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.accent, marginBottom: 8 },
+  autoNote: { fontSize: 12, color: RenovaTheme.colors.textMuted, lineHeight: 17, marginBottom: 10 },
   expand: { marginBottom: 8, paddingVertical: 4 },
   expandT: { fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.primary },
   group: { ...screenTypography.section, marginTop: 8, marginBottom: 6 },
