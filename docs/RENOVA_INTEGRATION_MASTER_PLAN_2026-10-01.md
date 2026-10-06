@@ -1260,3 +1260,114 @@ Insurer/property manager/owner may verify a record or credential by ID without r
 
 **Moat:** every completed project compounds a verified execution history that improves contractor selection, insurance/restoration workflows and property trust.
 
+
+
+## Institutional adoption wave — Property Trust Infrastructure
+
+This wave turns Renova's Verified Execution Record, Home Passport and contractor credentials into infrastructure that insurers, property managers, developers, lenders and service networks can actually adopt.
+
+### Renova Execution Evidence Specification — ADOPT
+
+Publish a bounded, versioned interoperability specification for:
+
+- work-package identity;
+- scope/specification version;
+- quantity/geometry evidence;
+- inspection/hold-point result;
+- material/batch reference;
+- acceptance/rework history;
+- warranty linkage;
+- execution-record hash/status.
+
+The open specification enables interoperability; Renova's hosted verification registry, longitudinal contractor history, analytics and network workflows remain value-added services.
+
+### Reference Project / Synthetic Property Passport — ADOPT
+
+Provide a synthetic reference implementation demonstrating:
+
+`scope -> contractor -> evidence -> inspection -> quantity -> acceptance -> warranty -> property passport -> verification`
+
+No real owner/property data may be included.
+
+### Institutional Verifier Roles — ADOPT
+
+Support scoped institutional consumers:
+
+- insurer / loss adjuster;
+- property manager;
+- developer;
+- technical customer;
+- lender / due-diligence reviewer;
+- warranty operator.
+
+Each role receives only the minimum evidence projection required for its use case.
+
+### Approved Service Network — ADOPT
+
+Create explicit qualification paths for:
+
+- contractors;
+- inspectors;
+- survey/measurement partners;
+- restoration providers;
+- warranty/service providers;
+- implementation/integration partners.
+
+Every qualification is scoped, versioned and evidence-backed.
+
+### Institutional Publishing — CONDITIONAL
+
+Approved external organisations may submit:
+
+- inspection results;
+- warranty/service events;
+- restoration events;
+- material certificates/references;
+- property-management maintenance records.
+
+External publishing never bypasses Renova admission, source classification or project authority.
+
+### Insurance / Property-management Enterprise Bundle — ADOPT
+
+Potential packages:
+
+- Verified Execution Records;
+- Property Passport;
+- Contractor Qualification;
+- Warranty & Maintenance Network;
+- Insurance Restoration Evidence;
+- Enterprise Verification API.
+
+### Portfolio-level Trust Graph — ADOPT
+
+For authorised enterprise customers, connect:
+
+`property -> work package -> provider -> evidence -> acceptance -> warranty/service -> incident/restoration -> outcome`
+
+Do not expose one customer's private property or commercial data to another.
+
+### Legitimate Switching Cost — ADOPT
+
+Accumulated value should come from:
+
+- accepted execution history;
+- geometry/quantity evidence;
+- inspection lineage;
+- warranty/service history;
+- contractor capability history;
+- property passport continuity;
+- institutional integrations.
+
+Export must remain possible; lock-in should come from useful history and network participation, not hostage data.
+
+### Additional acceptance
+
+- institutional users cannot alter original acceptance truth;
+- external facts retain issuer/source identity;
+- credential wording never implies government or insurer endorsement unless formally granted;
+- property transfer can preserve public/authorised execution history without leaking prior-owner private data;
+- open specification and hosted network authority remain clearly separated.
+
+**Sequencing:** Verified Execution Record -> reference specification -> synthetic passport -> institutional verifier API -> approved service network -> insurer/property-manager pilots -> enterprise bundle.
+
+**Moat:** Renova becomes the shared evidence rail connecting property work, contractor capability, warranty and institutional risk workflows.
