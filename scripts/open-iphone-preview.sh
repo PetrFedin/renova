@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Открывает iPhone preview в отдельном окне Chrome (или системном браузере)
+# Открывает универсальный responsive preview RENOVA в отдельном окне Chrome.
+# В preview можно переключать Телефон / Планшет / Монитор / Авто без перезапуска Expo.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 EXPO_PORT="${EXPO_PORT:-8081}"
-PREVIEW_URL="http://127.0.0.1:${EXPO_PORT}/iphone-preview.html"
+PREVIEW_URL="http://127.0.0.1:${EXPO_PORT}/device-preview.html"
 MAX_WAIT="${PREVIEW_WAIT_SEC:-60}"
 
 
@@ -34,12 +35,12 @@ done
 if [ -d "/Applications/Google Chrome.app" ]; then
   open -na "Google Chrome" --args \
     --app="${PREVIEW_URL}" \
-    --window-size=430,920 \
-    --window-position=100,50 \
+    --window-size=1180,940 \
+    --window-position=80,40 \
     --new-window
-  echo "OK: iPhone preview → ${PREVIEW_URL}"
+  echo "OK: responsive device preview → ${PREVIEW_URL}"
   exit 0
 fi
 
 open "${PREVIEW_URL}"
-echo "OK: iPhone preview → ${PREVIEW_URL}"
+echo "OK: responsive device preview → ${PREVIEW_URL}"

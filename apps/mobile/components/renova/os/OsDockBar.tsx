@@ -25,7 +25,7 @@ import { minimalSnapFromProject, resolveDynamicDockItems } from '@/lib/domain/re
 import { reportCatch } from '@/lib/reportError';
 import { activeDockItemId, getBudgetHubLabel } from '@/lib/navigation/navigationPolicy';
 
-export function OsDockBar({ role }: { role: OsRole }) {
+export function OsDockBar({ role, orientation = 'bottom' }: { role: OsRole; orientation?: 'bottom' | 'side' }) {
   const pathname = usePathname();
   // Именно global: док рисует **макет** `(tabs)`, а `tab=estimate` принадлежит
   // открытому экрану. Локальный хук отдаёт параметры своего маршрута, то есть
@@ -89,7 +89,7 @@ export function OsDockBar({ role }: { role: OsRole }) {
   };
 
   return (
-    <View style={[s.bar, { paddingBottom: bottomPad }]}>
+    <View style={[s.bar, orientation === 'side' && s.sideBar, { paddingBottom: orientation === 'side' ? 0 : bottomPad }]}>
       {items.map((id) => {
         const item = DOCK_BY_ID[id];
         if (!item) return null;
@@ -100,7 +100,7 @@ export function OsDockBar({ role }: { role: OsRole }) {
         return (
           <Pressable
             key={id}
-            style={({ pressed }: PressableStateCallbackType) => [s.tab, pressed && s.pressed]}
+            style={({ pressed }: PressableStateCallbackType) => [s.tab, orientation === 'side' && s.sideTab, pressed && s.pressed]}
             onPress={() => go(id)}
             accessibilityRole="button"
             accessibilityLabel={
@@ -135,6 +135,15 @@ const s = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: RenovaTheme.colors.border,
   },
+  sideBar: {
+    flexDirection: 'column',
+    width: 88,
+    minHeight: 0,
+    paddingTop: 12,
+    borderTopWidth: 0,
+    borderRightWidth: 1,
+    borderRightColor: RenovaTheme.colors.border,
+  },
   tab: {
     flex: 1,
     alignItems: 'center',
@@ -142,6 +151,13 @@ const s = StyleSheet.create({
     minWidth: 0,
     paddingHorizontal: 2,
     paddingVertical: 4,
+  },
+  sideTab: {
+    flex: 0,
+    width: '100%',
+    minHeight: 64,
+    paddingHorizontal: 6,
+    paddingVertical: 8,
   },
   pressed: { opacity: 0.65 },
   iconWrap: {

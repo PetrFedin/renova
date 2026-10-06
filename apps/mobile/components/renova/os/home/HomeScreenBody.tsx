@@ -1,5 +1,5 @@
 /** Контент главной Renova OS — 5 блоков: статус → действие → деньги → работа → события */
-import { Text } from 'react-native';
+import { Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { ActivityFeed } from '@/components/renova/ActivityFeed';
 import { BudgetAlerts, type BudgetAlert } from '@/components/renova/BudgetAlerts';
 import { OfflineSyncStatus } from '@/components/renova/OfflineSyncStatus';
@@ -69,6 +69,8 @@ export function HomeScreenBody({
   isVisible,
 }: HomeScreenBodyProps) {
   const { pushNav, pushScreen, pushTab, returnTo } = useOsNavFromHere(role);
+  const { width } = useWindowDimensions();
+  const desktopHome = Platform.OS === 'web' && width >= 1000;
   const rolePrefix = role === 'contractor' ? '/(contractor)/(tabs)' : '/(customer)/(tabs)';
   const phase = resolveProjectPhase(snap);
   const inboxRole = readOnly ? 'customer' : role;
@@ -125,37 +127,43 @@ export function HomeScreenBody({
         <HomeLinkRow title="Заявки и новые объекты" onPress={() => pushScreen('/job-leads')} />
       )}
 
-      {/* 2. Очередь дел — единственный attention SoT (hero + inbox; без отдельной строки «Входящие») */}
-      {/* W47/W56: banner для обеих ролей; у contractor — «ждут заказчика», не дубль hero accept */}
-      {snap.quality.awaitingAcceptance > 0 && snap.nextAction.kind !== 'accept' ? (
-        <HomeAcceptanceBanner
-          count={snap.quality.awaitingAcceptance}
-          role={role}
-          readOnly={readOnly}
-          href={snap.activeWorks.find((w) => w.status === 'review')?.href}
-        />
-      ) : null}
-      {showAttention && phase !== 'complete' && (
-        <HomeActionHero
-          role={inboxRole}
-          snap={snap}
-          insights={insights}
-          showHero={isVisible('health_next')}
-          showInbox={isVisible('inbox')}
-          showInsights={isVisible('insights')}
-        />
-      )}
+      <View style={desktopHome ? s.desktopPrimaryGrid : undefined}>
+        <View style={desktopHome ? s.desktopPrimaryColumn : undefined}>
+          {/* 2. Очередь дел — единственный attention SoT (hero + inbox; без отдельной строки «Входящие») */}
+          {/* W47/W56: banner для обеих ролей; у contractor — «ждут заказчика», не дубль hero accept */}
+          {snap.quality.awaitingAcceptance > 0 && snap.nextAction.kind !== 'accept' ? (
+            <HomeAcceptanceBanner
+              count={snap.quality.awaitingAcceptance}
+              role={role}
+              readOnly={readOnly}
+              href={snap.activeWorks.find((w) => w.status === 'review')?.href}
+            />
+          ) : null}
+          {showAttention && phase !== 'complete' && (
+            <HomeActionHero
+              role={inboxRole}
+              snap={snap}
+              insights={insights}
+              showHero={isVisible('health_next')}
+              showInbox={isVisible('inbox')}
+              showInsights={isVisible('insights')}
+            />
+          )}
+        </View>
 
-      {/* 3. Деньги */}
-      {showKpi && (
-        <HomeZone
-          title={moneyZoneTitle}
-          linkLabel={showKpiHeaderLink ? 'Подробнее →' : undefined}
-          onLinkPress={showKpiHeaderLink ? () => pushNav(kpiDetailHref) : undefined}
-        >
-          <OsKpiGrid snap={snap} rolePrefix={rolePrefix} role={role} gridTitle={null} />
-        </HomeZone>
-      )}
+        <View style={desktopHome ? s.desktopPrimaryColumn : undefined}>
+          {/* 3. Деньги */}
+          {showKpi && (
+            <HomeZone
+              title={moneyZoneTitle}
+              linkLabel={showKpiHeaderLink ? 'Подробнее →' : undefined}
+              onLinkPress={showKpiHeaderLink ? () => pushNav(kpiDetailHref) : undefined}
+            >
+              <OsKpiGrid snap={snap} rolePrefix={rolePrefix} role={role} gridTitle={null} />
+            </HomeZone>
+          )}
+        </View>
+      </View>
 
       {/* 4. Что в работе */}
       {showWorksMaterials && !snap.isComplete && (
@@ -207,3 +215,15 @@ export function HomeScreenBody({
     </>
   );
 }
+
+const s = StyleSheet.create({
+  desktopPrimaryGrid: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 16,
+  },
+  desktopPrimaryColumn: {
+    flex: 1,
+    minWidth: 0,
+  },
+});
