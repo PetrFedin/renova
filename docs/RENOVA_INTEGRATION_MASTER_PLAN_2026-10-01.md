@@ -1045,3 +1045,122 @@ Those remain external insurer/legal decisions.
 
 **Commercial framing:** opens insurer, loss-adjuster, restoration-company and property-management markets using Renova's existing evidence/digital-twin moat.
 
+## Platform economics wave — verified contractor and service network
+
+This wave turns Renova's execution evidence into a trusted supply-side network for renovation, maintenance, warranty and insurance-restoration work.
+
+### Contractor / Service Provider Passport — ADOPT
+
+Create a provider record containing verified facts where available:
+
+- legal/business identity;
+- service categories;
+- geography;
+- team/capacity;
+- insurance/licence/certificate references where relevant;
+- completed Renova projects;
+- accepted work packages;
+- defect/rework history;
+- warranty/service performance;
+- evidence completeness;
+- availability/capacity status;
+- status/reviewer.
+
+Do not treat self-entered claims as verified facts.
+
+### Verified Performance Projection — ADOPT
+
+Derive explainable metrics from actual Renova records:
+
+- on-time completion;
+- acceptance-first-pass rate;
+- rework frequency;
+- evidence completeness;
+- warranty issue rate;
+- response time;
+- quantity/scope accuracy where applicable.
+
+Always expose denominator, period and project mix.
+
+No opaque universal contractor score.
+
+### Service Request Marketplace — ADOPT
+
+Owner/project manager can create a structured request:
+
+- scope;
+- location;
+- time window;
+- required capability;
+- budget/estimate context if shareable;
+- required evidence/certification;
+- project/passport links;
+- privacy scope.
+
+Qualified providers may receive/accept/decline according to policy.
+
+### Quote / Proposal Comparison — ADOPT
+
+Compare:
+
+- price;
+- scope;
+- exclusions;
+- lead time;
+- capacity;
+- evidence/certification;
+- historical verified performance.
+
+Selection remains a human/commercial decision.
+
+### Maintenance / Warranty Network — ADOPT
+
+Home Passport assets can route:
+
+maintenance need -> eligible provider -> appointment/service -> evidence -> completion
+
+Warranty cases continue using the existing warranty authority.
+
+### Insurance-restoration Network — ADOPT
+
+Loss/restoration scopes can be matched only to providers approved for the required work/evidence process.
+
+This creates a second B2B distribution market.
+
+### Provider Qualification Levels — ADOPT
+
+Possible labels:
+
+- identity verified;
+- evidence-ready;
+- category-qualified;
+- insurer/partner-approved;
+- Renova-history verified.
+
+Every label maps to explicit requirements; no vague "trusted" badge.
+
+### Marketplace Economics — CONDITIONAL
+
+Potential revenue:
+
+- provider subscription;
+- lead/service fee;
+- enterprise insurer/property-manager network fee;
+- premium qualification;
+- maintenance contract.
+
+Payment/commission logic must remain separate from work acceptance truth.
+
+### Additional acceptance
+
+- provider claims distinguish self-declared vs verified;
+- performance metrics derive from canonical project evidence;
+- provider cannot see unrelated project/private data;
+- quote comparison does not auto-select cheapest/highest-score provider;
+- qualification labels are auditable;
+- marketplace incentives cannot alter acceptance/quality evidence.
+
+**Sequencing:** Home Passport + Warranty + Quantity/Acceptance + Insurance Restoration -> provider passports -> verified metrics -> service requests -> qualification/network economics.
+
+**Commercial framing:** Renova becomes a verified contractor/service network whose moat is real execution history, not anonymous review stars.
+
