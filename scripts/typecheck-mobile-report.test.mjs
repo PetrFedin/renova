@@ -76,4 +76,63 @@ assert.throws(
   /non-negative integer/,
 );
 
+// --- Рубеж не должен молчать в зависимости от того, как его позвали. ---
+//
+// `import.meta.url` разыменован, а `process.argv[1]` — нет. На macOS `/tmp`
+// это симлинк на `/private/tmp`, и запуск по пути внутри такого каталога
+// давал несовпадение: модуль тихо ничего не делал, ни строки вывода, код
+// возврата 0. То есть проверка типов «проходила» при любых ошибках.
+//
+// Поймать это импортом нельзя — нужен подзапуск, как в бою.
+{
+  const { execFileSync } = await import('node:child_process');
+  const { mkdtempSync, mkdirSync, symlinkSync, writeFileSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const path = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+
+  const reportPath = fileURLToPath(new URL('./typecheck-mobile-report.mjs', import.meta.url));
+  const sandbox = mkdtempSync(path.join(tmpdir(), 'typecheck-gate-'));
+  const realDir = path.join(sandbox, 'real');
+  const linkDir = path.join(sandbox, 'link');
+  mkdirSync(realDir);
+  symlinkSync(realDir, linkDir);
+
+  const diagnostics = path.join(realDir, 'tsc.txt');
+  writeFileSync(
+    diagnostics,
+    "components/Foo.tsx(1,1): error TS2307: Cannot find module '@/lib/nope'.\n",
+  );
+
+  const run = (entry) => {
+    try {
+      const stdout = execFileSync(process.execPath, [entry, `--input=${diagnostics}`, '--tsc-exit=2', '--baseline=0'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      return { code: 0, stdout };
+    } catch (error) {
+      return { code: error.status, stdout: String(error.stdout ?? '') + String(error.stderr ?? '') };
+    }
+  };
+
+  // Прямой путь: рубеж обязан упасть на настоящей ошибке.
+  const direct = run(reportPath);
+  assert.equal(direct.code, 1, 'рубеж не упал на настоящей ошибке по прямому пути');
+  assert.match(direct.stdout, /real errors 1 exceed baseline 0/);
+
+  // И главное: запуск по несимволическому «двойнику» пути самого модуля.
+  const aliasDir = path.join(sandbox, 'alias');
+  symlinkSync(path.dirname(reportPath), aliasDir);
+  const viaAlias = run(path.join(aliasDir, path.basename(reportPath)));
+  assert.equal(
+    viaAlias.code,
+    1,
+    'рубеж промолчал при запуске через симлинк — именно так он и пропускал ошибки',
+  );
+  assert.match(viaAlias.stdout, /real errors 1 exceed baseline 0/);
+
+  rmSync(sandbox, { recursive: true, force: true });
+}
+
 console.log('typecheck-mobile-report.test OK');
