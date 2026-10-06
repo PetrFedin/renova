@@ -13,6 +13,7 @@ from app.models.entities import (
 )
 from app.services.verified_execution_record_service import (
     ExecutionRecordNotAccepted,
+    build_portable_execution_proof,
     build_verified_execution_record,
 )
 
@@ -107,3 +108,48 @@ def test_verified_execution_record_fails_closed_before_acceptance():
             photos=[],
             issues=[],
         )
+
+
+def test_portable_execution_proof_redacts_personal_and_storage_details():
+    stage = _stage()
+    work = WorkOrder(
+        id="work-1",
+        project_id="project-1",
+        stage_id="stage-1",
+        work_type="waterproofing",
+        title="Гидроизоляция санузла",
+        status=WorkOrderStatus.done,
+        assignee_id="worker-private",
+        created_at=datetime(2026, 10, 1, 9, 0, 0),
+    )
+    photo = StagePhoto(
+        id="photo-1",
+        stage_id="stage-1",
+        user_id="contractor-private",
+        caption="Готовый слой",
+        storage_key="private/project/stage/photo.jpg",
+        image_url="https://private.example/photo.jpg",
+        created_at=datetime(2026, 10, 2, 11, 0, 0),
+    )
+    record = build_verified_execution_record(
+        stage=stage,
+        acceptance=_acceptance(),
+        work_orders=[work],
+        photos=[photo],
+        issues=[],
+    )
+    proof = build_portable_execution_proof(record)
+
+    assert proof["schemaVersion"] == "renova-portable-execution-proof-v1"
+    assert proof["sourceRecordHashSha256"] == record["recordHashSha256"]
+    assert proof["evidence"]["photoCount"] == 1
+    assert proof["disclosureBoundary"]["userIdsIncluded"] is False
+    assert proof["disclosureBoundary"]["photoStorageKeysIncluded"] is False
+    assert proof["signature"]["status"] == "unsigned"
+    assert len(proof["proofHashSha256"]) == 64
+    assert "acceptedBy" not in proof["acceptance"]
+    assert "assigneeId" not in proof["scope"][0]
+    serialized = str(proof)
+    assert "worker-private" not in serialized
+    assert "contractor-private" not in serialized
+    assert "private/project/stage/photo.jpg" not in serialized
