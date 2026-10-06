@@ -182,6 +182,70 @@ def build_verified_execution_record(
     return {**canonical, "recordHashSha256": _canonical_hash(canonical)}
 
 
+def build_portable_execution_proof(record: dict[str, Any]) -> dict[str, Any]:
+    canonical = {
+        "schemaVersion": "renova-portable-execution-proof-v1",
+        "subject": {
+            "projectId": record["subject"]["projectId"],
+            "stageId": record["subject"]["stageId"],
+            "stageName": record["subject"]["stageName"],
+            "workType": record["subject"]["workType"],
+        },
+        "acceptance": {
+            "acceptanceId": record["acceptance"]["acceptanceId"],
+            "status": record["acceptance"]["status"],
+            "acceptedAt": record["acceptance"]["acceptedAt"],
+            "qualityScore": record["acceptance"]["qualityScore"],
+        },
+        "scope": [
+            {
+                "workOrderId": row["workOrderId"],
+                "workType": row["workType"],
+                "title": row["title"],
+                "status": row["status"],
+                "actualStart": row["actualStart"],
+                "actualEnd": row["actualEnd"],
+            }
+            for row in record["scope"]
+        ],
+        "evidence": {
+            "level": record["evidence"]["level"],
+            "checklist": {
+                "total": record["evidence"]["checklist"]["total"],
+                "done": record["evidence"]["checklist"]["done"],
+                "complete": record["evidence"]["checklist"]["complete"],
+            },
+            "photoCount": len(record["evidence"]["photos"]),
+        },
+        "quality": {
+            "needsRework": record["quality"]["needsRework"],
+            "defectCount": len(record["quality"]["defects"]),
+            "warrantyCount": len(record["quality"]["warranty"]),
+        },
+        "sourceRecordHashSha256": record["recordHashSha256"],
+        "disclosureBoundary": {
+            "userIdsIncluded": False,
+            "assigneeIdsIncluded": False,
+            "photoStorageKeysIncluded": False,
+            "photoUrlsIncluded": False,
+            "commentsIncluded": False,
+            "financialDataIncluded": False,
+        },
+        "signature": {"status": "unsigned", "issuer": None},
+    }
+    return {**canonical, "proofHashSha256": _canonical_hash(canonical)}
+
+
+async def get_portable_execution_proof(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    stage_id: str,
+) -> dict[str, Any]:
+    record = await get_verified_execution_record(db, project_id=project_id, stage_id=stage_id)
+    return build_portable_execution_proof(record)
+
+
 async def get_verified_execution_record(
     db: AsyncSession,
     *,
