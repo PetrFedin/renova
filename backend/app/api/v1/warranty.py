@@ -41,6 +41,7 @@ async def create_warranty_claim(project_id: str, body: WarrantyClaimIn, user: Us
 class WarrantyRespondIn(BaseModel):
     decision: Literal["accept", "reject", "fixed"]
     comment: str | None = Field(default=None, max_length=1000)
+    evidence_photo_key: str | None = Field(default=None, max_length=512)
 
 
 class WarrantyReopenIn(BaseModel):
@@ -51,7 +52,15 @@ class WarrantyReopenIn(BaseModel):
 async def respond_warranty_claim(project_id: str, issue_id: str, body: WarrantyRespondIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """QLT-004: ответ исполнителя — принял / отклонил с комментарием / отметил исправленным."""
     project = await require_project(db, project_id, user, write=True)
-    issue = await warranty_svc.respond_to_claim(db, project=project, actor=user, issue_id=issue_id, decision=body.decision, comment=body.comment)
+    issue = await warranty_svc.respond_to_claim(
+        db,
+        project=project,
+        actor=user,
+        issue_id=issue_id,
+        decision=body.decision,
+        comment=body.comment,
+        evidence_photo_key=body.evidence_photo_key,
+    )
     return {"ok": True, "issue": issue_svc.issue_dict(issue)}
 
 
