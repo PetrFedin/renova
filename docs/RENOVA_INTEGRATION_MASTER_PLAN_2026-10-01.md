@@ -2375,3 +2375,201 @@ No opaque single device score should independently approve or reject a financial
 
 **Sequencing:** stable native distribution + passkey/step-up -> app/device attestation pilot -> transaction binding -> high-risk enforcement -> measured fraud/false-positive review.
 
+## Enterprise control-plane wave — identity, provisioning and policy
+
+**Status:** CONDITIONAL / ENTERPRISE-PILOT DRIVEN.
+
+Do not convert Renova into a generic enterprise multi-tenant suite before a real institutional customer requires it.
+
+The purpose of this wave is narrower: remove predictable procurement blockers for developers, property managers, insurers and large service organisations while preserving current Renova user/project/team authorities.
+
+Standards:
+
+- OpenID Connect Core: https://openid.net/specs/openid-connect-core-1_0.html
+- SAML 2.0: https://www.oasis-open.org/standard/saml/
+- SCIM Core Schema: https://www.rfc-editor.org/rfc/rfc7643
+- SCIM Protocol: https://www.rfc-editor.org/rfc/rfc7644
+
+### Organisation Boundary — ADOPT WHEN PILOT REQUIRES
+
+Create an explicit organisation/customer-management boundary for enterprise configuration, not a replacement for project ACL.
+
+Potential organisation-owned configuration:
+
+- verified domains;
+- identity-provider connection;
+- provisioning policy;
+- default security/retention policy;
+- organisation Skills/Playbooks;
+- approved service/provider policies;
+- enterprise API/service accounts;
+- portfolio/report access;
+- billing/contract metadata.
+
+Projects continue to own their domain state and participant permissions.
+
+### Enterprise SSO — CONDITIONAL
+
+Preferred modern path:
+
+`enterprise IdP -> OIDC authorization -> verified subject -> Renova identity/account link -> ordinary session/ACL`
+
+SAML support may be added for customers whose identity infrastructure requires it.
+
+Requirements:
+
+- issuer/audience/signature validation;
+- explicit organisation/connection binding;
+- immutable external subject mapping;
+- account-link conflict handling;
+- just-in-time provisioning policy separate from SCIM;
+- recent-auth/step-up still applies to sensitive Renova actions;
+- IdP authentication never grants project access by itself.
+
+### SCIM Provisioning — CONDITIONAL
+
+Expose a bounded SCIM service for enterprise-managed identities/groups only after organisation identity exists.
+
+Candidate supported operations:
+
+- Users create/update/deactivate;
+- Groups create/update/delete;
+- membership changes;
+- discovery endpoints required by interoperable clients.
+
+SCIM provisioned identity state must map through explicit Renova organisation policy before any project/team capability appears.
+
+Deprovisioning must invalidate sessions/access promptly and preserve required audit/history rather than deleting business evidence.
+
+### Group-to-role policy — ADOPT
+
+Map enterprise groups to **organisation-level** capabilities such as:
+
+- portfolio viewer;
+- auditor;
+- property manager;
+- verifier;
+- organisation administrator.
+
+Do not map an IdP group directly to customer/contractor acceptance/payment authority across arbitrary projects.
+
+Project-specific access remains explicit and auditable.
+
+### Enterprise Service Accounts — ADOPT
+
+For approved machine integrations:
+
+- organisation-scoped service account;
+- explicit capability scopes;
+- short-lived/token-rotation policy;
+- IP/mTLS/DPoP-style constraints where justified;
+- separate identity from human users;
+- no interactive login/session semantics;
+- per-request audit identity.
+
+Service accounts cannot masquerade as a human approver.
+
+### API Access Products — ADOPT
+
+Expose stable enterprise read/verification/event APIs around bounded domains:
+
+- project/status projection;
+- Verified Execution Record verification;
+- Property Passport projection;
+- approved evidence metadata;
+- warranty/service events;
+- webhook/event subscriptions.
+
+Use versioned schemas, idempotent webhooks and minimum-data scopes.
+
+Do not expose internal database shape as the public contract.
+
+### Enterprise Audit Export — ADOPT
+
+Support an organisation-authorised export containing:
+
+- actor/service identity;
+- action;
+- resource;
+- timestamp;
+- request/correlation identity;
+- decision/result;
+- security/step-up class where applicable.
+
+Exports are projections over canonical audit/domain history, not a second audit ledger.
+
+### Retention / Legal Hold Policy — ADOPT
+
+Renova already has document legal-hold concepts. Enterprise policy should extend this into explicit classes:
+
+- active project;
+- closeout;
+- warranty/service;
+- financial/legal;
+- temporary derived/AI index;
+- audit/security telemetry.
+
+Requirements:
+
+- retention rules are versioned;
+- legal hold overrides ordinary expiry;
+- source deletion propagates to derived search/AI indexes where legally allowed;
+- business-history requirements remain separate from convenience caches;
+- policy changes are audited.
+
+### Data Residency / Processing Region — CONDITIONAL
+
+Offer only when infrastructure/deployment actually supports it.
+
+Store per organisation/contract:
+
+- declared primary data region;
+- permitted processing regions/providers;
+- backup/DR region policy;
+- AI/provider data-processing boundary;
+- exception/transfer policy.
+
+UI/docs must never claim residency merely from a logical organisation flag.
+
+### Enterprise Security Posture Workspace — ADOPT
+
+Provide administrators with a bounded view of:
+
+- SSO/provisioning health;
+- active privileged users/service accounts;
+- recent step-up/auth anomalies;
+- API/webhook credentials;
+- retention/legal-hold policy;
+- external integrations;
+- audit export status;
+- current release/security assurance evidence.
+
+Do not expose platform secrets or other tenants.
+
+### Break-glass / recovery — REQUIRED
+
+Enterprise identity outage must not permanently lock legitimate owners out.
+
+Provide:
+
+- explicitly pre-authorised emergency admins;
+- strong step-up/recovery;
+- time-bounded break-glass session;
+- visible audit/notification;
+- post-event review.
+
+Break-glass cannot silently bypass project acceptance/payment business rules.
+
+### Acceptance
+
+- IdP login alone never grants project authority;
+- SCIM deactivation revokes future access while preserving historical attribution;
+- service account actions are distinguishable from humans;
+- group mapping cannot create cross-project privilege escalation;
+- retention/legal hold applies consistently to source and derivative data;
+- residency claims are backed by actual deployment topology;
+- enterprise auth outage has a tested break-glass path;
+- SSO/SCIM can be disabled without invalidating existing project evidence/history.
+
+**Sequencing:** first enterprise pilot -> organisation boundary -> OIDC SSO -> audit/service accounts -> SCIM if customer requires lifecycle provisioning -> retention/residency policy -> broader enterprise control plane.
+
