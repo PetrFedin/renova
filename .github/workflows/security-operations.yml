@@ -209,7 +209,8 @@ jobs:
           node scripts/sanitizeGitleaksReport.mjs \
             "$RUNNER_TEMP/renova-security/gitleaks-history-raw.json" \
             "$RUNNER_TEMP/renova-security/gitleaks-history-summary.json" \
-            "$RUNNER_TEMP/renova-security/gitleaks-history.exit"
+            "$RUNNER_TEMP/renova-security/gitleaks-history.exit" \
+            security/gitleaks-history-baseline.json
       - name: Materialize proposed tracked tree without Git metadata
         shell: bash
         run: |
