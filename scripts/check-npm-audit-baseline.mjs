@@ -154,7 +154,25 @@ const allowedHigh = new Map([
       reviewBy: '2026-12-31',
       reason: "maxTotalMergeKeys does not limit CPU use for empty merge sources. Expo build tooling only: @expo/xcpretty parses xcodebuild output during a build, never untrusted input on a device. The graph pins 4.x through @expo/xcpretty and `npm audit fix` produces no change.",
     },
+  ],,
+  [
+    "GHSA-vfj7-8cjw-p6xm",
+    {
+      package: "braces",
+      severity: "high",
+      reviewBy: "2026-11-06",
+      reason: "Unfixed upstream as of 2026-10-07; reachable through micromatch in Expo/Metro file-map build tooling, not installed-app user-input handling. Tracked by #670; remove immediately when a compatible patched release exists.",
+    },
   ],
+  [
+    "GHSA-86w9-cpqp-85rv",
+    {
+      package: "node-forge",
+      severity: "high",
+      reviewBy: "2026-11-06",
+      reason: "Unfixed upstream as of 2026-10-07; reachable through @expo/cli and @expo/code-signing-certificates build/publish tooling, not Renova backend or installed-app runtime verification. Tracked by #670; remove immediately when a compatible patched release exists.",
+    },
+  ]
 ]);
 
 const advisories = [];
