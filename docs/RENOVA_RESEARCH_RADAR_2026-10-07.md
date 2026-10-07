@@ -321,3 +321,83 @@ Avoid ranking monetisation that creates perverse incentives around acceptance, d
 - premium intelligence can degrade to normal core workflows;
 - no paywall may block a user from reviewing a payment/acceptance action they are already party to.
 
+
+
+## Additional portfolio decisions — enterprise, AI assurance and property operations
+
+### AI Assurance — foundation, not an add-on
+
+| Candidate | UX | Moat | Revenue | Readiness | Risk | Priority | Decision |
+|---|---:|---:|---:|---:|---:|---:|---|
+| Retrieval ACL + source classification | 3 | 5 | 5 | 5 | 2 | 16 | REQUIRED before cited AI |
+| Prompt-injection adversarial corpus | 2 | 5 | 5 | 4 | 2 | 14 | REQUIRED before external-content RAG |
+| AI evaluation corpus/gates | 3 | 5 | 5 | 4 | 2 | 15 | REQUIRED before model/prompt promotion |
+| Model/provider gateway | 3 | 5 | 5 | 4 | 2 | 15 | ADOPT before multiple AI capabilities |
+| Tool allowlist + human approval | 4 | 5 | 5 | 5 | 2 | 17 | REQUIRED before write-capable coworkers |
+| AI cost/latency budgets | 3 | 3 | 4 | 5 | 1 | 14 | ADOPT from first production AI pilot |
+
+AI security/evaluation is not monetised as a separate safety SKU. It is part of the trust contract for any paid intelligence capability.
+
+### Enterprise control plane — pilot-driven
+
+| Candidate | UX | Moat | Revenue | Readiness | Risk | Priority | Decision |
+|---|---:|---:|---:|---:|---:|---:|---|
+| Organisation boundary | 3 | 5 | 5 | 3 | 4 | 12 | Build only with first real enterprise pilot |
+| OIDC SSO | 3 | 4 | 5 | 3 | 3 | 12 | Likely first enterprise identity feature |
+| SAML compatibility | 2 | 2 | 4 | 2 | 3 | 7 | Only when a customer requires it |
+| SCIM provisioning | 2 | 4 | 5 | 2 | 4 | 9 | Only with managed identity lifecycle demand |
+| Service accounts/scoped API | 3 | 5 | 5 | 4 | 3 | 14 | Strong enterprise/API leverage |
+| Audit export | 4 | 5 | 5 | 4 | 2 | 16 | High-value procurement/audit requirement |
+| Retention/legal-hold policy | 3 | 5 | 5 | 4 | 3 | 14 | Strong insurer/property-manager fit |
+| Data residency policy | 2 | 4 | 5 | 2 | 4 | 9 | Only when deployment topology can prove it |
+
+Do not redesign Renova around generic multi-tenancy before a signed/pilot enterprise requirement exists.
+
+### Property operations / post-handover
+
+| Candidate | UX | Moat | Revenue | Readiness | Risk | Priority | Decision |
+|---|---:|---:|---:|---:|---:|---:|---|
+| Commissioning records | 4 | 5 | 4 | 4 | 1 | 16 | Natural extension of Installed Asset Register |
+| Maintenance trigger engine | 5 | 5 | 5 | 4 | 2 | 17 | High post-handover LTV potential |
+| Warranty correlation | 5 | 5 | 5 | 4 | 2 | 17 | Strong evidence/network loop |
+| Property Health Timeline | 5 | 5 | 5 | 4 | 1 | 18 | Excellent long-term passport moat |
+| Smart-home/Matter metadata | 3 | 3 | 3 | 3 | 2 | 10 | Useful as commissioning context, not core |
+| Selected sensor-event admission | 4 | 4 | 4 | 2 | 4 | 10 | Pilot only with clear maintenance benefit |
+| Service-network automation | 5 | 5 | 5 | 3 | 3 | 15 | Builds recurring network economics |
+
+The strongest post-handover product is not a smart-home dashboard. It is a trustworthy property-history and service-continuity layer.
+
+## Updated execution thesis
+
+After current admission / Verified Execution Record qualification:
+
+**Foundation**
+1. cited Project Intelligence;
+2. AI assurance/evaluation;
+3. Calm OS responsive/performance tokens;
+4. Site Mode/capture quality.
+
+**Measured intelligence**
+5. pace observations;
+6. constraints/root cause;
+7. delay forecast/recovery simulation;
+8. bounded coworkers.
+
+**Long-term retention**
+9. Property Passport + commissioning;
+10. maintenance/warranty correlation;
+11. service-network loop.
+
+**Enterprise, when pulled by customer**
+12. organisation boundary;
+13. audit export/service accounts;
+14. OIDC SSO;
+15. SCIM/SAML/residency only as required.
+
+**Experimental**
+16. RoomPlan;
+17. SAM 2;
+18. 3D Gaussian Splatting;
+19. selective CRDT.
+
+This keeps the strongest moat — evidence, verified execution, property history and participant network — ahead of expensive visual/AI experiments.
