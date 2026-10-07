@@ -419,3 +419,23 @@ The moat is not "meeting notes". It is the ability to reconstruct:
 `question/blocker -> meeting/context -> final decision -> exact sources -> affected entities -> canonical commitments -> verified implementation -> later supersession/history`
 
 This should reduce coordination loss while strengthening Renova's long-term evidence graph.
+
+
+## Material provenance / sustainability priority
+
+| Candidate | UX | Moat | Revenue | Readiness | Risk | Priority | Decision |
+|---|---:|---:|---:|---:|---:|---:|---|
+| Product identity + source admission | 4 | 5 | 4 | 5 | 1 | 17 | ADOPT |
+| DPP / DoPC reference ingestion | 3 | 5 | 5 | 3 | 2 | 14 | CONDITIONAL by jurisdiction/customer |
+| EPD metadata support | 3 | 4 | 4 | 3 | 3 | 11 | ADAPT |
+| Installed-product sustainability linkage | 4 | 5 | 5 | 4 | 2 | 16 | ADOPT after product identity |
+| Embodied-impact project view | 3 | 4 | 4 | 2 | 4 | 9 | Only with comparable/high-coverage data |
+| Product update/recall impact analysis | 5 | 5 | 5 | 4 | 2 | 17 | Strong enterprise/property-management value |
+| Circularity/end-of-life metadata | 3 | 4 | 4 | 3 | 2 | 12 | Useful in Property Passport |
+| Supplier/manufacturer structured feed | 4 | 5 | 5 | 2 | 4 | 12 | Later ecosystem/network layer |
+
+The valuable Renova position is not generic ESG scoring. It is:
+
+`trusted product identity -> admitted declaration/source -> purchase/lot -> installed room/asset -> exact historical source -> maintenance/warranty -> update/recall/end-of-life impact`
+
+This strengthens procurement, Property Passport, enterprise portfolio management and future international compliance without making sustainability data mandatory for ordinary projects.
