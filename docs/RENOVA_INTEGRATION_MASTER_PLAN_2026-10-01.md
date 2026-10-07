@@ -3475,3 +3475,440 @@ Adopt SQLite for a data class only when measured benefit exceeds migration/compl
 
 **Sequencing:** instrument AsyncStorage -> local read/search projection pilot -> incremental sync -> media metadata -> only then evaluate write-queue migration.
 
+## Decision & Coordination Ledger wave — meetings, commitments and durable decisions
+
+**Status:** PLANNED / HIGH-VALUE COORDINATION LAYER.
+
+Current competitive direction validates a structured meeting workflow, but Renova should avoid creating a second task system.
+
+References:
+
+- Procore Meetings + Tasks integration: https://support.procore.com/products/online/user-guide/project-level/meetings
+- Procore task management inside Meetings: https://support.procore.com/products/online/user-guide/project-level/meetings/tutorials/create-and-manage-tasks-in-the-meetings-tool
+- Autodesk Meetings overview: https://construction.autodesk.com/tools/construction-meeting-records/
+- Autodesk meeting/minutes workflow: https://www.autodesk.com/learn/ondemand/course/construction-project-management/unit/1AvYkpc3Hj0xp6CZ10E6SL
+- Autodesk meeting follow-up/series: https://help.autodesk.com/cloudhelp/ENG/Build-Meetings/files/work-meetings/Manage_Meetings.html
+
+### Product principle — meeting is context, not authority
+
+A meeting record captures:
+
+- who met;
+- when/where;
+- agenda;
+- discussion notes;
+- decisions;
+- linked canonical project facts;
+- action commitments.
+
+It must not create parallel canonical copies of:
+
+- tasks/work orders;
+- issues/punch items;
+- RFI;
+- Submittals;
+- schedule items;
+- change orders;
+- payments;
+- acceptance decisions.
+
+Where a meeting creates follow-up work, the meeting item links to the existing canonical entity.
+
+### Meeting Series — ADOPT
+
+Support recurring coordination types such as:
+
+- weekly project coordination;
+- owner/customer review;
+- contractor/subcontractor coordination;
+- design coordination;
+- quality/inspection review;
+- procurement/material review;
+- closeout/handover review;
+- warranty/service review.
+
+A series owns:
+
+- title/type;
+- recurrence/calendar context;
+- participant defaults;
+- default agenda sections;
+- previous-open-item references;
+- permissions.
+
+Each occurrence remains a distinct immutable/versioned project record after publication.
+
+### Agenda — ADOPT
+
+Agenda items can be:
+
+- ordinary discussion topic;
+- linked Issue;
+- linked RFI;
+- linked Submittal;
+- linked Stage/Work Package;
+- linked Material/Asset;
+- linked Change Order;
+- linked Inspection/Hold Point;
+- linked Document/Drawing;
+- linked previous Decision;
+- linked canonical task/work order.
+
+The agenda never duplicates the linked entity's state.
+
+### Decision Record — ADOPT
+
+A real project decision should be a durable object, separate from free-form notes.
+
+Minimum fields:
+
+- project_id;
+- decision_id;
+- title/summary;
+- decision text;
+- decision type;
+- decided_at;
+- effective_at where relevant;
+- decision maker(s);
+- meeting/source context;
+- linked evidence/document/source IDs;
+- linked affected entities;
+- rationale/assumptions where appropriate;
+- status;
+- supersedes / superseded_by;
+- created_by;
+- version;
+- published/finalised timestamp.
+
+Candidate decision types:
+
+- design;
+- scope;
+- schedule;
+- material;
+- quality;
+- commercial;
+- access/site logistics;
+- acceptance-path;
+- warranty/service;
+- governance.
+
+A decision record does **not** itself mutate scope, money, schedule or acceptance. It records the approved decision context, while the actual business change still goes through the existing canonical command/domain transaction.
+
+### Decision supersession — REQUIRED
+
+Project decisions evolve.
+
+Use explicit lineage:
+
+`Decision A -> superseded by Decision B -> current effective decision`
+
+Never edit historical final decisions in place to make the past look different.
+
+Views must show:
+
+- current effective decision;
+- superseded history;
+- source meeting/document;
+- affected entities;
+- implementation state.
+
+### Commitment / Action Link — ADOPT
+
+A meeting follow-up item may create or link exactly one canonical action entity where applicable.
+
+Examples:
+
+- "Исправить примыкание" -> Project Issue / Work Order;
+- "Ответить по узлу" -> RFI;
+- "Согласовать образец" -> Submittal/Material approval;
+- "Предоставить расчёт" -> Task/Work Order;
+- "Подготовить допработу" -> Change Order draft;
+- "Проверить скрытые работы" -> Inspection/Hold Point.
+
+Meeting surfaces show the canonical item's current status rather than maintaining a second status.
+
+This follows the same anti-duplication lesson Procore applied when it made Tasks the single tracked source for actionable meeting items.
+
+### Commitment contract — ADOPT
+
+Every actionable commitment should have, where applicable:
+
+- canonical entity reference;
+- owner;
+- due date;
+- priority;
+- origin meeting/decision;
+- completion evidence;
+- verified completion state from the linked domain.
+
+If no canonical domain entity fits, use one bounded generic Project Task object rather than storing "open/closed" only inside meeting minutes.
+
+### Follow-up meeting behavior — ADOPT
+
+Next meeting may inherit by reference:
+
+- still-open commitments;
+- unresolved decisions/questions;
+- unresolved linked RFI/Submittal/Issue;
+- prior agenda item context.
+
+Closed items are not duplicated.
+
+The follow-up view shows historical origin:
+
+`opened in Meeting #4 -> carried into #5/#6 -> resolved before #7`
+
+without creating copies of the underlying action.
+
+### Minutes draft -> publish -> immutable record — ADOPT
+
+Lifecycle:
+
+`agenda -> live/draft minutes -> review -> publish/finalise -> immutable published version`
+
+After publication:
+
+- corrections create a new revision/addendum;
+- prior published version remains retained;
+- current effective version is explicit;
+- distributed/exported record resolves to the exact version/checksum.
+
+Do not let later edits silently change a previously distributed meeting record.
+
+### Attendance / acknowledgement — ADAPT
+
+Record:
+
+- invited;
+- attended;
+- absent;
+- external guest where allowed.
+
+Optional acknowledgement:
+
+- received/read minutes;
+- explicit disagreement/comment within a bounded review window.
+
+Acknowledgement is not automatically legal acceptance unless a separate contract/process explicitly gives it that meaning.
+
+### Meeting source links — ADOPT
+
+Meeting items/decisions can link to:
+
+- drawing page;
+- document version;
+- photo/360 evidence;
+- room/location;
+- RFI/Submittal;
+- issue/inspection;
+- schedule stage;
+- change/order;
+- payment context where authorised;
+- external approved source.
+
+A decision must retain the exact source version/checksum where a later source revision could change interpretation.
+
+### Decision Impact View — ADOPT
+
+For a selected decision, show:
+
+- affected room/work packages;
+- linked schedule items;
+- linked materials/assets;
+- linked Issue/RFI/Submittal;
+- linked Change Order;
+- implementation status;
+- unresolved downstream consequences.
+
+This view is explanatory only; actual impact calculations remain in Change Impact / schedule/cost authority.
+
+### Decision obligations — ADOPT
+
+Track whether a final decision has all required implementation follow-through.
+
+Example:
+
+`Decision: switch finish material`
+-> new approved material reference;
+-> affected scope lines;
+-> schedule implication reviewed;
+-> change/commercial approval if required;
+-> installation evidence later linked.
+
+A decision can therefore be:
+
+- decided;
+- implementation_pending;
+- partially_implemented;
+- implemented;
+- superseded;
+- cancelled.
+
+"Implemented" must be derived from explicit linked domain completion, not a manual checkbox alone.
+
+### Decision conflict detection — ADAPT
+
+Warn when a new proposed/final decision appears to conflict with:
+
+- current effective decision on the same subject/entity;
+- approved material;
+- locked scope/baseline;
+- active hold point;
+- current schedule baseline;
+- contract requirement;
+- later superseding decision.
+
+A warning does not choose the winner automatically.
+
+### Meeting Copilot — ADAPT
+
+Only after AI Assurance is in place.
+
+Inputs:
+
+- live notes/voice transcript;
+- agenda;
+- authorised linked project context.
+
+Outputs:
+
+- draft minutes;
+- candidate decisions;
+- candidate commitments;
+- candidate links to Issue/RFI/Submittal/Work/Material;
+- unresolved question list.
+
+Required rule:
+
+`AI draft -> human review -> publish/create canonical action`
+
+The model cannot silently create a final decision, acceptance, change order or payment.
+
+### Voice / field meeting capture — ADAPT
+
+On mobile/tablet:
+
+- voice capture;
+- timestamp markers;
+- quick "decision", "action", "question" markers;
+- room/work context;
+- photos/evidence attached during meeting.
+
+Transcription is an editable draft.
+
+### Meeting Room / Presenter Mode — ADOPT
+
+For monitor/tablet meetings:
+
+- current agenda item;
+- linked drawing/evidence;
+- open prior commitments;
+- decision draft;
+- assignee/due-date panel;
+- next item.
+
+After meeting:
+
+- publish minutes;
+- send/share;
+- unresolved actions automatically remain visible through their canonical entities.
+
+### Calendar / notification integration — ADAPT
+
+Support:
+
+- calendar event/ICS;
+- reminders;
+- participant notifications;
+- due-action reminders;
+- follow-up meeting scheduling.
+
+Do not create a separate schedule authority for project work.
+
+### Search & Project Intelligence — ADOPT
+
+Deep Search should answer questions such as:
+
+- "Когда решили заменить плитку?";
+- "Кто согласовал этот материал?";
+- "Почему перенесли срок?";
+- "Какие решения по ванной ещё не выполнены?";
+- "Что изменилось после совещания 12 сентября?".
+
+Answers must cite:
+
+- exact Decision;
+- exact Meeting revision;
+- linked canonical project records.
+
+### Decision / coordination metrics — ADOPT
+
+Measure:
+
+#### Decision latency
+
+`decided_at - first_formal_question_or_blocker_at`
+
+where the start event is observable.
+
+#### Commitment overdue rate
+
+`overdue_open_commitments / open_commitments_with_due_date`
+
+#### Decision implementation latency
+
+`implemented_at - decided_at`
+
+#### Carry-forward rate
+
+`open_commitments_carried_to_next_meeting / open_commitments_at_meeting_close`
+
+High carry-forward may indicate coordination friction; it is not automatically bad without context.
+
+#### Decision reversal/supersession rate
+
+Track by category and project phase.
+
+Do not interpret supersession as "bad quality" without context; design evolution may be legitimate.
+
+### Export / institutional record — ADOPT
+
+Export a meeting/decision package that includes:
+
+- meeting identity/version/checksum;
+- attendees;
+- agenda/minutes;
+- decisions;
+- linked commitments and current canonical status;
+- source references;
+- publication/revision history.
+
+PDF is a derivative convenience artifact. Canonical machine-readable meeting/decision history remains in Renova.
+
+### ACL / privacy — REQUIRED
+
+A meeting participant does not automatically gain access to every linked project entity.
+
+When a linked object is restricted:
+
+- hide/redact the restricted content;
+- preserve safe relationship metadata only when policy permits;
+- do not leak restricted entity title/existence through search or exports.
+
+External guest links are explicit, bounded and revocable.
+
+### Acceptance
+
+- meeting action status is never maintained independently from its canonical action;
+- published minutes are versioned/immutable;
+- decisions support supersession lineage;
+- no meeting record directly bypasses scope/schedule/money/acceptance authority;
+- follow-up meetings carry references, not duplicate actionable records;
+- source document/evidence version is retained;
+- AI produces drafts only;
+- search can reconstruct why/when/by whom a decision occurred;
+- deleted/revoked participant access cannot leak linked restricted content.
+
+**Sequencing:** Meeting Series + agenda -> published versioned minutes -> Decision Record + supersession -> canonical commitment links -> Decision Impact/obligation view -> Meeting Copilot -> analytics.
+
