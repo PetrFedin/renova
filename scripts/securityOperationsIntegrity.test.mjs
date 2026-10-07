@@ -165,11 +165,13 @@ test("existing container and JavaScript advisory gates remain independent", () =
 });
 
 test("security governance never equates CI with external readiness", () => {
-  assert.match(operationsDoc, /protected: false/);
+  assert.match(operationsDoc, /protected: true/);
+  assert.match(operationsDoc, /main-protection/);
+  assert.match(operationsDoc, /typecheck-integrity/);
+  assert.match(operationsDoc, /snapshot/);
   assert.match(operationsDoc, /#247/);
   assert.match(operationsDoc, /#256/);
   assert.match(operationsDoc, /#257/);
-  assert.match(operationsDoc, /NOT PROVEN \/ NOT READY/);
   assert.match(operationsDoc, /Repository\/admin access review is therefore \*\*NOT PROVEN\*\*/);
   assert.match(operationsDoc, /external penetration\/abuse test: \*\*NOT EXECUTED/);
   assert.match(operationsDoc, /90 days/);
