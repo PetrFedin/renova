@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const [inputArg, outputArg, exitCodeArg] = process.argv.slice(2);
+const [inputArg, outputArg, exitCodeArg, baselineArg] = process.argv.slice(2);
 if (!inputArg || !outputArg || !exitCodeArg) {
   console.error(
-    "usage: node scripts/sanitizeGitleaksReport.mjs <raw.json> <sanitized.json> <exit-code-file>",
+    "usage: node scripts/sanitizeGitleaksReport.mjs <raw.json> <sanitized.json> <exit-code-file> [history-baseline.json]",
   );
   process.exit(2);
 }
@@ -42,11 +42,107 @@ const sanitized = findings.map((finding) => ({
   fingerprint: String(finding.Fingerprint || finding.fingerprint || "").slice(0, 500),
 }));
 
+let accepted = [];
+let blockers = [];
+let baselineVersion = null;
+
+if (baselineArg) {
+  let baseline;
+  try {
+    baseline = JSON.parse(fs.readFileSync(path.resolve(baselineArg), "utf8"));
+  } catch (error) {
+    console.error(`FAIL: cannot parse gitleaks history baseline: ${error}`);
+    process.exit(1);
+  }
+
+  if (baseline.version !== 1 || baseline.scope !== "merged-history-only") {
+    console.error("FAIL: unsupported gitleaks history baseline contract");
+    process.exit(1);
+  }
+  if (!Array.isArray(baseline.exceptions)) {
+    console.error("FAIL: gitleaks history baseline exceptions must be an array");
+    process.exit(1);
+  }
+
+  const reviewedAt = Date.parse(`${baseline.reviewed_at}T00:00:00Z`);
+  const reviewBy = Date.parse(`${baseline.review_by}T00:00:00Z`);
+  if (!Number.isFinite(reviewedAt) || !Number.isFinite(reviewBy) || reviewBy < reviewedAt) {
+    console.error("FAIL: invalid gitleaks history baseline review dates");
+    process.exit(1);
+  }
+  if (reviewBy - reviewedAt > 90 * 24 * 60 * 60 * 1000) {
+    console.error("FAIL: gitleaks history baseline review window exceeds 90 days");
+    process.exit(1);
+  }
+  const today = Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
+  if (today > reviewBy) {
+    console.error(`FAIL: gitleaks history baseline review expired on ${baseline.review_by}`);
+    process.exit(1);
+  }
+
+  const exceptionMap = new Map();
+  for (const exception of baseline.exceptions) {
+    const required = ["fingerprint", "rule_id", "file", "commit", "classification", "reason"];
+    if (required.some((key) => !String(exception?.[key] ?? "").trim())) {
+      console.error("FAIL: incomplete gitleaks history baseline exception");
+      process.exit(1);
+    }
+    if (exceptionMap.has(exception.fingerprint)) {
+      console.error(`FAIL: duplicate gitleaks history fingerprint ${exception.fingerprint}`);
+      process.exit(1);
+    }
+    exceptionMap.set(exception.fingerprint, exception);
+  }
+
+  const seen = new Set();
+  for (const finding of sanitized) {
+    const exception = exceptionMap.get(finding.fingerprint);
+    if (
+      !exception ||
+      exception.rule_id !== finding.rule_id ||
+      exception.file !== finding.file ||
+      exception.commit !== finding.commit ||
+      Number(exception.start_line) !== finding.start_line
+    ) {
+      blockers.push(finding);
+      continue;
+    }
+    seen.add(finding.fingerprint);
+    accepted.push({
+      fingerprint: finding.fingerprint,
+      classification: exception.classification,
+      reason: exception.reason,
+    });
+  }
+
+  for (const fingerprint of exceptionMap.keys()) {
+    if (!seen.has(fingerprint)) {
+      blockers.push({
+        rule_id: "stale-baseline",
+        file: exceptionMap.get(fingerprint).file,
+        start_line: exceptionMap.get(fingerprint).start_line,
+        commit: exceptionMap.get(fingerprint).commit,
+        fingerprint,
+      });
+    }
+  }
+  baselineVersion = baseline.version;
+}
+
+const verified =
+  baselineArg
+    ? blockers.length === 0 && sanitized.length === accepted.length
+    : exitCode === 0 && sanitized.length === 0;
+
 const payload = {
-  verified: exitCode === 0 && sanitized.length === 0,
+  verified,
   scanner_exit_code: exitCode,
   finding_count: sanitized.length,
+  accepted_history_finding_count: accepted.length,
+  unexpected_finding_count: blockers.length,
+  baseline_version: baselineVersion,
   findings: sanitized,
+  accepted_history_findings: accepted,
   redaction_policy: {
     secret: "never persisted in sanitized evidence",
     match: "never persisted in sanitized evidence",
@@ -63,6 +159,23 @@ if (exitCode === 1 && sanitized.length === 0) {
   console.error("FAIL: gitleaks reported findings but the report is empty");
   process.exit(1);
 }
+
+if (baselineArg) {
+  if (blockers.length) {
+    console.error(`FAIL: gitleaks history has ${blockers.length} unexpected or stale finding(s)`);
+    for (const finding of blockers) {
+      console.error(
+        `- ${finding.rule_id} ${finding.file}:${finding.start_line ?? "?"} commit=${finding.commit || "working-tree"} fingerprint=${finding.fingerprint}`,
+      );
+    }
+    process.exit(1);
+  }
+  console.log(
+    `gitleaks-history-gate: PASS accepted=${accepted.length} baseline_version=${baselineVersion}`,
+  );
+  process.exit(0);
+}
+
 if (exitCode === 1) {
   console.error(`FAIL: gitleaks found ${sanitized.length} potential secret(s)`);
   for (const finding of sanitized) {
