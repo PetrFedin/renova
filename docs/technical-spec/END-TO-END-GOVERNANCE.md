@@ -65,7 +65,7 @@ Issue #674 records verifier drift discovered by current PostgreSQL schema lifecy
 
 ## 7.2 2026-10-07 push-delivery contract reconciliation
 
-Issue #679 records source-contract drift in the push-delivery workflow. Navigation payload normalization is canonically owned by `apps/mobile/lib/notificationNavigation.ts`; `nativeNotifications.ts` imports and calls that parser. The workflow must therefore assert native delivery wiring in the native module and compatibility parsing in the canonical navigation module, rather than requiring duplicated parser text in the native module. This preserves one authority while keeping cold-start, delivery-dedupe and role-navigation checks fail closed.
+Issue #679 records source-contract drift in the push-delivery workflow. Navigation payload normalization is canonically owned by `apps/mobile/lib/notificationNavigation.ts`; `nativeNotifications.ts` imports and calls that parser. The workflow must therefore assert native delivery wiring in the native module and compatibility parsing in the canonical navigation module, rather than requiring duplicated parser text in the native module. This preserves one authority while keeping cold-start, delivery-dedupe and role-navigation checks fail closed. The same reconciliation also removes the obsolete expectation that `notify()` directly derives a provider delivery id: current canonical `notify()` persists the in-app notification, `DomainOutbox` notification event and `SideEffectDelivery`, then dispatches asynchronously; only `notify_from_outbox()` performs provider delivery using the stable `outbox:{id}` identity. CI therefore verifies the durable outbox handoff rather than resurrecting the legacy direct-send path.
 
 ## 8. Product-wide acceptance evidence
 
