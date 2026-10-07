@@ -167,16 +167,16 @@ export function warrantyActions(statusValue: string, role: 'customer' | 'contrac
   if (status === 'closed') return [{ kind: 'reopen', label: 'Открыть снова', intent: 'secondary', comment: 'optional' }];
   if (status === 'rejected' || status === 'fixed') {
     return [
-      { kind: 'close', label: 'Закрыть гарантию', intent: 'primary', comment: 'none' },
+      { kind: 'close', label: status === 'fixed' ? 'Подтвердить исправление' : 'Закрыть обращение', intent: 'primary', comment: 'none' },
       { kind: 'reopen', label: 'Открыть снова', intent: 'secondary', comment: 'optional' },
     ];
   }
-  return [{ kind: 'close', label: 'Закрыть гарантию', intent: 'primary', comment: 'none' }];
+  return [];
 }
 
 export function warrantyWaitingHint(statusValue: string, role: 'customer' | 'contractor'): string | null {
   const status = normalizeIssueStatus(statusValue);
-  if (role === 'customer' && (status === 'open' || status === 'in_progress')) return 'Ждёт ответа исполнителя';
+  if (role === 'customer' && (status === 'open' || status === 'in_progress')) return 'Ждёт исправления и фото результата от исполнителя';
   if (role === 'contractor' && (status === 'fixed' || status === 'rejected')) return 'Ждёт решения заказчика';
   return null;
 }
