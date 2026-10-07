@@ -39,8 +39,11 @@ WORKDIR /app
 # package required by the fail-closed image vulnerability gate. Do not replace
 # this with an unpinned upgrade or a scanner exception.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libpcre2-8-0=10.42-1+deb12u2 \
+    && apt-get install -y --no-install-recommends \
+      libpcre2-8-0=10.42-1+deb12u2 \
+      perl-base=5.36.0-7+deb12u4 \
     && test "$(dpkg-query -W -f='${Version}' libpcre2-8-0)" = "10.42-1+deb12u2" \
+    && test "$(dpkg-query -W -f='${Version}' perl-base)" = "5.36.0-7+deb12u4" \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf \
       /usr/local/lib/python3.12/ensurepip \
