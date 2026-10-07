@@ -2825,3 +2825,145 @@ Do not persist hidden chain-of-thought.
 
 **Sequencing:** cited read-only retrieval -> adversarial/eval corpus -> AI gateway -> read-only copilots -> draft-only tools -> human-approved actions -> continuous red-team/evaluation.
 
+## Property operations wave — commissioning, sensors and preventive service
+
+**Status:** CONDITIONAL / POST-HANDOVER.
+
+Renova should not become a general-purpose smart-home controller.
+
+Its differentiated role is to preserve the construction-to-operation digital thread:
+
+`installed asset -> commissioning proof -> configuration/reference -> warranty -> maintenance -> service event -> incident -> replacement/history`
+
+Relevant interoperability direction:
+
+- Matter overview: https://developers.home.google.com/matter/overview
+- Matter 1.6 announcement: https://csa-iot.org/newsroom/matter-1-6-enables-more-intuitive-setup-multi-ecosystem-experiences-and-context-driven-control/
+- Home Assistant Matter integration: https://www.home-assistant.io/integrations/matter/
+
+### Commissioning Record — ADOPT
+
+Extend Installed Asset / Home Digital Passport with a commissioning record where relevant:
+
+- asset/device identity;
+- model/serial/batch;
+- installed location;
+- installer/provider;
+- commissioning date;
+- firmware/version at handover where available;
+- tested capabilities;
+- network/protocol class;
+- configuration/reference file checksum where appropriate;
+- commissioning evidence/photos/report;
+- warranty start/end;
+- owner acknowledgement.
+
+Do not store reusable network secrets, pairing codes or private keys in ordinary project records.
+
+### Smart-home interoperability reference — ADAPT
+
+Where a commissioned device is Matter-capable, store bounded metadata such as:
+
+- Matter support/certification claim from admitted product documentation;
+- device/category identity;
+- installed room/asset link;
+- commissioning state;
+- controller/ecosystem reference chosen by owner.
+
+Renova should not automatically join the owner's Matter fabric or become the primary Matter controller.
+
+### Sensor / telemetry admission — CONDITIONAL
+
+For high-value property-care use cases, admit selected derived events from owner-authorised systems, for example:
+
+- leak/water alarm;
+- temperature/humidity anomaly;
+- indoor air-quality threshold;
+- HVAC fault/service indicator;
+- energy/consumption anomaly;
+- equipment offline/maintenance signal.
+
+Telemetry integration is opt-in and source-labelled.
+
+Raw high-frequency time series should remain in the specialist telemetry/home-automation system unless Renova has a clear maintenance/evidence reason to retain it.
+
+### Maintenance Trigger Engine — ADOPT
+
+Combine:
+
+- installed asset maintenance interval;
+- warranty terms;
+- admitted telemetry event;
+- service history;
+- room/property context.
+
+Generate:
+
+`maintenance due / inspect / contact provider / warranty candidate / urgent safety action`
+
+This creates useful post-handover retention without pretending Renova diagnoses equipment autonomously.
+
+### Warranty correlation — ADOPT
+
+When an incident affects a known Installed Asset:
+
+`incident -> asset -> installation/commissioning evidence -> warranty -> provider -> prior service -> claim dossier`
+
+Prepare a claim/service package containing the minimum relevant evidence.
+
+Never infer warranty coverage solely from a sensor alert.
+
+### Property Health Timeline — ADOPT
+
+Create a homeowner/property-manager timeline over durable facts:
+
+- handover;
+- asset commissioning;
+- maintenance;
+- service;
+- warranty;
+- incident/restoration;
+- replacement;
+- verification/inspection.
+
+This becomes a long-term property-history asset and strengthens the Property Passport moat.
+
+### Local-first / privacy preference — ADOPT
+
+Where integration architecture permits, prefer local/interoperable events over mandatory vendor cloud dependence.
+
+Requirements:
+
+- owner explicitly authorises each source/integration;
+- no background discovery of private home devices without consent;
+- controller credentials are stored in a proper encrypted integration vault if ever required;
+- minimum event data enters Renova;
+- disconnecting an integration does not erase prior admitted maintenance/warranty history;
+- private occupancy/behaviour inference is out of scope.
+
+### Safety boundary — REQUIRED
+
+Renova may display urgent sensor-derived warnings, but it is not a certified fire/security/medical/life-safety control system.
+
+Do not route life-safety control loops through ordinary Renova cloud workflows.
+
+### Service Network loop — ADOPT
+
+With user approval:
+
+`maintenance/incident -> recommended qualified provider -> service request -> appointment/work order -> evidence -> payment -> asset history`
+
+This connects the post-handover Property Passport to the Approved Service Network and creates recurring network value.
+
+### Acceptance
+
+- Renova can operate with zero smart-home integrations;
+- smart-home controller credentials/pairing secrets are not stored in ordinary domain rows;
+- source/event identity is explicit;
+- sensor event never auto-approves a warranty claim/payment;
+- user can disconnect integrations;
+- retained property history distinguishes telemetry signal from inspected/verified fact;
+- Home Digital Passport remains useful as a document/asset history even without live telemetry.
+
+**Sequencing:** Installed Asset Register -> commissioning records -> maintenance schedule -> optional event admission -> warranty correlation -> service-network loop.
+
