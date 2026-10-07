@@ -2,7 +2,7 @@
 import { req, cachedGet, API_BASE, ApiError } from './client';
 import { exceedsQueueBodyLimit, isQueueableWriteError } from './queueableError';
 import { OFFLINE_UPLOAD_BLOCKED } from '@/lib/offlineErrors';
-import type { ProjectPlan, Stage, StageChecklistItem, StageDetail, StagePaymentPlan, WorkAcceptance, WorkCompletionCheck, WorkSnapshot } from './types';
+import type { ProjectPlan, Stage, StageChecklistItem, StageDetail, StagePaymentPlan, VerifiedExecutionRecord, WorkAcceptance, WorkCompletionCheck, WorkSnapshot } from './types';
 import { acceptanceDecisionBody } from '@/lib/acceptanceDecide';
 import { createClientRequestId } from '@/lib/clientRequestId';
 
@@ -225,6 +225,7 @@ export const stagesApi = {
     }
   },
   workSnapshot: (userId: string, projectId: string, stageId: string) => req<WorkSnapshot>(`/api/v1/projects/${projectId}/stages/${stageId}/snapshot`, {}, userId),
+  verifiedExecutionRecord: (userId: string, projectId: string, stageId: string) => req<VerifiedExecutionRecord>(`/api/v1/projects/${projectId}/stages/${stageId}/verified-execution-record`, {}, userId),
   workCompletionCheck: (userId: string, projectId: string, stageId: string) => req<{ ok: boolean; checks: WorkCompletionCheck[]; failed: WorkCompletionCheck[] }>(`/api/v1/projects/${projectId}/stages/${stageId}/completion-check`, {}, userId),
   stageWorkflow: (userId: string, projectId: string, stageId: string) => req<{ work_type: string; steps: string[]; checklist: StageChecklistItem[]; checklist_progress: number }>(`/api/v1/projects/${projectId}/stages/${stageId}/workflow`, {}, userId),
   toggleStageChecklist: async (userId: string, projectId: string, stageId: string, item_id: string, done: boolean) => {

@@ -28,6 +28,83 @@ export type Stage = {
 
 export type StageChecklistItem = { id: string; text: string; done: boolean };
 
+export type VerifiedExecutionRecord = {
+  schemaVersion: 'renova-verified-execution-record-v1';
+  recordHashSha256: string;
+  subject: {
+    projectId: string;
+    stageId: string;
+    stageName: string;
+    workType: string | null;
+    roomIdsJson: string | null;
+  };
+  acceptance: {
+    acceptanceId: string;
+    status: 'accepted' | 'accepted_with_remarks';
+    requestedAt: string | null;
+    acceptedAt: string;
+    requestedBy: string | null;
+    acceptedBy: string | null;
+    comment: string | null;
+    qualityScore: number | null;
+  };
+  scope: {
+    workOrderId: string;
+    workType: string | null;
+    title: string;
+    status: string;
+    roomId: string | null;
+    plannedStart: string | null;
+    plannedEnd: string | null;
+    actualStart: string | null;
+    actualEnd: string | null;
+    assigneeId: string | null;
+  }[];
+  evidence: {
+    level: 'E0' | 'E1' | 'E2';
+    checklist: {
+      total: number;
+      done: number;
+      complete: boolean;
+      items: Record<string, unknown>[];
+    };
+    photos: {
+      photoId: string;
+      caption: string | null;
+      storageKey: string | null;
+      imageUrl: string | null;
+      createdAt: string | null;
+      userId: string;
+    }[];
+  };
+  quality: {
+    needsRework: boolean;
+    defects: {
+      issueId: string;
+      title: string;
+      severity: string;
+      status: string;
+      createdAt: string | null;
+      closedAt: string | null;
+    }[];
+    warranty: {
+      issueId: string;
+      title: string;
+      status: string;
+      createdAt: string | null;
+      closedAt: string | null;
+    }[];
+  };
+  lineage: {
+    acceptanceTable: 'work_acceptances';
+    stageTable: 'stages';
+    scopeTable: 'work_orders';
+    photoTable: 'stage_photos';
+    issueTable: 'project_issues';
+  };
+};
+
+
 export type StageCapabilities = {
   can_schedule: boolean;
   can_start: boolean;
