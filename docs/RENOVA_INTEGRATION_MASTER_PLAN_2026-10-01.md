@@ -1371,3 +1371,642 @@ Export must remain possible; lock-in should come from useful history and network
 **Sequencing:** Verified Execution Record -> reference specification -> synthetic passport -> institutional verifier API -> approved service network -> insurer/property-manager pilots -> enterprise bundle.
 
 **Moat:** Renova becomes the shared evidence rail connecting property work, contractor capability, warranty and institutional risk workflows.
+
+## Research wave — grounded Project Intelligence and Digital Coworkers
+
+**Status:** RESEARCH / PLANNED. This section records current competitive and technical findings; it is not evidence that AI search or agentic actions are already live.
+
+Current 2026 market direction is moving from document-centric project management toward project intelligence grounded in connected project data:
+
+- OpenSpace is exposing verified progress/reality data to AI agents and using visual progress for forecasting;
+- Buildots combines measured progress, delay forecasting and a natural-language project assistant;
+- Procore is introducing construction-specific Digital Coworkers and organisation-specific Skills;
+- Autodesk is moving Autodesk Assistant toward AI-native, connected AEC project intelligence.
+
+Research references:
+
+- https://www.openspace.ai/resources/webinars/waypoint-2026-whats-new-in-openspace-track/
+- https://www.openspace.ai/news/openspace-unveils-next-gen-visual-intelligence-at-waypoint-2026/
+- https://buildots.com/blog/meet-dot-buildots-ai-assistant/
+- https://buildots.com/platform/
+- https://www.procore.com/press/procore-introduces-digital-coworker-packages-expands-ai-agent-library-and-previews-skills-to-help-construction-teams-put-ai-to-work
+- https://www.autodesk.com/blogs/construction/meet-autodesk-assistant-ai-native-intelligence-in-forma/
+
+### Project Intelligence Index — ADOPT/CONDITIONAL
+
+Create an ACL-aware retrieval projection over existing Renova authorities rather than a new document/data authority.
+
+Candidate indexed sources:
+
+- project profile and room/work-package facts;
+- approved estimate/scope versions;
+- drawings/specifications and OCR text;
+- RFI/submittal/inspection records;
+- site diary and work logs;
+- evidence/photos/360 capture metadata;
+- chat messages where the requesting actor is authorised;
+- schedule/change records;
+- payments/cost facts only for actors that already have access;
+- accepted work, warranty and Verified Execution Records.
+
+Every indexed unit must retain:
+
+- project_id / source_type / source_id;
+- source version or checksum;
+- authoritative timestamp;
+- ACL/security classification;
+- source deletion/revocation state;
+- extraction/parser version;
+- embedding/model version where semantic indexing is enabled.
+
+No AI index is an authority. A result must always resolve back to the canonical Renova source.
+
+### Hybrid Deep Search — ADOPT
+
+Preferred default:
+
+`PostgreSQL full-text search + optional pgvector semantic ranking -> ACL filter -> source re-rank -> cited result`
+
+Reference:
+
+- https://github.com/pgvector/pgvector
+- https://github.com/pgvector/pgvector-python
+
+Reasoning:
+
+- Renova already treats PostgreSQL as authoritative;
+- pgvector can stay inside the existing database/security/backup boundary;
+- hybrid lexical + semantic search is preferable to a separate vector database until scale proves otherwise;
+- approximate indexes must be monitored against exact-search recall before they become default.
+
+Result UX:
+
+- direct answer where supported;
+- exact source citations/anchors;
+- source freshness/version;
+- confidence/coverage signal;
+- `Недостаточно данных` when evidence is insufficient;
+- one-tap jump to drawing page, message, photo, room, RFI, inspection or acceptance record.
+
+No answer may silently merge facts from projects/threads the current actor cannot read.
+
+### Multimodal Search — ADAPT
+
+Add controlled retrieval for:
+
+- photo -> visually similar / same room / same work package evidence;
+- drawing fragment -> linked issue/RFI/evidence;
+- object/material photo -> candidate installed asset/material references;
+- before/after -> linked capture timeline.
+
+Image similarity is discovery only. It must not declare installation, defect closure, acceptance or payment readiness.
+
+Visual-document retrieval may be evaluated through pgvector-compatible pipelines, but model/provider choice stays replaceable and versioned.
+
+### Renova Digital Coworkers — ADOPT
+
+Do not build a generic chatbot on every screen.
+
+Create bounded role/task agents such as:
+
+- Daily Log Copilot — drafts a site-day summary from real events/evidence;
+- RFI Copilot — prepares an RFI draft with drawing/spec references;
+- Submittal Review Copilot — compares submission against declared requirements;
+- Progress Brief Copilot — explains planned vs verified progress and blockers;
+- Change Impact Copilot — prepares affected scope/schedule/cost evidence;
+- Evidence Completeness Copilot — identifies missing required proof before inspection;
+- Handover Copilot — prepares closeout/warranty/passport checklist;
+- Contract/Specification Finder — answers with exact source citations only.
+
+Every coworker action follows:
+
+`query/context -> cited reasoning -> proposed command -> user review -> existing Renova command/API -> transaction/outbox/audit`
+
+The agent never writes directly to domain tables and never calls a payment/signature/external provider outside the existing service/provider boundaries.
+
+### Organisation Skills / Playbooks — ADOPT
+
+Allow an organisation to define versioned operating rules such as:
+
+- inspection checklist policy;
+- required evidence by work type;
+- RFI response SLA;
+- material approval policy;
+- naming/classification conventions;
+- closeout requirements;
+- escalation thresholds.
+
+A Skill contains:
+
+- organisation;
+- name/version;
+- applicable project/work type;
+- structured rules;
+- source documents/checksums;
+- effective dates;
+- reviewer/approver;
+- test corpus.
+
+AI may apply a Skill during analysis, but a Skill cannot override Renova ACL, financial authority, acceptance authority or safety/security policy.
+
+### AI Decision / Action Receipt — ADOPT
+
+For every high-value AI-assisted result, record:
+
+- model/provider/version;
+- prompt/policy version;
+- source IDs/versions used;
+- tool/command proposals;
+- actor who approved/rejected;
+- final canonical command result;
+- latency/cost class;
+- redaction/privacy class.
+
+This creates reproducibility and supports future institutional audit without storing unnecessary hidden model reasoning.
+
+### Acceptance
+
+- every factual AI answer can resolve to current authorised sources;
+- deleted/revoked source facts disappear from future retrieval;
+- cross-project and restricted-thread leakage tests are mandatory;
+- AI can propose but not silently approve money, acceptance, permissions or signatures;
+- model outage degrades to ordinary Renova search/workflows;
+- AI provider/model can be replaced without changing domain authority;
+- every organisation Skill is versioned/testable.
+
+**Sequencing:** current search/ACL truth -> project intelligence index -> cited deep search -> bounded copilots -> organisation Skills -> optional agent ecosystem.
+
+---
+
+## Spatial operations wave — autolocation, live capture and on-device intelligence
+
+**Status:** RESEARCH / PLANNED.
+
+OpenSpace's 2026 direction highlights AI autolocation, live capture coverage, voice field notes and measurements from captured geometry. Renova already plans reality capture/point clouds, but the capture **operator experience** and spatial localisation layer are not yet explicit.
+
+Research references:
+
+- https://www.openspace.ai/news/openspace-unveils-next-gen-visual-intelligence-at-waypoint-2026/
+- https://www.openspace.ai/blog/waypoint-2026-recap/
+- https://developer.apple.com/augmented-reality/roomplan/
+- https://github.com/google-ai-edge/mediapipe
+- https://github.com/facebookresearch/sam2
+
+### Spatial Autolocation — ADAPT/EXPERIMENT
+
+Goal:
+
+`capture frame/sequence -> candidate room/zone/plan position -> confidence -> user correction -> admitted spatial anchor`
+
+Signals may include:
+
+- capture-session trajectory;
+- known room geometry;
+- plan/IFC features;
+- visual feature matching;
+- device motion/depth;
+- QR/reference markers where available.
+
+No wireless beacon infrastructure should be required by default.
+
+Low-confidence localisation must remain manually correctable and may be stored only as a candidate until confirmed.
+
+### Live Capture Coverage — ADOPT
+
+During a site walk show:
+
+- already captured zones;
+- uncovered rooms/areas;
+- capture quality warnings;
+- disconnected/low-quality sequence;
+- scale/reference confidence where measurement is intended.
+
+The goal is to prevent returning from site with unusable evidence.
+
+Coverage UI is operational guidance; only admitted capture evidence becomes durable authority.
+
+### Voice Site Walk — ADOPT
+
+Allow the user to record a field voice note while walking.
+
+Flow:
+
+`voice -> timestamp/spatial anchor -> transcription -> candidate structured items -> user confirms -> RFI/Punch/Task/Diary entry`
+
+Candidate extraction can include:
+
+- issue description;
+- room/zone;
+- responsible trade;
+- due date phrase;
+- work package;
+- material/product reference.
+
+Transcription or extraction errors must remain visible/editable before a domain record is created.
+
+### LiDAR Room Capture — CONDITIONAL
+
+On supported Apple hardware evaluate RoomPlan for fast interior capture:
+
+- walls/openings;
+- dimensions;
+- room geometry;
+- recognised room objects;
+- USD/USDZ derivative.
+
+RoomPlan output is a candidate geometry/capture source, not the estimate or contractual geometry authority.
+
+Cross-platform boundary:
+
+- LiDAR-enhanced capture must be optional;
+- Android/non-LiDAR devices continue to support ordinary photo/360/manual-reference workflows;
+- premium measurement claims require the existing Capture Quality Gate regardless of device.
+
+### On-device Vision Assist — EXPERIMENT/ADAPT
+
+MediaPipe is a candidate for privacy-sensitive device-side assistance such as:
+
+- capture quality/orientation guidance;
+- object/person detection for framing;
+- document/photo classification hints;
+- face/privacy-redaction candidate detection.
+
+Where heavier server-side visual segmentation is useful, evaluate SAM 2 for:
+
+- user-prompted defect/object masks;
+- consistent mask propagation through short videos;
+- assisted markup generation.
+
+AI masks are editable annotation candidates only. Original media remains immutable.
+
+### Privacy-safe Share Derivatives — ADOPT
+
+Before external share/export, optionally create reviewed redacted derivatives for:
+
+- faces/people;
+- personal documents;
+- addresses/phone numbers where detectable;
+- sensitive room areas selected by owner.
+
+Never destructively blur the source evidence. Store derivative checksum + redaction policy/version.
+
+### 3D Gaussian Splatting pilot — EXPERIMENT/DEFER
+
+Add a modern alternative to the existing NeRF research path.
+
+Reference:
+
+- https://github.com/nerfstudio-project/gsplat
+
+Use only where a pilot proves clear benefit over 360 + point cloud:
+
+- remote visual walkthrough;
+- photorealistic time comparison;
+- executive/client presentation;
+- difficult visual context that ordinary captures do not communicate.
+
+Geometry/measurement authority remains calibrated point-cloud/plan/IFC evidence; splats are presentation/derived spatial media unless separately validated.
+
+### Acceptance
+
+- autolocation always exposes confidence and manual correction;
+- capture coverage never invents evidence;
+- voice transcription cannot directly mutate domain state;
+- LiDAR/non-LiDAR projects remain interoperable;
+- vision segmentation never auto-closes defects or acceptance;
+- external-share redaction preserves immutable source media;
+- spatial models retain source/checksum/processor lineage.
+
+**Sequencing:** Reality Capture Admission -> live coverage -> confirmed spatial anchors -> voice walk -> optional RoomPlan/on-device vision -> optional 3DGS.
+
+---
+
+## Predictive execution wave — pace, delay and recovery intelligence
+
+**Status:** RESEARCH / PLANNED.
+
+Buildots and OpenSpace increasingly combine verified progress with pace/risk forecasting. Renova already plans Change Impact and measured progress, but should add a distinct forecasting layer whose outputs are measurable and backtestable.
+
+Research references:
+
+- https://buildots.com/platform/
+- https://buildots.com/solutions/delay-risk-mitigation/
+- https://www.openspace.ai/blog/forecasting-built-on-your-projects-reality/
+- https://www.openspace.ai/resources/webinars/waypoint-2026-whats-new-in-openspace-track/
+
+### Pace Observation — ADOPT
+
+Derive from existing authoritative facts:
+
+- planned quantity/time;
+- accepted/measured installed quantity;
+- observed interval;
+- trade/work package/room;
+- blocker/hold-point state;
+- material readiness;
+- RFI/submittal readiness.
+
+Compute explicitly:
+
+- actual pace;
+- planned pace;
+- required recovery pace;
+- confidence/coverage;
+- observation freshness.
+
+No progress percentage is accepted merely because a user typed it.
+
+### Short-horizon Delay Forecast — ADAPT
+
+For sufficiently observed work packages estimate:
+
+- likely completion range;
+- schedule-risk level;
+- affected successors/milestones;
+- confidence;
+- reasons/evidence;
+- data freshness.
+
+Forecast must distinguish:
+
+- measured delay signal;
+- missing-data uncertainty;
+- explicit known blocker;
+- simulation assumption.
+
+### Constraint / Root-cause Graph — ADOPT
+
+Connect delay candidates to known facts:
+
+- predecessor incomplete;
+- unresolved Punch/Hold Point;
+- open RFI;
+- unapproved Submittal;
+- missing material;
+- delivery late;
+- crew/workforce availability from Site Diary where captured;
+- rejected/rework acceptance;
+- design/model revision;
+- owner/customer decision pending.
+
+Do not claim causal certainty where the data only proves correlation/sequence.
+
+### Recovery Scenario Simulator — ADAPT
+
+Build on the existing Change Impact / Timefold-inspired planning layer.
+
+Examples:
+
+- resequence independent work;
+- add crew capacity;
+- split work area;
+- expedite a material;
+- move inspection/approval;
+- change a non-contractual working sequence.
+
+Output:
+
+`scenario -> assumptions -> predicted delta -> conflicts -> cost implications -> required approvals`
+
+Simulation never writes the schedule, budget or contract by itself.
+
+### Forecast Accuracy Ledger — ADOPT
+
+For each forecast store:
+
+- forecast timestamp;
+- input snapshot/version;
+- predicted range/risk;
+- actual outcome;
+- error;
+- model/rule version.
+
+This prevents "AI forecasting" from becoming unmeasured marketing.
+
+### Verified Progress / Payment Support — ADAPT
+
+Where contract terms allow, display:
+
+`verified progress -> accepted quantity -> payment eligibility context`
+
+Renova may prepare payment/claim evidence, but no visual/AI progress result directly creates or approves a payment.
+
+### Acceptance
+
+- every forecast resolves to a versioned input snapshot;
+- missing data widens uncertainty instead of fabricating precision;
+- forecast accuracy is measurable over time;
+- scenario recommendations are explicit assumptions;
+- no auto-rescheduling or auto-payment;
+- cross-project learning uses anonymised/authorised aggregates only.
+
+**Sequencing:** Installed Progress Ledger -> pace observations -> short-horizon forecast -> constraint graph -> scenario simulator -> portfolio benchmarking.
+
+---
+
+## Collaboration wave — live spatial workspace without a second authority
+
+**Status:** RESEARCH / CONDITIONAL.
+
+Renova intentionally rejected a full-app CRDT as excessive. Keep that decision. Use conflict-free collaboration only where simultaneous editing is genuinely valuable.
+
+References:
+
+- https://github.com/yjs/yjs
+- https://github.com/ueberdosis/hocuspocus
+
+### Selective CRDT surfaces — CONDITIONAL
+
+Candidate collaborative surfaces:
+
+- drawing/photo markup;
+- BIM/3D viewpoints and annotations;
+- temporary review notes;
+- whiteboard/sketch;
+- inspection drafting;
+- RFI/submittal drafting before submission.
+
+Do **not** place these authoritative states in CRDT:
+
+- payments;
+- acceptance decisions;
+- contract approvals;
+- ACL/team membership;
+- canonical estimate;
+- warranty closure.
+
+### Live Presence — ADOPT/CONDITIONAL
+
+For supported review sessions show:
+
+- active participants;
+- current room/drawing/viewpoint;
+- cursors/selection;
+- "following presenter" mode;
+- comment/annotation focus.
+
+Presence is ephemeral and privacy-scoped.
+
+### Offline collaboration merge — CONDITIONAL
+
+For annotation documents only:
+
+`local CRDT updates -> reconnect -> conflict-free merge -> explicit submit/freeze -> immutable Renova evidence/version`
+
+Once submitted as evidence/inspection/RFI attachment, the accepted snapshot receives a normal Renova version/checksum and future collaboration happens on a new draft revision.
+
+### Acceptance
+
+- CRDT never becomes business authority;
+- project ACL checked on connect and persistence;
+- submitted snapshots are immutable/versioned;
+- offline merge cannot mutate accepted evidence;
+- presence does not leak restricted participants/project activity.
+
+---
+
+## Experience wave — Calm Spatial UI 2.0 and high-performance visual control room
+
+**Status:** PLANNED DESIGN SYSTEM EXTENSION.
+
+The objective is not decorative complexity. Renova should make dense construction truth feel simpler than competitor enterprise software.
+
+### Responsive workspace modes — ADOPT
+
+Desktop / monitor:
+
+`project navigation | primary spatial/work canvas | context/evidence/decision rail`
+
+Tablet:
+
+`canvas/list split | collapsible decision rail`
+
+Phone:
+
+`single task focus | bottom sheet details | one primary action`
+
+The same domain state and routes remain canonical across all modes.
+
+### Spatial Control Room — ADOPT
+
+For projects with capture/plan/BIM data, provide one composable workspace with:
+
+- room/floor navigation;
+- 2D plan / 3D / 360 switch;
+- timeline/date scrubber;
+- planned-vs-actual overlay;
+- issue/RFI/inspection pins;
+- evidence completeness heatmap;
+- selected object's work/material/cost/acceptance context;
+- next-action panel.
+
+Do not create separate disconnected dashboards for each visual technology.
+
+### Role-adaptive information density — ADOPT
+
+Customer:
+
+- outcome, money, decisions, evidence.
+
+Contractor/site lead:
+
+- work readiness, blockers, materials, inspections, next actions.
+
+Supervisor/inspector:
+
+- quality, evidence, hold points, deviations.
+
+Enterprise/manager:
+
+- portfolio risk, pace, exception-based drilldown.
+
+Same facts, different projection; no role-specific duplicate truth.
+
+### Site Mode — ADOPT
+
+Field-optimised UI:
+
+- large touch targets;
+- camera/voice/issue quick actions;
+- offline state always visible;
+- minimal navigation depth;
+- current room/work package fixed in context;
+- sunlight/high-contrast mode;
+- one-handed capture flow;
+- explicit queued-vs-server-confirmed states.
+
+### Motion and transition system — ADOPT
+
+Use motion to preserve spatial/context continuity:
+
+- list -> detail shared context;
+- plan/room selection -> detail rail;
+- timeline changes -> crossfade/geometry transition;
+- optimistic local state only where server semantics allow it.
+
+Provide reduced-motion behavior and never use animation to hide pending/error state.
+
+### Visual performance budgets — ADOPT
+
+Measure rather than assume:
+
+- route/render p50/p95;
+- long-list frame drops;
+- image/360 decode time;
+- 3D first useful frame;
+- memory pressure;
+- thumbnail/cache hit ratio;
+- JS thread stalls.
+
+Techniques may include:
+
+- FlashList where already planned;
+- thumbnail pyramids/progressive media;
+- prefetch adjacent room/date captures;
+- bounded 3D LOD;
+- worker/WASM processing off the UI thread;
+- explicit cache versioning by source checksum.
+
+### Current BIM viewer modernization note
+
+Do not adopt deprecated `web-ifc-viewer`.
+
+For future browser BIM UI evaluate the current That Open stack:
+
+- https://github.com/ThatOpen/engine_web-ifc
+- https://github.com/ThatOpen/engine_components
+
+`@thatopen/components` currently provides modular Three.js-based BIM tools including model loading, classification, clipping, measurements and floorplan navigation. Licensing must be re-verified at implementation time for every selected package/dependency.
+
+xeokit remains a useful performance/reference benchmark, but its licensing/commercial terms must be reviewed before proprietary integration:
+
+- https://github.com/xeokit/xeokit-sdk
+
+### Acceptance
+
+- no new UI mode creates duplicate domain routes/authorities;
+- monitor/tablet/phone each have explicit screenshot/E2E contracts;
+- Site Mode remains usable offline;
+- motion respects reduced-motion/accessibility;
+- spatial/3D features degrade to ordinary list/detail workflows;
+- performance targets are measured on representative low/mid/high devices;
+- advanced graphics never delay critical acceptance/payment/error UI.
+
+---
+
+## Research priority after the current admission chain
+
+Do not implement these waves before the current exact-head admission / Verified Execution Record requalification sequence is closed.
+
+Recommended order after that gate:
+
+1. **Project Intelligence Index + cited Deep Search** — highest UX leverage across the existing product.
+2. **Spatial capture operator UX** — live coverage + confirmed autolocation + voice walk.
+3. **Pace / Delay Forecast** — only after verified progress observations exist.
+4. **Bounded Digital Coworkers** — once cited retrieval and command proposals are trustworthy.
+5. **Calm Spatial UI 2.0** — parallel visual productisation over stable authorities.
+6. **Selective live collaboration** — only on surfaces with proven simultaneous-editing demand.
+7. **RoomPlan / SAM 2 / 3DGS pilots** — experiments, not core dependencies.
+
+This order intentionally prioritises information retrieval, field capture quality and measurable decision support before visually impressive but less foundational spatial AI.
+
