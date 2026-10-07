@@ -204,3 +204,120 @@ A research item is stopped or deferred when:
 - privacy/ACL risk cannot be bounded;
 - a simpler existing Renova workflow performs equally well;
 - the feature is impressive in demos but does not improve completion, quality, trust or revenue.
+
+## Commercial packaging hypothesis
+
+This is product packaging research, not approved pricing.
+
+Renova already has contractor Free/Pro mechanics. New capability should extend that model rather than fragmenting entitlement logic into one-off paywalls.
+
+### Core homeowner / project experience
+
+Keep the core transaction trust loop accessible:
+
+- project;
+- estimate/scope;
+- works/schedule;
+- core documents;
+- acceptance;
+- payments;
+- ordinary evidence;
+- warranty basics.
+
+The homeowner should not need an enterprise plan to see the truth of their own project.
+
+### Contractor Pro
+
+Natural extension of the existing Pro entitlement:
+
+- multi-project operations;
+- team/crew controls;
+- contractor analytics;
+- reusable organisation Skills/Playbooks;
+- advanced reporting;
+- contractor capability/passport surfaces;
+- priority automation;
+- deeper procurement/workforce controls.
+
+### Site Intelligence add-on
+
+Premium per active project / project-month candidate:
+
+- Site Mode;
+- live capture coverage;
+- 360/3D timeline;
+- spatial autolocation;
+- visual compare;
+- progress measurement;
+- pace/risk analytics;
+- Spatial Control Room;
+- advanced evidence completeness.
+
+This maps cost to projects that actually consume heavy media/compute.
+
+### AI Project Intelligence add-on
+
+Candidate per organisation / active project packaging:
+
+- cited Deep Search;
+- project brief/copilot;
+- RFI/Submittal/Closeout copilots;
+- organisation Skills;
+- multimodal retrieval;
+- AI Decision/Action Receipts;
+- bounded agent automations.
+
+Do not charge separately for ordinary exact-text search needed to navigate the user's own data.
+
+### Property Passport / Care
+
+Post-handover recurring package candidate:
+
+- Home Digital Passport;
+- installed assets/materials;
+- maintenance reminders;
+- service history;
+- extended media archive;
+- transfer/handover package;
+- service network access.
+
+This extends LTV after renovation completion.
+
+### Enterprise Trust
+
+Organisation/portfolio contract candidate:
+
+- Verified Execution Records;
+- verification API;
+- institutional verifier workspace;
+- portfolio trust graph;
+- approved-provider network;
+- insurer/property-manager evidence bundle;
+- custom retention/residency;
+- SSO/SCIM when enterprise demand justifies implementation;
+- assurance/device-integrity policy;
+- audit/export controls.
+
+### Network economics
+
+Only after liquidity and trust are proven:
+
+- qualified lead fee;
+- service transaction fee;
+- enterprise network subscription;
+- verification/API usage;
+- premium contractor qualification;
+- insurer/property-manager programme contracts.
+
+Avoid ranking monetisation that creates perverse incentives around acceptance, defect closure or contractor credentials.
+
+## Packaging guardrails
+
+- business authority never changes because a user downgrades;
+- historical accepted evidence remains readable/exportable according to retention/contract;
+- safety/security controls are not sold as optional cosmetics;
+- basic data export is never held hostage;
+- expensive AI/3D compute has transparent quotas/limits;
+- premium intelligence can degrade to normal core workflows;
+- no paywall may block a user from reviewing a payment/acceptance action they are already party to.
+
