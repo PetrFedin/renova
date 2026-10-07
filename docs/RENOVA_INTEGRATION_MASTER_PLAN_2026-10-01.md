@@ -3912,3 +3912,231 @@ External guest links are explicit, bounded and revocable.
 
 **Sequencing:** Meeting Series + agenda -> published versioned minutes -> Decision Record + supersession -> canonical commitment links -> Decision Impact/obligation view -> Meeting Copilot -> analytics.
 
+## Material provenance & sustainability passport wave — DPP/EPD-ready product history
+
+**Status:** CONDITIONAL / INTERNATIONAL & ENTERPRISE VALUE.
+
+This wave is not a generic ESG dashboard and is not required for ordinary Renova projects.
+
+It extends the existing Material Lot/Batch Traceability + Installed Asset Register + Home Digital Passport so that selected products can retain trustworthy machine-readable provenance and environmental/compliance metadata where the jurisdiction/customer requires it.
+
+Current regulatory/interoperability direction:
+
+- EU Digital Product Passport: https://single-market-economy.ec.europa.eu/single-market/digital-product-passport_en
+- EU CPR 2024 revision: https://single-market-economy.ec.europa.eu/sectors/construction/construction-products-regulation-cpr/cpr-2024-revision_en
+- CPR CE / Declaration of Performance and Conformity: https://single-market-economy.ec.europa.eu/sectors/construction/construction-products-regulation-cpr/ce-marking-and-declaration-performance-and-conformity_en
+- buildingSMART Product Domain: https://www.buildingsmart.org/standards/domains/product/
+
+### Product identity / source admission — ADOPT
+
+For selected installed materials/products, retain:
+
+- manufacturer;
+- product family/model;
+- product identifier;
+- batch/lot where relevant;
+- supplier;
+- admitted product documentation;
+- declaration/certificate identifier;
+- source URL/provider;
+- source version/checksum;
+- jurisdiction/standard scope;
+- validity/effective period where applicable.
+
+Renova must distinguish:
+
+- manufacturer claim;
+- third-party declaration/certification;
+- imported supplier data;
+- Renova-observed installation evidence.
+
+Do not convert a manufacturer claim into a verified Renova fact merely because it exists in a PDF or DPP.
+
+### DPP / DoPC reference — CONDITIONAL
+
+Where a construction product exposes an official Digital Product Passport or Declaration of Performance and Conformity:
+
+`external product identifier -> admitted DPP/DoPC metadata -> exact source/version -> Renova material/product -> delivery lot -> installed asset/room`
+
+Store references and the minimum required admitted metadata.
+
+Do not mirror an entire regulatory registry unless there is a clear offline/compliance reason.
+
+### EPD / environmental declaration support — ADAPT
+
+For products with an Environmental Product Declaration or equivalent source:
+
+- declaration identifier;
+- programme/operator;
+- declared unit;
+- valid-from / valid-until;
+- product scope;
+- source checksum/version;
+- selected environmental indicators;
+- standard/method reference.
+
+Environmental numbers must always retain:
+
+- unit;
+- lifecycle module/scope;
+- source declaration;
+- declared/reference quantity;
+- version.
+
+Never sum incomparable EPD values with different declared units/scopes without explicit normalisation rules.
+
+### Embodied-carbon project view — CONDITIONAL
+
+Only when the input data is sufficiently complete and comparable:
+
+`installed quantity x admitted environmental factor -> product/work/room/project contribution`
+
+Required output:
+
+- included products;
+- excluded products;
+- coverage percentage;
+- method/version;
+- assumptions;
+- unit conversions;
+- source declarations;
+- uncertainty/missing data.
+
+Do not display a single "project carbon" number if material coverage is insufficient.
+
+### Material health / emissions metadata — ADAPT
+
+Where trustworthy source data exists, retain bounded properties such as:
+
+- VOC/emissions classification;
+- restricted substance declaration;
+- safety/use instructions;
+- relevant indoor-environment certifications.
+
+These are source-labelled compliance/selection facts, not Renova medical/safety guarantees.
+
+### Circularity / end-of-life — ADOPT/CONDITIONAL
+
+For suitable products/assets:
+
+- disassembly/reuse guidance;
+- recycled/recyclable content claims;
+- spare part/service references;
+- end-of-life/recycling instructions;
+- material composition where legally/publishably available;
+- take-back/provider programme.
+
+Link these to Property Passport and future refurbishment/service events.
+
+### Procurement comparison — ADAPT
+
+During material selection, optionally compare admitted candidates across:
+
+- price;
+- lead time;
+- technical requirement fit;
+- approved status;
+- durability/warranty;
+- environmental declaration availability;
+- embodied-impact metric where genuinely comparable;
+- repairability/reuse/end-of-life metadata.
+
+Environmental data is one decision dimension; it must not silently override budget, performance or customer preference.
+
+### Product data dictionary mapping — ADAPT
+
+Where structured product data is available, map external property definitions to a stable internal product-property vocabulary.
+
+buildingSMART Product / bSDD-compatible semantics may be evaluated for:
+
+- property names;
+- units;
+- classifications;
+- IFC/product linkage.
+
+Do not hard-code vendor-specific property names as the permanent Renova schema.
+
+### Property Passport handover — ADOPT
+
+At handover, selected installed products can expose:
+
+- exact installed product identity;
+- batch/lot;
+- room/location;
+- purchase/install evidence;
+- DPP/DoPC/EPD links;
+- warranty;
+- maintenance;
+- replacement/end-of-life guidance.
+
+This makes the Home Digital Passport useful for later renovation, resale, property management and service.
+
+### International jurisdiction policy — REQUIRED
+
+Do not claim EU regulatory compliance merely because Renova stores a DPP/EPD link.
+
+Per project/organisation declare:
+
+- applicable jurisdiction;
+- required product documentation;
+- accepted declaration/certificate classes;
+- who validates compliance;
+- effective rules/version.
+
+Russian/CIS projects can use the provenance/passport functionality without inheriting EU compliance labels.
+
+### Source update / revocation — ADOPT
+
+External declarations/passports can be:
+
+- updated;
+- expired;
+- corrected;
+- withdrawn.
+
+Use the same source-admission/change-impact discipline:
+
+`external change -> candidate source update -> review -> affected installed products/projects -> impact notice`
+
+Historical installation record retains the source/version used at selection/install time.
+
+### Supplier/manufacturer interoperability — CONDITIONAL
+
+Future enterprise/OEM integrations may allow approved suppliers/manufacturers to publish:
+
+- product master data;
+- compliance docs;
+- DPP/EPD references;
+- replacement product mappings;
+- maintenance instructions;
+- recall/safety notices.
+
+External publication enters an admission queue; it never directly overwrites installed-project truth.
+
+### Commercial / network value
+
+Potential enterprise value:
+
+- developer/property-manager material registry;
+- verified product documentation completeness;
+- portfolio-level installed-product lookup;
+- recall/update impact analysis;
+- sustainable procurement reporting;
+- manufacturer/service network integrations;
+- property resale/refurbishment passport continuity.
+
+Do not monetise by hiding required safety/compliance data behind a paywall for parties already entitled to it.
+
+### Acceptance
+
+- external product claim is distinguishable from Renova-observed installation;
+- environmental values retain exact source/unit/scope/version;
+- incomparable declarations are not silently aggregated;
+- DPP/DoPC/EPD updates do not rewrite historical install evidence;
+- jurisdiction/compliance claims are explicit and bounded;
+- property passport remains useful without sustainability data;
+- product source withdrawal can trigger impact review;
+- no sustainability score is fabricated from missing coverage.
+
+**Sequencing:** product identity/source admission -> DPP/DoPC/EPD references -> installed-product linkage -> Property Passport handover -> optional comparable impact view -> portfolio/enterprise reporting.
+
