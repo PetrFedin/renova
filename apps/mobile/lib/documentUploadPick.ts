@@ -34,11 +34,11 @@ function guessMime(name: string, mime?: string | null): string {
   return 'application/octet-stream';
 }
 
-async function pickWebFile(): Promise<PickedUploadFile | null> {
+async function pickWebFile(accept = 'application/pdf,image/*,text/plain,.doc,.docx,.xlsx'): Promise<PickedUploadFile | null> {
   if (typeof document === 'undefined') return null;
   const input = document.createElement('input');
   input.type = 'file';
-  input.accept = 'application/pdf,image/*,text/plain,.doc,.docx,.xlsx';
+  input.accept = accept;
   const file = await new Promise<File | null>((resolve) => {
     input.onchange = () => resolve(input.files?.[0] || null);
     input.click();
@@ -69,6 +69,9 @@ async function pickNativeDocument(): Promise<PickedUploadFile | null> {
 
 /** Fallback: галерея, если нужен только фото/скан. */
 export async function pickImageForDocumentUpload(): Promise<PickedUploadFile | null> {
+  if (Platform.OS === 'web') {
+    return pickWebFile('image/*');
+  }
   const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!perm.granted) return null;
   const pick = await ImagePicker.launchImageLibraryAsync({
