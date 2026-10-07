@@ -28,6 +28,7 @@ from app.models.entities import (
     WorkAcceptance,
 )
 from app.services import issue_service as iss
+from app.services import storage_service as storage_svc
 from app.services import technical_supervision_service as supervision
 
 
@@ -41,7 +42,7 @@ async def _seed(db, *, with_contractor=True):
     sup = User(id="q-sup", phone="+79990008003", role=UserRole.contractor, profile_code="QSUP01")
     db.add_all([customer, contractor, sup])
     project = Project(
-        id="q-proj", name="Объект", renovation_type="cosmetic",
+        id="q-project", name="Объект", renovation_type="cosmetic",
         customer_id=customer.id, contractor_id=contractor.id if with_contractor else None,
         budget_planned=1, budget_spent=0,
     )
@@ -285,10 +286,23 @@ async def test_warranty_response_reopen_close_and_notifications(db):
     assert r.status_code == 200 and r.json()["issue"]["status"] == "open"
     r = await _call(db, contractor, "POST", f"{base}/respond", {"decision": "accept", "comment": "Приедем в пятницу"})
     assert r.json()["issue"]["status"] == "in_progress"
+    # Без evidence статус fixed не меняется.
     r = await _call(db, contractor, "POST", f"{base}/respond", {"decision": "fixed"})
-    assert r.json()["issue"]["status"] == "fixed"
+    assert r.status_code == 422 and r.json()["detail"]["code"] == "warranty_evidence_required"
 
-    # закрытие: уведомление исполнителю, повтор идемпотентен
+    evidence_key = f"project-media/{project.id}/warranty-resolution.jpg"
+    await storage_svc.write_bytes_at_key(evidence_key, b"warranty-resolution", content_type="image/jpeg")
+    r = await _call(
+        db,
+        contractor,
+        "POST",
+        f"{base}/respond",
+        {"decision": "fixed", "evidence_photo_key": evidence_key},
+    )
+    assert r.status_code == 200 and r.json()["issue"]["status"] == "fixed"
+    assert r.json()["issue"]["photo_key"] == evidence_key
+
+    # закрытие: только после fixed + evidence; уведомление исполнителю, повтор идемпотентен
     r = await _call(db, customer, "POST", f"{base}/close")
     assert r.status_code == 200 and r.json()["changed"] is True
     closed_at = r.json()["issue"]["closed_at"]
@@ -309,7 +323,16 @@ async def test_warranty_respond_rejects_invalid_state(db):
     customer, contractor, _, project = await _seed(db)
     cid = await _claim(db, customer, project)
     base = f"/projects/{project.id}/warranty-claims/{cid}"
-    await _call(db, customer, "POST", f"{base}/close")
+    rejected = await _call(
+        db,
+        contractor,
+        "POST",
+        f"{base}/respond",
+        {"decision": "reject", "comment": "Не гарантийный случай"},
+    )
+    assert rejected.status_code == 200
+    closed = await _call(db, customer, "POST", f"{base}/close")
+    assert closed.status_code == 200
     r = await _call(db, contractor, "POST", f"{base}/respond", {"decision": "accept"})
     assert r.status_code == 409 and r.json()["detail"]["code"] == "warranty_claim_state_invalid"
     # обычный issue не принимается за гарантию
