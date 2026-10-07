@@ -54,6 +54,14 @@ The scanner runtime is immutable and also has to pass a synthetic-secret canary 
 
 The initial merged-history scan identified one synthetic e-sign idempotency test value in `backend/tests/test_esign_idempotency_key.py`, repeated in two historical commits. The repository allowlist is therefore intentionally limited to the conjunction of the `generic-api-key` rule, that exact test path, and that exact synthetic test line. It is not a rule-wide, path-wide or commit-wide suppression.
 
+A later full-history scan on 2026-10-07 identified two additional historical `generic-api-key` fingerprints that are absent from the current tree. They are **not** added to `.gitleaks.toml`. Instead, `security/gitleaks-history-baseline.json` records the exact immutable commit/path/rule/line fingerprints, classification, reason and bounded review window. The history scanner must still detect them; only the post-redaction policy evaluator may admit those exact fingerprints. Any new or changed history finding fails, a stale baseline fails, and the proposed current tree continues to require zero findings.
+
+The two reviewed historical fingerprints are:
+- a token-shaped documentation placeholder in historical `docs/INTEGRATIONS.md`, classified as a false-positive placeholder;
+- a locally generated team-invite token captured in historical audit-map evidence from an isolated in-process test journey, classified as a synthetic local-test artifact rather than a provider or production credential.
+
+This mechanism must never be used to admit a real provider/production credential. A real credential follows the revoke/rotate/incident procedure below even if its current-tree text has already been removed.
+
 If a real credential is discovered in Git history, deleting the current file or rewriting Git history is **not** sufficient evidence of remediation. Treat the credential as exposed and perform this sequence:
 
 1. revoke or rotate the credential at the authoritative provider;
