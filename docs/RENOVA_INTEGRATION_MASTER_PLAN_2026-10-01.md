@@ -4140,3 +4140,607 @@ Do not monetise by hiding required safety/compliance data behind a paywall for p
 
 **Sequencing:** product identity/source admission -> DPP/DoPC/EPD references -> installed-product linkage -> Property Passport handover -> optional comparable impact view -> portfolio/enterprise reporting.
 
+## Property Trust & Transfer Infrastructure wave — resale, finance, insurance, recall and verified building history
+
+**Status:** PLANNED / LONG-LIVED PROPERTY TRUST LAYER.
+
+This wave **extends** existing Renova capabilities:
+
+- Home Digital Passport;
+- Property Transfer Export;
+- Installed Asset / Material Lot Traceability;
+- insurance restoration / claim-evidence workspace;
+- Verified Execution Record;
+- Institutional Verifier;
+- Material Provenance & Sustainability Passport.
+
+It does **not** create another competing passport, cadastral registry, appraisal system, title registry or insurance decision engine.
+
+The objective is:
+
+`verified renovation history -> transferable property dossier -> role-specific evidence profile -> external verification -> continued property history after ownership/project changes`
+
+### Regulatory / interoperability context
+
+Relevant open/public standards and policy direction:
+
+- EU Energy Performance of Buildings Directive (EU) 2024/1275, renovation passports and digital building logbook relationship:
+  - https://eur-lex.europa.eu/eli/dir/2024/1275/oj/eng
+  - https://energy.ec.europa.eu/document/download/0a4a6d59-58c0-4e80-a58a-a6ee944573ab_en
+- EU Digital Product Passport / CPR-2024 construction-product direction:
+  - https://single-market-economy.ec.europa.eu/single-market/digital-product-passport_en
+  - https://single-market-economy.ec.europa.eu/sectors/construction/construction-products-regulation-cpr/cpr-2024-revision_en
+- buildingSMART IFC / openBIM:
+  - https://www.buildingsmart.org/standards/
+  - https://technical.buildingsmart.org/standards/ifc/ifc-schema-specifications/
+- W3C Verifiable Credentials Data Model 2.0:
+  - https://www.w3.org/TR/vc-data-model-2.0/
+- ACORD Property & Casualty standards:
+  - https://www.acord.org/standards-architecture/acord-data-standards/property-casualty-data-standards
+- MISMO property/mortgage data standards:
+  - https://www.mismo.org/standards-resources
+  - https://www.mismo.org/standards-resources/mismo-product/property-and-valuation-services-implementation-guide
+- EU Safety Gate:
+  - https://ec.europa.eu/safety-gate/
+- US CPSC recalls API:
+  - https://www.cpsc.gov/Recalls/CPSC-Recalls-Application-Program-Interface-API-Information
+- UK OPSS recalls/alerts:
+  - https://www.gov.uk/guidance/product-recalls-and-alerts
+
+These are interoperability/reference inputs. Renova must not claim jurisdictional compliance merely because it can map/export compatible data.
+
+### Verified Building History — ADOPT
+
+Create a durable, queryable timeline over **verified or source-labelled property facts**.
+
+Candidate history events:
+
+- project/renovation start and closeout;
+- accepted scope baseline;
+- material/product approval;
+- major design/scope decision;
+- approved change;
+- installation / commissioning;
+- inspection / hold-point result;
+- acceptance/rework;
+- significant defect/restoration;
+- warranty/service;
+- installed-asset replacement;
+- major technical-system change;
+- admitted product recall/safety action;
+- energy/renovation passport reference where available;
+- ownership-transfer dossier issuance;
+- superseding/correcting record.
+
+Each event retains:
+
+- property/project identity;
+- event type;
+- effective time;
+- source authority/type;
+- source IDs/versions/checksums;
+- affected rooms/assets/products;
+- actor/issuer where relevant;
+- verification/admission state;
+- supersession/correction lineage;
+- privacy/transferability class.
+
+The timeline is a **property-history projection** over canonical Renova domains. It is not a new business ledger.
+
+### History truth classes — REQUIRED
+
+Every history fact must be labelled as one of:
+
+- Renova observed/accepted;
+- external authoritative/official source;
+- owner-provided;
+- contractor/provider declaration;
+- manufacturer/supplier declaration;
+- derived/calculated;
+- unverified candidate.
+
+A source-labelled owner/manufacturer claim cannot visually become a Renova-verified fact.
+
+### Property Transfer Dossier — ADOPT
+
+Upgrade the existing Property Transfer Export into a controlled dossier profile for sale, handover, inheritance/management transfer or new operator onboarding.
+
+Candidate dossier sections:
+
+1. Property/renovation identity summary.
+2. Major completed works.
+3. Current room/asset structure.
+4. Installed assets/materials with product/lot identity where available.
+5. Commissioning records.
+6. Warranty/maintenance status.
+7. Major accepted changes/decisions.
+8. Quality/inspection summary.
+9. Open known issues/warranty cases.
+10. Major restoration/loss-event history where legally/contractually transferable.
+11. Product recall/safety actions affecting installed assets.
+12. DPP/DoPC/EPD/product-source references where applicable.
+13. EPC / official renovation-passport references where available.
+14. Selected drawings/as-built/BIM/IFC derivatives where authorised.
+15. Verification manifest / checksums.
+
+Default exclusion:
+
+- private chats;
+- unrelated personal data;
+- contractor/customer private notes;
+- bank/payment requisites;
+- hidden commercial pricing;
+- authentication/security data;
+- non-transferable legal/insurance material.
+
+Owner/export policy explicitly selects exceptional inclusions.
+
+### Transfer Manifest — ADOPT
+
+Every issued transfer dossier receives a manifest containing:
+
+- dossier ID/version;
+- property/project scope;
+- generated_at;
+- source cutoff timestamp;
+- included source IDs/versions;
+- excluded categories;
+- file/object checksums;
+- issuing actor/organisation;
+- expiry/current-status semantics where relevant;
+- verification URL/API reference;
+- supersedes / superseded_by.
+
+A later regenerated dossier does not overwrite the previous issued package.
+
+### Human + machine-readable package — ADOPT
+
+Provide:
+
+- concise human-readable PDF/report;
+- machine-readable JSON/JSON-LD profile;
+- file/evidence manifest;
+- optional IFC/openBIM references;
+- optional signed portable verification artifact.
+
+PDF is a derivative convenience format, not the sole authority.
+
+### Portable property credentials — CONDITIONAL
+
+Evaluate W3C Verifiable Credentials 2.0 only for bounded portable claims such as:
+
+- verified execution checkpoint;
+- qualified contractor/inspector attestation;
+- commissioning completion;
+- selected transferable property-history checkpoint;
+- institutional verification result.
+
+Boundary:
+
+`issuer -> credential -> holder/owner -> verifier`
+
+The credential references canonical evidence/version/status and is revocable/status-aware.
+
+Do not encode the entire property database into one giant credential.
+
+### EU Renovation Passport / Digital Building Logbook alignment — ADAPT
+
+For EU projects, Renova may **reference/import/export compatible fields** around:
+
+- current energy-performance information;
+- completed major renovations;
+- planned staged renovation steps;
+- relevant materials/systems;
+- maintenance/lifetime information;
+- digital access references.
+
+Directive (EU) 2024/1275 requires Member States to introduce renovation-passport schemes and provides that, where available, renovation passports are stored in or accessible via a digital building logbook.
+
+Renova does **not** self-issue an official national renovation passport unless an authorised legal/technical framework explicitly permits that role.
+
+The official/expert-issued passport remains a source; Renova links it to actual later execution history.
+
+### Resale Due-Diligence Workspace — ADOPT
+
+For an owner-authorised prospective buyer/advisor, create a time-bounded, least-privilege workspace.
+
+Views:
+
+- property-history summary;
+- completed renovation scope;
+- installed asset/material passport;
+- open known defects/warranty;
+- maintenance history;
+- transfer-approved documents;
+- before/after evidence;
+- official certificate/passport references;
+- verification status.
+
+The prospective buyer does not receive ordinary project membership or private communications by default.
+
+### Disclosure state — ADOPT
+
+For each transferable fact/document:
+
+- transferable by default;
+- owner-review required;
+- restricted;
+- legally required where configured by jurisdiction/policy;
+- expired/superseded;
+- not available.
+
+Renova does not decide what law requires disclosure without an explicit jurisdiction/policy source.
+
+### Lender / Valuation Evidence Profile — CONDITIONAL
+
+Create a **read-only evidence profile**, not an underwriting or valuation engine.
+
+Potential lender/appraiser inputs:
+
+- property identity/context supplied by owner/institution;
+- major renovation chronology;
+- completed/accepted work;
+- room/area facts where authoritative;
+- installed systems/assets;
+- significant condition/restoration facts;
+- selected drawings/floor plans/media;
+- energy-performance / official renovation-passport references;
+- verified execution checkpoints;
+- source freshness/coverage.
+
+Where a US/international partner requires mortgage-data interoperability, evaluate a mapping adapter to current MISMO Property & Valuation Services / Reference Model profiles.
+
+MISMO is an exchange standard boundary; Renova's internal schema does not become MISMO-shaped.
+
+Renova must not output:
+
+- property market value as verified fact unless supplied by an authorised valuation source;
+- lending eligibility;
+- loan approval;
+- automated appraisal opinion presented as licensed appraisal;
+- hidden creditworthiness inference.
+
+### Evidence coverage for lender/valuer — ADOPT
+
+Every profile shows:
+
+- covered facts;
+- missing facts;
+- source types;
+- latest verification date;
+- known stale/superseded elements;
+- owner-provided vs Renova-verified distinction.
+
+"Complete" cannot mean merely "all optional Renova fields are populated".
+
+### Insurer / Adjuster Evidence Profile — ADOPT
+
+Reuse the existing insurance restoration/claim-evidence workspace and Pre-loss Baseline.
+
+Provide a bounded insurer/adjuster package containing, where owner-authorised:
+
+- pre-loss property baseline;
+- installed product/asset identity;
+- accepted prior work;
+- commissioning/maintenance history;
+- loss-event evidence;
+- affected rooms/assets;
+- restoration estimate/work/acceptance;
+- exact source/checksum manifest;
+- recall/safety state relevant to affected products.
+
+Where a partner requires insurance-industry interoperability, evaluate an ACORD P&C adapter.
+
+Renova records/exchanges evidence. It does not determine:
+
+- coverage;
+- liability;
+- cause of loss as legally final;
+- reserve;
+- indemnity;
+- claim approval.
+
+### Insurer/lender institutional verifier — ADOPT
+
+Extend the existing Institutional Verifier so an authorised external institution can verify:
+
+- dossier authenticity;
+- current/superseded status;
+- specific credential/checkpoint;
+- source coverage;
+- revocation/status;
+- exact artifact checksum.
+
+Verification must work without granting broad project access.
+
+### External request / consent receipt — REQUIRED
+
+Every institution-facing disclosure records:
+
+- requesting organisation/identity;
+- declared purpose;
+- owner/authorised actor consent or legal basis class;
+- requested profile;
+- disclosed fields/documents;
+- issued artifact/version;
+- expiry;
+- revocation;
+- timestamp.
+
+This prevents "institutional integration" from becoming silent bulk data access.
+
+### Recall & Safety Impact Network — ADOPT
+
+Build on Material Lot/Batch Traceability + Installed Asset Register + Product Provenance.
+
+Source adapters may monitor:
+
+- official government/regulator recall systems;
+- admitted manufacturer/supplier notices;
+- DPP/product-passport status updates;
+- approved industry feeds.
+
+Examples of jurisdictional official sources:
+
+- EU Safety Gate;
+- US CPSC recalls API;
+- UK OPSS recalls/alerts.
+
+### Recall identity matching — REQUIRED
+
+Match alerts to installed products using strongest available identifiers:
+
+1. exact serial/unique product identifier;
+2. exact lot/batch;
+3. GTIN/barcode/product code;
+4. manufacturer + model;
+5. structured product attributes;
+6. visual/text similarity only as a **candidate discovery signal**.
+
+A fuzzy/AI match cannot mark an installed asset as recalled.
+
+### Recall Match object — ADOPT
+
+Candidate fields:
+
+- external alert/source ID;
+- source/version/checksum;
+- jurisdiction;
+- risk/measure as reported by source;
+- matched installed asset/material;
+- match method;
+- match confidence;
+- reviewer;
+- confirmed / rejected / unresolved;
+- affected property/room;
+- owner notification state;
+- remediation/service link;
+- current external status;
+- last checked_at.
+
+### Safety action flow — ADOPT
+
+`external alert -> source admission -> candidate installed-product match -> review -> confirmed impact -> owner/property-manager notification -> service/inspection/replacement action -> completion evidence -> history event`
+
+Never:
+
+`external text similarity -> automatic panic notification -> automatic defect/payment/warranty decision`
+
+### Recall blast-radius view — ADOPT
+
+For an approved supplier/manufacturer/property manager:
+
+- which properties contain the exact affected model/lot;
+- which rooms/assets;
+- current occupancy/contact routing subject to ACL;
+- remediation status;
+- unresolved cases;
+- replacement evidence.
+
+This can become a high-value portfolio capability.
+
+### Historical source preservation — REQUIRED
+
+If a product was installed under a source declaration valid at that time and a later recall/update occurs:
+
+- retain original installation source/version;
+- attach the later safety/recall event;
+- never rewrite history to imply the later alert existed earlier;
+- current safety state points to the latest admitted alert/status.
+
+### Verified Building History checkpoint — ADOPT
+
+Periodically or at key lifecycle boundaries issue a signed/versioned checkpoint over selected property-history state:
+
+- handover;
+- ownership transfer;
+- insurer/lender disclosure;
+- major restoration completion;
+- major renovation completion.
+
+Checkpoint includes:
+
+- property history revision;
+- included event/source roots;
+- status/revocation endpoint;
+- issuance policy/version.
+
+This reuses the planned issuer/verifier/status-list infrastructure after #683/#668 admission is closed.
+
+### OpenBIM / asset interoperability — ADAPT
+
+Where IFC/BIM exists, link building-history events and installed assets to stable model/asset identifiers.
+
+IFC remains an interchange/context layer.
+
+A later model revision cannot silently erase Renova property-history events.
+
+buildingSMART IFC/IDS/BCF can support:
+
+- asset identity/context;
+- required information checking;
+- issue exchange;
+- enduring built-asset information.
+
+### Verified History Query examples
+
+Future Project Intelligence should answer with citations:
+
+- "Когда меняли электрику и кем она была принята?"
+- "Какая версия системы отопления установлена сейчас?"
+- "Какие работы были сделаны после страхового случая?"
+- "Есть ли открытые гарантии или product recall по установленному оборудованию?"
+- "Какие решения привели к текущей планировке?"
+- "Что изменилось после последней передачи объекта?"
+- "Какие факты в transfer dossier подтверждены Renova, а какие предоставлены владельцем?"
+
+### Ownership transfer semantics — REQUIRED
+
+A property transfer does not mean "change project.customer_id".
+
+Model explicit lifecycle roles:
+
+- historical owner;
+- current owner/controller;
+- delegated manager;
+- service/warranty participant;
+- institution with time-bounded disclosure access.
+
+Historical attribution remains immutable.
+
+New owner gains only explicitly transferred property-level records/capabilities.
+
+Private project communications do not automatically transfer.
+
+### Continuity after transfer — ADOPT
+
+After verified ownership/control transfer:
+
+- Property Passport continues;
+- installed assets continue;
+- maintenance history continues;
+- transferable warranties can be represented as transferred only if source/terms support it;
+- service history continues;
+- prior owner private content remains separated;
+- future work appends to the same property history through a new project/renovation episode where appropriate.
+
+### Property identity — CONDITIONAL
+
+Create a stable internal property identity distinct from any one renovation project.
+
+Potential links:
+
+`property -> renovation episode/project -> rooms/assets/history -> future renovation episode`
+
+External cadastral/title identifiers may be referenced only when lawfully supplied/admitted.
+
+Renova's internal property ID is not proof of legal title.
+
+### Property episodes — ADOPT
+
+Treat each renovation/restoration/service programme as an episode:
+
+- episode type;
+- project IDs;
+- start/end;
+- scope;
+- participants;
+- closeout;
+- verified history checkpoint.
+
+This lets one property accumulate trustworthy history across years without forcing one endless project.
+
+### Privacy-preserving selective disclosure — ADAPT
+
+For transfer/institutional verification, disclose only the minimum claims/evidence needed.
+
+Where signed credential technology is used, evaluate selective-disclosure-compatible profiles only after standards/security review.
+
+Default approach remains explicit server-side profile projection + bounded artifact manifest.
+
+### Institutional interface contract — ADOPT
+
+External integration should be profile-based:
+
+- `property_transfer.v1`;
+- `lender_evidence.v1`;
+- `insurer_pre_loss.v1`;
+- `insurer_claim_evidence.v1`;
+- `property_history_verify.v1`;
+- `recall_impact.v1`.
+
+Every profile has:
+
+- schema/version;
+- purpose;
+- field/data classification;
+- minimum ACL/consent requirement;
+- source/provenance semantics;
+- expiry/retention;
+- verification semantics.
+
+Do not expose a generic "download everything" enterprise API.
+
+### Commercial value
+
+Potential products:
+
+**Property Trust / Transfer**
+- owner transfer dossier;
+- buyer due-diligence workspace;
+- property-manager onboarding;
+- premium Verified Building History.
+
+**Insurance**
+- pre-loss baseline;
+- claim/restoration evidence;
+- recall/asset history;
+- portfolio impact.
+
+**Lender / valuation**
+- owner-authorised renovation/condition evidence profile;
+- verified history/checkpoints;
+- interoperable partner API.
+
+**Developer / property manager**
+- portfolio building-history registry;
+- installed-product/recall blast radius;
+- maintenance/warranty continuity;
+- institutional verification.
+
+Revenue can come from:
+
+- premium owner transfer package;
+- enterprise verifier/API subscription;
+- portfolio/property-management contract;
+- insurer/lender integration;
+- verification usage.
+
+Never sell access to data a party is not entitled to receive.
+
+### Competitive moat
+
+The compounding asset is not a static PDF passport.
+
+It is:
+
+`property identity -> verified work/evidence -> installed products/assets -> decisions -> commissioning -> maintenance/warranty -> loss/restoration -> recall/safety -> transfer episodes -> signed checkpoints -> external verification`
+
+Each legitimate future event increases the value of the historical graph.
+
+### Acceptance
+
+- transfer dossier is versioned and reproducible;
+- current vs historical/superseded facts are explicit;
+- property identity is distinct from legal title;
+- new owner does not inherit private chats/payment/security data by default;
+- insurer/lender views are purpose-scoped and consent/audit bound;
+- Renova does not make insurance coverage, appraisal or lending decisions;
+- recall fuzzy matching never auto-confirms installed-product impact;
+- official/external source updates preserve historical source lineage;
+- external verifier can validate artifact/current status without broad project access;
+- property history remains usable without BIM, AI, EU DPP or smart-home integrations;
+- jurisdiction-specific claims are never presented as globally valid.
+
+**Sequencing:** stable Property identity/episodes -> verified building-history projection -> Transfer Dossier v2 -> institutional disclosure profiles -> recall/safety adapters -> signed history checkpoints -> insurer/lender partner adapters.
+
