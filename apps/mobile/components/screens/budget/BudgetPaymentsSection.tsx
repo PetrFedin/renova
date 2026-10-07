@@ -2,7 +2,7 @@
 import { paymentCheckLabel } from '@/lib/domain/paymentReceiptCheck';
 import { READ_ONLY_PAYMENTS_HINT } from '@/lib/domain/readOnlyCopy';
 import { useState } from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { Platform, View, Text, Pressable, useWindowDimensions } from 'react-native';
 import { formatRub, RenovaTheme } from '@/constants/Theme';
 import { filterChipStyles } from '@/constants/screenTypography';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
@@ -64,6 +64,8 @@ export function BudgetPaymentsSection({
   const [bankOpen, setBankOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [evidencePayment, setEvidencePayment] = useState<Payment | null>(null);
+  const { width } = useWindowDimensions();
+  const widePayments = Platform.OS === 'web' && width >= 768;
   const canOperate = canWrite && !readOnly;
   const canCreate = role === 'contractor' && canOperate;
 
@@ -150,6 +152,15 @@ export function BudgetPaymentsSection({
         </View>
       ) : null}
 
+      {widePayments && filteredPayments.length ? (
+        <View style={s.paymentTableHeader} testID="payment-table-header">
+          <Text style={[s.paymentHeaderText, s.paymentTitleCell]}>Счёт</Text>
+          <Text style={[s.paymentHeaderText, s.paymentTypeCell]}>Тип</Text>
+          <Text style={[s.paymentHeaderText, s.paymentAmountCell]}>Сумма</Text>
+          <Text style={[s.paymentHeaderText, s.paymentStatusCell]}>Статус</Text>
+        </View>
+      ) : null}
+
       {filteredPayments.map((payment) => {
         const confirmedDate = formatConfirmedDate(payment.confirmed_at);
         const statusColor = payment.status === 'pending' || payment.status === 'paid_unverified' || payment.status === 'processing'
@@ -181,33 +192,68 @@ export function BudgetPaymentsSection({
           : 'Подтверждение перевода';
 
         return (
-          <View key={payment.id}>
+          <View key={payment.id} style={widePayments ? s.paymentRowGroupWide : undefined}>
             <Pressable
-              style={s.row}
+              testID="payment-data-row"
+              style={[s.row, widePayments && s.paymentRowWide]}
               accessibilityRole="button"
               accessibilityLabel={`Открыть счёт ${payment.title}, ${formatRub(payment.amount)}`}
               onPress={() => onPaymentPress(payment)}
             >
-              <View style={{ flex: 1 }}>
-                <Text style={s.rowTitle}>{payment.title}</Text>
-                <Text style={s.rowMeta}>
-                  {PAYMENT_TYPE_LABEL[payment.payment_type] || payment.payment_type} · {formatRub(payment.amount)}
-                  {confirmedDate ? ` · ${confirmedDate}` : ''}
-                </Text>
-                {paymentCheckLabel(payment) ? <Text style={[s.rowMeta, { color: RenovaTheme.colors.warningText }]}>Чек {paymentCheckLabel(payment)}</Text> : null}
-                {actionHint ? <Text style={[s.rowMeta, { color: RenovaTheme.colors.warningText }]}>{actionHint}</Text> : null}
-              </View>
-              <Text style={[s.status, { color: statusColor }]}>
-                {PAYMENT_STATUS_LABEL[payment.status] || payment.status}
-              </Text>
+              {widePayments ? (
+                <>
+                  <View style={s.paymentTitleCell} testID="payment-title-cell">
+                    <Text style={s.rowTitle} numberOfLines={2}>{payment.title}</Text>
+                    {paymentCheckLabel(payment) ? (
+                      <Text style={[s.rowMeta, { color: RenovaTheme.colors.warningText }]} numberOfLines={2}>
+                        Чек {paymentCheckLabel(payment)}
+                      </Text>
+                    ) : null}
+                    {actionHint ? (
+                      <Text style={[s.rowMeta, { color: RenovaTheme.colors.warningText }]} numberOfLines={2}>
+                        {actionHint}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <View style={s.paymentTypeCell} testID="payment-type-cell">
+                    <Text style={s.paymentCellValue}>{PAYMENT_TYPE_LABEL[payment.payment_type] || payment.payment_type}</Text>
+                  </View>
+                  <View style={s.paymentAmountCell} testID="payment-amount-cell">
+                    <Text style={s.paymentAmountValue}>{formatRub(payment.amount)}</Text>
+                    {confirmedDate ? <Text style={s.rowMeta}>{confirmedDate}</Text> : null}
+                  </View>
+                  <View style={s.paymentStatusCell} testID="payment-status-cell">
+                    <Text style={[s.status, { color: statusColor }]}>
+                      {PAYMENT_STATUS_LABEL[payment.status] || payment.status}
+                    </Text>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.rowTitle}>{payment.title}</Text>
+                    <Text style={s.rowMeta}>
+                      {PAYMENT_TYPE_LABEL[payment.payment_type] || payment.payment_type} · {formatRub(payment.amount)}
+                      {confirmedDate ? ` · ${confirmedDate}` : ''}
+                    </Text>
+                    {paymentCheckLabel(payment) ? <Text style={[s.rowMeta, { color: RenovaTheme.colors.warningText }]}>Чек {paymentCheckLabel(payment)}</Text> : null}
+                    {actionHint ? <Text style={[s.rowMeta, { color: RenovaTheme.colors.warningText }]}>{actionHint}</Text> : null}
+                  </View>
+                  <Text style={[s.status, { color: statusColor }]}>
+                    {PAYMENT_STATUS_LABEL[payment.status] || payment.status}
+                  </Text>
+                </>
+              )}
             </Pressable>
             {canAttachEvidence ? (
-              <PrimaryButton
-                title={evidenceTitle}
-                variant="outline"
-                onPress={() => setEvidencePayment(payment)}
-                fullWidth
-              />
+              <View style={widePayments ? s.paymentEvidenceActionWide : undefined}>
+                <PrimaryButton
+                  title={evidenceTitle}
+                  variant="outline"
+                  onPress={() => setEvidencePayment(payment)}
+                  fullWidth
+                />
+              </View>
             ) : null}
           </View>
         );
