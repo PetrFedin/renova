@@ -115,11 +115,15 @@ Required operating model:
 
 ## Branch and repository governance
 
-As verified through the GitHub repository API on **2026-08-21**, `main` reports `protected: false` and no required status checks. Therefore branch-governance enforcement is **NOT PROVEN / NOT READY** even though CI workflows exist. This remains tracked by **#247** and is an external launch blocker until GitHub branch protection/rulesets are enabled and re-verified.
+Re-verified through the GitHub repository/ruleset API on **2026-10-07**: `main` reports `protected: true` and repository ruleset **`main-protection` (id 22591499)** is active for the default branch. The ruleset requires pull requests, linear history, thread resolution, Code Owner review, blocks deletion/non-fast-forward updates, requires branches to be current with the base, and globally requires these status contexts:
 
-The repository connector available to this implementation does not provide a complete authoritative enumeration/modification workflow for every repository administrator and external organization permission. Repository/admin access review is therefore **NOT PROVEN** here. The real administrative review is tracked by **#256**. Before launch, an authorized owner must review organization/repository administrators, outside collaborators, deploy keys, GitHub Apps, Actions environments/secrets and write-capable tokens. Repeat the review at least quarterly and after personnel/access changes.
+`mobile-contracts`, `chat-message-contracts`, `project-creation-contracts`, `acceptance-decision-contracts`, `stage-mutation-contracts`, `team-lifecycle-contracts`, `backend-complete`, `playwright-api-and-ui`, `source-and-runtime`, `security-source-contract`, `typecheck-integrity`, `snapshot`, and `policy`.
 
-A workflow being green is not equivalent to that workflow being required for merge while `main` remains unprotected.
+Protection therefore exists, but **#247 remains open** because governance is not yet fully closed: the active ruleset still contains an always-bypass actor that requires owner review/minimization, and the current source had a scheduling deadlock where globally required `typecheck-integrity` and `snapshot` were path-filtered and could be absent on otherwise valid PRs. The governance candidate removes only those PR path filters; the checks themselves remain fail closed and continue running their full contracts.
+
+The repository connector still does not provide a complete authoritative enumeration/modification workflow for every repository administrator and external organization permission. Repository/admin access review is therefore **NOT PROVEN** here. The real administrative review is tracked by **#256**. Before launch, an authorized owner must review organization/repository administrators, outside collaborators, deploy keys, GitHub Apps, Actions environments/secrets and write-capable tokens. Repeat the review at least quarterly and after personnel/access changes.
+
+A green workflow is not sufficient evidence by itself: the workflow must also be scheduled for the candidate, required by the active ruleset where appropriate, and bound to the exact reviewed head SHA.
 
 ## Code scanning and penetration testing
 
