@@ -553,3 +553,69 @@ The strongest integration is:
 - never transfer previous-owner private contacts by default;
 - every emergency fact exposes last verified/source state;
 - official emergency-service/utility guidance overrides Renova content.
+
+
+## Property Trust Matrix priority
+
+| Candidate | UX | Moat | Revenue | Readiness | Risk | Priority | Decision |
+|---|---:|---:|---:|---:|---:|---:|---|
+| Requirement-policy engine | 4 | 5 | 5 | 4 | 2 | 16 | ADOPT |
+| History Coverage | 5 | 5 | 4 | 5 | 1 | 18 | ADOPT |
+| Evidence Completeness | 5 | 5 | 5 | 5 | 1 | 19 | ADOPT |
+| Maintenance Continuity | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT |
+| Source Freshness | 4 | 5 | 4 | 4 | 2 | 15 | ADOPT |
+| Unresolved Risk & Obligations posture | 5 | 5 | 5 | 5 | 2 | 18 | ADOPT |
+| Transfer Readiness | 5 | 5 | 5 | 5 | 2 | 18 | ADOPT |
+| Provenance Strength distribution | 4 | 5 | 5 | 4 | 2 | 16 | ADOPT |
+| Verification Portability | 3 | 5 | 5 | 3 | 3 | 13 | After issuer/key/status infrastructure |
+| Universal opaque property score | 2 | 1 | 2 | 4 | 5 | 4 | REJECT |
+
+### Core rule
+
+The product must never reduce property trust to a hidden weighted average.
+
+Preferred output:
+
+`posture + independent dimensions + coverage + blockers + source drill-down`
+
+not:
+
+`84/100`
+
+The strongest differentiator is explainability:
+
+`dimension -> requirement -> status -> why -> exact source/evidence -> next action`
+
+### Commercial role
+
+**Core owner**
+- basic matrix;
+- blockers;
+- next actions.
+
+**Property Trust / Transfer**
+- Transfer Readiness;
+- provenance/source status;
+- signed/current verification when infrastructure exists.
+
+**Enterprise**
+- portfolio attention view;
+- policy profiles;
+- stale/recall/maintenance gaps;
+- institutional verification.
+
+**Insurer/lender**
+- purpose-specific matrix projection only;
+- no universal Renova score supplied as underwriting/valuation input.
+
+### Kill/defer criteria
+
+Stop or defer if:
+
+- a dimension cannot be calculated from explicit requirements;
+- denominator cannot be shown;
+- missing history is being interpreted as bad physical condition;
+- one strong dimension is compensating for a blocking critical issue;
+- model/AI probability becomes the primary score source;
+- profile-specific needs are being collapsed into one generic rating;
+- users cannot drill a result to primary evidence.
