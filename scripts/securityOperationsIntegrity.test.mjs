@@ -106,8 +106,8 @@ test("secret scanning separates merged history from a Git-metadata-free proposed
   assert.match(securityWorkflow, /dir --no-banner --redact=100[\s\S]*\/tree/);
   assert.match(securityWorkflow, /gitleaks-tree-summary\.json/);
   assert.match(securityWorkflow, /sanitizeGitleaksReport\.mjs/);
-  assert.match(securityWorkflow, /gitleaks-history\.exit"[\\s\\S]*security\/gitleaks-history-baseline\.json/);
-  assert.match(securityWorkflow, /gitleaks-tree\.exit"\\n/);
+  assert.match(securityWorkflow, /gitleaks-history\.exit"[\s\S]*security\/gitleaks-history-baseline\.json/);
+  assert.match(securityWorkflow, /gitleaks-tree\.exit"\n/);
   assert.match(securityWorkflow, /rm -f .*gitleaks-history-raw\.json.*gitleaks-tree-raw\.json/);
   assert.match(gitleaksSanitizer, /secret: "never persisted/);
   assert.match(gitleaksSanitizer, /match: "never persisted/);
