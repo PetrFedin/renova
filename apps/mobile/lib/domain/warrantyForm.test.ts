@@ -33,7 +33,9 @@ assert.deepEqual(warrantyActions('in_progress', 'contractor').map((a) => a.kind)
 assert.deepEqual(warrantyActions('closed', 'contractor'), []);
 assert.deepEqual(warrantyActions('closed', 'customer').map((a) => a.kind), ['reopen']);
 assert.deepEqual(warrantyActions('rejected', 'customer').map((a) => a.kind), ['close', 'reopen']);
-assert.deepEqual(warrantyActions('open', 'customer').map((a) => a.kind), ['close']);
-assert.equal(warrantyWaitingHint('open', 'customer'), 'Ждёт ответа исполнителя');
+assert.deepEqual(warrantyActions('fixed', 'customer').map((a) => a.kind), ['close', 'reopen']);
+assert.deepEqual(warrantyActions('open', 'customer'), []);
+assert.deepEqual(warrantyActions('in_progress', 'customer'), []);
+assert.equal(warrantyWaitingHint('open', 'customer'), 'Ждёт исправления и фото результата от исполнителя');
 assert.equal(warrantyWaitingHint('fixed', 'contractor'), 'Ждёт решения заказчика');
 console.log('warrantyForm.test OK');
