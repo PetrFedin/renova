@@ -2573,3 +2573,255 @@ Break-glass cannot silently bypass project acceptance/payment business rules.
 
 **Sequencing:** first enterprise pilot -> organisation boundary -> OIDC SSO -> audit/service accounts -> SCIM if customer requires lifecycle provisioning -> retention/residency policy -> broader enterprise control plane.
 
+## AI assurance wave — retrieval security, evaluations and cost governance
+
+**Status:** REQUIRED BEFORE WRITE-CAPABLE DIGITAL COWORKERS.
+
+References:
+
+- OWASP LLM01:2025 Prompt Injection: https://genai.owasp.org/llmrisk/llm01-prompt-injection/
+- OWASP AI Agent Security Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/AI_Agent_Security_Cheat_Sheet.html
+- NIST AI RMF / Generative AI Profile: https://www.nist.gov/itl/ai-risk-management-framework
+
+### Untrusted-content boundary — REQUIRED
+
+Treat all retrieved/user/external content as **data**, never trusted policy:
+
+- uploaded PDFs/documents;
+- OCR text;
+- chat messages;
+- RFI/Submittal content;
+- imported emails/files;
+- image metadata;
+- external institutional submissions;
+- web/provider text where later enabled.
+
+An instruction embedded in a document must not be promoted to system/developer/tool policy merely because the model can read it.
+
+### Retrieval ACL before model context — REQUIRED
+
+Apply project/thread/document ACL **before** retrieval results enter model context.
+
+Do not retrieve a broad cross-project set and ask the model to "ignore what the user cannot see".
+
+Required negative tests:
+
+- sibling project;
+- restricted money thread;
+- guest vs contractor;
+- removed participant;
+- archived/revoked document;
+- legal-hold vs deletion behavior;
+- enterprise organisation boundary when implemented.
+
+### Source classification — ADOPT
+
+Each model-context chunk includes:
+
+- source authority/type;
+- source_id/version/checksum;
+- ACL class;
+- untrusted-content marker;
+- original vs derived;
+- admission/review status;
+- freshness/revocation state.
+
+Prompt/tool templates can distinguish user request, trusted system policy, canonical Renova data and untrusted retrieved text.
+
+### Tool allowlist / least privilege — REQUIRED
+
+Every coworker receives only the minimum tools for its declared role.
+
+Examples:
+
+- search copilot: read-only retrieval;
+- RFI copilot: create **draft** proposal only;
+- change copilot: simulation/read + draft command;
+- handover copilot: read/checklist preparation.
+
+Never expose generic database, shell, arbitrary HTTP or unrestricted provider tools to product agents.
+
+### Human authorisation gates — REQUIRED
+
+AI proposals affecting any of these require explicit human review through existing domain commands:
+
+- acceptance/rejection;
+- payment/refund;
+- contract/signature;
+- user/team/project ACL;
+- warranty closure;
+- schedule/scope baseline;
+- external publication;
+- destructive deletion/retention override.
+
+The approval UI shows exactly what will change before execution.
+
+### Prompt-injection resistance tests — REQUIRED
+
+Maintain adversarial fixtures including:
+
+- direct override prompts;
+- malicious instructions inside PDF/OCR text;
+- hidden/encoded instruction variants;
+- image metadata/alt-text injections where multimodal processing exists;
+- fake "system message" inside project content;
+- tool-exfiltration requests;
+- cross-project data requests;
+- persistent-memory poisoning attempts;
+- malicious organisation Skill source.
+
+Test the full product pipeline, not just the model prompt.
+
+### AI evaluation corpus — ADOPT
+
+Create a versioned synthetic/private-safe corpus for:
+
+- exact cited fact retrieval;
+- no-answer behavior;
+- source conflict;
+- stale/superseded source handling;
+- ACL denial;
+- Russian construction terminology;
+- numerical amount/date/quantity fidelity;
+- RFI/Submittal extraction;
+- schedule/change reasoning;
+- prompt-injection resistance.
+
+Evaluation results bind to:
+
+- model/provider/version;
+- retrieval/index version;
+- prompt/policy version;
+- tool schema version;
+- test corpus version.
+
+### Quality gates — ADOPT
+
+Before a model/prompt/index change is promoted, measure at minimum:
+
+- citation precision;
+- factual support rate;
+- no-answer correctness;
+- ACL leak rate = 0 in test corpus;
+- tool-policy violation rate = 0;
+- numeric/date fidelity;
+- latency p50/p95;
+- cost per request class;
+- regression vs current qualified version.
+
+Do not promote solely on subjective "better answers".
+
+### Model/provider gateway — ADOPT
+
+Hide provider-specific APIs behind a bounded Renova AI port:
+
+`AI capability -> policy -> provider/model -> structured response -> validator`
+
+Gateway responsibilities:
+
+- provider/model allowlist;
+- timeout/retry policy;
+- structured-output validation;
+- token/context limits;
+- redaction policy;
+- cost metering;
+- fallback/degradation;
+- region/data-processing policy;
+- model version evidence.
+
+Provider outage must degrade to ordinary Renova search/workflows.
+
+### Context minimisation — REQUIRED
+
+Send the minimum required project data to external models.
+
+Prefer:
+
+- retrieved chunks over whole-project dumps;
+- opaque IDs over unnecessary personal details;
+- explicit redaction/classification;
+- local/on-device processing for privacy-sensitive assist where practical.
+
+Never include unrelated private messages, payment details or identity data "just in case".
+
+### AI cost / latency budgets — ADOPT
+
+Define request classes, for example:
+
+- search answer;
+- document comparison;
+- multimodal evidence analysis;
+- long project brief;
+- agent proposal.
+
+For each class set:
+
+- max context/tokens;
+- max model cost;
+- latency SLO;
+- fallback model/path;
+- cache eligibility;
+- cancellation semantics.
+
+Cost saving must never silently switch to a model below the declared quality/security gate for a high-risk task.
+
+### Semantic cache — CONDITIONAL
+
+Cache only safe deterministic-ish read outputs where:
+
+- actor/ACL scope is part of the cache key;
+- source versions/checksums are part of the key;
+- model/prompt/index version is part of the key;
+- revocation/deletion invalidates entries;
+- sensitive outputs are encrypted/short-lived as required.
+
+Never cross-share cached answers between organisations/projects without explicit public-safe provenance.
+
+### Memory policy — CONDITIONAL
+
+Product-agent memory must be explicit and bounded.
+
+Allowed candidates:
+
+- user-selected preferences;
+- organisation Skill selection;
+- non-sensitive workflow defaults.
+
+Do not let arbitrary model output or retrieved project text silently become persistent memory.
+
+### Incident / kill switch — REQUIRED
+
+Support per-capability disablement:
+
+- cited search;
+- multimodal processing;
+- specific coworker/tool;
+- provider/model;
+- organisation.
+
+Kill switch disables new AI execution without breaking canonical project reads/writes.
+
+### AI assurance receipt — REUSE
+
+Reuse the previously defined AI Decision/Action Receipt and add:
+
+- injection/guardrail result class;
+- retrieval source count;
+- evaluator/policy version;
+- tool calls attempted/approved/denied;
+- cost/request class.
+
+Do not persist hidden chain-of-thought.
+
+### Acceptance
+
+- indirect prompt injection cannot grant additional tools or data;
+- ACL is enforced before model context construction;
+- write-capable tool call always maps to an existing authorised Renova command;
+- model/provider change has repeatable evaluation evidence;
+- cost/latency regression is visible;
+- source revocation invalidates relevant retrieval/cache;
+- product remains usable when all AI capabilities are disabled.
+
+**Sequencing:** cited read-only retrieval -> adversarial/eval corpus -> AI gateway -> read-only copilots -> draft-only tools -> human-approved actions -> continuous red-team/evaluation.
+
