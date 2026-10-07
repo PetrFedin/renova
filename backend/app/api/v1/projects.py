@@ -84,7 +84,7 @@ def _project_out(
         notes=(getattr(p, "notes", None) if access_mode in {"owner", "contractor"} else None),
         # JRN-018: колонка projects.progress_percent никем не обновляется и всегда
         # 0 — считаем по этапам тем же взвешенным методом, что и дашборд.
-        progress_percent=stage_status_svc.weighted_progress(list(p.stages or [])),
+        progress_percent=stage_status_svc.project_progress(list(p.stages or [])),
         vat_rate=float(getattr(p, "vat_rate", 0) or 0),
         rooms_count=len(p.rooms) if p.rooms else 0,
         stages_count=len(p.stages) if p.stages else 0,
