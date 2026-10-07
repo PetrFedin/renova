@@ -59,6 +59,10 @@ External main protection/staging #247/#233, observability #235/#283, managed DR 
 
 #282/#284/#286/#287 are historical implementation/process lineage, not PRs to merge again. #283 is a separate stale draft to refresh; an emission probe cannot prove external alert delivery.
 
+## 7.1 2026-10-07 schema-verifier reconciliation
+
+Issue #674 records verifier drift discovered by current PostgreSQL schema lifecycle CI: migration `w24projectpurgecascade01` and the ORM both define `project_technical_supervisor_assignments.supersedes_assignment_id` as a nullable self-reference with `ON DELETE SET NULL`, while the structural verifier still expected no delete action. The bounded repair changes only that verifier expectation. Historical migrations remain immutable; PostgreSQL migration execution plus the current-schema verifier are the acceptance authority.
+
 ## 8. Product-wide acceptance evidence
 
 G01–G10 in the full audit cover standalone repair, single contractor, independent contractors, unstable network, account changes, financial reconciliation, documents, handover/lifecycle, incidents and device/accessibility. Register requirement→entry/role→service/entity→test→run/artifact. Clearly label source-only inspection, bounded CI, new execution and external verification. A static screen inventory must not be reported as execution of every action.
