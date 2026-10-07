@@ -3276,3 +3276,202 @@ Never seed/fabricate production KPIs for investor presentation. Demo/sample data
 
 **Sequencing:** event dictionary -> activation/outcome metrics -> field/search metrics -> commercial/post-handover metrics -> internal dashboard -> bounded experiments.
 
+## Mobile local data plane wave — scalable offline read models without a second authority
+
+**Status:** CONDITIONAL / PERFORMANCE-DRIVEN.
+
+Current source truth:
+
+- canonical offline write queue is one AsyncStorage-backed JSON array;
+- offline project search cache stores stages/rooms in AsyncStorage;
+- chat search index stores title/last-message text in AsyncStorage;
+- mobile currently has no `expo-sqlite` dependency;
+- authentication tokens already use the separate secure-token path and must not move into an ordinary local database.
+
+References:
+
+- AsyncStorage: https://react-native-async-storage.github.io/
+- Expo SQLite: https://docs.expo.dev/versions/latest/sdk/sqlite/
+
+Do not migrate working offline semantics merely because SQLite is more sophisticated. Use measured size/latency/reliability thresholds.
+
+### Local authority boundary — REQUIRED
+
+Server remains authoritative.
+
+Local structured storage is only:
+
+- offline read projection;
+- local search index;
+- durable mutation intent;
+- media/cache metadata;
+- sync cursor/state;
+- draft data where explicitly supported.
+
+A local row cannot make acceptance/payment/ACL/business state authoritative.
+
+### Phase 1 — structured offline read models — ADOPT WHEN NEEDED
+
+First candidates:
+
+- rooms/stages/work packages;
+- document/evidence metadata;
+- issues/RFI/submittals;
+- asset/property-passport summaries;
+- selected schedule projections;
+- search index;
+- capture/media metadata;
+- last-known server version/freshness.
+
+Benefits:
+
+- query only needed rows;
+- indexed filtering/sorting;
+- incremental updates;
+- bounded memory;
+- better large-project offline search.
+
+### Local full-text search — ADAPT
+
+Evaluate SQLite FTS for offline exact search over admitted local projections:
+
+- entity titles;
+- document metadata/extracted safe snippets;
+- issue/RFI titles;
+- asset names;
+- chat only where explicit local retention policy permits it.
+
+This complements server Project Intelligence; it is not an offline clone of the entire semantic AI index.
+
+### Sync cursor / projection versioning — ADOPT
+
+Per project/projection track:
+
+- server revision/cursor;
+- schema version;
+- last successful sync;
+- stale/fresh state;
+- deleted/revoked tombstones;
+- actor/account ownership.
+
+A different logged-in user must never inherit another user's offline projection on a shared device.
+
+### Incremental sync — ADOPT
+
+Prefer:
+
+`server delta/cursor -> validate -> local transaction -> publish freshness`
+
+over repeatedly downloading/serialising an entire project snapshot as data volume grows.
+
+Fallback full resync remains available.
+
+### Offline write queue migration — CONDITIONAL
+
+The existing queue has significant hard-won semantics:
+
+- per-user ownership;
+- idempotent offline identity;
+- retry/backoff;
+- blocked/conflict states;
+- storage corruption fail-closed;
+- queue mutation lock;
+- replay merge/version protection.
+
+Do not rewrite it first.
+
+Migration to transactional local storage is justified only if measured evidence shows:
+
+- queue size/serialization latency problem;
+- reliability problem under concurrent large queues;
+- need for efficient per-project/per-state queries;
+- atomic relation with other local draft state.
+
+If migrated, preserve the exact existing queue contract and tests before deleting the AsyncStorage implementation.
+
+### Sensitive local data classification — REQUIRED
+
+AsyncStorage is an unencrypted key-value store; therefore classify what is safe to retain offline.
+
+Do not put into ordinary local search/read storage without explicit security design:
+
+- access/refresh tokens;
+- provider credentials;
+- bank/payment requisites;
+- signature secrets;
+- unnecessary personal data;
+- raw high-sensitivity document content.
+
+Where a business requirement justifies encrypted structured local storage, evaluate SQLCipher/native protected key material. Encryption-at-rest does not replace account/session fencing or remote ACL.
+
+### Media cache boundary — ADOPT
+
+Do not store large photos/360/video blobs inside SQLite.
+
+Use:
+
+- filesystem cache;
+- content/checksum identity;
+- DB metadata/index only;
+- explicit storage quota;
+- LRU/expiry;
+- source revocation invalidation.
+
+Offline evidence capture awaiting upload remains separately governed and visible to the user.
+
+### Search/index revocation — REQUIRED
+
+When source data is:
+
+- deleted;
+- access-revoked;
+- project removed from user;
+- participant removed;
+- document superseded/revoked;
+
+local projection/search indexes must remove or tombstone it on next authoritative sync.
+
+Logout/account switch retains no accessible previous-user project content.
+
+### Schema migrations — ADOPT
+
+Local DB schema uses explicit versioned migrations and recovery tests.
+
+Required cases:
+
+- upgrade from previous released app version;
+- interrupted migration;
+- corrupt local DB;
+- user switch;
+- project purge;
+- app downgrade unsupported path;
+- rebuild from server.
+
+Local corruption should degrade to projection rebuild, not corrupt server data.
+
+### Performance decision thresholds — MEASURE FIRST
+
+Before migration, instrument:
+
+- AsyncStorage queue read/write p50/p95 vs item count/bytes;
+- search-cache size and search latency;
+- JSON parse/serialize time;
+- memory peak;
+- app-start impact;
+- project switch latency.
+
+Adopt SQLite for a data class only when measured benefit exceeds migration/complexity cost.
+
+### Acceptance
+
+- server state remains authoritative;
+- offline projection is account/project fenced;
+- local schema can rebuild from server;
+- no token/provider secret regresses from SecureStore to ordinary DB;
+- revocation/deletion propagates;
+- existing offline idempotency/conflict behavior is preserved;
+- large-project local search/filtering meets declared performance target;
+- web fallback remains supported even if native SQLite path differs.
+
+**Sequencing:** instrument AsyncStorage -> local read/search projection pilot -> incremental sync -> media metadata -> only then evaluate write-queue migration.
+
