@@ -4744,3 +4744,172 @@ Each legitimate future event increases the value of the historical graph.
 
 **Sequencing:** stable Property identity/episodes -> verified building-history projection -> Transfer Dossier v2 -> institutional disclosure profiles -> recall/safety adapters -> signed history checkpoints -> insurer/lender partner adapters.
 
+## Property resilience & emergency information wave — emergency-ready projection of verified property history
+
+**Status:** CONDITIONAL / PROPERTY-CARE EXTENSION.
+
+This is **not** a life-safety control system, fire-alarm system or emergency dispatch service.
+
+It is a bounded emergency-information projection over the existing Property Passport / Installed Assets / Verified Building History so an owner, authorised manager or service technician can quickly find important property information during an incident.
+
+Useful public preparedness references:
+
+- FEMA / Ready.gov utility shut-off guidance:
+  - https://www.fema.gov/pdf/areyouready/basic_preparedness.pdf
+  - https://training.fema.gov/emiweb/is/is909/preparedness_handoutsmaster.pdf
+  - https://www.ready.gov/resolution
+- NFPA emergency-planning direction includes facility/layout information and locations of remote utility shutoffs where relevant.
+
+### Emergency Property Card — ADOPT
+
+Create a compact, owner-maintained/verified view containing only relevant available facts:
+
+- property/entrance/unit identity;
+- main water shut-off location;
+- electrical distribution panel / main disconnect location;
+- gas shut-off/service reference where applicable;
+- heating/HVAC isolation reference;
+- critical equipment;
+- leak sensors / alarms where owner has admitted them;
+- fire/smoke/CO equipment metadata where owner chooses to record it;
+- access constraints important to authorised technicians;
+- emergency/service contacts;
+- last verified date;
+- source/evidence references.
+
+If a property does not have a system, display "not applicable" rather than inventing a value.
+
+### Utility Shut-off Point object — ADOPT
+
+Candidate fields:
+
+- utility type;
+- property/room/location;
+- label/description;
+- photo/plan pin;
+- source;
+- verified_by;
+- verified_at;
+- last inspection/test date where applicable;
+- instructions reference;
+- safety warning;
+- current/superseded state.
+
+Do not store unsafe generic "how to operate" instructions when operation is legally/safely restricted to a utility or qualified professional.
+
+### Emergency floor-plan overlay — ADAPT
+
+On authorised plan/spatial views, optionally show:
+
+- shut-off points;
+- electrical panel;
+- key technical equipment;
+- safe access route references;
+- critical asset location.
+
+This is an informational overlay, not an emergency-response command system.
+
+### Offline emergency card — CONDITIONAL
+
+For owner/manager devices, allow a deliberately selected minimal offline emergency card.
+
+Requirements:
+
+- explicit opt-in;
+- minimum sensitive data;
+- encryption/protected local storage where justified;
+- visible last-sync timestamp;
+- no private project/chat history;
+- account/device revocation path.
+
+Do not assume cloud access during utility/network outage.
+
+### Property Emergency Share — ADOPT/CONDITIONAL
+
+Generate a short-lived, owner-authorised share/profile for a trusted technician/property manager.
+
+Possible scope:
+
+- shut-off locations;
+- equipment identity;
+- relevant room/asset;
+- warranty/service contact;
+- current incident reference.
+
+No ordinary project membership is created.
+
+### Incident quick-capture — ADOPT
+
+During a leak/electrical/HVAC/property incident:
+
+`Emergency Card -> affected room/asset -> photo/video/reading -> incident record -> service/insurance workflow`
+
+The emergency card accelerates context; the actual loss/service evidence continues through the existing incident/insurance/service domains.
+
+### Resilience check reminders — ADAPT
+
+Optional reminders for owner-defined checks such as:
+
+- confirm shut-off location still accessible;
+- update emergency contact;
+- verify asset/service document;
+- review battery/maintenance date where an admitted manufacturer/source schedule supports it.
+
+Renova must not invent regulatory inspection intervals.
+
+### Post-incident update — REQUIRED
+
+After a renovation/service/restoration changes:
+
+- utility location;
+- panel/equipment;
+- room geometry;
+- critical asset;
+- emergency contact;
+
+the previous emergency-property information is superseded/versioned.
+
+Never leave two current shut-off points without an explicit reason.
+
+### Transfer / new-owner continuity — ADOPT
+
+Emergency-property facts that are legitimately transferable may be included in Property Transfer Dossier v2.
+
+Previous-owner personal contacts/private access information are excluded by default.
+
+New owner confirms/re-verifies emergency contacts and access details.
+
+### Property manager portfolio view — CONDITIONAL
+
+For authorised managers:
+
+- properties with missing emergency card;
+- stale/unverified shut-off points;
+- current active incidents;
+- emergency/service contact completeness.
+
+This is readiness/completeness information, not a certified compliance score.
+
+### Safety boundary — REQUIRED
+
+Renova must visibly state:
+
+- call emergency services/utilities when required;
+- do not enter unsafe areas;
+- some utilities/equipment must only be operated/re-energised by qualified professionals;
+- recorded information may be stale and includes a verification timestamp;
+- Renova does not replace official evacuation/fire/gas/electrical instructions.
+
+### Acceptance
+
+- emergency information has source + last-verified timestamp;
+- unavailable is distinct from verified absent;
+- offline card is explicit/minimised;
+- previous-owner private contacts do not transfer by default;
+- emergency share is scope/expiry bound;
+- Renova does not present a property as "safe" based on checklist completion;
+- no sensor/alert automatically operates utility controls;
+- official/local emergency instructions take precedence.
+
+**Sequencing:** Property identity/history -> utility/equipment references -> Emergency Property Card -> plan overlay -> short-lived share/offline projection -> portfolio readiness view.
+
