@@ -7,6 +7,7 @@ on:
       - "backend/app/services/notification_service.py"
       - "backend/tests/test_push_delivery_integrity.py"
       - "apps/mobile/lib/nativeNotifications.ts"
+      - "apps/mobile/lib/notificationNavigation.ts"
       - "apps/mobile/lib/notificationDeliveryDedup.ts"
       - "apps/mobile/lib/notificationDeliveryDedup.test.ts"
       - "apps/mobile/package.json"
@@ -88,6 +89,7 @@ jobs:
           from pathlib import Path
 
           native = Path("apps/mobile/lib/nativeNotifications.ts").read_text(encoding="utf-8")
+          navigation = Path("apps/mobile/lib/notificationNavigation.ts").read_text(encoding="utf-8")
           push = Path("backend/app/services/push_service.py").read_text(encoding="utf-8")
           notification = Path("backend/app/services/notification_service.py").read_text(encoding="utf-8")
 
@@ -96,7 +98,7 @@ jobs:
               "clearLastNotificationResponseAsync",
               "createNotificationDeliveryRunner",
               "notificationDeliveryId(data)",
-              "data?.return_to ?? data?.returnTo",
+              "notificationNavigationPayload(data)",
               "onStorageError: (error) => onError?.('notifications.storage', error)",
               "registerNativePushToken",
               "scheduleNativeSyncConflictNotification",
@@ -106,6 +108,14 @@ jobs:
           missing_native = [token for token in required_native if token not in native]
           if missing_native:
               raise SystemExit(f"native notification retry contract missing: {missing_native}")
+
+          required_navigation = [
+              "data?.return_to ?? data?.returnTo",
+              "parseNotificationRole(data?.role)",
+          ]
+          missing_navigation = [token for token in required_navigation if token not in navigation]
+          if missing_navigation:
+              raise SystemExit(f"notification navigation contract missing: {missing_navigation}")
 
           required_backend = [
               'message["collapseId"] = normalized_delivery_id',
