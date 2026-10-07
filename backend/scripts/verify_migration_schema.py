@@ -418,7 +418,7 @@ def _verify_technical_supervision(inspector) -> None:
         ("representative_user_id",): ("users", ("id",), ""),
         ("appointed_by_user_id",): ("users", ("id",), ""),
         ("revoked_by_user_id",): ("users", ("id",), ""),
-        ("supersedes_assignment_id",): (table, ("id",), ""),
+        ("supersedes_assignment_id",): (table, ("id",), "SET NULL"),
     }
     for columns_key, target in expected_fks.items():
         _require(
