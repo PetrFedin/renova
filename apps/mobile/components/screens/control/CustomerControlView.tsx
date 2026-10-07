@@ -38,7 +38,7 @@ export function CustomerControlView() {
   const { user, activeProject, readOnly } = useRenova();
   const [issues, setIssues] = useState<ProjectIssue[]>([]);
   const [acceptances, setAcceptances] = useState<WorkAcceptance[]>([]);
-  const [warrantyItems, setWarrantyItems] = useState<{ id: string; title: string; status: string; overdue?: boolean }[]>([]);
+  const [warrantyItems, setWarrantyItems] = useState<{ id: string; title: string; status: string; overdue?: boolean; photo_url?: string | null }[]>([]);
   const [warrantyOpen, setWarrantyOpen] = useState(0);
   const [warrantyPrompt, setWarrantyPrompt] = useState<{ id: string; title: string; action: WarrantyAction } | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -216,6 +216,14 @@ export function CustomerControlView() {
         <View key={w.id} style={[s.row, focusWarranty && s.rowFocus]}>
           <Text style={s.title}>{w.title}{w.overdue ? ' · просрочено' : ''}</Text>
           <Text style={s.meta}>{issueStatusLabel(w.status)}</Text>
+          {w.photo_url ? (
+            <PrimaryButton
+              title="Фото результата"
+              compact
+              variant="outline"
+              onPress={() => pushOsNav({ pathname: '/quality-control', params: { issueId: w.id } }, pathname, 'customer')}
+            />
+          ) : null}
           {!readOnly ? warrantyActions(w.status, 'customer').map((action) => (
             <PrimaryButton
               key={action.kind}
