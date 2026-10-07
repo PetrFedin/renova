@@ -130,7 +130,17 @@ jobs:
 
           if 'stable_push_delivery_id(f"outbox:{outbox_id}")' not in notification:
               raise SystemExit("outbox retry is not wired to a stable push delivery id")
-          if 'stable_push_delivery_id(f"notification:{notification.id}")' not in notification:
-              raise SystemExit("direct notification is not wired to a stable push delivery id")
+
+          required_durable_notify = [
+              "row = await outbox_service.enqueue(",
+              "event_type=outbox_service.NOTIFICATION_EVENT",
+              "SideEffectDelivery(",
+              "outbox_id=row.id",
+              'effect_type="notification"',
+              "outbox_service.kick_dispatch()",
+          ]
+          missing_durable_notify = [token for token in required_durable_notify if token not in notification]
+          if missing_durable_notify:
+              raise SystemExit(f"direct notify durable-outbox contract missing: {missing_durable_notify}")
           print("push delivery retry source contracts OK")
           PY
