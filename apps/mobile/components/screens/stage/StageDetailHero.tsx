@@ -74,7 +74,7 @@ export function StageDetailHero({
 
   return (
     <View style={s.box}>
-      <Text style={s.status}>{statusLabel}</Text>
+      <Text testID="stage-status" style={s.status}>{statusLabel}</Text>
       {workSnap && !optimisticStarted ? (
         <Text style={s.meta}>
           {workSnap.display_status_label || workSnap.status_label}

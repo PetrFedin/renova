@@ -104,12 +104,13 @@ for (const viewport of VIEWPORTS.filter((item) => item.side)) {
     await page.screenshot({ path: `test-results/responsive-room-${viewport.name}.png`, fullPage: true });
 
     await page.goto('/repair', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByText('Демонтаж', { exact: true })).toBeVisible({ timeout: 15_000 });
-    await page.getByText('Демонтаж', { exact: true }).first().click();
+    const firstStage = page.getByRole('button', { name: /^Открыть этап / }).first();
+    await expect(firstStage).toBeVisible({ timeout: 15_000 });
+    await firstStage.click();
     await expect(page).toHaveURL(/\/stage\//, { timeout: 10_000 });
     await expect(page.getByTestId('os-side-nav')).toBeVisible();
     await expect(page.getByTestId('os-dock-repair-active')).toBeVisible();
-    await expect(page.getByText('Демонтаж', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Контекст этапа', { exact: true })).toBeVisible({ timeout: 15_000 });
     await page.screenshot({ path: `test-results/responsive-stage-${viewport.name}.png`, fullPage: true });
 
     await page.goto('/documents', { waitUntil: 'domcontentloaded' });
