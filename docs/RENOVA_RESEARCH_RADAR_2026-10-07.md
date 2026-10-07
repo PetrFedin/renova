@@ -401,3 +401,21 @@ After current admission / Verified Execution Record qualification:
 19. selective CRDT.
 
 This keeps the strongest moat — evidence, verified execution, property history and participant network — ahead of expensive visual/AI experiments.
+
+
+## Coordination / decision-management priority
+
+| Candidate | UX | Moat | Revenue | Readiness | Risk | Priority | Decision |
+|---|---:|---:|---:|---:|---:|---:|---|
+| Versioned Meeting Series / Minutes | 5 | 4 | 4 | 4 | 2 | 15 | ADOPT |
+| Durable Decision Record + supersession | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT |
+| Canonical commitment linking | 5 | 5 | 4 | 5 | 1 | 18 | ADOPT |
+| Decision Impact / obligations view | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT after decision lineage |
+| Meeting Copilot | 4 | 4 | 4 | 3 | 3 | 12 | After AI Assurance |
+| Meeting presenter mode | 4 | 3 | 3 | 4 | 1 | 13 | Useful for customer/site coordination |
+
+The moat is not "meeting notes". It is the ability to reconstruct:
+
+`question/blocker -> meeting/context -> final decision -> exact sources -> affected entities -> canonical commitments -> verified implementation -> later supersession/history`
+
+This should reduce coordination loss while strengthening Renova's long-term evidence graph.
