@@ -146,6 +146,7 @@ export function OsPathBar({ role }: { role: OsRole }) {
                     accessibilityRole="button"
                     accessibilityState={{ disabled: isLast }}
                     disabled={isLast}
+                    style={s.crumbBtn}
                   >
                     <Text style={isLast ? s.crumbOn : s.crumb} numberOfLines={1}>
                       {c.label}
@@ -182,7 +183,8 @@ const s = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, maxWidth: 160 },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, maxWidth: 160, minHeight: 40 },
+  crumbBtn: { minHeight: 40, justifyContent: 'center' },
   backText: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.primary },
   crumb: { fontSize: 12, fontWeight: '600', color: RenovaTheme.colors.textMuted },
   crumbOn: { fontSize: 12, fontWeight: '700', color: RenovaTheme.colors.text },

@@ -23,6 +23,7 @@ type Props = {
   loading?: boolean;
   accessibilityLabel?: string;
   accessibilityHint?: string;
+  testID?: string;
 };
 
 const sizePad: Record<Size, { v: number; h: number; font: number }> = {
@@ -49,6 +50,7 @@ export function PrimaryButton({
   loading,
   accessibilityLabel,
   accessibilityHint,
+  testID,
 }: Props) {
   const { width } = useWindowDimensions();
   const wide = Platform.OS === 'web' && width >= 768;
@@ -63,6 +65,7 @@ export function PrimaryButton({
 
   return (
     <Pressable
+      testID={testID ?? 'renova-primary-button'}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? title}
       accessibilityHint={accessibilityHint}

@@ -21,7 +21,7 @@ export function OsRenovaLogo({ role }: { role: OsRole }) {
 }
 
 const s = StyleSheet.create({
-  wrap: { marginRight: 10, paddingVertical: 2 },
+  wrap: { marginRight: 10, minHeight: 40, justifyContent: 'center', paddingVertical: 2 },
   brand: {
     fontSize: 17,
     fontWeight: '800',

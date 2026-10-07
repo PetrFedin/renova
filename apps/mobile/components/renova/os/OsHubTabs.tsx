@@ -154,6 +154,7 @@ const s = StyleSheet.create({
   },
   row: { paddingHorizontal: 8, paddingTop: 4, gap: 4 },
   tab: {
+    minHeight: 44,
     paddingHorizontal: 12,
     paddingVertical: 10,
     flexDirection: 'row',
