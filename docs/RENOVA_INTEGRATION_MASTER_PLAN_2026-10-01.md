@@ -2010,3 +2010,249 @@ Recommended order after that gate:
 
 This order intentionally prioritises information retrieval, field capture quality and measurable decision support before visually impressive but less foundational spatial AI.
 
+## Visual system wave — Calm Construction OS 2.0
+
+**Status:** PLANNED DESIGN-SYSTEM EXTENSION.
+
+Current Renova UI already has central colour/spacing/radius/typography tokens, shared buttons, shared list typography and explicit rules against local hex/card duplication. Preserve that discipline.
+
+The next visual-quality jump should come from a richer system layer, not screen-by-screen decoration.
+
+### Responsive layout tokens — ADOPT
+
+Create explicit responsive layout primitives instead of ad-hoc width checks:
+
+- phone narrow;
+- phone wide;
+- tablet portrait;
+- tablet landscape;
+- desktop;
+- large monitor.
+
+Tokens should define:
+
+- max readable content width;
+- navigation rail width;
+- context/decision rail width;
+- canvas minimum size;
+- gutter;
+- panel stacking rules;
+- sheet vs side-panel behavior.
+
+Monitor/tablet/phone screenshots must be part of visual QA for critical flows.
+
+### Density modes — ADOPT
+
+Support bounded density projections over the same components:
+
+- `comfortable` — customer/default mobile;
+- `compact` — contractor/site tables and desktop control views;
+- `presentation` — investor/client review, larger type and fewer secondary controls.
+
+Density changes geometry only. It cannot hide required state, authority, error or evidence information.
+
+### Depth / surface hierarchy — ADOPT
+
+Current theme effectively has one card shadow level. Introduce semantic depth tokens:
+
+- base canvas;
+- raised card;
+- floating toolbar;
+- modal/sheet;
+- critical overlay.
+
+Prefer border/surface contrast over heavy shadows. The product should remain calm, precise and architectural rather than glossy consumer-fintech.
+
+### Motion tokens — ADOPT
+
+Create shared duration/easing contracts:
+
+- instant state feedback;
+- standard navigation/sheet;
+- spatial context transition;
+- long-running progress feedback.
+
+Requirements:
+
+- reduced-motion mode;
+- no indefinite decorative motion;
+- pending/server reconciliation remains visually explicit;
+- destructive/financial transitions never appear complete before authority confirms.
+
+### State transition choreography — ADOPT
+
+Use motion only to explain state change:
+
+- draft -> submitted;
+- issue -> fixed candidate -> confirmed;
+- acceptance requested -> accepted/rework;
+- queued offline -> syncing -> confirmed/conflict;
+- room/plan selection -> context rail;
+- capture timeline T1 -> T2.
+
+Animations must not replace text/status labels.
+
+### Semantic data-visualisation system — ADOPT
+
+Create versioned chart tokens and primitives for:
+
+- planned vs actual;
+- cumulative progress;
+- pace;
+- budget burn;
+- variance;
+- risk;
+- evidence completeness;
+- quality/rework;
+- timeline confidence.
+
+Rules:
+
+- colour never carries the only meaning;
+- all charts expose exact values/table fallback;
+- no decorative 3D charts;
+- missing data and zero are visually distinct;
+- forecast and actual always use different semantics;
+- confidence/coverage is visible beside predictive outputs.
+
+### Spatial canvas chrome — ADOPT
+
+Unify plan / BIM / 360 / evidence-view UI around one lightweight chrome:
+
+- context breadcrumb;
+- layer switcher;
+- timeline/date;
+- selection inspector;
+- filter;
+- compare;
+- evidence status;
+- primary action.
+
+Do not build a different toolbar/navigation model for every renderer.
+
+### Evidence visual language — ADOPT
+
+Every evidence object should visually expose its trust state without technical jargon:
+
+- source/original;
+- derived;
+- admitted;
+- reviewed;
+- accepted;
+- superseded/revoked where applicable.
+
+The UI must never make a generated derivative look like original evidence.
+
+### Premium image/media presentation — ADOPT
+
+For before/after, 360 and evidence galleries:
+
+- stable aspect-ratio placeholders;
+- thumbnail pyramid / progressive decode;
+- source-date and location/room context;
+- fast compare gesture;
+- explicit original vs annotated toggle;
+- swipe between same-room timeline captures;
+- offline cache status where relevant.
+
+Avoid loading full-resolution originals into list views.
+
+### Field capture interaction system — ADOPT
+
+Camera/voice/site actions should share a single bottom capture dock:
+
+- Photo;
+- Video/360;
+- Voice;
+- Issue;
+- Measurement/markup where supported.
+
+The dock inherits current room/work context and visibly shows offline/queued state.
+
+### Empty/loading/error visual contracts — ADOPT
+
+Introduce shared:
+
+- skeleton primitives for known layout;
+- quiet progress state for background refresh;
+- explicit blocking loader only for blocking operations;
+- recovery card with retry for dependency failure;
+- stale-data badge when cached data is intentionally retained.
+
+A loading skeleton must never be used when the application does not know the shape/content authority yet.
+
+### Accessibility visual contract — REQUIRED
+
+Add design-token tests for:
+
+- dynamic type / text scaling;
+- minimum contrast;
+- minimum 44-point touch targets;
+- reduced motion;
+- focus-visible keyboard/web navigation;
+- screen-reader labels for spatial controls;
+- colour-blind-safe chart semantics;
+- high-contrast Site Mode.
+
+### Visual regression qualification — ADOPT
+
+For canonical customer/contractor/supervisor journeys maintain screenshot contracts at:
+
+- phone;
+- tablet;
+- desktop/monitor.
+
+Qualification should detect:
+
+- overflow/clipping;
+- lost primary CTA;
+- hidden error/attention state;
+- unexpected local colors/components;
+- broken responsive stacking;
+- unreadable spatial overlays.
+
+Do not freeze pixels for dynamic data; mask/normalise volatile content and assert structural visual contracts.
+
+### Performance budgets for visual polish — REQUIRED
+
+Premium visuals are rejected if they break interaction budgets.
+
+Measure at least:
+
+- cold screen first useful content;
+- route transition latency;
+- list scroll frame health;
+- image/thumbnail decode;
+- 360 first frame;
+- 3D/BIM first useful frame;
+- memory after repeated room/capture navigation;
+- JS/UI-thread stalls.
+
+Define representative low/mid/high device classes before making performance claims.
+
+### Design-system debt already visible in current source
+
+Current source inspection shows:
+
+- no formal responsive breakpoint token set;
+- no formal density-mode tokens;
+- no shared motion/easing token set;
+- no explicit reduced-motion design contract;
+- one canonical card shadow level plus several local elevation/shadow definitions;
+- no shared skeleton system;
+- chart/UI visualisation exists in places but without a product-wide semantic chart token contract.
+
+Treat these as design-system work, not isolated screen bugs.
+
+### Acceptance
+
+- all new screens use the same Calm OS visual language;
+- no local visual innovation bypasses shared tokens/components without a documented exception;
+- responsive behavior is proven on monitor/tablet/phone;
+- spatial modes remain understandable without 3D;
+- critical business truth remains readable with animation disabled;
+- visual upgrades do not degrade low/mid-tier device performance;
+- accessibility qualification ships with the visual system, not afterward.
+
+**Sequencing:** responsive tokens -> density/depth/motion -> shared states/charts -> spatial chrome -> field capture dock -> screenshot/performance qualification -> advanced renderer polish.
+
