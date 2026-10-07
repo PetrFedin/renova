@@ -2967,3 +2967,312 @@ This connects the post-handover Property Passport to the Approved Service Networ
 
 **Sequencing:** Installed Asset Register -> commissioning records -> maintenance schedule -> optional event admission -> warranty correlation -> service-network loop.
 
+## Product intelligence wave — outcome analytics and safe experimentation
+
+**Status:** PLANNED / REQUIRED FOR EVIDENCE-BASED PRODUCT DEVELOPMENT.
+
+Renova already distinguishes operational telemetry from product truth. Keep that separation.
+
+Product analytics answers:
+
+- did a user complete the intended workflow;
+- how long did it take;
+- where did they fail/abandon;
+- did evidence/quality improve;
+- did the feature reduce coordination cost;
+- did a premium capability create durable retention/value.
+
+It must not become a shadow business ledger.
+
+### Privacy-safe event contract — ADOPT
+
+Every product event uses a versioned schema.
+
+Minimum fields:
+
+- event_name/version;
+- occurred_at;
+- actor role class;
+- project lifecycle class;
+- surface/route;
+- correlation/session class where privacy policy permits;
+- feature/version;
+- success/failure/abandon outcome;
+- duration bucket where useful.
+
+Avoid:
+
+- raw chat/document contents;
+- phone/email;
+- payment requisites;
+- precise address;
+- photo bytes;
+- unrestricted free text.
+
+Use canonical domain IDs only when needed for aggregate correctness and protect them according to existing ACL/privacy policy.
+
+### Event source boundary — REQUIRED
+
+Product analytics events are derived observations.
+
+They do not determine:
+
+- project state;
+- payment state;
+- acceptance;
+- subscription entitlement;
+- warranty;
+- ACL;
+- evidence validity.
+
+Domain truth remains in canonical Renova tables/services.
+
+### Core activation funnel — ADOPT
+
+Measure role-specific activation.
+
+Customer candidate:
+
+`account -> project created -> scope/estimate exists -> contractor/team connected -> first work evidence -> first acceptance decision`
+
+Contractor candidate:
+
+`account -> profile ready -> project assigned -> first work started -> first evidence submitted -> first accepted work/payment path`
+
+Do not combine customer and contractor funnels into a misleading average.
+
+### Outcome metrics — ADOPT
+
+#### Acceptance cycle time
+
+`accepted_at - acceptance_requested_at`
+
+Segment by:
+
+- work type;
+- evidence completeness;
+- first-pass vs rework;
+- project complexity band.
+
+#### First-pass acceptance rate
+
+`accepted_without_rework / all_decided_acceptances`
+
+#### Rework closure time
+
+`closed_at - rework_requested_at`
+
+#### Evidence completeness rate
+
+For a governed requirement set:
+
+`satisfied_required_evidence_items / required_evidence_items`
+
+Do not count optional media as required completeness.
+
+#### RFI cycle time
+
+`resolved_at - submitted_at`
+
+#### Submittal cycle time
+
+`final_decision_at - submitted_at`
+
+#### Schedule decision latency
+
+Time between a surfaced actionable blocker and the first authorised resolution/decision event.
+
+#### Offline recovery rate
+
+`queued_actions_server_confirmed / queued_actions_eligible_for_retry`
+
+Track conflict/rejection separately from transport failure.
+
+### Search / AI outcome metrics — ADOPT
+
+For cited Project Intelligence:
+
+- search success/self-resolution;
+- citation open rate;
+- no-answer rate;
+- reformulation rate;
+- time to source;
+- unsupported-answer regression from evaluation corpus, not production guesswork.
+
+For coworkers:
+
+- draft accepted unchanged;
+- draft edited then accepted;
+- draft discarded;
+- time saved proxy;
+- denied/blocked tool proposals;
+- human override.
+
+Never optimise AI solely for "engagement" or longer conversations.
+
+### Field-capture metrics — ADOPT
+
+Measure:
+
+- capture session completeness;
+- uncovered-zone warning rate;
+- repeat capture caused by quality failure;
+- evidence admission success;
+- voice note -> confirmed structured item conversion;
+- average time from issue observation to recorded issue.
+
+Where a metric cannot be reliably observed, label it as survey/manual evidence rather than fabricating telemetry.
+
+### Property Passport / post-handover metrics — ADOPT
+
+- passport activation after handover;
+- installed assets with complete commissioning record;
+- maintenance reminder completion;
+- warranty/service dossier creation;
+- recurring service engagement;
+- property history continuity after project closeout.
+
+### Commercial metrics — ADOPT
+
+Contractor:
+
+- Free -> Pro conversion;
+- trial activation/completion;
+- active paid contractor retention;
+- active projects per paid contractor;
+- premium capability adoption.
+
+Site Intelligence:
+
+- active project-month usage;
+- capture/inspection adoption;
+- compute/media cost per active project;
+- renewal/continuation.
+
+Enterprise:
+
+- organisation activation;
+- SSO/provisioning adoption where deployed;
+- verification/API usage;
+- portfolio projects connected;
+- retained annual contract value.
+
+No commercial metric may incentivise weakening quality gates or manufacturing extra defects/actions.
+
+### North-star family — ADOPT
+
+Do not force one universal vanity metric.
+
+Use a small family:
+
+1. **Trusted Project Completion**
+   - projects reaching governed handover/closeout with required evidence.
+
+2. **Verified Work Throughput**
+   - accepted work packages with complete governed evidence per active project period.
+
+3. **Decision Cycle Efficiency**
+   - median/p75 time for governed approval/acceptance/RFI/submittal decisions.
+
+4. **Post-handover Continuity**
+   - completed projects with active Property Passport/service history after closeout.
+
+The business may select one primary planning metric later, but component metrics remain visible to prevent gaming.
+
+### Experiment framework — CONDITIONAL
+
+Feature flags/experiments may test:
+
+- layout/navigation;
+- empty-state education;
+- search presentation;
+- capture guidance;
+- non-critical reminder timing;
+- premium packaging.
+
+Do **not** randomise core safety/business truth such as:
+
+- ACL;
+- acceptance authority;
+- payment verification;
+- signature meaning;
+- retention/legal hold;
+- security step-up;
+- evidence requirements unless the experiment itself is a formally governed policy trial.
+
+### Experiment assignment — REQUIRED
+
+Where experimentation is allowed:
+
+- deterministic assignment;
+- declared population;
+- start/end;
+- primary/guardrail metrics;
+- sample/data-quality checks;
+- exclusion criteria;
+- feature/version recorded;
+- rollback/kill switch.
+
+Avoid per-request random UX changes.
+
+### Guardrail metrics — REQUIRED
+
+Every speed/conversion experiment checks at least:
+
+- error rate;
+- abandonment;
+- support/retry;
+- accessibility regression;
+- offline failure;
+- privacy/security incidents;
+- acceptance/rework quality where relevant.
+
+A faster flow that increases false acceptance/rework is not a win.
+
+### Analytics data-quality contract — ADOPT
+
+Track:
+
+- event schema/version;
+- event producer version;
+- duplicate rate;
+- missing required fields;
+- late events;
+- client/server clock skew;
+- identity/session change;
+- offline buffered events;
+- release SHA/app version.
+
+Revenue/financial truth comes from billing/payment authorities, not client analytics events.
+
+### Investor / operator outcome dashboard — ADOPT
+
+Create an internal evidence-backed view after enough real usage exists:
+
+- activation funnel;
+- cycle times;
+- evidence completeness;
+- first-pass acceptance;
+- rework;
+- active projects;
+- retention;
+- paid conversion;
+- support/error guardrails;
+- feature adoption;
+- verified forecast accuracy where applicable.
+
+Never seed/fabricate production KPIs for investor presentation. Demo/sample data must be visibly labelled.
+
+### Acceptance
+
+- every metric has an explicit numerator/denominator or duration definition;
+- unknown/missing is distinct from zero;
+- product analytics cannot mutate business state;
+- sensitive content is excluded/minimised;
+- experiments cannot weaken security/acceptance/payment semantics;
+- offline/duplicate event handling is defined;
+- dashboards show data freshness/coverage;
+- investor/operator metrics are reproducible from retained analytics + canonical business facts.
+
+**Sequencing:** event dictionary -> activation/outcome metrics -> field/search metrics -> commercial/post-handover metrics -> internal dashboard -> bounded experiments.
+
