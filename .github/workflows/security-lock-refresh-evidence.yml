@@ -2,9 +2,9 @@ name: Security lock refresh evidence
 # second push intentionally triggers this branch-only evidence workflow
 
 on:
-  push:
+  pull_request:
     branches:
-      - ops/security-lock-refresh-2026-10-07
+      - main
     paths:
       - .github/workflows/security-lock-refresh-evidence.yml
 
