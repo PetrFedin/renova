@@ -9,6 +9,8 @@ from app.models.entities import Project, ProjectIssue
 from app.models.project_documents import DocumentStatus, DocumentType, ProjectDocument
 from app.services import outbox_inline_dispatch
 from app.services import project_document_service as docs_svc
+from app.services import storage_service as storage_svc
+from app.services.document_media_acl import parse_project_media_key
 from app.services.client_write_idempotency import commit_client_write, replay_entity_id
 from app.services.client_write_side_effects import clear_request_side_effect_context
 
@@ -122,6 +124,40 @@ def _state_error(issue: ProjectIssue, action: str) -> HTTPException:
     )
 
 
+async def _require_resolution_evidence(project_id: str, evidence_photo_key: str | None) -> str:
+    key = (evidence_photo_key or "").strip()
+    if not key:
+        raise HTTPException(
+            422,
+            detail={
+                "code": "warranty_evidence_required",
+                "message": "Чтобы отметить гарантийное исправление выполненным, приложите фото результата.",
+            },
+        )
+    parsed = parse_project_media_key(key)
+    if parsed is None or parsed.project_id != str(project_id):
+        raise HTTPException(404, "warranty_evidence_not_found")
+    try:
+        payload = await storage_svc.read_bytes(key)
+    except storage_svc.StorageError as exc:
+        raise HTTPException(
+            503,
+            detail={
+                "code": "warranty_evidence_storage_unavailable",
+                "message": "Хранилище доказательств временно недоступно. Статус не изменён.",
+            },
+        ) from exc
+    if not payload:
+        raise HTTPException(
+            422,
+            detail={
+                "code": "warranty_evidence_missing",
+                "message": "Фото результата не найдено в хранилище. Загрузите его повторно.",
+            },
+        )
+    return key
+
+
 def _append_note(issue: ProjectIssue, header: str, comment: str | None) -> None:
     if not comment:
         return
@@ -181,6 +217,7 @@ async def respond_to_claim(
     issue_id: str,
     decision: str,
     comment: str | None,
+    evidence_photo_key: str | None = None,
 ) -> ProjectIssue:
     """Ответ исполнителя: принял / отклонил (с обязательным комментарием) / исправлено."""
     if decision not in RESPONSE_DECISIONS:
@@ -192,11 +229,31 @@ async def respond_to_claim(
     clean = " ".join((comment or "").split()) or None
     if decision == "reject" and not clean:
         raise HTTPException(422, detail={"code": "warranty_rejection_comment_required", "message": "Укажите причину отказа."})
+
+    evidence_key: str | None = None
+    if decision == "fixed":
+        evidence_key = await _require_resolution_evidence(str(project.id), evidence_photo_key)
+
     if issue.status == target:
-        return issue  # идемпотентный повтор
-    if issue.status not in _DECISION_FROM[decision]:
+        if decision != "fixed":
+            return issue  # идемпотентный повтор
+        if issue.photo_key == evidence_key:
+            return issue
+        if issue.photo_key:
+            raise HTTPException(
+                409,
+                detail={
+                    "code": "warranty_evidence_conflict",
+                    "message": "Фото результата уже зафиксировано. Для нового исправления сначала откройте обращение снова.",
+                },
+            )
+        # Backward-compatible evidence backfill for historical fixed claims.
+    elif issue.status not in _DECISION_FROM[decision]:
         raise _state_error(issue, _DECISION_LABEL[decision])
+
     issue.status = target
+    if decision == "fixed":
+        issue.photo_key = evidence_key
     issue.closed_at = None
     _append_note(issue, f"Ответ исполнителя: {_DECISION_LABEL[decision]}", clean)
     claim = _claim_title(issue)
@@ -228,6 +285,10 @@ async def close_claim(db: AsyncSession, *, project: Project, actor, issue_id: st
     issue = await _load_claim(db, project.id, issue_id)
     if issue.status == "closed":
         return issue, False
+    if issue.status not in {"fixed", "rejected"}:
+        raise _state_error(issue, "закрыть")
+    if issue.status == "fixed":
+        await _require_resolution_evidence(str(project.id), issue.photo_key)
     issue.status = "closed"
     issue.closed_at = utc_now()
     await _sync_warranty_document(db, project.id, issue.id, archive=True)
