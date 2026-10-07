@@ -15,6 +15,7 @@ from app.models.entities import DomainOutbox, Project, ProjectIssue, User, UserR
 from app.models.project_documents import DocumentType, ProjectDocument
 from app.services import client_write_side_effects
 from app.services import outbox_service as outbox
+from app.services import storage_service as storage_svc
 from app.services import warranty_claim_service as warranty
 from app.services.client_write_idempotency import IdempotencyConflict
 
@@ -322,3 +323,154 @@ def test_router_has_one_canonical_create_and_keeps_reads_close():
     assert len(closes) == 1
     assert "post" in production_path
     assert production_path["post"]["operationId"].startswith("create_warranty_claim_")
+
+
+
+@pytest.mark.asyncio
+async def test_warranty_resolution_requires_existing_project_evidence_before_customer_close(db, monkeypatch):
+    monkeypatch.setattr(warranty.outbox_inline_dispatch, "dispatch_best_effort", _no_inline)
+    customer, contractor, project = await _seed_project(db, suffix="6")
+    result = await warranty.create_or_replay_warranty_claim(
+        db,
+        project=project,
+        user_id=customer.id,
+        title="Evidence close",
+        description="Исправление должно быть доказано",
+        client_request_id="warranty-evidence-request-0006",
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        await warranty.close_claim(db, project=project, actor=customer, issue_id=result.issue_id)
+    assert getattr(exc_info.value, "status_code", None) == 409
+
+    with pytest.raises(Exception) as exc_info:
+        await warranty.respond_to_claim(
+            db,
+            project=project,
+            actor=contractor,
+            issue_id=result.issue_id,
+            decision="fixed",
+            comment=None,
+        )
+    assert getattr(exc_info.value, "status_code", None) == 422
+    assert exc_info.value.detail["code"] == "warranty_evidence_required"
+
+    wrong_key = "project-media/another-project/evidence.jpg"
+    await storage_svc.write_bytes_at_key(wrong_key, b"foreign-evidence", content_type="image/jpeg")
+    with pytest.raises(Exception) as exc_info:
+        await warranty.respond_to_claim(
+            db,
+            project=project,
+            actor=contractor,
+            issue_id=result.issue_id,
+            decision="fixed",
+            comment=None,
+            evidence_photo_key=wrong_key,
+        )
+    assert getattr(exc_info.value, "status_code", None) == 404
+
+    missing_key = f"project-media/{project.id}/missing-evidence.jpg"
+    with pytest.raises(Exception) as exc_info:
+        await warranty.respond_to_claim(
+            db,
+            project=project,
+            actor=contractor,
+            issue_id=result.issue_id,
+            decision="fixed",
+            comment=None,
+            evidence_photo_key=missing_key,
+        )
+    assert getattr(exc_info.value, "status_code", None) == 422
+    assert exc_info.value.detail["code"] == "warranty_evidence_missing"
+
+    evidence_key = f"project-media/{project.id}/resolution.jpg"
+    await storage_svc.write_bytes_at_key(evidence_key, b"resolution-evidence", content_type="image/jpeg")
+    fixed = await warranty.respond_to_claim(
+        db,
+        project=project,
+        actor=contractor,
+        issue_id=result.issue_id,
+        decision="fixed",
+        comment="Исправлено и сфотографировано",
+        evidence_photo_key=evidence_key,
+    )
+    assert fixed.status == "fixed"
+    assert fixed.photo_key == evidence_key
+
+    replay = await warranty.respond_to_claim(
+        db,
+        project=project,
+        actor=contractor,
+        issue_id=result.issue_id,
+        decision="fixed",
+        comment="Повтор",
+        evidence_photo_key=evidence_key,
+    )
+    assert replay.id == fixed.id
+    assert replay.photo_key == evidence_key
+
+    replacement_key = f"project-media/{project.id}/replacement.jpg"
+    await storage_svc.write_bytes_at_key(replacement_key, b"replacement", content_type="image/jpeg")
+    with pytest.raises(Exception) as exc_info:
+        await warranty.respond_to_claim(
+            db,
+            project=project,
+            actor=contractor,
+            issue_id=result.issue_id,
+            decision="fixed",
+            comment=None,
+            evidence_photo_key=replacement_key,
+        )
+    assert getattr(exc_info.value, "status_code", None) == 409
+    assert exc_info.value.detail["code"] == "warranty_evidence_conflict"
+
+    closed, changed = await warranty.close_claim(
+        db,
+        project=project,
+        actor=customer,
+        issue_id=result.issue_id,
+    )
+    assert changed is True
+    assert closed.status == "closed"
+    assert closed.photo_key == evidence_key
+    closed_at = closed.closed_at
+
+    replay_closed, changed = await warranty.close_claim(
+        db,
+        project=project,
+        actor=customer,
+        issue_id=result.issue_id,
+    )
+    assert changed is False
+    assert replay_closed.closed_at == closed_at
+
+
+@pytest.mark.asyncio
+async def test_rejected_warranty_can_still_be_acknowledged_and_closed(db, monkeypatch):
+    monkeypatch.setattr(warranty.outbox_inline_dispatch, "dispatch_best_effort", _no_inline)
+    customer, contractor, project = await _seed_project(db, suffix="7")
+    result = await warranty.create_or_replay_warranty_claim(
+        db,
+        project=project,
+        user_id=customer.id,
+        title="Rejected close",
+        description="Проверка отказа",
+        client_request_id="warranty-rejected-request-0007",
+    )
+    rejected = await warranty.respond_to_claim(
+        db,
+        project=project,
+        actor=contractor,
+        issue_id=result.issue_id,
+        decision="reject",
+        comment="Не относится к выполненным работам",
+    )
+    assert rejected.status == "rejected"
+    closed, changed = await warranty.close_claim(
+        db,
+        project=project,
+        actor=customer,
+        issue_id=result.issue_id,
+    )
+    assert changed is True
+    assert closed.status == "closed"
