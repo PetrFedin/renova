@@ -76,7 +76,7 @@
 1. Сдача → `stage_review` со статусом `on_review`; `C` получает push (симулятор) и inbox.
 2. Возврат → `rework` с двумя `issues`; `rework_sla` считает дедлайн.
 3. Повторная сдача → замечания закрыты, статус `on_review`.
-4. Приём через `portal.py` по одноразовому токену: `accepted`, `accepted_at`, подпись акта in_app (GP7-совместимо); токен повторно не работает (410).
+4. Приём через канонический `portal_acceptance_decisions.py` использует registry-bound PortalLink: revoked/expired/legacy write-token не может менять acceptance; project mismatch скрывается как 404; повтор того же решения по уже принятому/устаревшему acceptance возвращает 410. Полная атомарная single-use семантика accept-scope для последующих acceptance в той же portal-ссылке остаётся отдельным GP4 recovery/security требованием. Принятие создаёт `accepted`/`accepted_at` и GP7-совместимый акт.
 5. Гарантийный claim (`WARRANTY-ATOMICITY-CONTRACT`) создаётся атомарно с уведомлением; закрытие — с evidence.
 6. На дашборде `C`: прогресс вырос на вес этапа 1; `next action = оплатить этап`.
 
