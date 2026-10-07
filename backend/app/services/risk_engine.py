@@ -8,6 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.services import stage_status_service as stage_status_svc
+
 from app.models.entities import (
     MaterialPick,
     MaterialPickStatus,
@@ -44,7 +46,7 @@ async def compute_project_risks(db: AsyncSession, project: Project) -> list[dict
     risks: list[dict] = []
 
     stages = sorted(project.stages or [], key=lambda s: s.sort_order)
-    progress = sum(s.percent_complete for s in stages) / (len(stages) or 1)
+    progress = stage_status_svc.project_progress(stages)
 
     # Бюджет / перерасход
     planned = project.budget_planned or 0
