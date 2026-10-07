@@ -18,6 +18,7 @@ const moyNalogOauth = read("backend/app/services/moy_nalog_oauth.py");
 const pythonEvaluator = read("scripts/evaluatePythonAudit.mjs");
 const gitleaksSanitizer = read("scripts/sanitizeGitleaksReport.mjs");
 const gitleaksConfig = read(".gitleaks.toml");
+const gitleaksHistoryBaseline = JSON.parse(read("security/gitleaks-history-baseline.json"));
 const operationsDoc = read("docs/SECURITY-OPERATIONS.md");
 const prelaunchDoc = read("docs/PRELAUNCH-SECURITY-TEST.md");
 
@@ -105,11 +106,31 @@ test("secret scanning separates merged history from a Git-metadata-free proposed
   assert.match(securityWorkflow, /dir --no-banner --redact=100[\s\S]*\/tree/);
   assert.match(securityWorkflow, /gitleaks-tree-summary\.json/);
   assert.match(securityWorkflow, /sanitizeGitleaksReport\.mjs/);
+  assert.match(securityWorkflow, /gitleaks-history\.exit"[\s\S]*security\/gitleaks-history-baseline\.json/);
+  assert.match(securityWorkflow, /gitleaks-tree\.exit"\n/);
   assert.match(securityWorkflow, /rm -f .*gitleaks-history-raw\.json.*gitleaks-tree-raw\.json/);
   assert.match(gitleaksSanitizer, /secret: "never persisted/);
   assert.match(gitleaksSanitizer, /match: "never persisted/);
   assert.equal(gitleaksSanitizer.includes("finding.Secret"), false);
   assert.equal(gitleaksSanitizer.includes("finding.Match"), false);
+});
+
+test("historical Gitleaks baseline is exact bounded and separate from current-tree allowlists", () => {
+  assert.equal(gitleaksHistoryBaseline.version, 1);
+  assert.equal(gitleaksHistoryBaseline.scope, "merged-history-only");
+  assert.equal(gitleaksHistoryBaseline.reviewed_at, "2026-10-07");
+  assert.equal(gitleaksHistoryBaseline.review_by, "2026-12-31");
+  assert.equal(gitleaksHistoryBaseline.exceptions.length, 2);
+  assert.deepEqual(
+    gitleaksHistoryBaseline.exceptions.map((entry) => entry.fingerprint).sort(),
+    [
+      "ebfea1dce4ce962730df4326f04836c0bea1501f:docs/audit-map/13-live-journey-api.md:generic-api-key:75",
+      "f56a5c04298aa4f57047d895ea7bf435b4306dac:docs/INTEGRATIONS.md:generic-api-key:159",
+    ].sort(),
+  );
+  assert.match(gitleaksSanitizer, /baselineArg/);
+  assert.match(gitleaksSanitizer, /unexpected or stale finding/);
+  assert.match(gitleaksSanitizer, /review window exceeds 90 days/);
 });
 
 test("Gitleaks allowlist is restricted to one synthetic test key", () => {
@@ -144,11 +165,13 @@ test("existing container and JavaScript advisory gates remain independent", () =
 });
 
 test("security governance never equates CI with external readiness", () => {
-  assert.match(operationsDoc, /protected: false/);
+  assert.match(operationsDoc, /protected: true/);
+  assert.match(operationsDoc, /main-protection/);
+  assert.match(operationsDoc, /typecheck-integrity/);
+  assert.match(operationsDoc, /snapshot/);
   assert.match(operationsDoc, /#247/);
   assert.match(operationsDoc, /#256/);
   assert.match(operationsDoc, /#257/);
-  assert.match(operationsDoc, /NOT PROVEN \/ NOT READY/);
   assert.match(operationsDoc, /Repository\/admin access review is therefore \*\*NOT PROVEN\*\*/);
   assert.match(operationsDoc, /external penetration\/abuse test: \*\*NOT EXECUTED/);
   assert.match(operationsDoc, /90 days/);

@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "reviewed_at": "2026-10-07",
+  "review_by": "2026-12-31",
+  "scope": "merged-history-only",
+  "exceptions": [
+    {
+      "fingerprint": "f56a5c04298aa4f57047d895ea7bf435b4306dac:docs/INTEGRATIONS.md:generic-api-key:159",
+      "rule_id": "generic-api-key",
+      "file": "docs/INTEGRATIONS.md",
+      "commit": "f56a5c04298aa4f57047d895ea7bf435b4306dac",
+      "start_line": 159,
+      "classification": "false-positive-placeholder",
+      "reason": "Historical documentation placeholder was classified by Gitleaks as a generic API key. The current tree no longer contains that token-shaped placeholder."
+    },
+    {
+      "fingerprint": "ebfea1dce4ce962730df4326f04836c0bea1501f:docs/audit-map/13-live-journey-api.md:generic-api-key:75",
+      "rule_id": "generic-api-key",
+      "file": "docs/audit-map/13-live-journey-api.md",
+      "commit": "ebfea1dce4ce962730df4326f04836c0bea1501f",
+      "start_line": 75,
+      "classification": "synthetic-local-test-artifact",
+      "reason": "Historical audit-map evidence captured a locally generated team-invite token from an isolated in-process test journey, not a provider or production credential. The current tree is redacted."
+    }
+  ]
+}

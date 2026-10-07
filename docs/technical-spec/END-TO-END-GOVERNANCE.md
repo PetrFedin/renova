@@ -2,7 +2,7 @@
 
 **Status:** ACTIVE / AUTHORITATIVE ANNEX
 **Parent dossier:** `docs/RENOVA-TECHNICAL-SPECIFICATION.md`
-**Effective from:** 2026-08-29. **Current reconciliation:** 2026-09-08.
+**Effective from:** 2026-08-29. **Current reconciliation:** 2026-10-07.
 
 This is mandatory specification governance, not optional process guidance. The prior full version is retained in `history/END-TO-END-GOVERNANCE-before-2026-09-08.md`; its old ordered next-step list is historical.
 
@@ -59,6 +59,41 @@ External main protection/staging #247/#233, observability #235/#283, managed DR 
 
 #282/#284/#286/#287 are historical implementation/process lineage, not PRs to merge again. #283 is a separate stale draft to refresh; an emission probe cannot prove external alert delivery.
 
+## 7.1 2026-10-07 schema-verifier reconciliation
+
+Issue #674 records verifier drift discovered by current PostgreSQL schema lifecycle CI: migration `w24projectpurgecascade01` and the ORM both define `project_technical_supervisor_assignments.supersedes_assignment_id` as a nullable self-reference with `ON DELETE SET NULL`, while the structural verifier still expected no delete action. The bounded repair changes only that verifier expectation. Historical migrations remain immutable; PostgreSQL migration execution plus the current-schema verifier are the acceptance authority.
+
+## 7.2 2026-10-07 push-delivery contract reconciliation
+
+Issue #679 records source-contract drift in the push-delivery workflow. Navigation payload normalization is canonically owned by `apps/mobile/lib/notificationNavigation.ts`; `nativeNotifications.ts` imports and calls that parser. The workflow must therefore assert native delivery wiring in the native module and compatibility parsing in the canonical navigation module, rather than requiring duplicated parser text in the native module. This preserves one authority while keeping cold-start, delivery-dedupe and role-navigation checks fail closed. The same reconciliation also removes the obsolete expectation that `notify()` directly derives a provider delivery id: current canonical `notify()` persists the in-app notification, `DomainOutbox` notification event and `SideEffectDelivery`, then dispatches asynchronously; only `notify_from_outbox()` performs provider delivery using the stable `outbox:{id}` identity. CI therefore verifies the durable outbox handoff rather than resurrecting the legacy direct-send path.
+
+## 7.3 2026-10-07 protected-main required-context scheduling
+
+GitHub ruleset `main-protection` is active and globally requires `typecheck-integrity` and `snapshot` among its merge contexts. A required context must be schedulable for every pull request; otherwise path filters create a protection deadlock where a correct PR cannot satisfy the ruleset. The bounded governance repair removes only the `pull_request.paths` filters from the existing mobile typecheck and production-readiness workflows. Job names, fail-closed behavior and push/workflow-run semantics remain unchanged. Issue #247 remains open for owner review of bypass/admin topology even after this source-side scheduling defect is corrected.
+
 ## 8. Product-wide acceptance evidence
 
 G01–G10 in the full audit cover standalone repair, single contractor, independent contractors, unstable network, account changes, financial reconciliation, documents, handover/lifecycle, incidents and device/accessibility. Register requirement→entry/role→service/entity→test→run/artifact. Clearly label source-only inspection, bounded CI, new execution and external verification. A static screen inventory must not be reported as execution of every action.
+
+
+## 9. Security evidence admission
+
+Dependency and secret-scanning gates are authoritative evidence boundaries, not cosmetic checks.
+
+For dependency advisories:
+
+- patchable findings must be removed from the locked dependency graph without forced or incompatible framework downgrades;
+- an unfixed HIGH finding may be temporarily admitted only by exact advisory/package contract, explicit reachability analysis, bounded review date and tracked issue;
+- CRITICAL findings are never admitted by the JavaScript baseline;
+- a generated lockfile is not accepted until it is reproduced on GitHub-hosted CI and the exact candidate passes the relevant dependency/runtime checks.
+
+For secret scanning:
+
+- the current proposed tree requires zero Gitleaks findings;
+- merged history is scanned in full with redaction;
+- known historical non-production artifacts may be admitted only after scanning, by exact immutable fingerprint in `security/gitleaks-history-baseline.json`;
+- a history baseline entry must include commit/path/rule/line provenance, classification, reason and a review window no longer than 90 days;
+- any new/changed finding, stale baseline entry or expired review fails closed;
+- actual provider/production credentials are never baseline exceptions and require revoke/rotate/incident handling.
+
+This security admission state is a prerequisite for advancing Renova's portable execution evidence into issuer/signature/revocation/external-verifier interoperability. It does not upgrade external launch controls such as branch protection, provider credential drills or penetration testing.
