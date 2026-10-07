@@ -211,33 +211,36 @@ function CustomerRoomsBody({ onNextTab }: { onNextTab?: (tab: ObjectTabId) => vo
         {groupRoomsByFloor(filtered, activeProject.property_type).map(({ floor, rooms: floorRooms }) => (
           <View key={`f-${floor}`}>
             <FloorSectionHeader floor={floor} count={floorRooms.length} isHouse={activeProject.property_type === 'house'} />
-            {floorRooms.map((room) => (
-              <RoomRequestCard
-                key={room.id}
-                room={room}
-                requestOnly={!!activeProject.contractor_id}
-                onOpen={() => nav.room(room.id)}
-                onSubmit={async (message, payload) => {
-                  try {
-                    await api.createRoomChangeRequest(user.id, activeProject.id, { room_id: room.id, message, payload });
-                    alertRoomChangeRequested('customer');
-                    await reloadRooms();
-                    return true;
-                  } catch (e) {
-                    if (isOfflineQueued(e)) notifyOfflineQueued('Запрос на изменение');
-                    else if (isRateLimitError(e)) {
-                      showActionConfirm({
-                        title: 'Подождите',
-                        message: 'Слишком много запросов. Повторите через несколько секунд.',
-                      });
-                    } else {
-                      notifyError('Не удалось отправить запрос', e, 'Текст остался в форме — повторите отправку чуть позже.');
-                    }
-                    return false;
-                  }
-                }}
-              />
-            ))}
+            <View style={styles.roomGrid}>
+              {floorRooms.map((room) => (
+                <View key={room.id} style={styles.roomGridItem}>
+                  <RoomRequestCard
+                    room={room}
+                    requestOnly={!!activeProject.contractor_id}
+                    onOpen={() => nav.room(room.id)}
+                    onSubmit={async (message, payload) => {
+                      try {
+                        await api.createRoomChangeRequest(user.id, activeProject.id, { room_id: room.id, message, payload });
+                        alertRoomChangeRequested('customer');
+                        await reloadRooms();
+                        return true;
+                      } catch (e) {
+                        if (isOfflineQueued(e)) notifyOfflineQueued('Запрос на изменение');
+                        else if (isRateLimitError(e)) {
+                          showActionConfirm({
+                            title: 'Подождите',
+                            message: 'Слишком много запросов. Повторите через несколько секунд.',
+                          });
+                        } else {
+                          notifyError('Не удалось отправить запрос', e, 'Текст остался в форме — повторите отправку чуть позже.');
+                        }
+                        return false;
+                      }
+                    }}
+                  />
+                </View>
+              ))}
+            </View>
           </View>
         ))}
         {requestsState.status === 'error' ? (
@@ -512,17 +515,20 @@ function ContractorRoomsBody() {
         ).map(({ floor, rooms: floorRooms }) => (
           <View key={`f-${floor}`}>
             <FloorSectionHeader floor={floor} count={floorRooms.length} isHouse={activeProject.property_type === 'house'} />
-            {floorRooms.map((room) => (
-              <RoomListRow
-                key={room.id}
-                room={room}
-                archived={roomFilter === 'archive'}
-                busy={busy}
-                archiveLoading={mutationKey === `archive:${room.id}`}
-                onOpen={() => nav.room(room.id)}
-                onArchive={(archived) => changeArchive(room, archived)}
-              />
-            ))}
+            <View style={styles.roomGrid}>
+              {floorRooms.map((room) => (
+                <View key={room.id} style={styles.roomGridItem}>
+                  <RoomListRow
+                    room={room}
+                    archived={roomFilter === 'archive'}
+                    busy={busy}
+                    archiveLoading={mutationKey === `archive:${room.id}`}
+                    onOpen={() => nav.room(room.id)}
+                    onArchive={(archived) => changeArchive(room, archived)}
+                  />
+                </View>
+              ))}
+            </View>
           </View>
         ))}
         {roomsLoadFailed ? (
@@ -727,7 +733,9 @@ const styles = StyleSheet.create({
   hint: { color: RenovaTheme.colors.textMuted, marginBottom: 12, fontSize: 13, lineHeight: 18 },
   loading: { ...screenTypography.empty, marginBottom: 16 },
   empty: { ...screenTypography.empty, marginBottom: 16 },
-  card: { ...listRowStyles.row, paddingVertical: 14 },
+  roomGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  roomGridItem: { flexGrow: 1, flexBasis: 300, minWidth: 280, maxWidth: '100%' },
+  card: { ...listRowStyles.row, paddingVertical: 14, height: '100%' },
   roomHead: { minHeight: RenovaTheme.minTouch, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   roomHeadText: { flex: 1, paddingRight: 8 },
   chevron: { fontSize: 22, color: RenovaTheme.colors.textMuted },
