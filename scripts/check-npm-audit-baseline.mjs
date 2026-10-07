@@ -154,7 +154,7 @@ const allowedHigh = new Map([
       reviewBy: '2026-12-31',
       reason: "maxTotalMergeKeys does not limit CPU use for empty merge sources. Expo build tooling only: @expo/xcpretty parses xcodebuild output during a build, never untrusted input on a device. The graph pins 4.x through @expo/xcpretty and `npm audit fix` produces no change.",
     },
-  ],,
+  ],
   [
     "GHSA-vfj7-8cjw-p6xm",
     {
