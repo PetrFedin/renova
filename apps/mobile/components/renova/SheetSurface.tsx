@@ -28,7 +28,7 @@ export type SheetSurfaceProps = {
   footer?: ReactNode;
   accessibilityLabel?: string;
   contentContainerStyle?: StyleProp<ViewStyle>;
-  /** Web-only opt-in: keeps operational sheets readable on desktop without changing mobile. */
+  /** Web tablet/desktop cap. Defaults to 720px; phone remains full-width. */
   desktopMaxWidth?: number;
   testID?: string;
 };
@@ -49,12 +49,12 @@ export function SheetSurface({
   footer,
   accessibilityLabel,
   contentContainerStyle,
-  desktopMaxWidth,
+  desktopMaxWidth = 720,
   testID,
 }: SheetSurfaceProps) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const desktopSheet = Platform.OS === 'web' && width >= 1000 && desktopMaxWidth;
+  const desktopSheet = Platform.OS === 'web' && width >= 768 && desktopMaxWidth > 0;
   const closeSafely = () => {
     if (!busy) onClose();
   };
@@ -81,6 +81,7 @@ export function SheetSurface({
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <View
+            testID={testID ? `${testID}-panel` : 'sheet-surface-panel'}
             style={[
               styles.sheet,
               desktopSheet ? { width: '100%', maxWidth: desktopMaxWidth, alignSelf: 'center', borderBottomLeftRadius: RenovaTheme.radius.xl, borderBottomRightRadius: RenovaTheme.radius.xl, marginBottom: RenovaTheme.spacing.xl } : null,

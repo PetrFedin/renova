@@ -1,6 +1,6 @@
 /** Сетка виджетов 2×N — без горизонтальной прокрутки */
-import type { ReactNode } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { useState, type ReactNode } from 'react';
+import { Platform, View, Text, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
 import { pushOsHrefWithReturn } from '@/lib/osTabNav';
 import { pushOsNav } from '@/lib/pushOsNav';
 import { RenovaTheme } from '@/constants/Theme';
@@ -57,6 +57,7 @@ function WidgetCell({
   if (onPress) {
     return (
       <Pressable
+        testID="os-widget-cell"
         style={s.cell}
         onPress={onPress}
         accessibilityRole="button"
@@ -71,14 +72,14 @@ function WidgetCell({
       </Pressable>
     );
   }
-  return <View style={s.cell}>{body}</View>;
+  return <View testID="os-widget-cell" style={s.cell}>{body}</View>;
 }
 
 /** Два виджета в строке — основной layout KPI */
 export function OsWidgetGrid({
   items,
   title,
-  columns = 2,
+  columns,
   returnTo,
   role,
   onWidgetPress,
@@ -92,17 +93,30 @@ export function OsWidgetGrid({
   /** Главная: sheet детализации вместо прямого перехода */
   onWidgetPress?: (it: OsWidget) => void;
 }) {
+  const { width } = useWindowDimensions();
+  const [containerWidth, setContainerWidth] = useState<number | null>(null);
   if (!items.length) return null;
-  const rows = chunk(items, columns);
+  const availableWidth = containerWidth ?? width;
+  const responsiveColumns = Platform.OS === 'web'
+    ? availableWidth >= 900 ? 4 : availableWidth >= 620 ? 3 : 2
+    : 2;
+  const resolvedColumns = Math.max(1, columns ?? responsiveColumns);
+  const rows = chunk(items, resolvedColumns);
   return (
-    <View style={s.wrap}>
+    <View
+      style={s.wrap}
+      onLayout={(event: { nativeEvent: { layout: { width: number } } }) => setContainerWidth(event.nativeEvent.layout.width)}
+      testID="os-widget-grid"
+    >
       {title ? <Text style={[homeTypography.zoneLabel, s.title]}>{title}</Text> : null}
       {rows.map((row, ri) => (
         <View key={ri} style={s.gridRow}>
           {row.map((it) => (
             <WidgetCell key={it.id} it={it} returnTo={returnTo} role={role} onWidgetPress={onWidgetPress} />
           ))}
-          {row.length < columns && <View style={[s.cell, s.cellGhost]} />}
+          {Array.from({ length: Math.max(0, resolvedColumns - row.length) }, (_, ghostIndex) => (
+            <View key={`ghost-${ghostIndex}`} style={[s.cell, s.cellGhost]} />
+          ))}
         </View>
       ))}
     </View>

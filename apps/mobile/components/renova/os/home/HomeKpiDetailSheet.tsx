@@ -1,5 +1,5 @@
 /** Sheet детализации KPI на главной — кратко, без ухода в раздел */
-import { Modal, View, Text, StyleSheet, Pressable } from 'react-native';
+import { Modal, Platform, View, Text, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { homeTypography } from '@/constants/homeTypography';
@@ -32,6 +32,8 @@ function stopPropagation(event: unknown): void {
 
 export function HomeKpiDetailSheet({ widgetId, snap, role, onClose }: Props) {
   const { pushNav } = useOsNavFromHere(role);
+  const { width } = useWindowDimensions();
+  const wideSheet = Platform.OS === 'web' && width >= 768;
   const { readOnly } = useRenova();
   if (!widgetId) return null;
 
@@ -41,7 +43,11 @@ export function HomeKpiDetailSheet({ widgetId, snap, role, onClose }: Props) {
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={s.backdrop} onPress={onClose}>
-        <Pressable style={s.sheet} onPress={stopPropagation}>
+        <Pressable
+          testID="home-kpi-detail-sheet"
+          style={[s.sheet, wideSheet && s.sheetWide]}
+          onPress={stopPropagation}
+        >
           <View style={s.handle} />
           <Text style={s.title}>{detail.title}</Text>
           {detail.lead ? <Text style={s.lead}>{detail.lead}</Text> : null}
@@ -102,6 +108,14 @@ const s = StyleSheet.create({
     padding: 20,
     paddingBottom: 28,
     maxHeight: '78%',
+  },
+  sheetWide: {
+    width: '100%',
+    maxWidth: 680,
+    alignSelf: 'center',
+    borderBottomLeftRadius: RenovaTheme.radius.xl,
+    borderBottomRightRadius: RenovaTheme.radius.xl,
+    marginBottom: RenovaTheme.spacing.xl,
   },
   handle: {
     alignSelf: 'center',
