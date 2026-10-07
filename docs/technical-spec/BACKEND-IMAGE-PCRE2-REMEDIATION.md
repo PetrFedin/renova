@@ -78,3 +78,15 @@ The exact #672 candidate must prove all existing image acceptance items plus:
 - the resulting image reports that exact installed package version;
 - refreshed Trivy data finds no fixed HIGH/CRITICAL issue that the candidate suppresses;
 - unrelated npm/Python advisory policy remains independently governed and is not bundled into this image repair.
+
+
+## 2026-10-07 follow-up base-layer findings
+
+Once the PCRE2 package became resolvable, the fail-closed Trivy gate reached the completed runtime image and exposed seven additional fixed HIGH/CRITICAL findings. All seven map to the same Debian package identity: `perl-base 5.36.0-7+deb12u3`, with the reviewed fixed Bookworm version `5.36.0-7+deb12u4`.
+
+The bounded repair therefore does not perform a floating distribution upgrade. The runtime image installs and asserts exactly:
+
+- `libpcre2-8-0=10.42-1+deb12u2`;
+- `perl-base=5.36.0-7+deb12u4`.
+
+Acceptance remains the existing Trivy fixed HIGH/CRITICAL gate. No vulnerability IDs are suppressed, no severity is downgraded, and any newly fixed finding still fails the image qualification.
