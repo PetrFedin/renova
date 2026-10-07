@@ -2256,3 +2256,122 @@ Treat these as design-system work, not isolated screen bugs.
 
 **Sequencing:** responsive tokens -> density/depth/motion -> shared states/charts -> spatial chrome -> field capture dock -> screenshot/performance qualification -> advanced renderer polish.
 
+## Mobile assurance wave — app/device integrity and transaction binding
+
+**Status:** RESEARCH / CONDITIONAL SECURITY HARDENING.
+
+Renova already has strong server-side identity/session, passkey roadmap, replay/idempotency and release signing controls. This wave adds device/app-origin assurance for sensitive native actions; it does not replace server ACL, session validation or business authority.
+
+Official platform references:
+
+- Apple DeviceCheck / App Attest: https://developer.apple.com/documentation/devicecheck
+- Google Play Integrity: https://developer.android.com/google/play/integrity
+
+### iOS App Attest — ADAPT
+
+For supported production iOS devices:
+
+`app instance -> App Attest key -> Apple attestation -> server key record -> per-sensitive-request assertion`
+
+Server stores only the minimum required attestation/key metadata.
+
+Candidate protected actions:
+
+- acceptance/rejection;
+- payment confirmation/approval;
+- signature initiation/confirmation;
+- team/access changes;
+- high-value export/share;
+- account credential/session recovery.
+
+App Attest is a risk/integrity signal. Apple explicitly notes that no single policy eliminates fraud and that App Attest does not definitively identify every compromised operating system.
+
+### Android Play Integrity — ADAPT
+
+For production Android distribution, evaluate standard Play Integrity requests around high-risk actions.
+
+Validate server-side:
+
+- request binding/hash/nonce;
+- recognised app identity/signing;
+- licensing/distribution signal where applicable;
+- device integrity tier;
+- optional risk signals only when justified.
+
+Use tiered enforcement rather than requiring the strongest device verdict for all users.
+
+### Transaction Binding — ADOPT
+
+Bind integrity assertions to the exact sensitive operation:
+
+- user/session;
+- project/resource;
+- action kind;
+- request/idempotency identity;
+- canonical payload hash;
+- nonce/challenge;
+- issued/expiry time.
+
+An assertion for one acceptance/payment/action cannot be replayed for another.
+
+### Step-up policy matrix — ADOPT
+
+Example tiers:
+
+- ordinary reads/search: no device attestation requirement;
+- routine low-risk writes: current auth/session/idempotency;
+- high-risk approvals/access/signatures: recent-auth/passkey + app/device integrity when supported;
+- suspicious/tampered environment: deny or require an alternative verified path depending on action/risk.
+
+Never silently tell the user an integrity failure means their phone is "hacked". Present a neutral security/retry/support path.
+
+### Graceful compatibility — REQUIRED
+
+- unsupported devices do not lose ordinary read access;
+- accessibility/emulator/development workflows use explicit non-production policy;
+- provider/platform outage cannot corrupt business state;
+- attestation failure is not treated as proof of fraud;
+- a manual/operator recovery route exists for legitimate users;
+- platform-specific signals never become project/business truth.
+
+### Assurance receipt — ADOPT
+
+For high-risk accepted actions, retain a bounded security receipt:
+
+- action/request ID;
+- recent-auth/step-up class;
+- attestation provider/type;
+- verdict class;
+- challenge/payload binding hash;
+- server verification result;
+- timestamp;
+- policy version.
+
+Do not retain raw platform responses longer than operational/security need.
+
+### Anti-abuse integration — ADAPT
+
+Combine integrity with existing server signals:
+
+- session/device history;
+- OTP/passkey events;
+- IP/rate-limit;
+- replay/idempotency;
+- unusual action velocity;
+- account recovery;
+- payment/provider risk.
+
+No opaque single device score should independently approve or reject a financial or acceptance decision.
+
+### Acceptance
+
+- assertion replay against another request fails;
+- copied assertion from another account/project fails;
+- unsupported device follows documented fallback;
+- platform outage cannot create a false business success;
+- app/device integrity cannot bypass ACL;
+- privacy-safe logs never contain reusable attestation secrets;
+- high-risk action audit resolves to the exact assurance policy/version.
+
+**Sequencing:** stable native distribution + passkey/step-up -> app/device attestation pilot -> transaction binding -> high-risk enforcement -> measured fraud/false-positive review.
+
