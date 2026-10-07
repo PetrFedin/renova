@@ -366,6 +366,98 @@ Show useful first frame before secondary layers.
 
 Critical project UI must remain usable if the renderer fails.
 
+## 15A. Search & Command Surface
+
+Renova already has a canonical `GlobalSearchBar` / `OsSearchModal` with local project stage/room/chat search, history, offline cache and chat-message search. Extend this surface; do not introduce a competing command palette.
+
+### Progressive capability
+
+**Level 1 — exact navigation**
+
+Existing + expanded entity search:
+
+- stage/work;
+- room/zone;
+- chat/message;
+- document;
+- issue;
+- RFI;
+- submittal;
+- material/asset;
+- payment where actor is authorised;
+- participant/provider;
+- Property Passport asset.
+
+**Level 2 — cited Deep Search**
+
+Natural-language project question returns:
+
+- concise answer;
+- exact cited sources;
+- freshness/version;
+- confidence/coverage;
+- direct open action.
+
+**Level 3 — commands**
+
+Safe navigation/product commands such as:
+
+- `Открыть ванную`;
+- `Показать просроченные замечания`;
+- `Найти договор`;
+- `Показать неоплаченные счета`;
+- `Подготовить RFI по этому узлу`.
+
+Commands that mutate state open a review/draft surface; search never silently executes a high-value mutation.
+
+### Desktop interaction
+
+Proposed:
+
+- `Cmd/Ctrl + K` focuses/opens the existing search surface;
+- keyboard up/down selection;
+- Enter opens;
+- Escape closes;
+- recent entities/queries are local/privacy-scoped;
+- category prefixes/filters are optional, not required syntax.
+
+### Mobile interaction
+
+- header search remains primary entry;
+- recent/suggested queries;
+- voice query optional;
+- result sheet grouped by type;
+- one-tap jump to canonical route;
+- offline exact search remains available where cached.
+
+### Ranking
+
+Priority order should combine:
+
+- exact lexical match;
+- current project/context;
+- recent authorised activity;
+- entity importance;
+- semantic ranking where enabled;
+- source freshness.
+
+Never rank a result the actor cannot open.
+
+### Current source gap
+
+Current `globalSearch.ts` indexes only stages, rooms and chat titles locally, while `GlobalSearchBar` additionally merges cached/server chat-message hits. This is a suitable base for expansion, not a replacement target.
+
+The current search UI also contains at least one local visual colour (`#eff6ff`) that should move to a semantic Theme token during the design-system implementation wave rather than being copied into new search/result components.
+
+### Acceptance
+
+- existing exact/offline search does not regress when semantic/AI services are unavailable;
+- one entity resolves to its canonical route;
+- restricted search result never leaks title/snippet/existence;
+- AI answer always links back to authorised sources;
+- proposed command is visibly distinct from executed state;
+- desktop keyboard and mobile touch paths are both qualified.
+
 ## 16. Chart semantics
 
 No decorative dashboards.
