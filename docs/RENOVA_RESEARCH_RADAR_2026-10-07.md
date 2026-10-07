@@ -439,3 +439,90 @@ The valuable Renova position is not generic ESG scoring. It is:
 `trusted product identity -> admitted declaration/source -> purchase/lot -> installed room/asset -> exact historical source -> maintenance/warranty -> update/recall/end-of-life impact`
 
 This strengthens procurement, Property Passport, enterprise portfolio management and future international compliance without making sustainability data mandatory for ordinary projects.
+
+
+## Property trust / transfer / institutional evidence priority
+
+| Candidate | UX | Moat | Revenue | Readiness | Risk | Priority | Decision |
+|---|---:|---:|---:|---:|---:|---:|---|
+| Stable internal Property identity + renovation episodes | 4 | 5 | 5 | 4 | 2 | 16 | ADOPT |
+| Verified Building History projection | 5 | 5 | 5 | 5 | 2 | 18 | ADOPT |
+| Transfer Dossier v2 + verification manifest | 5 | 5 | 5 | 5 | 2 | 18 | ADOPT |
+| Buyer due-diligence workspace | 5 | 4 | 4 | 4 | 2 | 15 | ADOPT |
+| Insurer evidence profile | 4 | 5 | 5 | 5 | 2 | 17 | ADOPT over existing restoration workspace |
+| Lender/valuer evidence profile | 3 | 4 | 5 | 3 | 3 | 12 | CONDITIONAL partner-led |
+| Recall/Safety source adapters | 5 | 5 | 5 | 4 | 3 | 16 | ADOPT after product identity |
+| Recall blast-radius portfolio view | 5 | 5 | 5 | 4 | 2 | 17 | Strong enterprise/property-manager value |
+| Signed Building History checkpoint | 4 | 5 | 5 | 4 | 2 | 16 | After issuer/status-list foundation |
+| W3C VC bounded property claims | 3 | 4 | 4 | 2 | 4 | 9 | Only for concrete verifier/interoperability demand |
+| MISMO/ACORD partner adapters | 2 | 4 | 5 | 2 | 4 | 9 | Only when a partner contract requires them |
+| EU renovation-passport/logbook field mapping | 3 | 4 | 4 | 3 | 3 | 11 | Jurisdiction-specific, not global default |
+
+### Why this wave matters
+
+The durable moat is not one renovation project and not a PDF certificate.
+
+It is:
+
+`property identity -> renovation episodes -> accepted work -> decisions -> installed products/assets -> commissioning -> maintenance/warranty -> loss/restoration -> recall/safety -> ownership transfer -> new renovation episode -> signed verification history`
+
+Each new legitimate lifecycle event makes the property graph more useful to:
+
+- owner;
+- future owner;
+- contractor/service provider;
+- property manager;
+- insurer/adjuster;
+- lender/valuer;
+- developer;
+- manufacturer/supplier;
+- institutional verifier.
+
+### Strongest commercial opportunities
+
+**Owner premium**
+- transfer/resale dossier;
+- verified building-history package;
+- long-term Property Passport continuity.
+
+**Property manager/developer**
+- portfolio building-history registry;
+- installed-product/recall impact;
+- maintenance/warranty continuity;
+- institutional verification.
+
+**Insurance**
+- pre-loss baseline;
+- restoration/claim evidence;
+- exact installed-product history;
+- verified repair completion.
+
+**Lender/valuation partner**
+- purpose-scoped owner-authorised renovation/condition evidence;
+- verification API;
+- historical renovation checkpoint.
+
+### Kill/defer criteria
+
+Defer or stop when:
+
+- the feature requires Renova to pretend it is a title/cadastral registry;
+- insurer/lender use requires Renova to make coverage, valuation or underwriting decisions;
+- partner interoperability can be solved by a bounded export adapter instead of reshaping the internal schema;
+- legal transferability/disclosure cannot be defined by jurisdiction/policy;
+- source identity is too weak to confirm product recall impact;
+- property history would expose previous-owner private data by default;
+- a static export already solves the user need and continuous history adds no measurable value.
+
+### Priority placement
+
+Move these into the post-admission execution thesis as follows:
+
+1. stable Property identity / episode boundary;
+2. Verified Building History projection over existing canonical domains;
+3. Transfer Dossier v2;
+4. Recall/Safety impact over Installed Asset / Product Provenance;
+5. Institutional disclosure + verification profiles;
+6. insurer profile first because Renova already has restoration evidence;
+7. lender/valuer adapters only with a real partner;
+8. signed history checkpoint once issuer/key/status infrastructure is qualified.
