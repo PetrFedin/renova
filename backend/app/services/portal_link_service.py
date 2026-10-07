@@ -42,12 +42,23 @@ async def issue_link(
     return link, token
 
 
+async def get_usable_link(db: AsyncSession, jti: str | None) -> PortalLink | None:
+    """Return an active registered portal link, including registry expiry checks."""
+    if not jti:
+        return None
+    link = await db.get(PortalLink, jti)
+    if link is None or link.revoked_at is not None:
+        return None
+    if link.expires_at <= utc_now():
+        return None
+    return link
+
+
 async def link_is_usable(db: AsyncSession, jti: str | None) -> bool:
-    """Токены без jti (выданы до реестра) живут до exp; с jti — только пока ссылка не отозвана."""
+    """Legacy read tokens without jti live to token exp; registered links must remain active."""
     if not jti:
         return True
-    link = await db.get(PortalLink, jti)
-    return link is not None and link.revoked_at is None
+    return await get_usable_link(db, jti) is not None
 
 
 async def list_active_links(db: AsyncSession, project_id: str, *, issued_by: str | None = None) -> list[PortalLink]:
