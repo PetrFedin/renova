@@ -2,7 +2,7 @@
 
 **Status:** ACTIVE / AUTHORITATIVE ANNEX
 **Parent dossier:** `docs/RENOVA-TECHNICAL-SPECIFICATION.md`
-**Effective from:** 2026-08-29. **Current reconciliation:** 2026-09-08.
+**Effective from:** 2026-08-29. **Current reconciliation:** 2026-10-07.
 
 This is mandatory specification governance, not optional process guidance. The prior full version is retained in `history/END-TO-END-GOVERNANCE-before-2026-09-08.md`; its old ordered next-step list is historical.
 
@@ -62,3 +62,26 @@ External main protection/staging #247/#233, observability #235/#283, managed DR 
 ## 8. Product-wide acceptance evidence
 
 G01–G10 in the full audit cover standalone repair, single contractor, independent contractors, unstable network, account changes, financial reconciliation, documents, handover/lifecycle, incidents and device/accessibility. Register requirement→entry/role→service/entity→test→run/artifact. Clearly label source-only inspection, bounded CI, new execution and external verification. A static screen inventory must not be reported as execution of every action.
+
+
+## 9. Security evidence admission
+
+Dependency and secret-scanning gates are authoritative evidence boundaries, not cosmetic checks.
+
+For dependency advisories:
+
+- patchable findings must be removed from the locked dependency graph without forced or incompatible framework downgrades;
+- an unfixed HIGH finding may be temporarily admitted only by exact advisory/package contract, explicit reachability analysis, bounded review date and tracked issue;
+- CRITICAL findings are never admitted by the JavaScript baseline;
+- a generated lockfile is not accepted until it is reproduced on GitHub-hosted CI and the exact candidate passes the relevant dependency/runtime checks.
+
+For secret scanning:
+
+- the current proposed tree requires zero Gitleaks findings;
+- merged history is scanned in full with redaction;
+- known historical non-production artifacts may be admitted only after scanning, by exact immutable fingerprint in `security/gitleaks-history-baseline.json`;
+- a history baseline entry must include commit/path/rule/line provenance, classification, reason and a review window no longer than 90 days;
+- any new/changed finding, stale baseline entry or expired review fails closed;
+- actual provider/production credentials are never baseline exceptions and require revoke/rotate/incident handling.
+
+This security admission state is a prerequisite for advancing Renova's portable execution evidence into issuer/signature/revocation/external-verifier interoperability. It does not upgrade external launch controls such as branch protection, provider credential drills or penetration testing.
