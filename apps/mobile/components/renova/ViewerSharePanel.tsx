@@ -293,7 +293,7 @@ const s = StyleSheet.create({
   phone: { fontSize: 13, color: RenovaTheme.colors.textMuted, marginTop: 2 },
   hint: { fontSize: 11, color: RenovaTheme.colors.textMuted, lineHeight: 15, marginBottom: 8 },
   empty: { fontSize: 14, color: RenovaTheme.colors.textMuted, marginBottom: 12 },
-  addBlock: { gap: 8 },
+  addBlock: { gap: 8, width: '100%', maxWidth: 520, alignSelf: 'flex-start' },
   addLabel: { fontSize: 13, fontWeight: '700', color: RenovaTheme.colors.text },
   or: { fontSize: 12, color: RenovaTheme.colors.textSubtle, textAlign: 'center' },
   remove: {

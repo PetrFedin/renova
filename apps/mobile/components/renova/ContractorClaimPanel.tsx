@@ -78,6 +78,9 @@ const s = StyleSheet.create({
   box: { gap: 8 },
   hint: { fontSize: 13, color: RenovaTheme.colors.textMuted },
   input: {
+    width: '100%',
+    maxWidth: 520,
+    alignSelf: 'flex-start',
     borderWidth: 1,
     borderColor: RenovaTheme.colors.border,
     borderRadius: RenovaTheme.radius.md,

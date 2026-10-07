@@ -60,6 +60,9 @@ export const profileScreenStyles = StyleSheet.create({
     marginTop: 4,
   },
   input: {
+    width: '100%',
+    maxWidth: 620,
+    alignSelf: 'flex-start',
     borderWidth: 1,
     borderColor: RenovaTheme.colors.border,
     borderRadius: RenovaTheme.radius.md,
