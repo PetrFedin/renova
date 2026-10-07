@@ -31,6 +31,8 @@ import {
 import { writeResultMessage } from '@/lib/offlineResultMessage';
 import { CreateIssueForm } from '@/components/renova/quality/CreateIssueForm';
 import type { NewIssueBody } from '@/lib/domain/newIssueForm';
+import { pickImageForDocumentUpload } from '@/lib/documentUploadPick';
+import { uploadMediaBlob } from '@/lib/mediaUpload';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://127.0.0.1:8100';
 
@@ -302,13 +304,51 @@ export function QualityControlScreen() {
   const runWarrantyAction = (issue: ProjectIssue, action: WarrantyAction, comment?: string) => {
     if (readOnly || !user || !activeProject) return;
     void (async () => {
+      let evidencePhotoKey: string | undefined;
+      if (action.kind === 'fixed') {
+        try {
+          const picked = await pickImageForDocumentUpload();
+          if (!picked) {
+            showActionConfirm({
+              title: 'Фото результата обязательно',
+              message: 'Статус не изменён. Приложите фото выполненного гарантийного исправления.',
+              primaryLabel: 'Понятно',
+              onPrimary: () => undefined,
+            });
+            return;
+          }
+          const response = await fetch(picked.uri);
+          if (!response.ok) throw new Error(`evidence_read_failed:${response.status}`);
+          const blob = await response.blob();
+          evidencePhotoKey = await uploadMediaBlob(
+            user.id,
+            activeProject.id,
+            blob,
+            picked.type || blob.type || 'image/jpeg',
+          );
+        } catch (error) {
+          reportError('QualityControl.warrantyEvidence', error);
+          showActionConfirm({
+            title: 'Не удалось приложить фото',
+            message: 'Гарантийное обращение осталось без изменений. Повторите загрузку.',
+            primaryLabel: 'Понятно',
+            onPrimary: () => undefined,
+          });
+          return;
+        }
+      }
+
       const changed = await runMutation(
         `${issue.id}:warranty-${action.kind}`,
         'Гарантийное обращение',
         () => {
           if (action.kind === 'close') return api.closeWarrantyClaim(user.id, activeProject.id, issue.id);
           if (action.kind === 'reopen') return api.reopenWarrantyClaim(user.id, activeProject.id, issue.id, { comment });
-          return api.respondWarrantyClaim(user.id, activeProject.id, issue.id, { decision: action.kind, comment });
+          return api.respondWarrantyClaim(user.id, activeProject.id, issue.id, {
+            decision: action.kind,
+            comment,
+            ...(evidencePhotoKey ? { evidence_photo_key: evidencePhotoKey } : {}),
+          });
         },
       );
       if (changed && action.kind === 'close') alertWarrantyClosed('customer');
