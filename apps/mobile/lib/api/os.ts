@@ -75,9 +75,9 @@ export const osApi = {
     }
   },
   /** Polled from several independent widgets (home digest, control screens, closeout) — общий TTL-кэш вместо параллельного опроса каждым (#432). */
-  listWarrantyClaims: (userId: string, projectId: string) => cachedGet<{ items: { id: string; title: string; status: string; created_at?: string; overdue?: boolean }[]; open: number; overdue?: number; post_closeout_allowed?: boolean }>(`/api/v1/projects/${projectId}/warranty-claims`, userId),
+  listWarrantyClaims: (userId: string, projectId: string) => cachedGet<{ items: { id: string; title: string; status: string; created_at?: string; overdue?: boolean; photo_key?: string | null; photo_url?: string | null }[]; open: number; overdue?: number; post_closeout_allowed?: boolean }>(`/api/v1/projects/${projectId}/warranty-claims`, userId),
   closeWarrantyClaim: async (userId: string, projectId: string, issueId: string) => { try { const result = await req<{ ok: boolean }>(`/api/v1/projects/${projectId}/warranty-claims/${issueId}/close`, { method: 'POST' }, userId); await invalidateCachedGet(`/api/v1/projects/${projectId}/warranty-claims`, userId); return result; } catch (e) { if (!isQueueableWriteError(e)) throw e; const { enqueue } = await import('@/lib/offlineQueue'); await enqueue({ path: `/api/v1/projects/${projectId}/warranty-claims/${issueId}/close`, method: 'POST', body: '', userId }); throw new Error('offline_queued'); } },
-  respondWarrantyClaim: async (userId: string, projectId: string, issueId: string, body: { decision: 'accept' | 'reject' | 'fixed'; comment?: string }) => {
+  respondWarrantyClaim: async (userId: string, projectId: string, issueId: string, body: { decision: 'accept' | 'reject' | 'fixed'; comment?: string; evidence_photo_key?: string }) => {
     const path = `/api/v1/projects/${projectId}/warranty-claims/${issueId}/respond`;
     const serialized = JSON.stringify(body);
     try {
