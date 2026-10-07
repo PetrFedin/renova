@@ -526,3 +526,30 @@ Move these into the post-admission execution thesis as follows:
 6. insurer profile first because Renova already has restoration evidence;
 7. lender/valuer adapters only with a real partner;
 8. signed history checkpoint once issuer/key/status infrastructure is qualified.
+
+
+## Property resilience / emergency information priority
+
+| Candidate | UX | Moat | Revenue | Readiness | Risk | Priority | Decision |
+|---|---:|---:|---:|---:|---:|---:|---|
+| Emergency Property Card | 5 | 4 | 3 | 4 | 2 | 14 | ADOPT |
+| Verified utility shut-off points | 5 | 4 | 4 | 4 | 3 | 14 | ADOPT with safety warnings |
+| Emergency plan/spatial overlay | 4 | 4 | 4 | 4 | 3 | 13 | ADAPT |
+| Short-lived technician emergency share | 5 | 4 | 4 | 4 | 3 | 14 | ADOPT/CONDITIONAL |
+| Minimal offline emergency projection | 5 | 4 | 3 | 3 | 4 | 11 | Only with protected local storage |
+| Property-manager readiness view | 4 | 4 | 5 | 3 | 2 | 14 | CONDITIONAL enterprise |
+| Automated utility control | 1 | 1 | 1 | 1 | 5 | -1 | REJECT |
+
+The value is fast access to **verified property context during an incident**, not remote life-safety control.
+
+The strongest integration is:
+
+`Verified Building History -> current utility/equipment facts -> Emergency Property Card -> incident capture -> service/insurance workflow -> history update`
+
+### Guardrails
+
+- never imply a checklist proves the property is safe;
+- never auto-operate gas/water/electrical controls;
+- never transfer previous-owner private contacts by default;
+- every emergency fact exposes last verified/source state;
+- official emergency-service/utility guidance overrides Renova content.
