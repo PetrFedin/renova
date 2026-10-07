@@ -4913,3 +4913,686 @@ Renova must visibly state:
 
 **Sequencing:** Property identity/history -> utility/equipment references -> Emergency Property Card -> plan overlay -> short-lived share/offline projection -> portfolio readiness view.
 
+## Property Trust Matrix wave — explainable trust without a magic score
+
+**Status:** PLANNED / HIGH-VALUE TRUST UX.
+
+Do **not** introduce another opaque single-number "property score".
+
+Renova already contains local operational/project health scores. Property trust is a different concept: it must describe **how well the property's history, evidence and current obligations are documented for a declared purpose**.
+
+The core product is therefore:
+
+`Property Trust Matrix -> deterministic Trust Posture -> dimension drill-down -> exact requirement -> exact source/evidence`
+
+External conceptual references:
+
+- EU Digital Building Logbook / renovation-passport guidance treats building logbooks as repositories for relevant building information that facilitate transparency, trust, informed decision-making and information sharing.
+- buildingSMART IDS defines machine-readable information requirements that can be automatically checked.
+- general data-quality frameworks distinguish dimensions such as completeness, consistency, timeliness, validity and accuracy and emphasise fitness-for-purpose rather than one universal quality number.
+
+### Product principle — no universal composite score
+
+Default UI must **not** show:
+
+`Property Trust = 84/100`
+
+A weighted average could hide a critical unresolved recall, missing transfer consent or unverified installed-system history behind strong scores elsewhere.
+
+Instead show independent dimensions plus an overall deterministic posture.
+
+### Core matrix dimensions — ADOPT
+
+Universal candidate dimensions:
+
+1. **History Coverage**
+2. **Evidence Completeness**
+3. **Maintenance Continuity**
+4. **Source Freshness**
+5. **Unresolved Risk & Obligations**
+6. **Transfer Readiness**
+
+Supporting trust dimensions/metadata:
+
+7. **Provenance Strength / Verified Coverage**
+8. **Verification Portability / Artifact Status**
+
+The supporting dimensions may be shown separately rather than forced into every user-facing matrix.
+
+### Requirement-policy basis — REQUIRED
+
+Every scored dimension resolves to a versioned requirement policy.
+
+A requirement contains:
+
+- requirement_id;
+- profile/purpose;
+- applicability rule;
+- importance/weight where needed;
+- accepted evidence/source classes;
+- freshness rule where applicable;
+- blocker flag/severity;
+- jurisdiction/organisation policy scope;
+- effective_from / effective_to;
+- policy version.
+
+Examples:
+
+- transfer profile requires a current ownership/control-authorisation receipt;
+- an installed boiler may require commissioning and maintenance facts;
+- a room with no maintainable assets has no maintenance requirement;
+- an immutable historical acceptance record does not become stale merely because it is old.
+
+### Applicable vs missing — REQUIRED
+
+Do not treat "not applicable" as success and do not treat "unknown" as zero.
+
+Every requirement result is one of:
+
+- satisfied;
+- partially_satisfied;
+- missing;
+- stale;
+- conflicted;
+- blocked;
+- not_applicable;
+- unknown / insufficient_data.
+
+Only **applicable** requirements enter a dimension denominator.
+
+### Coverage gate — REQUIRED
+
+Before displaying a numeric dimension percentage, calculate:
+
+`coverage = evaluated_applicable_requirements / applicable_requirements`
+
+If coverage is below the policy minimum, show:
+
+`Недостаточно данных`
+
+instead of a misleading number.
+
+A profile may define a minimum coverage threshold, but the threshold is part of the visible/versioned policy rather than hard-coded marketing logic.
+
+### General dimension calculation pattern
+
+Where a percentage is meaningful:
+
+`dimension_percent = satisfied_requirement_weight / applicable_requirement_weight * 100`
+
+Where:
+
+- only applicable requirements enter the denominator;
+- weights are declared in the policy;
+- no hidden ML probability is used;
+- partial satisfaction has an explicit policy factor if permitted;
+- blocker semantics remain separate and cannot be averaged away.
+
+Every UI score exposes:
+
+- numerator;
+- denominator;
+- policy/version;
+- coverage;
+- blockers;
+- source drill-down.
+
+### 1. History Coverage — ADOPT
+
+Question:
+
+> "How much of the property's relevant lifecycle is actually documented?"
+
+Possible requirement groups:
+
+- renovation episodes;
+- major accepted works;
+- major decisions/changes;
+- installed systems/assets;
+- commissioning;
+- restoration/loss episodes;
+- ownership/control transfer episodes;
+- warranty/service events;
+- major replacement events.
+
+Illustrative calculation:
+
+`documented_applicable_history_requirements / applicable_history_requirements * 100`
+
+Important:
+
+- Renova does not invent an event merely because a category is empty;
+- absence may mean "not applicable", "no known event" or "missing history";
+- those states must remain distinct.
+
+### 2. Evidence Completeness — ADOPT
+
+Question:
+
+> "Do the documented facts have the evidence required by the applicable policy?"
+
+Reuse the governed evidence-requirement model.
+
+Illustrative calculation:
+
+`satisfied_required_evidence_items / applicable_required_evidence_items * 100`
+
+Possible evidence:
+
+- accepted photo/video;
+- inspection result;
+- source document;
+- installation/commissioning record;
+- material/product lot;
+- signature/approval;
+- as-built drawing;
+- warranty/source reference.
+
+Optional decorative media never increases required completeness.
+
+### 3. Maintenance Continuity — ADOPT
+
+Question:
+
+> "Are maintainable installed assets being carried forward through their known maintenance/service obligations?"
+
+Possible statuses:
+
+- not yet due;
+- completed on time;
+- completed late;
+- due soon;
+- overdue;
+- unknown schedule;
+- source unavailable;
+- not applicable.
+
+Illustrative eligible ratio:
+
+`satisfied_or_not_yet_due_maintenance_obligations / applicable_known_maintenance_obligations * 100`
+
+If the property has no applicable maintainable assets, result is **N/A**, not 100.
+
+A manufacturer-recommended maintenance interval must retain its source/version.
+
+### 4. Source Freshness — ADOPT
+
+Question:
+
+> "Are time-sensitive facts still current enough for this purpose?"
+
+Only time-sensitive source classes participate.
+
+Examples:
+
+- current warranty status;
+- open recall/safety status;
+- service-provider qualification where relevant;
+- official certificate with expiry;
+- transfer/disclosure consent;
+- current maintenance state;
+- external product/declaration status.
+
+Historical immutable facts such as an accepted 2024 installation event do not become "stale" simply because years passed.
+
+Each time-sensitive requirement defines a review/expiry rule.
+
+Possible result:
+
+`current_time_sensitive_requirement_weight / applicable_time_sensitive_requirement_weight * 100`
+
+Stale source must show its last checked/verified timestamp.
+
+### 5. Unresolved Risk & Obligations — ADOPT AS STATUS, NOT AVERAGE
+
+Do **not** produce a cheerful percentage by subtracting arbitrary risk points.
+
+Expose:
+
+- critical unresolved;
+- high;
+- medium;
+- overdue commitment;
+- open defect/rework;
+- open warranty/service issue;
+- confirmed recall/safety action;
+- unreviewed recall candidate;
+- missing critical evidence;
+- conflicting effective decisions/sources.
+
+Default dimension status is derived from the **worst active applicable severity**, plus counts and age.
+
+Example:
+
+- `BLOCKED` — at least one profile-blocking critical item;
+- `ACTION_REQUIRED` — unresolved high/overdue mandatory item;
+- `ATTENTION` — medium/non-blocking issue;
+- `CLEAR_FOR_DECLARED_SCOPE` — no unresolved applicable blocker known.
+
+"Clear" means no known blocker in the declared/evaluated scope; it does not certify that the property is safe or defect-free.
+
+### 6. Transfer Readiness — ADOPT
+
+Question:
+
+> "Can the declared transfer/due-diligence profile be issued without missing mandatory information/consent?"
+
+Requirements depend on profile/jurisdiction.
+
+Candidate requirements:
+
+- current property/control authority for disclosure;
+- transfer-approved building-history projection;
+- current open issue/warranty disclosure;
+- transferable installed-asset data;
+- dossier manifest;
+- privacy/redaction review;
+- source/current-status check;
+- explicit exclusions;
+- verification artifact/status;
+- required jurisdiction-specific records where configured.
+
+Illustrative:
+
+`satisfied_mandatory_transfer_requirements / applicable_mandatory_transfer_requirements * 100`
+
+Any mandatory blocker forces posture `NOT_READY` regardless of percentage.
+
+### 7. Provenance Strength / Verified Coverage — ADOPT
+
+Question:
+
+> "How much of the relevant matrix is supported by stronger source classes rather than declarations?"
+
+Show distribution rather than one secret weighting:
+
+- Renova accepted/observed;
+- external official;
+- qualified third-party;
+- manufacturer/supplier declared;
+- contractor declared;
+- owner provided;
+- derived;
+- candidate/unverified.
+
+Example:
+
+`verified_or_official_requirement_weight / satisfied_applicable_requirement_weight * 100`
+
+This prevents "100% complete" owner-entered data from looking equivalent to 100% independently supported evidence.
+
+Do not claim that one authority class is universally superior for every fact; accepted classes are policy/purpose specific.
+
+### 8. Verification Portability — ADOPT/CONDITIONAL
+
+Question:
+
+> "Can a third party verify the relevant issued artifact/current status without broad project access?"
+
+Possible checks:
+
+- current issued Property Trust artifact;
+- canonical checksum/digest;
+- issuer identity;
+- signature verified;
+- key/status valid;
+- artifact not revoked/superseded;
+- verification endpoint available;
+- profile schema supported.
+
+Before issuer/key/status infrastructure is qualified, show:
+
+`NOT YET PORTABLY VERIFIED`
+
+rather than simulating trust.
+
+### Trust Posture — ADOPT
+
+Overall posture is **deterministic**, not a weighted average.
+
+Candidate states:
+
+- `INSUFFICIENT_DATA`
+- `INCOMPLETE`
+- `ACTION_REQUIRED`
+- `TRANSFER_READY_FOR_DECLARED_PROFILE`
+- `VERIFIED_FOR_DECLARED_PROFILE`
+
+Rules:
+
+1. if mandatory coverage is below minimum -> `INSUFFICIENT_DATA`;
+2. if a profile-blocking critical item exists -> `ACTION_REQUIRED`;
+3. if mandatory profile requirements are missing -> `INCOMPLETE`;
+4. if transfer requirements are complete but no portable verification is required/available -> `TRANSFER_READY_FOR_DECLARED_PROFILE`;
+5. if the declared profile requires portable verification and all issuer/status requirements pass -> `VERIFIED_FOR_DECLARED_PROFILE`.
+
+A stronger dimension cannot compensate for a failed mandatory gate.
+
+### Purpose-specific matrix profiles — ADOPT
+
+Do not show the exact same matrix to every party.
+
+**Owner**
+- history;
+- evidence;
+- maintenance;
+- risks;
+- next actions.
+
+**Buyer / due diligence**
+- history coverage;
+- evidence/provenance;
+- unresolved issues;
+- transfer readiness;
+- current source status.
+
+**Property manager**
+- maintenance continuity;
+- warranty/service;
+- emergency information freshness;
+- recall/safety;
+- portfolio gaps.
+
+**Insurer / adjuster**
+- pre-loss history coverage;
+- installed asset/product provenance;
+- maintenance/service;
+- loss/restoration evidence;
+- verification coverage.
+
+**Lender / valuer**
+- renovation history;
+- evidence/source coverage;
+- current major systems/assets;
+- official certificate/passport references;
+- transfer profile completeness.
+
+No profile may turn Renova into an underwriting, appraisal or credit-scoring engine.
+
+### Evidence age is not source quality — REQUIRED
+
+Keep separate:
+
+- source authority/provenance;
+- source freshness;
+- fact age.
+
+An old historical acceptance can remain authoritative/current as a historical fact.
+
+A recently uploaded owner declaration can be fresh but weakly verified.
+
+### Conflict handling — REQUIRED
+
+When sources conflict:
+
+- do not silently choose whichever improves the score;
+- mark the requirement `conflicted`;
+- expose both sources/version/timestamps;
+- route to review;
+- exclude it from "verified" coverage until resolved according to policy.
+
+### Unknown-property-history penalty — EXPLICIT
+
+Do not infer that a property with little history is bad.
+
+Show:
+
+`History coverage: 24% — insufficient documented history`
+
+not:
+
+`Property trust: 24/100 — poor property`
+
+Missing evidence is an information limitation, not proof of bad physical condition.
+
+### Snapshot model — ADOPT
+
+Every computed matrix is a versioned snapshot:
+
+- property_id;
+- profile/purpose;
+- policy version;
+- source cutoff;
+- computed_at;
+- matrix dimensions;
+- coverage;
+- requirement results;
+- blockers;
+- current/superseded state;
+- optional signed artifact reference.
+
+A historical matrix snapshot remains reproducible after later property events.
+
+### Recompute triggers — ADOPT
+
+Candidate triggers:
+
+- accepted work/inspection;
+- closeout;
+- installed asset/material change;
+- commissioning;
+- warranty/service/maintenance;
+- new/superseded decision;
+- product recall/safety source update;
+- source admission/revocation;
+- transfer dossier issuance;
+- ownership/control transfer;
+- restoration/loss completion;
+- policy/profile version change.
+
+Use outbox/event-driven recomputation or invalidation; do not make every UI render recalculate the entire property history.
+
+### Explainability / drill-down — REQUIRED
+
+Every dimension row opens:
+
+`dimension -> requirement groups -> exact requirement -> status -> why -> source/evidence -> next action`
+
+Example:
+
+`Maintenance continuity 67%`
+-> 3 applicable known obligations
+-> 2 satisfied/not-yet-due
+-> 1 overdue
+-> boiler annual service
+-> source: manufacturer maintenance document v3
+-> last service: 2025-08-12
+-> next action: create service request
+
+No score exists without this path.
+
+### Trust improvement actions — ADOPT
+
+Matrix is actionable.
+
+Examples:
+
+- "Add commissioning record";
+- "Resolve conflicting installed-model identity";
+- "Review stale warranty status";
+- "Complete open inspection evidence";
+- "Confirm recall candidate";
+- "Re-verify emergency shut-off location";
+- "Publish current transfer dossier";
+- "Request official certificate/passport reference".
+
+Renova should explain **how to improve information trust**, not gamify users into uploading meaningless documents.
+
+### No gamification — REQUIRED
+
+Reject:
+
+- confetti for score improvement;
+- competitive homeowner rankings;
+- contractor pressure to maximise arbitrary trust points;
+- incentives that reward quantity of uploaded evidence over required evidence quality.
+
+### No underwriting / market-value inference — REQUIRED
+
+Property Trust Matrix must not be represented as:
+
+- property value;
+- resale price;
+- mortgage suitability;
+- insurance eligibility;
+- structural safety certification;
+- credit score;
+- legal title quality.
+
+Institutions may use verified underlying data under their own policies; Renova exposes evidence, coverage and status.
+
+### Visual contract — ADOPT
+
+Avoid one giant circular score.
+
+Preferred desktop/monitor view:
+
+`Trust Posture + as-of/policy -> 6 dimension rows -> blockers/next actions -> evidence drill-down`
+
+Each dimension row shows:
+
+- label;
+- deterministic status;
+- percentage only where valid;
+- coverage;
+- data freshness where relevant;
+- top blocker;
+- "why" / drill-down.
+
+Phone:
+
+- posture;
+- blockers;
+- ordered dimension cards;
+- next action;
+- source detail.
+
+A matrix/bar view is preferable to a radar/spider chart where precise comparison matters.
+
+### Colour semantics — REQUIRED
+
+Use text/icon/status plus colour.
+
+Suggested semantic states:
+
+- verified/current;
+- ready;
+- attention;
+- action required;
+- insufficient data;
+- not applicable.
+
+No red/green alone.
+
+### Institutional comparison — ADOPT CAREFULLY
+
+For a portfolio/property manager, compare:
+
+- coverage;
+- maintenance continuity;
+- open critical obligations;
+- transfer readiness;
+- source freshness.
+
+Do **not** rank properties from "best" to "worst" using a hidden composite.
+
+Portfolio view should answer:
+
+> "Which properties need action/data review?"
+
+rather than:
+
+> "Which building has the highest trust score?"
+
+### Data-quality inspiration — REFERENCE
+
+General data-quality dimensions such as completeness, consistency, timeliness, validity and accuracy are useful references.
+
+Renova maps them into property-specific operational dimensions rather than copying them directly.
+
+Examples:
+
+- completeness -> History Coverage / Evidence Completeness;
+- timeliness -> Source Freshness;
+- consistency -> source-conflict detection;
+- validity -> requirement/schema rules;
+- accuracy -> only where reality can be independently checked;
+- uniqueness -> stable property/asset/source identity controls.
+
+### IDS / machine-checkable requirements — ADAPT
+
+Where IFC/openBIM data is involved, buildingSMART IDS can express machine-checkable information requirements.
+
+Renova may reuse IDS results as one source of evidence completeness for BIM/asset information.
+
+IDS compliance is not the Property Trust Matrix itself.
+
+### Commercial packaging — ADOPT
+
+**Core owner**
+- basic matrix;
+- blockers;
+- Property Passport readiness.
+
+**Property Trust / Transfer premium**
+- Transfer Readiness;
+- Transfer Dossier v2;
+- signed/current verification artifact when infrastructure exists;
+- buyer due-diligence workspace.
+
+**Enterprise**
+- portfolio matrix;
+- policy profiles;
+- recall/safety portfolio gaps;
+- maintenance/source freshness;
+- institutional verification/API.
+
+**Insurer/lender partner**
+- purpose-specific evidence/coverage profile;
+- no universal Renova composite score exported as underwriting input.
+
+### Metrics for the matrix itself — ADOPT
+
+Measure:
+
+- percent of active properties with sufficient matrix coverage;
+- median time to resolve critical information blocker;
+- transfer-dossier preparation time;
+- percentage of requirements with stronger source/provenance;
+- stale-source resolution time;
+- recall-candidate confirmation time;
+- matrix drill-down/source-open rate;
+- transfer due-diligence completion.
+
+Do not optimise for average percentage alone.
+
+### Anti-gaming checks — REQUIRED
+
+Detect/guard against:
+
+- duplicate evidence uploaded to satisfy multiple independent requirements where not valid;
+- self-declared document replacing required inspection;
+- stale source re-uploaded as "new";
+- evidence from wrong room/project/asset;
+- revoked/superseded source counted as current;
+- excessive optional uploads inflating completeness;
+- manual status change without required source.
+
+### Acceptance
+
+- no default universal weighted property score;
+- each numeric dimension has explicit numerator/denominator/policy;
+- insufficient coverage suppresses misleading percentages;
+- not applicable is never counted as success;
+- critical blockers cannot be averaged away;
+- old historical facts are not penalised merely for age;
+- provenance and freshness are separate;
+- source conflicts remain visible;
+- buyer/insurer/lender profiles cannot infer credit/value/coverage decisions from a Renova score;
+- every matrix result drills down to canonical source/evidence;
+- snapshots are reproducible/versioned;
+- matrix works without AI;
+- signed verification is optional until issuer/status infrastructure is real.
+
+**Sequencing:** requirement-policy engine -> History/Evidence/Freshness dimensions -> risk/obligation status -> Transfer Readiness -> provenance coverage -> snapshot/UI -> institutional profiles -> signed verification.
+
