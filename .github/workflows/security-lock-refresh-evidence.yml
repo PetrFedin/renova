@@ -1,0 +1,79 @@
+name: Security lock refresh evidence
+
+on:
+  push:
+    branches:
+      - ops/security-lock-refresh-2026-10-07
+    paths:
+      - .github/workflows/security-lock-refresh-evidence.yml
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.2"
+          cache: npm
+      - name: Refresh npm lock within declared ranges without force
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp package-lock.json "$RUNNER_TEMP/package-lock.before.json"
+          set +e
+          npm audit fix --package-lock-only --ignore-scripts --omit=dev
+          audit_fix_rc=$?
+          set -e
+          echo "npm audit fix exit=$audit_fix_rc"
+          git diff -- package.json apps/*/package.json packages/*/package.json
+          test -z "$(git diff --name-only -- package.json apps/*/package.json packages/*/package.json)"
+          npm audit --omit=dev --json > "$RUNNER_TEMP/npm-audit-after.json" || true
+          cp package-lock.json "$RUNNER_TEMP/package-lock.json"
+          git diff -- package-lock.json > "$RUNNER_TEMP/package-lock.diff"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.13"
+      - name: Refresh Mako lock only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "poetry==2.4.1"
+          cp backend/poetry.lock "$RUNNER_TEMP/poetry-lock.before"
+          (
+            cd backend
+            poetry update mako --lock
+          )
+          test -z "$(git diff --name-only -- backend/pyproject.toml)"
+          cp backend/poetry.lock "$RUNNER_TEMP/poetry.lock"
+          git diff -- backend/poetry.lock > "$RUNNER_TEMP/poetry-lock.diff"
+      - name: Summarize resulting versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE' > "$RUNNER_TEMP/version-summary.json"
+          const fs = require('fs');
+          const lock = JSON.parse(fs.readFileSync('package-lock.json','utf8'));
+          const p = lock.packages || {};
+          const names = ['brace-expansion','braces','compression','node-forge','shell-quote','source-map-js'];
+          const result = Object.fromEntries(names.map(n => [n, p['node_modules/' + n]?.version ?? null]));
+          console.log(JSON.stringify(result, null, 2));
+          NODE
+          awk '/name = "mako"/{f=1} f&&/version = /{print; exit}' backend/poetry.lock >> "$RUNNER_TEMP/version-summary.json"
+          cat "$RUNNER_TEMP/version-summary.json"
+      - name: Upload lock refresh evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-lock-refresh-evidence
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/package-lock.json
+            ${{ runner.temp }}/package-lock.diff
+            ${{ runner.temp }}/npm-audit-after.json
+            ${{ runner.temp }}/poetry.lock
+            ${{ runner.temp }}/poetry-lock.diff
+            ${{ runner.temp }}/version-summary.json
