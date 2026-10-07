@@ -12,7 +12,7 @@
 
 | Fact | Current value |
 |---|---|
-| Alembic head | `x09selectionqty01` |
+| Alembic head | `x10executionproof01` |
 | Mobile source version | `0.3.7` |
 | iOS buildNumber / Android versionCode | `3` / `3` |
 | Bundle id (iOS) | `ru.renova.app` |
