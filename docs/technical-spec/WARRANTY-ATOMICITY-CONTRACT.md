@@ -55,6 +55,23 @@ PR #295 was qualified on exact head `22dd1f2d379f3d2f26278b58b03a1ca4f022da3c` b
 - Exact-head CodeQL, Security operations, Backend image, technical-spec, payment and other triggered integrity workflows reported success.
 - PR #295 squash-merged as `9fed24c1b59d767daef4d6395fd01cb303c838e3`; #266 closed automatically.
 
+## GP4 evidence-backed resolution extension
+
+**Status:** IMPLEMENTED / exact-head CI pending in the evidence-close change.
+
+Resolution now follows a fail-closed evidence contract:
+
+`contractor response → project-scoped media upload → physical storage read proof → claim fixed → customer verification → close → linked warranty document archived`.
+
+- `fixed` requires a canonical `project-media/{project_id}/…` key and the referenced bytes must exist in configured storage.
+- foreign-project/unscoped evidence is rejected; storage unavailability is a retryable 503 and does not change claim state.
+- historical `fixed` claims without evidence can be backfilled by repeating `fixed` with evidence.
+- once evidence is fixed on the current claim cycle it cannot be silently replaced; a new correction requires reopen first.
+- customer close is allowed only from `fixed` with evidence, or from `rejected` when the contractor has already supplied the mandatory rejection reason.
+- `open` / `in_progress` claims cannot be prematurely closed from the mobile UI or backend.
+
+The current `ProjectIssue.photo_key` is the evidence pointer for the active resolution cycle. It is not yet an immutable multi-version warranty evidence ledger; that stronger history is a prerequisite for a future Verified Execution Record / Property Passport and remains outside this contour.
+
 ## Residual boundary
 
 This contract proves repository/CI correctness for the warranty create contour only. It does **not** claim external storage/provider/staging/production readiness. S3 ambiguous-write/orphan recovery remains #238. The next product-integrity priority is #265 manual payment evidence lifecycle.
