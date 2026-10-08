@@ -17,6 +17,7 @@ const ACTION_LABEL: Record<string, string> = {
   resolve_issue: 'Устранить замечание',
   verify_remediation: 'Проверить исправление',
   decide_work_acceptance: 'Принять решение по работе',
+  resubmit_stage: 'Повторно сдать этап на приёмку',
 };
 
 function evidenceLabel(item: ResponsibilityItem): string {
