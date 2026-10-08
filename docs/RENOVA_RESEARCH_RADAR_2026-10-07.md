@@ -817,3 +817,79 @@ Reject or defer if:
 - predictive model lacks leakage-safe backtest/calibration;
 - manufacturer/provider comparison ignores case mix/evidence quality;
 - predicted or scenario CapEx is mixed with committed CapEx.
+
+
+---
+
+## Capital Planning & Asset Strategy Engine priority
+
+| Candidate | UX | Moat | Revenue | Readiness | Risk | Priority | Decision |
+|---|---:|---:|---:|---:|---:|---:|---|
+| CapEx state / capital item model | 5 | 5 | 5 | 5 | 1 | 19 | ADOPT first |
+| 5-year deterministic CapEx plan | 5 | 5 | 5 | 5 | 1 | 19 | ADOPT |
+| Inflation / indexation / FX semantics | 4 | 4 | 5 | 4 | 2 | 15 | ADOPT |
+| Procurement lead-time model | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT |
+| Provider / supplier capacity feasibility | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT |
+| Business disruption calendar | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT |
+| Replacement waves | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT |
+| Approval baseline + actual-vs-plan | 5 | 5 | 5 | 5 | 1 | 19 | ADOPT |
+| Funding gap / financing scenarios | 4 | 5 | 5 | 3 | 3 | 14 | ADOPT bounded |
+| 10-year asset strategy | 5 | 5 | 5 | 3 | 2 | 16 | ADOPT after 5-year baseline |
+| Stress testing | 4 | 4 | 5 | 3 | 2 | 14 | ADOPT later |
+| Stochastic / predictive capital scenarios | 4 | 5 | 5 | 2 | 4 | 12 | DEFER |
+| Opaque AI capital allocator | 1 | 1 | 2 | 2 | 5 | 1 | REJECT |
+
+### Core rule
+
+Capital Strategy must preserve the difference between **committed, approved, deterministic planned, scenario and predictive** capital.
+
+Preferred progression:
+
+`lifecycle evidence -> mandatory capital need -> feasible 5-year plan -> approved frozen baseline -> execution -> actual-vs-plan -> longer-horizon strategy`.
+
+### Strongest differentiator
+
+The moat is not generic budgeting. It is the evidence-linked chain:
+
+`exact asset -> lifecycle history -> actual cost -> capital obligation -> procurement/capacity -> disruption -> approved decision -> realised outcome`.
+
+### Commercial role
+
+**Owners / private portfolios**
+- 5-year plan;
+- repair/replace;
+- replacement calendar;
+- major-work decision packets.
+
+**Property / facility management**
+- annual programme;
+- procurement/capacity;
+- disruption calendar;
+- capital variance.
+
+**Hotel / retail / office operators**
+- occupancy/trading-aware waves;
+- business continuity;
+- shutdown optimisation.
+
+**Enterprise / developer**
+- 5/10-year programme;
+- unfunded mandatory demand;
+- standardisation;
+- funding scenarios;
+- actual-vs-plan portfolio performance;
+- transfer/refinancing preparation.
+
+### Kill/defer criteria
+
+Reject or defer if:
+
+- committed and speculative CapEx are blended;
+- mandatory work can be hidden by budget optimisation;
+- inflation/FX/lead time is unsourced;
+- financing scenario is presented as approval;
+- NPV is presented as property valuation;
+- replacement wave loses per-asset evidence;
+- approved baseline can be rewritten;
+- actual-vs-plan lacks exact baseline version;
+- AI can commit budget/procurement/financing.
