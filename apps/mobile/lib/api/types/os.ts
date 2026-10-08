@@ -108,3 +108,37 @@ export type ProjectIssue = {
   photo_key?: string | null;
   photo_url?: string | null;
 };
+
+
+export type ResponsibilityEvidence = {
+  required: string[];
+  present: string[];
+};
+
+export type ResponsibilityNext = {
+  capability: string;
+  persona: string;
+  user_id?: string | null;
+  action: string;
+};
+
+export type ResponsibilityItem = {
+  resource_type: string;
+  resource_id: string;
+  resource_title: string;
+  current_state: string;
+  required_capability: string;
+  responsible_persona: string;
+  responsible_user_id?: string | null;
+  action: string;
+  due_at?: string | null;
+  evidence: ResponsibilityEvidence;
+  completion_condition: string;
+  next?: ResponsibilityNext | null;
+};
+
+export type ResponsibilityQueue = {
+  project_id: string;
+  count: number;
+  items: ResponsibilityItem[];
+};
