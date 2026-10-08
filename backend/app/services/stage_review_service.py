@@ -303,11 +303,11 @@ async def submit_for_review(
     return StageReviewResult(stage, acceptance, False), None
 
 
-def _append_rework_item(stage: Stage, reason: str) -> float:
+def _append_rework_item(stage: Stage, reason: str, *, item_id: str | None = None) -> float:
     checklist = workflow.stage_checklist(stage)
     checklist.append(
         {
-            "id": f"rework-{uuid.uuid4().hex[:16]}",
+            "id": item_id or f"rework-{uuid.uuid4().hex[:16]}",
             "title": f"Устранить замечание: {reason[:180]}",
             "done": False,
         }
@@ -379,7 +379,6 @@ async def reject_for_rework(
     try:
         now = utc_now()
         deadline = now + timedelta(days=REWORK_SLA_DAYS)
-        _append_rework_item(stage, clean_reason)
         stage.status = StageStatus.active
         stage.contractor_ready = False
         stage.contractor_ready_at = None
@@ -415,6 +414,7 @@ async def reject_for_rework(
             room_ids = parse_room_ids(stage)
             executors = _executor_ids(project, stage)
             issue = ProjectIssue(
+                id=str(uuid.uuid4()),
                 project_id=project.id,
                 room_id=room_ids[0] if room_ids else None,
                 stage_id=stage.id,
@@ -427,6 +427,13 @@ async def reject_for_rework(
                 created_at=now,
             )
             db.add(issue)
+            _append_rework_item(
+                stage,
+                clean_reason,
+                item_id=f"rework-issue-{issue.id}",
+            )
+        else:
+            _append_rework_item(stage, clean_reason)
 
         reviewer_role = (
             "customer"

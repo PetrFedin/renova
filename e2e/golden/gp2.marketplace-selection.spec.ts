@@ -8,6 +8,18 @@ test.describe('@golden @gp2 marketplace customer ↔ competing contractors', () 
     const e1 = await registerOtpUser(request, 'contractor', { fullName: 'Golden E1' });
     const e2 = await registerOtpUser(request, 'contractor', { fullName: 'Golden E2' });
 
+    const activeNpd = [
+      [e1, ['7700', '0000', '0001'].join('')],
+      [e2, ['7700', '0000', '0003'].join('')],
+    ] as const;
+    for (const [contractor, inn] of activeNpd) {
+      const verified = await request.post(`${API}/api/v1/fns/verify-me`, {
+        headers: headers(contractor),
+        data: { inn },
+      });
+      expect(verified.ok(), `active simulated NPD verification failed: ${verified.status()}`).toBeTruthy();
+      expect((await verified.json()).is_npd).toBe(true);
+    }
     const leadResponse = await request.post(`${API}/api/v1/job-leads`, {
       headers: headers(customer),
       data: {
