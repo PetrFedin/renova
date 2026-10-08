@@ -1120,3 +1120,77 @@ Reject or defer if:
 - marketplace is built before real institutional acceptance;
 - owner data is monetised by resale;
 - AI can approve disclosure, sign or issue institutional conclusions.
+
+
+---
+
+## Verified Property Network & Institutional Protocol priority
+
+| Candidate | UX | Moat | Revenue | Readiness | Risk | Priority | Decision |
+|---|---:|---:|---:|---:|---:|---:|---|
+| Core protocol object model | 4 | 5 | 5 | 5 | 2 | 17 | ADOPT first |
+| Canonical encoding + digest rules | 3 | 5 | 5 | 4 | 2 | 15 | ADOPT |
+| Issuer metadata + key discovery | 4 | 5 | 5 | 4 | 2 | 16 | ADOPT |
+| Status / revocation / supersession | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT |
+| Normative schemas | 4 | 5 | 5 | 5 | 1 | 18 | ADOPT |
+| Reference verifier | 5 | 5 | 5 | 5 | 1 | 19 | ADOPT |
+| Sandbox reference issuer | 4 | 5 | 5 | 4 | 2 | 16 | ADOPT |
+| Conformance suite + test vectors | 4 | 5 | 5 | 4 | 1 | 17 | ADOPT |
+| Public profile registry | 4 | 5 | 5 | 4 | 2 | 16 | ADOPT |
+| TypeScript / Python SDKs | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT after core stabilises |
+| Independent partner implementation | 5 | 5 | 5 | 3 | 2 | 16 | REQUIRED for mature claim |
+| External issuer publishing | 5 | 5 | 5 | 3 | 3 | 15 | ADOPT after conformance |
+| Partner certification | 4 | 5 | 5 | 2 | 3 | 13 | DEFER until repeated adoption |
+| Standards adapters | 3 | 5 | 4 | 3 | 2 | 13 | PARTNER-DRIVEN |
+| "Industry standard" marketing before adoption | 1 | 1 | 2 | 5 | 5 | 4 | REJECT |
+
+### Core rule
+
+The protocol must standardise interoperable semantics already proven in Renova; it must not become a second competing internal schema.
+
+Preferred progression:
+
+`core objects -> canonical bytes -> issuer/status -> schemas -> verifier -> sandbox issuer -> conformance -> SDKs -> independent implementation -> external issuers`.
+
+### Strongest differentiator
+
+The protocol itself is not the moat if nobody adopts it.
+
+The moat is:
+
+`open spec + trusted issuers + reusable verified history + conformance + institutional acceptance + proprietary owner/operations graph`.
+
+### Open-source candidates
+
+- schemas;
+- canonicalization;
+- verifier;
+- conformance suite;
+- test vectors;
+- SDKs;
+- examples.
+
+### Keep differentiated in product/network
+
+- owner graph;
+- governance;
+- Action Engine;
+- Intervention Optimizer;
+- Operations Network;
+- Lifecycle Intelligence;
+- Capital Strategy;
+- institutional orchestration;
+- managed trust/network services.
+
+### Kill/defer criteria
+
+Reject or defer if:
+
+- public protocol is only a proprietary REST API;
+- no deterministic canonicalization/test vectors exist;
+- verifier must blindly trust Renova;
+- one issuer class is treated as universally authoritative;
+- breaking changes are hidden;
+- advanced cryptography blocks practical pilot adoption;
+- certification is launched before interoperability is demonstrated;
+- "industry standard" is claimed before independent implementations exist.
