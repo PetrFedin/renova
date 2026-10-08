@@ -70,7 +70,7 @@ async def test_owner_removes_member_and_open_assignments_released(db):
     assert (await db.get(Stage, "tr-s1")).assignee_id is None
     assert (await db.get(Stage, "tr-s2")).assignee_id == "tr-member"  # закрытый этап — история
     # доступ к объектам владельца пропал
-    assert (await _call(db, member, "GET", "/api/v1/projects/tr-proj")).status_code == 403
+    assert (await _call(db, member, "GET", "/api/v1/projects/tr-proj")).status_code == 404
 
 
 @pytest.mark.asyncio
