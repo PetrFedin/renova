@@ -358,7 +358,7 @@ async def transition_issue(
     if target == "fixed" and issue.stage_id:
         stage = await db.get(Stage, issue.stage_id)
         if stage is not None and stage.project_id == issue.project_id:
-            items = stage_checklist = []
+            stage_checklist = []
             try:
                 parsed = json.loads(stage.checklist_json or "[]")
                 if isinstance(parsed, list):
