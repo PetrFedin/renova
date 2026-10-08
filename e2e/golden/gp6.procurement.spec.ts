@@ -72,9 +72,9 @@ test.describe('@golden @gp6 estimate need → approval → purchase → delivery
 
       const expenses = (await (
         await request.get(`${API}/api/v1/projects/${s.projectId}/os/expenses`, { headers: hC })
-      ).json()) as Array<{ source_type?: string; source_id?: string; amount: number; status: string }>;
+      ).json()) as Array<{ purchase_id?: string; amount: number; status: string }>;
       expect(
-        expenses.filter((e) => e.source_id === purchaseId && e.status === 'confirmed'),
+        expenses.filter((e) => e.purchase_id === purchaseId && e.status === 'confirmed'),
         'Delivered purchase must appear once in financial fact',
       ).toHaveLength(1);
     } finally {
