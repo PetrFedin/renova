@@ -893,3 +893,75 @@ Reject or defer if:
 - approved baseline can be rewritten;
 - actual-vs-plan lacks exact baseline version;
 - AI can commit budget/procurement/financing.
+
+
+---
+
+## Portfolio Strategy & Investment Committee OS priority
+
+| Candidate | UX | Moat | Revenue | Readiness | Risk | Priority | Decision |
+|---|---:|---:|---:|---:|---:|---:|---|
+| Portfolio objectives + strategy posture model | 5 | 5 | 5 | 5 | 1 | 19 | ADOPT first |
+| Property strategy fact pack | 5 | 5 | 5 | 5 | 1 | 19 | ADOPT |
+| Portfolio scenario snapshot | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT |
+| Capital allocation constraints | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT |
+| Committee decision pack | 5 | 5 | 5 | 5 | 1 | 19 | ADOPT |
+| Delegated authority / quorum workflow | 4 | 5 | 5 | 4 | 2 | 16 | ADOPT |
+| Decision Ledger linkage | 5 | 5 | 5 | 5 | 1 | 19 | ADOPT |
+| Frozen strategy baseline + decision delta | 5 | 5 | 5 | 5 | 1 | 19 | ADOPT |
+| Outcome tracking | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT |
+| Portfolio allocation optimizer | 4 | 5 | 5 | 3 | 3 | 14 | ADOPT after governance foundation |
+| Normalized portfolio benchmarking | 4 | 5 | 5 | 3 | 3 | 14 | DEFER until coverage/normalization proven |
+| Autonomous buy/sell/hold recommendation | 1 | 1 | 1 | 2 | 5 | 0 | REJECT |
+
+### Core rule
+
+Renova should govern owner decisions, not replace the owner or investment committee.
+
+Preferred progression:
+
+`portfolio objective -> evidence-backed posture -> scenario -> committee pack -> approval/conditions -> execution -> outcome -> review`.
+
+### Strongest differentiator
+
+The differentiated asset is the longitudinal decision record:
+
+`property evidence + owner objective + alternatives + committee decision + approved capital + execution evidence + actual outcome`.
+
+This is materially stronger than a dashboard because it preserves not only what happened, but why the portfolio decision was made and whether it worked.
+
+### Commercial role
+
+**Portfolio Owner**
+- objectives;
+- property postures;
+- capital scenarios;
+- committee packs;
+- actual outcome tracking.
+
+**Asset Management**
+- hold/improve/reposition/prepare_for_transfer/dispose_candidate governance;
+- cross-property capital allocation;
+- programme oversight;
+- decision deltas.
+
+**Investment Committee / Board**
+- source-traceable packs;
+- approvals/conditions;
+- delegated authority/quorum;
+- immutable/supersedable decision lineage;
+- actual-vs-approved strategy.
+
+### Kill/defer criteria
+
+Reject or defer if:
+
+- strategy posture is assigned only by AI;
+- committee pack hides data cutoff/coverage;
+- capital allocation uses a hidden universal score;
+- mandatory obligations can disappear under portfolio optimization;
+- approved strategy baseline can be rewritten;
+- financing/refinancing readiness is presented as lender approval;
+- disposition candidate is presented as a sale recommendation;
+- portfolio benchmarking ignores size/exposure/business-model normalization;
+- AI can approve, vote or commit capital.
