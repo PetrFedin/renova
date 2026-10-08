@@ -191,7 +191,7 @@ async def list_projects_for_user(db: AsyncSession, user: User, bucket: str = "ac
 
 def build_dashboard(project: Project) -> dict:
     stages = sorted(project.stages, key=lambda s: s.sort_order)
-    progress = st_status.weighted_progress(stages)
+    progress = st_status.project_progress(stages)
     review = next((s for s in stages if s.status == StageStatus.review), None)
     active = next((s for s in stages if s.status == StageStatus.active), None)
     next_stage = review or active

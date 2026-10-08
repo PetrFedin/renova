@@ -84,7 +84,7 @@ def _project_out(
         notes=(getattr(p, "notes", None) if access_mode in {"owner", "contractor"} else None),
         # JRN-018: колонка projects.progress_percent никем не обновляется и всегда
         # 0 — считаем по этапам тем же взвешенным методом, что и дашборд.
-        progress_percent=stage_status_svc.weighted_progress(list(p.stages or [])),
+        progress_percent=stage_status_svc.project_progress(list(p.stages or [])),
         vat_rate=float(getattr(p, "vat_rate", 0) or 0),
         rooms_count=len(p.rooms) if p.rooms else 0,
         stages_count=len(p.stages) if p.stages else 0,
@@ -361,7 +361,12 @@ async def patch_project(project_id: str, body: ProjectUpdate, user: User = Depen
 
 @router.get("/{project_id}", response_model=ProjectDetail)
 async def get_project(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    p = await require_project(db, project_id, user, write=False, participant_ok=True)
+    try:
+        p = await require_project(db, project_id, user, write=False, participant_ok=True)
+    except HTTPException as exc:
+        if exc.status_code == 403:
+            raise HTTPException(404, "Проект не найден") from exc
+        raise
     return await _detail(db, p, user)
 
 
@@ -380,7 +385,11 @@ async def dashboard(
         if access_mode == "supervisor"
         else dashboard_svc.stages_for_user(project, user)
     )
-    result = dashboard_svc.build_dashboard_read_model(project, stages=stages)
+    result = dashboard_svc.build_dashboard_read_model(
+        project,
+        stages=stages,
+        access_mode=access_mode,
+    )
     role = (
         "supervisor"
         if access_mode == "supervisor"
