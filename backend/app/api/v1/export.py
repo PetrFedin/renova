@@ -27,7 +27,12 @@ async def _archive_and_respond(
     notes: str | None = None,
 ):
     """W74: отдать файл и зафиксировать выгрузку в Document Center."""
+    import hashlib
+
     from app.services.integrations.export_archive import register_export_in_documents
+
+    payload_bytes = body.encode("utf-8") if isinstance(body, str) else body
+    checksum_sha256 = hashlib.sha256(payload_bytes).hexdigest()
     try:
         await register_export_in_documents(
             db,
@@ -36,6 +41,7 @@ async def _archive_and_respond(
             title=title,
             href=href,
             notes=notes,
+            checksum_sha256=checksum_sha256,
         )
     except Exception:
         # выгрузка важнее архива — не ломаем download
