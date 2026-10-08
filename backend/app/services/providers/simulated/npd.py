@@ -13,7 +13,9 @@ All other INNs -> unknown.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
+
+from app.core.timeutil import utc_now
 
 from app.services.providers import base
 
@@ -40,7 +42,7 @@ class SimulatedNpdStatusProvider:
             return base.NpdStatusResult(
                 inn=canonical,
                 status=base.NpdStatus.UNKNOWN,
-                checked_at=datetime.now(timezone.utc),
+                checked_at=utc_now(),
                 raw={"simulated": True, "reason": "invalid_inn"},
             )
         if canonical in ACTIVE_INNS:
@@ -49,10 +51,10 @@ class SimulatedNpdStatusProvider:
             status = base.NpdStatus.INACTIVE
         else:
             status = base.NpdStatus.UNKNOWN
-        checked_at = on_date if on_date.tzinfo else on_date.replace(tzinfo=timezone.utc)
+        checked_at = on_date.replace(tzinfo=None) if on_date.tzinfo else on_date
         return base.NpdStatusResult(
             inn=canonical,
             status=status,
-            checked_at=checked_at.astimezone(timezone.utc),
+            checked_at=checked_at,
             raw={"simulated": True, "seeded": canonical in ACTIVE_INNS | INACTIVE_INNS | UNKNOWN_INNS},
         )
