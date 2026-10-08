@@ -46,6 +46,7 @@ LEAD_CAPABILITIES = frozenset(
         "team.manage",
         "acceptance.submit",
         "billing.issue",
+        "acceptance.submit",
         "escalation.raise",
         "communication.write",
     }
@@ -61,10 +62,10 @@ FOREMAN_CAPABILITIES = frozenset(
     }
 )
 MEMBER_CAPABILITIES = frozenset(
-    {"project.read", "field.write", "communication.write"}
+    {"project.read", "field.write", "acceptance.submit", "communication.write"}
 )
 PARTICIPANT_BASE_CAPABILITIES = frozenset(
-    {"project.read_scoped", "field.write_scoped", "communication.write_scoped"}
+    {"project.read_scoped", "field.write_scoped", "acceptance.submit_scoped", "communication.write_scoped"}
 )
 SUPERVISOR_CAPABILITY_MAP = {
     "project_read": "project.read",
