@@ -6293,3 +6293,75 @@ From transfer flow start/gap detection to profile-ready state.
 
 **Sequencing:** requirement/action mapping registry -> recommendation projection -> canonical action bindings -> closure predicates -> recompute loop -> owner Recovery Plan -> maintenance/recall/transfer fast paths -> portfolio action queue -> bounded AI assistance.
 
+
+
+---
+
+# Property Intervention Optimizer — 2026-10-08
+
+**Status:** ADOPT AS NEXT PLANNING LAYER AFTER PROPERTY ACTION ENGINE.  
+**Contract:** `docs/RENOVA_PROPERTY_INTERVENTION_OPTIMIZER_CONTRACT_2026-10-08.md`
+
+The Property Action Engine already answers which trust/maintenance/transfer gaps are actionable and what canonical evidence closes them. The next layer must optimise **how to recover efficiently without becoming execution authority**.
+
+Core chain:
+
+```
+active blockers/actions
+-> hard constraints + dependencies
+-> critical path
+-> provider capability / windows / sourced cost
+-> Service Visit Bundling
+-> what-if scenarios
+-> explainable Recovery Plan
+-> human approval
+-> canonical execution
+-> evidence
+-> Trust Matrix recompute
+```
+
+## Adopt
+
+- deterministic feasibility before any AI/learned optimisation;
+- explicit hard constraints;
+- mandatory criticality before efficiency objectives;
+- target-profile critical path;
+- Service Visit Bundling as a first-class primitive;
+- independent closure predicates after every bundled visit;
+- sourced cost/time/availability only;
+- transparent alternatives instead of one opaque score;
+- pinned human commitments;
+- stale-plan detection before approval;
+- partial-feasibility plans;
+- plan-stability rules to avoid churn;
+- explicit what-if scenarios;
+- outage fallback to Action Engine/manual canonical execution.
+
+## Service Visit Bundling — strategic differentiator
+
+One qualified visit may address several requirements when constraints allow, for example:
+
+- maintenance;
+- installed-asset verification;
+- commissioning/status refresh;
+- evidence capture;
+- selected transfer-readiness blockers.
+
+The visit can be operationally bundled while the underlying canonical actions/evidence obligations remain separate.
+
+This is intended to reduce repeat access, provider travel/setup and fragmented evidence collection **only where measured data later confirms the benefit**.
+
+## Reject
+
+- cheapest-plan-first logic;
+- fabricated provider availability/cost/duration;
+- auto-booking;
+- AI override of hard constraints;
+- one bundled completion flag closing many requirements;
+- merging remediation and independent inspection when policy requires separation;
+- claims of guaranteed savings/readiness;
+- solver outage blocking required remediation.
+
+## Sequencing
+
+`Action Engine -> intervention graph -> hard constraints -> critical path -> Service Visit Bundling v1 -> what-if comparison -> approval/audit -> replan triggers -> pilot measurement -> advanced solver only if justified`.
