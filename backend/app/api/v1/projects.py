@@ -361,7 +361,12 @@ async def patch_project(project_id: str, body: ProjectUpdate, user: User = Depen
 
 @router.get("/{project_id}", response_model=ProjectDetail)
 async def get_project(project_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    p = await require_project(db, project_id, user, write=False, participant_ok=True)
+    try:
+        p = await require_project(db, project_id, user, write=False, participant_ok=True)
+    except HTTPException as exc:
+        if exc.status_code == 403:
+            raise HTTPException(404, "Проект не найден") from exc
+        raise
     return await _detail(db, p, user)
 
 
