@@ -94,6 +94,20 @@ async def toggle_checklist(
     return {"checklist": items, "progress": wf.checklist_progress(items)}
 
 
+@router.get("/projects/{project_id}/actions/responsibility")
+async def action_responsibility(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Read-only Action OS queue: who acts now, proof, completion and next actor."""
+    from app.services import action_responsibility_service as action_svc
+
+    project = await require_project(db, project_id, user, write=False, participant_ok=True)
+    items = await action_svc.build_action_responsibilities(db, project=project)
+    return {"project_id": project_id, "count": len(items), "items": [item.to_dict() for item in items]}
+
+
 @router.get("/projects/{project_id}/issues")
 async def list_issues(project_id: str, status: str | None = None, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=False)
