@@ -619,3 +619,65 @@ Stop or defer if:
 - model/AI probability becomes the primary score source;
 - profile-specific needs are being collapsed into one generic rating;
 - users cannot drill a result to primary evidence.
+
+
+## Property Action Engine priority
+
+| Candidate | UX | Moat | Revenue | Readiness | Risk | Priority | Decision |
+|---|---:|---:|---:|---:|---:|---:|---|
+| Requirement -> canonical action routing registry | 5 | 5 | 5 | 5 | 1 | 19 | ADOPT |
+| Deterministic recommendation dedupe | 4 | 5 | 4 | 5 | 1 | 17 | ADOPT |
+| Explicit closure predicates | 5 | 5 | 5 | 5 | 1 | 19 | ADOPT |
+| Trust Recovery Plan | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT |
+| Maintenance fast path | 5 | 5 | 5 | 5 | 2 | 18 | ADOPT |
+| Transfer readiness fast path | 5 | 5 | 5 | 5 | 2 | 18 | ADOPT |
+| Recall remediation fast path | 5 | 5 | 5 | 4 | 3 | 16 | ADOPT |
+| Portfolio Action Queue | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT enterprise |
+| AI-generated action explanation/drafts | 4 | 3 | 4 | 3 | 3 | 11 | After AI Assurance |
+| Autonomous AI closure/waiver | 1 | 1 | 1 | 2 | 5 | 0 | REJECT |
+
+### Core rule
+
+The Property Action Engine must not become another task/work-order system.
+
+Its moat is the closed-loop trace:
+
+`requirement -> recommendation -> canonical action -> evidence -> closure predicate -> new Trust Matrix snapshot`
+
+### Strongest product effect
+
+This layer changes Property Trust from a passive dashboard into an operating system for improving the property's documentation, maintenance, safety and transfer readiness.
+
+### Commercial role
+
+**Owner / Property Trust**
+- blockers;
+- Recovery Plan;
+- transfer preparation;
+- maintenance next actions.
+
+**Property Care**
+- recurring service/maintenance action loop;
+- warranty/service network.
+
+**Enterprise**
+- portfolio action queue;
+- SLA/escalation;
+- recall blast-radius remediation;
+- unassigned/overdue trust obligations.
+
+**Institutional workflow**
+- purpose-specific request -> remediation gaps -> consent/redaction -> verified artifact.
+
+### Kill/defer criteria
+
+Reject or defer if:
+
+- the engine starts storing canonical task/payment/acceptance status;
+- "task completed" is treated as sufficient proof without a closure predicate;
+- deadlines are invented without source;
+- recompute creates duplicate recommendations;
+- users are spammed on every matrix change;
+- a generic task is used where a dedicated RFI/Inspection/Warranty/Service domain exists;
+- AI can waive, satisfy or close requirements;
+- a recommendation can grant access to make assignment convenient.
