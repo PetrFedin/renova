@@ -160,13 +160,15 @@
 
 | GP | API | mobile-web | Блокирует | Последний PR |
 |---|---|---|---|---|
-| GP1 | ❌ not written | ❌ | A1 | — |
-| GP2 | ❌ | ❌ | A1, B1–B5 | — |
-| GP3 | ❌ | ❌ | A1, B1 | — |
-| GP4 | ❌ | ❌ | A1, C5 | — |
-| GP5 | ❌ | ❌ | A1, A3–A5 | — |
-| GP6 | ❌ | ❌ | A1, A5 | — |
-| GP7 | ❌ | ❌ | A1, A6, C6 | — |
-| GP8 | ❌ | ❌ | A1, A6 | — |
+| GP1 | 🟠 written, run blocked | 🟠 written, run blocked | A1 | #687 |
+| GP2 | 🟠 written, run blocked | 🟠 written, run blocked | A1, B1–B5 | #687 |
+| GP3 | 🟠 written, run blocked | 🟠 written, run blocked | A1, B1 | #687 |
+| GP4 | 🟠 written, run blocked | 🟠 written, run blocked | A1, C5 | #687 |
+| GP5 | 🟠 written, run blocked | 🟠 written, run blocked | A1, A3–A5 | #687 |
+| GP6 | 🟠 written, run blocked | 🟠 written, run blocked | A1, A5 | #687 |
+| GP7 | 🟠 written, run blocked | 🟠 written, run blocked | A1, A6, C6 | #687 |
+| GP8 | 🟠 written, run blocked | 🟠 written, run blocked | A1, A6 | #687 |
 
-Легенда: ❌ not written · 🔴 written, failing · 🟡 passing on SQLite/local only · 🟢 passing on PostgreSQL topology in CI.
+Легенда: ❌ not written · 🟠 written, execution blocked before assertions · 🔴 written, failing · 🟡 passing on SQLite/local only · 🟢 passing on PostgreSQL topology in CI.
+
+> #687 создал API + mobile-web контракты GP1–GP8. Первый canonical-runtime запуск остановился до assertions на известном P0 #672: текущий `main` всё ещё содержит недоступный Debian pin `libpcre2-8-0=10.42-1+deb12u1`. Это инфраструктурный blocker запуска, а не verdict по пользовательским сценариям. Исправление уже квалифицировано в #683; A1 не дублирует его.

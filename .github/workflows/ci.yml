@@ -408,3 +408,48 @@ jobs:
         run: bash scripts/assert-e2e-bearer.sh
       - name: Run API and complete browser surface E2E
         run: bash scripts/ci-playwright.sh all
+
+  golden-paths:
+    # Phase A audit signal. Intentionally non-blocking until Phase D removes
+    # continue-on-error after all eight API + mobile-web journeys are green.
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install exact test toolchains
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "poetry==2.4.1"
+          cd backend
+          POETRY_VIRTUALENVS_IN_PROJECT=true poetry check --lock
+          POETRY_VIRTUALENVS_IN_PROJECT=true poetry sync --no-interaction
+          cd ..
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Validate Golden Paths runner
+        run: bash -n scripts/ci-golden-paths.sh
+      - name: Run eight API and eight mobile-web human journeys
+        run: bash scripts/ci-golden-paths.sh
+      - name: Publish Golden Paths inventory
+        if: always()
+        run: |
+          {
+            echo "## Golden Paths human-flow audit"
+            echo
+            echo "Phase A: failures are evidence and do not block unrelated delivery yet."
+            echo
+            echo "### API"
+            find e2e/golden -maxdepth 1 -name 'gp*.spec.ts' -print | sort
+            echo
+            echo "### Mobile web"
+            find apps/mobile/e2e/golden -maxdepth 1 -name 'gp*.spec.ts' -print | sort
+          } >> "$GITHUB_STEP_SUMMARY"
+
