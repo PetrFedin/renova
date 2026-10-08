@@ -98,9 +98,10 @@ async def _issue_executor(
         stage = await db.get(Stage, issue.stage_id)
         if stage is not None and stage.project_id == project.id:
             user_id = stage.assignee_id
-    user_id = user_id or project.contractor_id
+    user_id = user_id or project.contractor_id or project.customer_id
+    fallback = "lead" if project.contractor_id else "owner"
     persona = await _persona_for_user(
-        db, project=project, user_id=user_id, fallback="lead"
+        db, project=project, user_id=user_id, fallback=fallback
     )
     return user_id, persona
 
@@ -143,13 +144,16 @@ async def build_action_responsibilities(
             )
             next_persona = "supervisor" if supervisor_id else "owner"
             next_user_id = supervisor_id or project.customer_id
+            required_capability = (
+                "field.write_scoped" if persona == "participant" else "field.write"
+            )
             items.append(
                 ResponsibilityItem(
                     resource_type="issue",
                     resource_id=issue.id,
                     resource_title=issue.title,
                     current_state=issue.status,
-                    required_capability="field.write",
+                    required_capability=required_capability,
                     responsible_persona=persona,
                     responsible_user_id=responsible_user_id,
                     action="resolve_issue",
