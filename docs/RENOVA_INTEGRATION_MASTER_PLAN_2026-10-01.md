@@ -6675,3 +6675,67 @@ The owner-level graph becomes:
 The key product value is the ability to answer, from one source-traceable snapshot:
 
 **what changed, what is off-plan, what requires owner decision, what is committed, what is actually true, and what happened after prior decisions.**
+
+
+---
+
+# External Institutional Network — 2026-10-08
+
+**Status:** ADOPT AS EXTERNAL NETWORK LAYER OVER OWNER DIGITAL TWIN + EXISTING TRUST EXCHANGE PROFILES.  
+**Contract:** `docs/RENOVA_EXTERNAL_INSTITUTIONAL_NETWORK_CONTRACT_2026-10-08.md`
+
+Important: this does **not** duplicate Property Trust Exchange Profiles. Existing insurer/lender/buyer/recall profiles, redaction, disclosure receipts, manifests and signed artifact semantics remain authoritative for payloads.
+
+This layer adds institutional workflow:
+
+```
+credentialed institution
+-> attributable/signed request
+-> purpose + scope
+-> owner approval
+-> existing purpose-specific Exchange Profile
+-> selective data room / artifact
+-> verification receipt
+-> supplemental evidence loop
+-> transaction checkpoint
+-> expiry / revocation / supersession
+-> reusable verified evidence / diligence delta
+```
+
+## Highest-value additions
+
+- institution credential registry;
+- representative authority;
+- signed request lifecycle;
+- owner partial/narrow approval;
+- purpose-specific data room from frozen snapshot;
+- verification receipt;
+- request-to-Action Engine remediation loop;
+- multi-party information barriers;
+- transaction/refinancing closing cut;
+- reusable evidence under fresh disclosure receipt;
+- recurring lender/insurer/fund updates;
+- diligence delta instead of full re-review;
+- sandbox/conformance for partners.
+
+## Boundaries
+
+Renova does not become:
+
+- lender;
+- insurer;
+- auditor;
+- valuer;
+- title registry;
+- transaction settlement/escrow system;
+- legal authority.
+
+External conclusions remain authored by the external institution and are stored with provenance.
+
+## Strategic moat
+
+The institutional network graph becomes:
+
+`Owner Digital Twin + verified history + purpose profile + institution identity + signed request + selective disclosure + verification + checkpoint + reusable evidence + institutional acceptance`.
+
+The value compounds only when real institutions accept the profiles and workflows; therefore first pilots should be narrow and measurable, not an open marketplace.
