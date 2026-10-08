@@ -34,7 +34,7 @@ test.describe('@golden @gp4 acceptance → rework → acceptance → warranty', 
       await finishChecklist(request, s.projectId, s.stageId, hE);
       expect((await request.post(
         `${API}/api/v1/projects/${s.projectId}/stages/${s.stageId}/photos`,
-        { headers: hE, data: { image_data: 'golden-evidence', caption: 'Результат работ' } },
+        { headers: hE, data: { image_data: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', caption: 'Результат работ' } },
       )).ok()).toBeTruthy();
 
       const submit = await request.post(
