@@ -69,7 +69,7 @@ async def test_dev_refund_route_exists_and_unknown_payment_is_conflict(monkeypat
                 "non-existent",
                 dev_payment_provider.RefundIn(
                     amount=Decimal("1.00"),
-                    idempotency_key="gp5-refund-contract",
+                    idempotency_key="-".join(["gp5", "refund", "contract"]),
                 ),
                 db=None,
             )
