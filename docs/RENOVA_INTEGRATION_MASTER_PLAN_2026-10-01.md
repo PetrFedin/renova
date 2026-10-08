@@ -6365,3 +6365,61 @@ This is intended to reduce repeat access, provider travel/setup and fragmented e
 ## Sequencing
 
 `Action Engine -> intervention graph -> hard constraints -> critical path -> Service Visit Bundling v1 -> what-if comparison -> approval/audit -> replan triggers -> pilot measurement -> advanced solver only if justified`.
+
+
+---
+
+# Property Operations Network — 2026-10-08
+
+**Status:** ADOPT AS PORTFOLIO OPERATIONS LAYER AFTER INTERVENTION OPTIMIZER.  
+**Contract:** `docs/RENOVA_PROPERTY_OPERATIONS_NETWORK_CONTRACT_2026-10-08.md`
+
+The next layer extends property-level intervention planning into a real portfolio operating network:
+
+```
+portfolio
+-> installed assets
+-> service obligations
+-> Asset / Service Demand Forecast
+-> Provider Capability + Capacity Graph
+-> Parts & Materials Availability
+-> Portfolio Visit Routing
+-> Maintenance Campaigns
+-> Recall Blast-Radius Response
+-> Predictive Recovery Planning
+-> canonical execution/evidence
+-> measured realised economics
+```
+
+## Core rules
+
+- forecast is never execution authority;
+- deterministic obligations remain distinct from probabilistic demand;
+- provider capability, capacity, parts and travel data require provenance/freshness;
+- unknown is never zero/available;
+- routing inherits all Intervention Optimizer hard constraints;
+- campaigns coordinate work but never bulk-close underlying obligations;
+- recall candidate match is distinct from confirmed impact;
+- scarce mandatory capacity is allocated by explicit policy, never opaque AI/customer-value ranking;
+- savings require an explicit comparable baseline;
+- forecast/quote/committed/actual/reconciled economics remain separate;
+- network-layer failure cannot block canonical service/remediation.
+
+## Highest-value first implementation
+
+1. deterministic 30/60/90-day maintenance demand;
+2. known qualified-provider capacity gaps;
+3. parts readiness;
+4. visit consolidation/routing;
+5. maintenance campaign;
+6. recall blast-radius workflow;
+7. recovery capacity forecasting;
+8. actual economics.
+
+## Strategic moat
+
+The long-term defensible graph is:
+
+`installed asset + obligation + service history + provider capability + evidence quality + part dependency + actual cost/duration + repeat-visit outcome + trust/profile requirement`.
+
+This is stronger than a generic scheduling or "AI facilities" layer because every recommendation remains traceable to real property facts, domain actions and evidence.
