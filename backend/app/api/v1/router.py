@@ -27,6 +27,7 @@ from app.api.v1 import technical_supervision
 from app.api.v1 import technical_supervision_actions
 from app.api.v1 import technical_supervision_chat
 from app.api.v1 import technical_supervision_schedule
+from app.api.v1 import dev_payment_provider
 from app.api.v1 import warranty
 from app.api.v1 import (
     auth, activity, scratchpad, chat_inbox, work_orders, work_acceptances,
@@ -119,6 +120,7 @@ _SUBSCRIPTION_INTEGRITY_ROUTES: set[RouteSignature] = {("/subscription/checkout"
 _remove_replaced_routes(subscription.router, _SUBSCRIPTION_INTEGRITY_ROUTES)
 api_router.include_router(subscription_integrity.router)
 api_router.include_router(subscription.router)
+api_router.include_router(dev_payment_provider.router)
 api_router.include_router(teams.router)
 api_router.include_router(analytics.router)
 api_router.include_router(audit.router)
