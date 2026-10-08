@@ -750,3 +750,70 @@ Reject or defer if:
 - routing ignores provider qualification/evidence constraints;
 - savings are claimed without baseline;
 - marketplace is built before enough real operational density exists.
+
+
+---
+
+## Property Lifecycle Intelligence priority
+
+| Candidate | UX | Moat | Revenue | Readiness | Risk | Priority | Decision |
+|---|---:|---:|---:|---:|---:|---:|---|
+| Deterministic lifecycle event ledger | 5 | 5 | 5 | 5 | 1 | 19 | ADOPT first |
+| Reconciled lifecycle cost accounting | 5 | 5 | 5 | 5 | 1 | 19 | ADOPT |
+| Warranty value / owner-paid split | 4 | 4 | 5 | 4 | 2 | 15 | ADOPT |
+| Downtime accounting | 4 | 4 | 4 | 4 | 2 | 14 | ADOPT |
+| Cohort eligibility + exposure model | 4 | 5 | 5 | 4 | 2 | 16 | ADOPT |
+| Descriptive reliability benchmarks | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT after coverage gate |
+| Repair vs Replace scenarios | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT |
+| Deterministic Lifecycle Cost Forecast | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT |
+| Portfolio Replacement / CapEx Plan | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT |
+| Predictive reliability | 4 | 5 | 5 | 2 | 4 | 12 | DEFER until backtested |
+| Predictive CapEx | 4 | 5 | 5 | 2 | 4 | 12 | DEFER |
+| Universal asset-health score | 2 | 1 | 2 | 3 | 5 | 3 | REJECT |
+
+### Core rule
+
+Renova must learn from **verified lifecycle history**, not from generic predictive-maintenance assumptions.
+
+Preferred progression:
+
+`deterministic ledger -> reconciled actuals -> reproducible cohorts -> descriptive statistics -> scenario comparison -> historical backtest -> predictive assistance`.
+
+### Strongest differentiator
+
+The lifecycle moat is the joined history:
+
+`exact asset identity + installation context + service/failure timeline + actual cost + downtime + warranty/recall + parts/replacement + provider evidence + cohort exposure + outcome`.
+
+This is materially stronger than an opaque health score because every decision can be traced to facts, coverage and comparable history.
+
+### Commercial role
+
+**Property Care**
+- lifecycle history;
+- repair cost;
+- warranty continuity;
+- repair-vs-replace package.
+
+**Property Trust / Transfer**
+- verified replacement/service history;
+- lifecycle evidence continuity.
+
+**Enterprise Asset Management**
+- cohort benchmarks;
+- replacement backlog;
+- CapEx scenarios;
+- portfolio lifecycle economics.
+
+### Kill/defer criteria
+
+Reject or defer if:
+
+- cohort definition/sample/exposure cannot be shown;
+- survivorship bias is ignored;
+- quote/budget is mixed with actual cost;
+- repair-vs-replace has no explicit horizon;
+- prediction is shown as a known failure;
+- predictive model lacks leakage-safe backtest/calibration;
+- manufacturer/provider comparison ignores case mix/evidence quality;
+- predicted or scenario CapEx is mixed with committed CapEx.
