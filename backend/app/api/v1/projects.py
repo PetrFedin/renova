@@ -380,7 +380,11 @@ async def dashboard(
         if access_mode == "supervisor"
         else dashboard_svc.stages_for_user(project, user)
     )
-    result = dashboard_svc.build_dashboard_read_model(project, stages=stages)
+    result = dashboard_svc.build_dashboard_read_model(
+        project,
+        stages=stages,
+        access_mode=access_mode,
+    )
     role = (
         "supervisor"
         if access_mode == "supervisor"
