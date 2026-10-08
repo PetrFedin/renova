@@ -681,3 +681,72 @@ Reject or defer if:
 - a generic task is used where a dedicated RFI/Inspection/Warranty/Service domain exists;
 - AI can waive, satisfy or close requirements;
 - a recommendation can grant access to make assignment convenient.
+
+
+---
+
+## Property Operations Network priority
+
+| Candidate | UX | Moat | Revenue | Readiness | Risk | Priority | Decision |
+|---|---:|---:|---:|---:|---:|---:|---|
+| Deterministic Asset / Service Demand Forecast | 5 | 5 | 5 | 5 | 1 | 19 | ADOPT first |
+| Provider Capability + Capacity Graph | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT |
+| Parts & Materials Availability | 5 | 4 | 5 | 4 | 2 | 16 | ADOPT |
+| Portfolio Visit Routing | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT after capacity/parts |
+| Maintenance Campaigns | 5 | 5 | 5 | 5 | 2 | 18 | ADOPT |
+| Recall Blast-Radius Response | 5 | 5 | 5 | 4 | 3 | 16 | ADOPT |
+| Predictive Recovery Planning | 4 | 5 | 5 | 3 | 3 | 14 | ADOPT after deterministic foundation |
+| Realised Operations Economics | 4 | 5 | 5 | 4 | 2 | 16 | ADOPT with pilot |
+| Probabilistic predictive maintenance | 3 | 4 | 4 | 2 | 4 | 9 | DEFER until enough actual history |
+| Provider marketplace | 3 | 5 | 5 | 2 | 4 | 11 | DEFER until supply/demand density |
+| Opaque AI dispatch | 1 | 1 | 2 | 3 | 5 | 2 | REJECT |
+
+### Core rule
+
+Renova should predict and coordinate **operational demand**, not pretend uncertain future events are facts.
+
+Preferred chain:
+
+`source-backed obligation -> demand forecast -> capacity/supply check -> feasible scenario -> human/canonical commitment -> execution -> evidence -> realised outcome`.
+
+### Strongest differentiator
+
+The most defensible layer is not generic route optimisation. It is the joined evidence graph:
+
+`installed asset -> obligation -> provider capability -> part dependency -> appointment -> service evidence -> actual duration/cost -> trust/profile outcome`.
+
+This permits increasingly better operational planning without weakening evidence integrity.
+
+### Commercial role
+
+**Property Care**
+- upcoming maintenance demand;
+- grouped visit proposals;
+- parts readiness;
+- recurring service continuity.
+
+**Property Trust / Transfer**
+- capacity-aware recovery plans;
+- target-date blocker remediation;
+- evidence readiness.
+
+**Enterprise Operations**
+- portfolio capacity gaps;
+- maintenance campaigns;
+- routing;
+- provider concentration;
+- recall blast radius;
+- actual operating economics.
+
+### Kill/defer criteria
+
+Reject or defer if:
+
+- forecasts silently create work/orders;
+- probabilistic demand outranks mandatory due work;
+- capacity/stock/travel is fabricated;
+- campaigns bulk-close individual obligations;
+- recall candidate matches are shown as confirmed;
+- routing ignores provider qualification/evidence constraints;
+- savings are claimed without baseline;
+- marketplace is built before enough real operational density exists.
