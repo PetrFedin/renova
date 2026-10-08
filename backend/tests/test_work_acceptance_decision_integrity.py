@@ -387,6 +387,10 @@ async def test_return_rejects_stale_acceptance_and_applies_sla_issue_once(db):
     assert returned.stage.needs_rework is True
     assert returned.stage.rework_deadline is not None
     assert returned.issue_id is not None
+    issue = await db.get(ProjectIssue, returned.issue_id)
+    assert issue is not None
+    assert "мусор" in issue.title.lower(), "actionable issue title must expose the rework reason"
+    assert stage.name in (issue.description or "")
 
     checklist = json.loads(returned.stage.checklist_json)
     assert len(
