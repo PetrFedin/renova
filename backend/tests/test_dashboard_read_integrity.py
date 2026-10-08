@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi.routing import iter_route_contexts
 
-from app.models.entities import PaymentStatus, StageStatus, UserRole
+from app.models.entities import LineType, PaymentStatus, StageStatus, UserRole
 from app.services import dashboard_integrity_service as dashboard_svc
 
 
@@ -153,7 +153,7 @@ def test_owner_with_estimate_and_no_contractor_is_routed_to_contractor_search():
     planned = _stage("planned", status=StageStatus.planned, percent=0, order=1)
     project = _project([planned])
     project.contractor_id = None
-    project.estimate_lines = [SimpleNamespace(id="estimate-1")]
+    project.estimate_lines = [SimpleNamespace(id="estimate-1", line_type=LineType.work, quantity_planned=1, quantity_actual=0, unit_price=1)]
 
     dashboard = dashboard_svc.build_dashboard_read_model(
         project,
@@ -169,7 +169,7 @@ def test_guest_with_estimate_and_no_contractor_does_not_receive_owner_action():
     planned = _stage("planned", status=StageStatus.planned, percent=0, order=1)
     project = _project([planned])
     project.contractor_id = None
-    project.estimate_lines = [SimpleNamespace(id="estimate-1")]
+    project.estimate_lines = [SimpleNamespace(id="estimate-1", line_type=LineType.work, quantity_planned=1, quantity_actual=0, unit_price=1)]
 
     dashboard = dashboard_svc.build_dashboard_read_model(
         project,
