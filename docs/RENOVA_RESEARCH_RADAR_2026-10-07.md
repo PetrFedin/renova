@@ -1048,3 +1048,75 @@ Reject or defer if:
 - transfer readiness is shown as transaction certainty;
 - AI can resolve reconciliation or approve owner actions;
 - twin is reduced to a 3D visualization.
+
+
+---
+
+## External Institutional Network priority
+
+| Candidate | UX | Moat | Revenue | Readiness | Risk | Priority | Decision |
+|---|---:|---:|---:|---:|---:|---:|---|
+| Institution identity + credential registry | 5 | 5 | 5 | 5 | 2 | 18 | ADOPT first |
+| Representative authority | 5 | 5 | 5 | 5 | 2 | 18 | ADOPT |
+| Signed / attributable request lifecycle | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT |
+| Purpose-scoped owner approval | 5 | 5 | 5 | 5 | 1 | 19 | ADOPT |
+| Purpose-specific institutional data room | 5 | 5 | 5 | 5 | 2 | 18 | ADOPT |
+| Verification receipt + status/revocation | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT |
+| Supplemental request -> Action Engine loop | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT |
+| Transaction checkpoints | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT |
+| Multi-party information barriers | 5 | 5 | 5 | 4 | 3 | 16 | ADOPT |
+| Diligence delta packages | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT |
+| Recurring institutional subscriptions | 4 | 5 | 5 | 3 | 3 | 14 | ADOPT after initial pilots |
+| Partner sandbox / conformance | 4 | 5 | 5 | 4 | 2 | 16 | ADOPT |
+| Standards adapters | 3 | 5 | 4 | 3 | 2 | 13 | PARTNER-DRIVEN |
+| Partner directory / certification | 3 | 5 | 5 | 2 | 3 | 12 | DEFER until adoption |
+| Open institutional marketplace | 2 | 4 | 5 | 1 | 5 | 7 | DEFER |
+| Generic unrestricted data room | 2 | 1 | 2 | 5 | 5 | 5 | REJECT |
+
+### Core rule
+
+External Institutional Network must orchestrate **identity, purpose, disclosure, verification and checkpoints** around the already-defined Property Trust Exchange Profiles.
+
+Do not duplicate profile payload schemas or turn the network into a generic file-sharing layer.
+
+Preferred progression:
+
+`institution identity -> attributable request -> owner approval -> existing profile -> frozen disclosure -> verification -> supplemental gap -> Action Engine -> checkpoint -> delta/reuse`.
+
+### Strongest differentiator
+
+The durable network chain is:
+
+`Owner Digital Twin + verified property history + purpose profile + institution credential + signed request + selective disclosure + verification receipt + transaction checkpoint + reusable evidence + institutional acceptance`.
+
+The moat becomes real only when external institutions accept and repeatedly reuse the workflow.
+
+### Preferred pilots
+
+**Pilot A — insurer**
+- pre-loss baseline;
+- claim/restoration evidence;
+- periodic refresh;
+- verification receipts.
+
+**Pilot B — lender/refinancing technical diligence**
+- lender_evidence.v1;
+- bounded data room;
+- supplemental evidence loop;
+- refreshed checkpoint;
+- diligence delta.
+
+### Kill/defer criteria
+
+Reject or defer if:
+
+- institution legitimacy is inferred from email/domain only;
+- one consent expands across unrelated purposes;
+- data room exposes unrestricted owner history;
+- external institution conclusions are re-authored by Renova;
+- issued artifacts mutate silently;
+- stale verification is shown as current;
+- buyer/lender/insurer information barriers are weak;
+- marketplace is built before real institutional acceptance;
+- owner data is monetised by resale;
+- AI can approve disclosure, sign or issue institutional conclusions.
