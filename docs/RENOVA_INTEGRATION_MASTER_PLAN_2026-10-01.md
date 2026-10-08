@@ -6551,3 +6551,63 @@ The differentiated chain is:
 `asset identity + lifecycle evidence + actual cost + capital obligation + supply/capacity + disruption + approved decision + realised outcome`.
 
 This extends Renova from property operations into evidence-backed capital asset management without sacrificing the existing authority boundaries.
+
+
+---
+
+# Portfolio Strategy & Investment Committee OS — 2026-10-08
+
+**Status:** ADOPT AFTER CAPITAL STRATEGY FOUNDATION AND RELIABLE ACTUAL-VS-PLAN HISTORY.  
+**Contract:** `docs/RENOVA_PORTFOLIO_STRATEGY_INVESTMENT_COMMITTEE_OS_CONTRACT_2026-10-08.md`
+
+This is the owner/committee governance layer above capital planning.
+
+Core chain:
+
+```
+portfolio objectives
+-> hold / improve / reposition / prepare_for_transfer / dispose_candidate
+-> property fact packs
+-> capital / lifecycle / operating evidence
+-> allocation constraints
+-> portfolio scenarios
+-> committee pack
+-> approval / conditions
+-> programmes
+-> execution evidence
+-> actual outcome
+-> strategy review
+```
+
+## Adopt
+
+- explicit/versioned portfolio objectives;
+- evidence-backed property strategy posture;
+- portfolio scenario snapshots;
+- hard capital constraints before optimization;
+- mandatory funding-gap visibility;
+- source-traceable committee packs;
+- quorum/delegated-authority policies where configured;
+- conditional approval;
+- Decision Ledger linkage;
+- frozen approved strategy baseline;
+- decision delta / strategy supersession;
+- outcome tracking.
+
+## Boundaries
+
+Renova must not become:
+
+- investment adviser;
+- property valuation/appraisal authority;
+- lender underwriting engine;
+- treasury;
+- autonomous buy/sell/hold allocator.
+
+## Strategic differentiation
+
+The durable record becomes:
+
+`property facts + owner objective + alternatives + approved decision + capital programme + execution evidence + actual outcome`.
+
+This gives the owner not only a history of the asset, but a history of **why capital and strategic decisions were made and whether they worked**.
