@@ -6,6 +6,7 @@ import { api, type WorkSchedule } from '@/lib/api';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { RenovaTheme } from '@/constants/Theme';
 import { reportError } from '@/lib/reportError';
+import { hasProjectCapability, operationalPersona } from '@/lib/projectCapabilities';
 
 export function TechnicalSupervisionScheduleReview() {
   const { user, activeProject } = useRenova();
@@ -15,10 +16,9 @@ export function TechnicalSupervisionScheduleReview() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isSupervisor = activeProject?.access_mode === 'supervisor';
+  const isSupervisor = operationalPersona(activeProject) === 'supervisor';
   const canReview = Boolean(
-    isSupervisor
-    && activeProject?.technical_capabilities?.includes('schedule_review'),
+    isSupervisor && hasProjectCapability(activeProject, 'schedule.review'),
   );
 
   const load = useCallback(async () => {
