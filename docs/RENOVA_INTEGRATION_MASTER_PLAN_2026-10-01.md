@@ -6805,3 +6805,22 @@ The defensible combination is:
 `open interoperability + trusted issuers + accepted profiles + reusable verified history + owner operating graph + institutional workflows + accumulated conformance/adoption`.
 
 The protocol should make external participation easier, not create artificial lock-in.
+
+
+---
+
+# Strategic Execution Map 2026–2028 — 2026-10-08
+
+**Execution authority companion:** `docs/RENOVA_STRATEGIC_EXECUTION_MAP_2026_2028.md`
+
+The research stack is now considered architecturally complete enough to stop adding higher conceptual layers by default.
+
+Implementation must follow the execution map's dependency DAG and status taxonomy:
+
+`LIVE / QUALIFIED / PARTIAL / RESEARCH / BLOCKED / PILOT`.
+
+Immediate sequence remains:
+
+`#683 exact-head admission -> #668 requalification -> Golden Paths exact-head -> capability-aware UX -> Wave 1 Property Identity / Installed Assets / Verified Building History / Decision Ledger -> Trust Matrix`.
+
+Higher layers such as Intervention Optimizer, Operations Network, Lifecycle Intelligence, Capital Strategy, Owner Digital Twin, Institutional Network and Verified Property Protocol remain blocked from runtime implementation until their prerequisite data/authority layers are proven.
