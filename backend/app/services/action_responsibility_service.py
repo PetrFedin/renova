@@ -175,6 +175,7 @@ async def build_action_responsibilities(
             reviewer_persona = "supervisor" if supervisor_id else "owner"
             next_step: ResponsibilityNext | None = None
             if issue.stage_id:
+                stage = await db.get(Stage, issue.stage_id)
                 acceptance = await _latest_acceptance(
                     db, project_id=project.id, stage_id=issue.stage_id
                 )
@@ -184,6 +185,21 @@ async def build_action_responsibilities(
                         persona="owner",
                         user_id=project.customer_id,
                         action="decide_work_acceptance",
+                    )
+                elif stage is not None and stage.project_id == project.id and stage.needs_rework:
+                    executor_id, executor_persona = await _issue_executor(
+                        db, project=project, issue=issue
+                    )
+                    submit_capability = (
+                        "acceptance.submit_scoped"
+                        if executor_persona == "participant"
+                        else "acceptance.submit"
+                    )
+                    next_step = ResponsibilityNext(
+                        capability=submit_capability,
+                        persona=executor_persona,
+                        user_id=executor_id,
+                        action="resubmit_stage",
                     )
             items.append(
                 ResponsibilityItem(
