@@ -6487,3 +6487,67 @@ The durable lifecycle graph becomes:
 `asset identity + installation context + maintenance + failure + actual cost + downtime + parts/replacement + provider evidence + warranty/recall + cohort exposure + outcome`.
 
 This creates the foundation for credible lifecycle economics and later predictive reliability without sacrificing Renova's evidence-first architecture.
+
+
+---
+
+# Capital Planning & Asset Strategy Engine — 2026-10-08
+
+**Status:** ADOPT AFTER DETERMINISTIC PROPERTY LIFECYCLE INTELLIGENCE.  
+**Contract:** `docs/RENOVA_CAPITAL_PLANNING_ASSET_STRATEGY_ENGINE_CONTRACT_2026-10-08.md`
+
+This layer converts evidence-backed lifecycle history into a governed long-horizon capital programme.
+
+Core chain:
+
+```
+lifecycle evidence
+-> mandatory / discretionary capital demand
+-> 5/10-year CapEx plan
+-> replacement waves
+-> budget constraints
+-> inflation/indexation
+-> procurement lead times
+-> provider/supplier capacity
+-> business disruption
+-> financing scenarios
+-> transfer/refinancing targets
+-> approved programme
+-> execution
+-> actual vs plan
+```
+
+## Adopt
+
+- explicit CapEx maturity states;
+- mandatory vs discretionary capital;
+- 5-year deterministic plan first;
+- 10-year strategy after baseline quality is proven;
+- source-backed inflation/indexation;
+- long-lead procurement model;
+- Operations Network provider/supplier capacity;
+- hotel/retail/office disruption calendars;
+- replacement waves with per-asset justification;
+- funding-gap scenarios;
+- frozen approval baseline;
+- actual/committed/approved/forecast variance;
+- Decision Ledger integration.
+
+## Boundaries
+
+Renova remains a planning/operating system, not:
+
+- general ledger;
+- treasury;
+- lender underwriting;
+- property valuation;
+- procurement award authority;
+- board approval authority.
+
+## Strategic value
+
+The differentiated chain is:
+
+`asset identity + lifecycle evidence + actual cost + capital obligation + supply/capacity + disruption + approved decision + realised outcome`.
+
+This extends Renova from property operations into evidence-backed capital asset management without sacrificing the existing authority boundaries.
