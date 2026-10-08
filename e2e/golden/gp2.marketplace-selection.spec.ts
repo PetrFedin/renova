@@ -53,7 +53,7 @@ test.describe('@golden @gp2 marketplace customer ↔ competing contractors', () 
       headers: headers(customer),
       data: {
         property_type: 'apartment',
-        rooms: [{ name: 'Комната', area_sqm: 20, length_m: 5, width_m: 4, height_m: 2.7, openings_sq_m: 2 }],
+        rooms: [{ name: 'Комната', length_m: 5, width_m: 4, height_m: 2.7, openings_sq_m: 2 }],
       },
     });
     expect(converted.ok(), `lead conversion failed: ${converted.status()}`).toBeTruthy();
