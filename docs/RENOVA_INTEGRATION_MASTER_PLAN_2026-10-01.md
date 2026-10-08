@@ -6739,3 +6739,69 @@ The institutional network graph becomes:
 `Owner Digital Twin + verified history + purpose profile + institution identity + signed request + selective disclosure + verification + checkpoint + reusable evidence + institutional acceptance`.
 
 The value compounds only when real institutions accept the profiles and workflows; therefore first pilots should be narrow and measurable, not an open marketplace.
+
+
+---
+
+# Verified Property Network & Institutional Protocol — 2026-10-08
+
+**Status:** ADOPT AS OPEN INTEROPERABILITY LAYER AFTER EXTERNAL INSTITUTIONAL NETWORK PILOTS.  
+**Contract:** `docs/RENOVA_VERIFIED_PROPERTY_NETWORK_PROTOCOL_2026-10-08.md`
+
+This layer must not duplicate existing Exchange Profiles or Institutional Network workflows. It standardises the interoperable objects and verification mechanics that let independent issuers/verifiers participate.
+
+Core protocol:
+
+```
+property identity
+-> evidence manifest
+-> issuer identity
+-> request/profile
+-> signed artifact/checkpoint
+-> verification
+-> status/revocation/supersession
+-> conformance
+-> reference implementation
+-> SDK
+-> external issuer
+```
+
+## Public/open candidates
+
+- normative schemas;
+- canonical encoding;
+- digest/signature envelopes;
+- issuer metadata;
+- verification semantics;
+- status model;
+- profile registry;
+- test vectors;
+- conformance suite;
+- reference verifier;
+- reference sandbox issuer;
+- SDKs/examples.
+
+## Proprietary Renova differentiation may remain
+
+- owner operational graph;
+- capital/portfolio governance;
+- Action Engine;
+- Intervention Optimizer;
+- Operations Network;
+- lifecycle/capital analytics;
+- institutional workflow orchestration;
+- managed trust/network services.
+
+## Adoption rule
+
+Do not call this an industry standard until independent institutions/implementations actually adopt it.
+
+Before that, position it as an **open proposed protocol / reference specification**.
+
+## Strategic moat
+
+The defensible combination is:
+
+`open interoperability + trusted issuers + accepted profiles + reusable verified history + owner operating graph + institutional workflows + accumulated conformance/adoption`.
+
+The protocol should make external participation easier, not create artificial lock-in.
