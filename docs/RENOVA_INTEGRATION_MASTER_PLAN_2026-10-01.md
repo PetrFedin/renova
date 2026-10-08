@@ -6423,3 +6423,67 @@ The long-term defensible graph is:
 `installed asset + obligation + service history + provider capability + evidence quality + part dependency + actual cost/duration + repeat-visit outcome + trust/profile requirement`.
 
 This is stronger than a generic scheduling or "AI facilities" layer because every recommendation remains traceable to real property facts, domain actions and evidence.
+
+
+---
+
+# Property Lifecycle Intelligence — 2026-10-08
+
+**Status:** ADOPT AFTER PROPERTY OPERATIONS NETWORK DETERMINISTIC FOUNDATION.  
+**Contract:** `docs/RENOVA_PROPERTY_LIFECYCLE_INTELLIGENCE_CONTRACT_2026-10-08.md`
+
+Renova's next defensible layer should learn from **verified lifecycle history**, not from generic predictive-maintenance assumptions.
+
+Core progression:
+
+```
+verified asset identity
+-> lifecycle event ledger
+-> deterministic actual-cost / service / downtime accounting
+-> cohort eligibility + exposure
+-> descriptive reliability benchmarks
+-> Repair vs Replace scenarios
+-> deterministic Lifecycle Cost / CapEx planning
+-> historical backtesting
+-> predictive reliability only after qualification
+```
+
+## Adopt first
+
+- exact lifecycle event ledger;
+- reconciled actual cost attribution;
+- maintenance vs repair vs replacement semantics;
+- downtime semantics;
+- warranty-covered vs owner-paid economics;
+- reproducible cohorts;
+- observation/exposure denominators;
+- censoring/survivorship handling;
+- Repair vs Replace with explicit horizon;
+- committed vs deterministic vs scenario vs predictive CapEx separation.
+
+## Defer
+
+- failure probability;
+- predictive intervention windows;
+- learned replacement timing;
+- predictive CapEx.
+
+These remain deferred until sufficient actual history, leakage-safe backtests, calibration, operational-threshold evaluation and drift monitoring exist.
+
+## Reject
+
+- universal asset-health score;
+- predicted failure presented as fact;
+- provider/manufacturer league tables from uncontrolled cohorts;
+- lifespan claims derived only from replaced assets;
+- quote/budget mixed with actual cost;
+- theoretical warranty coverage called realised savings;
+- automatic replacement/procurement.
+
+## Strategic role
+
+The durable lifecycle graph becomes:
+
+`asset identity + installation context + maintenance + failure + actual cost + downtime + parts/replacement + provider evidence + warranty/recall + cohort exposure + outcome`.
+
+This creates the foundation for credible lifecycle economics and later predictive reliability without sacrificing Renova's evidence-first architecture.
