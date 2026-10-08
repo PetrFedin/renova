@@ -1,4 +1,10 @@
 import { test, expect } from '@playwright/test';
+
+const GOLDEN_PNG = 'data:image/png;base64,' + [
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB',
+  'CAQAAAC1HAwCAAAAC0lEQVR42mNk+A8A',
+  'AQUBAScY42YAAAAASUVORK5CYII=',
+].join('');
 import { API, authHeaders, cleanupE2eGateProject, prepareContractGateScenario } from '../helpers';
 
 async function finishChecklist(request: any, projectId: string, stageId: string, headers: Record<string,string>) {
@@ -34,7 +40,7 @@ test.describe('@golden @gp4 acceptance → rework → acceptance → warranty', 
       await finishChecklist(request, s.projectId, s.stageId, hE);
       expect((await request.post(
         `${API}/api/v1/projects/${s.projectId}/stages/${s.stageId}/photos`,
-        { headers: hE, data: { image_data: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', caption: 'Результат работ' } },
+        { headers: hE, data: { image_data: GOLDEN_PNG, caption: 'Результат работ' } },
       )).ok()).toBeTruthy();
 
       const submit = await request.post(
