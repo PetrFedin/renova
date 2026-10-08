@@ -24,7 +24,7 @@ test.describe('@golden @gp7 contract → signatures → immutable version → ex
       const before = await request.get(`${API}/api/v1/projects/${s.projectId}/documents`, { headers: hC });
       expect(before.ok()).toBeTruthy();
       const beforeBody = await before.json();
-      const beforeExports = beforeBody.items.filter((d: any) => d.source === 'export').length;
+      const beforeExports = beforeBody.items.filter((d: any) => String(d.href ?? '').includes('/export/1c-payments.csv')).length;
 
       const first = await request.get(`${API}/api/v1/projects/${s.projectId}/export/1c-payments.csv`, { headers: hC });
       const second = await request.get(`${API}/api/v1/projects/${s.projectId}/export/1c-payments.csv`, { headers: hC });
@@ -34,7 +34,7 @@ test.describe('@golden @gp7 contract → signatures → immutable version → ex
       const afterBody = await (
         await request.get(`${API}/api/v1/projects/${s.projectId}/documents`, { headers: hC })
       ).json();
-      const afterExports = afterBody.items.filter((d: any) => d.source === 'export').length;
+      const afterExports = afterBody.items.filter((d: any) => String(d.href ?? '').includes('/export/1c-payments.csv')).length;
       expect(
         afterExports - beforeExports,
         'Repeated GET export must not create duplicate audit documents; reads should be safe to retry',
