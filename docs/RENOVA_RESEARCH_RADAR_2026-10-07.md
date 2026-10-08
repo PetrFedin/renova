@@ -965,3 +965,86 @@ Reject or defer if:
 - disposition candidate is presented as a sale recommendation;
 - portfolio benchmarking ignores size/exposure/business-model normalization;
 - AI can approve, vote or commit capital.
+
+
+---
+
+## Owner Capital Governance & Portfolio Digital Twin priority
+
+| Candidate | UX | Moat | Revenue | Readiness | Risk | Priority | Decision |
+|---|---:|---:|---:|---:|---:|---:|---|
+| Owner/entity graph + source classes | 5 | 5 | 5 | 5 | 1 | 19 | ADOPT first |
+| Immutable portfolio snapshot | 5 | 5 | 5 | 5 | 1 | 19 | ADOPT |
+| Capital/funding reconciliation | 5 | 5 | 5 | 5 | 1 | 19 | ADOPT |
+| Physical/execution/strategy projections | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT |
+| Decision queue + readiness | 5 | 5 | 5 | 5 | 1 | 19 | ADOPT |
+| Snapshot delta / IC delta | 5 | 5 | 5 | 5 | 1 | 19 | ADOPT |
+| Materiality policy | 4 | 5 | 5 | 4 | 2 | 16 | ADOPT |
+| Reconciliation workbench | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT |
+| Frozen owner/committee snapshots | 5 | 5 | 5 | 5 | 1 | 19 | ADOPT |
+| Transaction/refinancing snapshot cuts | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT |
+| Role-specific Owner/CFO/COO/IC projections | 5 | 5 | 5 | 4 | 2 | 17 | ADOPT |
+| AI cited owner narrative | 4 | 4 | 4 | 3 | 3 | 12 | After lineage foundation |
+| Universal twin health score | 2 | 1 | 2 | 3 | 5 | 3 | REJECT |
+
+### Core rule
+
+The Owner Digital Twin is a **versioned source-traceable snapshot**, not a 3D scene and not a replacement for legal/accounting authority.
+
+Preferred progression:
+
+`owner/entity map -> immutable snapshot -> reconciliation -> decision queue -> IC delta -> frozen review snapshot -> outcome history`.
+
+### Strongest differentiator
+
+The durable owner graph is:
+
+`entity/ownership + property/lifecycle truth + capital/funding + approved decisions + execution + transfer/refinancing + outcomes + historical snapshots`.
+
+This lets Renova answer not merely "what is happening", but **what changed, what is inconsistent, what requires owner action, and what happened after the owner acted**.
+
+### Commercial role
+
+**Owner / Principal**
+- decision queue;
+- IC delta;
+- capital/funding;
+- strategy posture;
+- critical exceptions.
+
+**CFO**
+- approved/committed/actual;
+- funding;
+- variance;
+- reconciliation exceptions.
+
+**COO / Property Operations**
+- physical/execution state;
+- critical backlog;
+- capacity;
+- downtime.
+
+**Board / IC**
+- frozen snapshot;
+- material changes;
+- approvals/conditions;
+- outcome history.
+
+**Transaction / Refinancing**
+- bounded purpose-specific snapshot;
+- readiness blockers;
+- disclosure package.
+
+### Kill/defer criteria
+
+Reject or defer if:
+
+- manager/operator is inferred to be legal owner;
+- portfolio numbers lack source/cutoff;
+- approved/committed/actual are blended;
+- snapshot can be silently rewritten;
+- source conflicts are hidden;
+- data outage renders zero/current state;
+- transfer readiness is shown as transaction certainty;
+- AI can resolve reconciliation or approve owner actions;
+- twin is reduced to a 3D visualization.
