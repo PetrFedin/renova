@@ -2,7 +2,15 @@
 import type { Room } from './room';
 import type { Stage } from './stage';
 
-export type ProjectAccessMode = 'owner' | 'contractor' | 'guest' | 'supervisor' | 'none';
+export type ProjectAccessMode = 'owner' | 'contractor' | 'participant' | 'guest' | 'supervisor' | 'none';
+export type OperationalPersona =
+  | 'owner'
+  | 'lead'
+  | 'foreman'
+  | 'member'
+  | 'participant'
+  | 'supervisor'
+  | 'guest';
 
 export type ProjectSummary = {
   id: string;
@@ -36,6 +44,10 @@ export type ProjectSummary = {
   /** supervisor — независимый проектный технадзор с capability-scoped actions. */
   access_mode?: ProjectAccessMode;
   technical_capabilities?: string[];
+  /** UX responsibility projection derived from canonical backend authority. */
+  operational_persona?: OperationalPersona;
+  /** Action vocabulary for rendering only; mutations still fail closed on the API. */
+  capabilities?: string[];
 };
 
 export type EstimateLine = {
