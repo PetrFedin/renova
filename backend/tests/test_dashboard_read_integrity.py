@@ -149,6 +149,38 @@ def test_empty_dashboard_is_not_marked_completed():
     assert dashboard["next_action_type"] == "review_estimate"
 
 
+def test_owner_with_estimate_and_no_contractor_is_routed_to_contractor_search():
+    planned = _stage("planned", status=StageStatus.planned, percent=0, order=1)
+    project = _project([planned])
+    project.contractor_id = None
+    project.estimate_lines = [SimpleNamespace(id="estimate-1")]
+
+    dashboard = dashboard_svc.build_dashboard_read_model(
+        project,
+        stages=[planned],
+        access_mode="owner",
+    )
+
+    assert dashboard["next_action_title"] == "Подключить исполнителя"
+    assert dashboard["next_action_type"] == "find_contractor"
+
+
+def test_guest_with_estimate_and_no_contractor_does_not_receive_owner_action():
+    planned = _stage("planned", status=StageStatus.planned, percent=0, order=1)
+    project = _project([planned])
+    project.contractor_id = None
+    project.estimate_lines = [SimpleNamespace(id="estimate-1")]
+
+    dashboard = dashboard_svc.build_dashboard_read_model(
+        project,
+        stages=[planned],
+        access_mode="guest",
+    )
+
+    assert dashboard["next_action_title"] == "Следующий этап: Stage planned"
+    assert dashboard["next_action_type"] == "review_estimate"
+
+
 @pytest.mark.asyncio
 async def test_enrichment_failure_is_explicit(monkeypatch):
     class BrokenSession:
