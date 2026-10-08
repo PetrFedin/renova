@@ -37,7 +37,7 @@ test.describe('@golden @gp3 contractor execution → customer visibility', () =>
       for (let i = 1; i <= 3; i += 1) {
         const photo = await request.post(
           `${API}/api/v1/projects/${s.projectId}/stages/${s.stageId}/photos`,
-          { headers: hE, data: { image_data: `golden-evidence-${i}`, caption: `Результат ${i}` } },
+          { headers: hE, data: { image_data: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', caption: `Результат ${i}` } },
         );
         expect(photo.ok()).toBeTruthy();
       }
