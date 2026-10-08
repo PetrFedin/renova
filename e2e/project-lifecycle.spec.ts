@@ -219,9 +219,9 @@ test.describe('P3-W12 Project lifecycle', () => {
     const pid = ((await created.json()) as { id: string }).id;
     trackE2eProject(pid, hCust);
 
-    // 2. before canonical assignment, contractor has no read access
+    // 2. before canonical assignment, contractor cannot distinguish a foreign project from missing.
     const preAssignRead = await request.get(`${API}/api/v1/projects/${pid}`, { headers: hCont });
-    expect(preAssignRead.status()).toBe(403);
+    expect(preAssignRead.status()).toBe(404);
 
     await request.post(`${API}/api/v1/subscription/checkout`, { headers: hCont });
     await assignContractorViaRequest(request, pid, hCont, hCust);
