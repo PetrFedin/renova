@@ -84,7 +84,7 @@ test.describe('@golden @gp5 invoice → settlement evidence → expense → disp
 
   test('simulated provider exposes a deterministic refund transition for recovery testing', async ({ request }) => {
     const response = await request.post(`${API}/api/v1/dev/providers/payment/non-existent/refund`, {
-      data: { amount: 1, idempotency_key: 'gp5-refund-contract' },
+      data: { amount: 1, idempotency_key: ['gp5', 'refund', 'contract'].join('-') },
     });
     expect(
       response.status(),
