@@ -25,6 +25,8 @@ OWNER_CAPABILITIES = frozenset(
     {
         "project.read",
         "project.manage",
+        "field.write",
+        "quality.review",
         "participants.manage",
         "commercial.review",
         "schedule.review",
