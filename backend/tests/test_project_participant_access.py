@@ -80,7 +80,7 @@ async def test_participant_sees_project_in_list_and_detail_without_money(db):
     assert body["customer_budget"] is None
 
     # посторонний исполнитель по-прежнему не видит проект
-    assert (await _call(db, stranger, "GET", "/api/v1/projects/pa-proj")).status_code == 403
+    assert (await _call(db, stranger, "GET", "/api/v1/projects/pa-proj")).status_code == 404
     assert (await _call(db, stranger, "GET", "/api/v1/projects")).json() == []
 
 
@@ -132,7 +132,7 @@ async def test_removed_participant_loses_access(db):
     cust, lead, p, _ = await _seed(db)
     part_row = await part.active_participant(db, project_id="pa-proj", user_id=p.id)
     await part.remove_contractor(db, project_id="pa-proj", participant_id=part_row.id, actor_id=cust.id)
-    assert (await _call(db, p, "GET", "/api/v1/projects/pa-proj")).status_code == 403
+    assert (await _call(db, p, "GET", "/api/v1/projects/pa-proj")).status_code == 404
     assert (await _call(db, p, "GET", "/api/v1/projects")).json() == []
 
 def test_project_detail_route_masks_foreign_forbidden_as_not_found():
