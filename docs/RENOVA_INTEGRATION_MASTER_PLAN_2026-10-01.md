@@ -6611,3 +6611,67 @@ The durable record becomes:
 `property facts + owner objective + alternatives + approved decision + capital programme + execution evidence + actual outcome`.
 
 This gives the owner not only a history of the asset, but a history of **why capital and strategic decisions were made and whether they worked**.
+
+
+---
+
+# Owner Capital Governance & Portfolio Digital Twin — 2026-10-08
+
+**Status:** ADOPT AS OWNER-LEVEL OPERATING MODEL AFTER PORTFOLIO STRATEGY / IC FOUNDATION.  
+**Contract:** `docs/RENOVA_OWNER_CAPITAL_GOVERNANCE_PORTFOLIO_DIGITAL_TWIN_CONTRACT_2026-10-08.md`
+
+The next layer is a versioned owner snapshot, not another dashboard.
+
+Core chain:
+
+```
+entity / ownership map
+-> physical property / asset truth
+-> operating state
+-> capital / funding state
+-> approvals / commitments
+-> construction / service execution
+-> transfer / refinancing readiness
+-> owner decision queue
+-> IC delta
+-> frozen snapshot
+-> actual outcome
+```
+
+## Adopt
+
+- source-backed owner/entity graph;
+- immutable portfolio snapshot;
+- temporal snapshot comparison;
+- approved/committed/invoiced/paid/reconciled separation;
+- funding-state separation;
+- physical/execution/strategy projections from canonical domains;
+- decision queue + decision readiness;
+- materiality policy;
+- IC delta since prior approved snapshot;
+- cross-domain reconciliation workbench;
+- frozen owner/committee snapshot;
+- transaction/refinancing snapshot cut;
+- role projections for Owner / Asset Management / CFO / COO / IC;
+- AI narrative only with exact cited facts.
+
+## Core boundary
+
+The Portfolio Digital Twin is a semantic/evidence/governance twin. It does not require 3D, and it does not replace:
+
+- legal title registry;
+- accounting/ERP;
+- bank/treasury;
+- valuation;
+- construction/service authority;
+- committee approval.
+
+## Strategic differentiation
+
+The owner-level graph becomes:
+
+`entity/ownership + property truth + lifecycle + capital/funding + decisions + execution + transfer/refinancing + outcomes + versioned history`.
+
+The key product value is the ability to answer, from one source-traceable snapshot:
+
+**what changed, what is off-plan, what requires owner decision, what is committed, what is actually true, and what happened after prior decisions.**
