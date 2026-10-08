@@ -5596,3 +5596,700 @@ Detect/guard against:
 
 **Sequencing:** requirement-policy engine -> History/Evidence/Freshness dimensions -> risk/obligation status -> Transfer Readiness -> provenance coverage -> snapshot/UI -> institutional profiles -> signed verification.
 
+## Property Action Engine wave — trust gaps to verified remediation
+
+**Status:** PLANNED / OPERATIONAL LAYER OVER PROPERTY TRUST MATRIX.
+
+Property Trust Matrix diagnoses information/obligation state.
+
+Property Action Engine turns actionable findings into controlled remediation:
+
+`requirement gap -> explanation -> responsible role -> proposed canonical action -> due/SLA policy -> required closure evidence -> domain execution -> verified closure -> Trust Matrix recompute`
+
+It is **not** a second task/work-order/issue system.
+
+Relevant reference patterns:
+
+- ISO 55001:2024 defines requirements for systematic asset management across asset lifecycle, balancing performance, risk and expenditure and supporting continual improvement:
+  - https://www.iso.org/standard/83054.html
+- buildingSMART IDS defines machine-readable information requirements and automated checking:
+  - https://www.buildingsmart.org/standards/bsi-standards/information-delivery-specification-ids/
+- construction meeting/action tooling shows the operational importance of linking coordination items to actionable canonical work rather than leaving action points trapped in notes:
+  - https://www.autodesk.com/learn/ondemand/course/construction-project-management/unit/1AvYkpc3Hj0xp6CZ10E6SL
+
+### Core architecture — requirement remediation loop
+
+`Trust Matrix Requirement Result`
+-> `Action Recommendation`
+-> human/policy triage
+-> create/link **canonical domain action**
+-> domain execution
+-> closure evidence
+-> canonical action completion/decision
+-> requirement re-evaluation
+-> new Trust Matrix Snapshot.
+
+The Action Engine never marks a requirement satisfied merely because its recommendation was clicked "done".
+
+### Action Recommendation object — ADOPT
+
+A recommendation is an orchestration/projection object, not business authority.
+
+Candidate fields:
+
+- recommendation_id;
+- property_id;
+- matrix_snapshot_id;
+- policy_id/version;
+- requirement_id;
+- dimension;
+- reason_code;
+- severity;
+- blocking;
+- explanation;
+- responsible_role_class;
+- suggested_canonical_action_type;
+- suggested_target_entity;
+- due_at / SLA source where applicable;
+- required_closure_predicate;
+- accepted_closure_evidence classes;
+- current linked canonical entity reference;
+- recommendation state;
+- dedupe_key;
+- first_detected_at;
+- last_evaluated_at;
+- supersedes / superseded_by.
+
+### Recommendation states — ADOPT
+
+Candidate states:
+
+- proposed;
+- acknowledged;
+- linked_to_canonical_action;
+- snoozed_until;
+- dismissed_with_reason;
+- invalidated;
+- resolved_from_domain;
+- superseded.
+
+Do not duplicate the status of the linked Task/RFI/Inspection/Service Case/Issue.
+
+Once linked, the canonical entity remains authoritative for execution status.
+
+### Canonical action routing — REQUIRED
+
+Map recommendation classes into existing Renova authorities.
+
+Examples:
+
+**Missing inspection evidence**
+-> Inspection / Hold Point.
+
+**Unresolved construction defect**
+-> Project Issue / Punch / Work Order.
+
+**Technical ambiguity**
+-> RFI.
+
+**Material/product approval gap**
+-> Submittal / Material Approval.
+
+**Maintenance overdue**
+-> Service Case / Work Order.
+
+**Warranty obligation**
+-> Warranty Issue / Service Case.
+
+**Recall confirmed on installed product**
+-> Inspection / Service / Replacement action depending on approved policy.
+
+**Missing transfer disclosure/source**
+-> bounded Project/Property Task or document/source-admission action.
+
+**Conflicting decision/source**
+-> review task / Decision Ledger action.
+
+If a canonical domain exists, do not create a generic task instead.
+
+### Generic Property Task — BOUNDED
+
+A generic Property Task is allowed only when no existing domain authority fits.
+
+Use cases may include:
+
+- request a missing transferable document;
+- re-verify a property metadata fact;
+- request owner consent/redaction review;
+- confirm a source identity;
+- administrative transfer preparation.
+
+Generic task cannot represent:
+
+- payment approval;
+- acceptance;
+- RFI response;
+- inspection;
+- warranty defect;
+- change order;
+- material approval
+
+when a dedicated canonical domain exists.
+
+### Dedupe / action identity — REQUIRED
+
+Avoid recommendation spam.
+
+Define a stable dedupe identity such as:
+
+`property_id + policy_id/version class + requirement_id + subject_entity + source/current-state identity`
+
+If the same underlying unresolved requirement is re-evaluated:
+
+- update/retain the existing recommendation;
+- do not create a new action every matrix recompute.
+
+A materially changed root cause/source/policy may supersede the previous recommendation.
+
+### Reopen semantics — REQUIRED
+
+If a previously resolved requirement becomes unsatisfied again:
+
+- do not silently mutate history;
+- create a new recommendation occurrence or explicit reopen lineage according to policy;
+- link to the previous resolved occurrence;
+- preserve previous completion evidence.
+
+Examples:
+
+- maintenance becomes due again in a new service cycle;
+- warranty/source expires;
+- recalled replacement product is itself affected later;
+- transfer consent expires;
+- previously verified emergency shut-off point becomes invalid after renovation.
+
+### Why-this-matters explanation — REQUIRED
+
+Every recommendation explains:
+
+- what requirement failed;
+- why it applies;
+- why it matters for the current purpose/profile;
+- what source is missing/stale/conflicted;
+- what is known vs unknown;
+- whether it blocks transfer/verification;
+- which action can resolve it.
+
+Avoid generic messages like "Improve trust score".
+
+Preferred:
+
+> "Transfer dossier cannot be issued because the current boiler commissioning record is missing. Upload/verify the commissioning record or create an inspection/service action."
+
+### Responsible-role policy — ADOPT
+
+Requirement policy may declare candidate responsible roles:
+
+- current owner/controller;
+- contractor;
+- supervisor/inspector;
+- property manager;
+- service provider;
+- document/compliance administrator;
+- insurer liaison;
+- enterprise organisation administrator.
+
+Assignment follows actual Renova ACL/team/provider rules.
+
+The engine cannot grant project/property access merely because a role would ideally be responsible.
+
+### Assignment fallback — REQUIRED
+
+If the required role is unavailable:
+
+- place recommendation in an explicit unassigned/owner-triage queue;
+- identify missing capability/participant;
+- optionally recommend inviting/assigning a qualified party.
+
+Do not silently assign to an unrelated participant.
+
+### SLA / due-date source — REQUIRED
+
+Never invent an authoritative deadline.
+
+Allowed due/SLA sources include:
+
+- contract/warranty term;
+- manufacturer maintenance schedule;
+- official recall/remediation notice;
+- approved organisation policy;
+- service agreement;
+- RFI/Submittal/inspection policy;
+- owner-selected target;
+- explicit regulatory/jurisdiction policy source.
+
+If no valid due source exists:
+
+- use priority without fabricated SLA;
+- display `Срок не задан`.
+
+Every deadline records:
+
+- due_at;
+- due_source_type;
+- due_source_id/version;
+- computed rule/version where calculated.
+
+### Priority — ADOPT WITHOUT MAGIC SCORE
+
+Default prioritisation should be deterministic bands, not a hidden numeric "AI priority score".
+
+Candidate order:
+
+1. immediate safety/official recall blocker;
+2. profile-blocking critical requirement;
+3. overdue mandatory obligation;
+4. high severity / near due;
+5. transfer/verification blocker;
+6. medium attention;
+7. documentation improvement.
+
+Within a band sort by:
+
+- due date;
+- first detected;
+- affected dependency/critical path;
+- user-selected priority.
+
+AI may explain priority; it does not silently reorder a critical mandatory action below optional cleanup.
+
+### Closure predicate — REQUIRED
+
+Every recommendation specifies **what actually closes the requirement**.
+
+Examples:
+
+**Missing commissioning**
+- admitted commissioning record with accepted source class + required fields.
+
+**Maintenance overdue**
+- completed Service Case + required completion evidence + current maintenance cycle advanced.
+
+**Stale warranty source**
+- refreshed admitted warranty/current-status source.
+
+**Confirmed recall**
+- approved remediation outcome + replacement/inspection evidence + recall-action requirement resolved.
+
+**Missing inspection evidence**
+- completed/accepted Inspection Submission satisfying the governed evidence requirement.
+
+**Transfer redaction review**
+- authorised disclosure review completed for current dossier version.
+
+"Task closed" by itself is not sufficient unless the requirement policy explicitly defines it.
+
+### Closure evidence contract — ADOPT
+
+A closure predicate may require:
+
+- source/document;
+- accepted inspection;
+- service evidence;
+- installed asset/product update;
+- photo/video evidence;
+- signature/approval;
+- current external status check;
+- Decision Ledger record;
+- transfer consent/receipt;
+- verification artifact.
+
+Evidence source classes must match the requirement policy.
+
+### Domain-event observation — ADOPT
+
+The engine observes existing canonical events/outbox:
+
+- Inspection completed/accepted;
+- Issue/Work Order closed;
+- RFI answered/accepted;
+- Submittal approved;
+- Service Case completed;
+- Warranty Issue resolved;
+- Source admitted/refreshed/revoked;
+- Installed Asset changed;
+- Decision superseded;
+- Transfer dossier published/revoked.
+
+Then it invalidates/re-evaluates affected requirements.
+
+Do not have every screen poll/recompute the whole property graph.
+
+### Recompute contract — REQUIRED
+
+`canonical domain event -> affected requirement lookup -> requirement re-evaluation -> Trust Matrix Snapshot -> recommendation update`
+
+Recompute must be:
+
+- idempotent;
+- retryable;
+- version-aware;
+- policy-aware;
+- source-cutoff aware;
+- observable.
+
+A failed recompute cannot roll back the canonical business event that already committed.
+
+### Eventual consistency UX — REQUIRED
+
+After a canonical action completes:
+
+- show business action as completed from its authority;
+- Trust Matrix may briefly show "Пересчитываем";
+- display snapshot/source cutoff timestamp;
+- never fake immediate trust resolution before recompute.
+
+### Action Bundles — ADOPT
+
+Multiple requirements may be resolved by one canonical action.
+
+Example:
+
+A commissioned boiler service may resolve:
+
+- overdue maintenance;
+- stale service-status source;
+- missing current service evidence;
+- transfer-readiness maintenance blocker.
+
+Represent:
+
+`one canonical action -> many requirement bindings`
+
+Do not create four duplicate service tasks.
+
+### Bundle safety — REQUIRED
+
+One action can close multiple requirements only when **each closure predicate independently passes**.
+
+No blanket "bundle completed = all trust gaps solved".
+
+### Dependency graph — ADAPT
+
+Some actions depend on another action.
+
+Examples:
+
+- identify exact installed model -> then evaluate recall;
+- obtain document -> then source admission review;
+- RFI response -> then change review;
+- repair -> then reinspection;
+- replacement -> then commissioning/passport update.
+
+Represent explicit dependencies:
+
+- blocked_by;
+- unlocks;
+- prerequisite.
+
+Avoid circular action dependencies; detect and surface them.
+
+### Trust Recovery Plan — ADOPT
+
+For a property/profile, generate an ordered **Recovery Plan**:
+
+- current posture;
+- blocking recommendations;
+- non-blocking recommendations;
+- responsible parties;
+- known due dates;
+- estimated action classes;
+- which Trust Matrix dimensions/requirements each action can affect.
+
+Do not promise the final percentage/posture until closure predicates are actually satisfied.
+
+### Transfer Readiness Fast Path — ADOPT
+
+When owner initiates transfer:
+
+`current Transfer Readiness -> blocking gaps -> Recovery Plan -> execute/collect -> recompute -> issue Transfer Dossier`
+
+This is a strong commercial workflow.
+
+### Recall Remediation Fast Path — ADOPT
+
+`official recall admitted -> confirmed asset match -> critical recommendation -> responsible owner/manager/provider -> inspection/service/replacement -> evidence -> asset/history update -> requirement re-evaluation`
+
+Official recall severity/remedy remains source-labelled.
+
+Renova cannot invent a different safety instruction.
+
+### Maintenance Loop — ADOPT
+
+`maintenance becomes due -> recommendation -> Service Case -> appointment/work -> completion evidence -> asset maintenance history -> next cycle -> matrix recompute`
+
+This turns Property Passport into recurring operational value.
+
+### Institutional Request Fast Path — ADOPT
+
+For an insurer/lender/buyer profile request:
+
+`requested profile -> evaluate purpose policy -> trust/coverage gaps -> owner actions -> consent/redaction -> recompute -> issue bounded artifact`
+
+Institution cannot trigger arbitrary remediation actions against the property without owner/authorised policy.
+
+### Notification policy — ADOPT
+
+Notify only when actionability exists.
+
+Examples:
+
+- new critical blocker;
+- due soon;
+- overdue;
+- assignment;
+- source revoked;
+- confirmed recall;
+- transfer blocker after transfer flow started;
+- resolved action requiring review/recompute.
+
+Do not notify on every matrix percentage movement.
+
+### Escalation — CONDITIONAL
+
+Escalation rules may come from:
+
+- contract/organisation SLA;
+- official safety policy;
+- warranty/service agreement;
+- enterprise workflow.
+
+Escalation can:
+
+- notify supervisor/manager;
+- reassign according to policy;
+- surface on portfolio dashboard.
+
+It cannot expand ACL or approve a business decision.
+
+### Snooze / dismiss — REQUIRED
+
+Users need control over non-critical recommendations.
+
+**Snooze**
+- reason;
+- until date;
+- actor;
+- policy restrictions.
+
+**Dismiss**
+- explicit reason;
+- allowed only if policy permits;
+- may require privileged role;
+- recommendation remains in history.
+
+Critical/blocking actions may be non-dismissible.
+
+Dismissal does not mark the underlying requirement satisfied.
+
+### Waiver — GOVERNED
+
+If a requirement can be formally waived:
+
+- dedicated policy;
+- authorised actor;
+- waiver reason;
+- supporting source;
+- effective/expiry period;
+- audit;
+- visible matrix state.
+
+Waiver is distinct from dismissal.
+
+### Conflict handling — REQUIRED
+
+If action execution creates a source conflict:
+
+- requirement becomes conflicted;
+- recommendation remains/reopens as needed;
+- route to review;
+- do not choose the "better scoring" source automatically.
+
+### Offline behavior — ADAPT
+
+Site/mobile user may:
+
+- view cached recommendations;
+- capture evidence;
+- draft action updates;
+- create permitted offline canonical mutation intents.
+
+But:
+
+- recommendation closure waits for server-confirmed canonical result;
+- Trust Matrix recompute is server-authoritative;
+- offline UI clearly shows queued/not-confirmed.
+
+### AI role — BOUNDED
+
+AI may:
+
+- explain why a recommendation exists;
+- summarise sources;
+- suggest the most likely canonical action type;
+- draft RFI/Service/Task text;
+- bundle related recommendations as a proposal;
+- prepare Recovery Plan narrative.
+
+AI may not:
+
+- mark requirement satisfied;
+- override blocker;
+- create high-risk action without review;
+- change due-date source;
+- waive requirement;
+- close canonical action;
+- fabricate evidence.
+
+### Action Engine policy tests — REQUIRED
+
+For every requirement/action mapping test:
+
+- triggering gap;
+- non-triggering satisfied case;
+- N/A case;
+- unknown/insufficient-data case;
+- dedupe;
+- source/policy version change;
+- action creation/link;
+- closure predicate positive;
+- closure predicate negative;
+- stale/superseded evidence;
+- wrong-property evidence;
+- reopen/new cycle;
+- blocker precedence.
+
+### Action audit receipt — ADOPT
+
+Record recommendation lifecycle facts:
+
+- recommendation ID;
+- originating snapshot/requirement;
+- generated policy/version;
+- actor acknowledgement;
+- canonical entity created/linked;
+- completion event;
+- closure evaluation;
+- resulting matrix snapshot;
+- dismiss/snooze/waiver events.
+
+This is audit context, not a duplicate task history.
+
+### Portfolio Action Queue — ADOPT
+
+For property managers/enterprise:
+
+Filter by:
+
+- critical/blocking;
+- overdue;
+- recall;
+- maintenance;
+- source freshness;
+- transfer preparation;
+- unassigned;
+- property;
+- responsible role/provider.
+
+Do not provide a single "portfolio action score".
+
+### Outcome metrics — ADOPT
+
+Measure:
+
+#### Recommendation-to-action conversion
+
+`recommendations_linked_to_canonical_action / actionable_recommendations`
+
+#### Median time to acknowledgement
+
+`acknowledged_at - first_detected_at`
+
+#### Median remediation time
+
+`requirement_resolved_at - first_detected_at`
+
+#### Closure failure rate
+
+Canonical action completed but closure predicate still fails.
+
+This is especially important: it reveals "task closed without solving the trust gap".
+
+#### Reopen rate
+
+Requirement becomes unsatisfied again after prior resolution.
+
+Segment legitimate recurring cycles (maintenance) separately.
+
+#### Duplicate recommendation rate
+
+Should approach zero for same unresolved root requirement.
+
+#### Transfer blocker resolution time
+
+From transfer flow start/gap detection to profile-ready state.
+
+### Commercial packaging
+
+**Core owner**
+- critical blockers;
+- maintenance/warranty next actions;
+- basic Trust Recovery Plan.
+
+**Property Trust / Transfer**
+- full transfer-blocker workflow;
+- dossier readiness;
+- verification action path.
+
+**Property Care**
+- recurring maintenance/service action engine;
+- provider/service network.
+
+**Enterprise**
+- portfolio action queue;
+- organisation SLA/escalation;
+- policy profiles;
+- recall blast-radius remediation;
+- institutional request workflow.
+
+### Anti-patterns — REJECT
+
+- parallel proprietary task statuses inside Trust Engine;
+- "Mark trust gap solved" button without closure evidence;
+- arbitrary AI-generated deadline;
+- one task per dimension when one service/inspection resolves multiple requirements;
+- repeated notifications every recompute;
+- auto-waiver;
+- auto-acceptance/auto-payment;
+- recommendation score that hides critical blockers;
+- property manager action that silently grants project access;
+- action engine as direct SQL/domain-table writer.
+
+### Acceptance
+
+- each recommendation comes from a versioned matrix requirement/policy;
+- each actionable recommendation maps to an existing canonical domain where available;
+- recommendation status never replaces canonical action status;
+- deadline/SLA provenance is visible;
+- closure predicate is explicit/testable;
+- completed canonical action does not guarantee trust resolution;
+- one action can safely satisfy multiple requirements only through independent closure predicates;
+- dedupe prevents recommendation spam;
+- dismiss/snooze/waiver semantics are distinct;
+- server-confirmed domain outcome triggers idempotent matrix recompute;
+- AI cannot satisfy/waive/close requirements;
+- offline actions remain pending until server confirmation;
+- every resolved gap can be traced: requirement -> action -> evidence -> domain result -> new matrix snapshot.
+
+**Sequencing:** requirement/action mapping registry -> recommendation projection -> canonical action bindings -> closure predicates -> recompute loop -> owner Recovery Plan -> maintenance/recall/transfer fast paths -> portfolio action queue -> bounded AI assistance.
+
