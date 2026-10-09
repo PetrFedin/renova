@@ -143,7 +143,6 @@ async def build_action_responsibilities(
                     Payment.status.in_(
                         {
                             PaymentStatus.pending,
-                            PaymentStatus.processing,
                             PaymentStatus.paid_unverified,
                         }
                     ),
@@ -238,7 +237,7 @@ async def build_action_responsibilities(
             )
 
     for payment in payments:
-        if payment.status in {PaymentStatus.pending, PaymentStatus.processing}:
+        if payment.status == PaymentStatus.pending:
             items.append(
                 ResponsibilityItem(
                     resource_type="payment",
@@ -251,17 +250,8 @@ async def build_action_responsibilities(
                     action="pay_invoice",
                     due_at=None,
                     evidence=ResponsibilityEvidence(required=(), present=()),
-                    completion_condition="payment.status not in {pending, processing}",
-                    next=(
-                        ResponsibilityNext(
-                            capability="payment.receive.confirm",
-                            persona="lead",
-                            user_id=project.contractor_id,
-                            action="confirm_payment_received",
-                        )
-                        if project.contractor_id
-                        else None
-                    ),
+                    completion_condition="payment.status != pending",
+                    next=None,
                 )
             )
             continue
