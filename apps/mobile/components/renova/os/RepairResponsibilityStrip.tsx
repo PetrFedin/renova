@@ -19,7 +19,7 @@ export function RepairResponsibilityStrip({
   userId: string;
   onOpenControl: () => void;
 }) {
-  const item = queue?.items?.[0];
+  const item = queue?.items?.find((candidate) => candidate.resource_type === 'issue');
   if (!item) return null;
 
   const mine = item.responsible_user_id === userId;
