@@ -104,7 +104,7 @@ async def action_responsibility(
     from app.services import action_responsibility_service as action_svc
 
     project = await require_project(db, project_id, user, write=False, participant_ok=True)
-    items = await action_svc.build_action_responsibilities(db, project=project)
+    items = await action_svc.build_action_responsibilities(db, project=project, actor=user)
     return {"project_id": project_id, "count": len(items), "items": [item.to_dict() for item in items]}
 
 
