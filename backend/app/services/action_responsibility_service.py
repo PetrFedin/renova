@@ -119,6 +119,7 @@ async def build_action_responsibilities(
     db: AsyncSession,
     *,
     project: Project,
+    actor: User,
 ) -> list[ResponsibilityItem]:
     """Project existing issue/acceptance truth into a deterministic action queue."""
     issues = list(
@@ -134,22 +135,27 @@ async def build_action_responsibilities(
         ).all()
     )
 
-    payments = list(
-        (
-            await db.scalars(
-                select(Payment)
-                .where(
-                    Payment.project_id == project.id,
-                    Payment.status.in_(
-                        {
-                            PaymentStatus.pending,
-                            PaymentStatus.paid_unverified,
-                        }
-                    ),
+    finance_visible = actor.id in {project.customer_id, project.contractor_id}
+    payments = (
+        list(
+            (
+                await db.scalars(
+                    select(Payment)
+                    .where(
+                        Payment.project_id == project.id,
+                        Payment.status.in_(
+                            {
+                                PaymentStatus.pending,
+                                PaymentStatus.paid_unverified,
+                            }
+                        ),
+                    )
+                    .order_by(Payment.created_at.asc(), Payment.id.asc())
                 )
-                .order_by(Payment.created_at.asc(), Payment.id.asc())
-            )
-        ).all()
+            ).all()
+        )
+        if finance_visible
+        else []
     )
 
     supervisor_id = await supervision_actions.active_supervisor_user_id(db, project.id)
