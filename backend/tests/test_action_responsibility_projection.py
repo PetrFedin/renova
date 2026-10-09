@@ -22,15 +22,16 @@ class _Db:
         self.entities = entities
         self.payments = payments or []
         self.acceptances = acceptances or []
-        self._scalars_calls = 0
 
-    async def scalars(self, _query):
-        self._scalars_calls += 1
-        if self._scalars_calls == 1:
+    async def scalars(self, query):
+        entity = query.column_descriptions[0].get("entity")
+        if entity is actions.ProjectIssue:
             return _ScalarRows(self.issues)
-        if self._scalars_calls == 2:
+        if entity is actions.Payment:
             return _ScalarRows(self.payments)
-        return _ScalarRows(self.acceptances)
+        if entity is actions.WorkAcceptance:
+            return _ScalarRows(self.acceptances)
+        raise AssertionError(f"unexpected scalar query entity: {entity}")
 
     async def scalar(self, _query):
         return None
