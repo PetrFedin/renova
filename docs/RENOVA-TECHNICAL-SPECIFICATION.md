@@ -301,3 +301,22 @@ Full acceptance G01–G10 задана в аудите. В этом проход
 Изменение считается сопровождаемым, когда requirement/result, реализация, роли, failure/retry/concurrency, schema, side effects, UI, тест и статус одного exact candidate связаны. Source SHA без семантической сверки недостаточен. Исторический полный текст сохранён; повторно использовать из него старый next-step/schema/head нельзя.
 
 Запрещено закрывать issue по ограниченному foundation, выдавать audit report за runtime test, сохранять неизвестные показатели как 0, обозначать promised-but-disabled capability как DONE либо выводить срок запуска без согласованного ресурса и внешних условий. Аудит синхронизирует план; F01–F10 всё ещё требуют продуктовых исправлений.
+
+
+# 19. Action Responsibility / Action Queue read model
+
+The canonical Action OS responsibility layer is read-only. It projects existing Issue, WorkAcceptance and Payment authorities into human-operational obligations; it does not create independent workflow truth.
+
+Admitted sequence through exact head `2d70b9542fd18b1f460e778b800f61963eaed294`:
+- Action Responsibility v1;
+- responsibility-aware Home / Repair / Object / Budget surfaces;
+- Action Queue v2 with six exclusive buckets: `mine_now`, `waiting_other`, `overdue`, `needs_evidence`, `waiting_review`, `waiting_owner_decision`.
+
+Parallel-responsibility extension:
+- groups the same admitted responsibility items by concrete actor/persona;
+- exposes active actor count, per-lane responsibility count, per-bucket counts and the lane top item;
+- preserves project-participant visibility filtering and finance principal scoping already applied before grouping;
+- introduces no assignment mutation, escalation state, SLA state, hidden role grant or second ownership source of truth;
+- Home may render at most a bounded operational summary and routes the selected top item back to the canonical Repair or Budget action surface.
+
+Escalation and SLA routing are separate future layers and remain prohibited until this parallel read-model candidate is CI-admitted.
