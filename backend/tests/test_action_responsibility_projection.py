@@ -285,3 +285,52 @@ async def test_pending_acceptance_points_to_owner_decision(monkeypatch):
     assert item.responsible_persona == "owner"
     assert item.responsible_user_id == "owner"
     assert item.resource_title == "Приёмка: Чистовая отделка"
+
+
+@pytest.mark.asyncio
+async def test_scoped_participant_only_sees_responsibilities_in_visible_scope(monkeypatch):
+    in_scope = _issue("open", assignee_id="participant")
+    in_scope.id = "issue-in"
+    in_scope.stage_id = "stage-in"
+    out_scope = _issue("open", assignee_id="other")
+    out_scope.id = "issue-out"
+    out_scope.stage_id = "stage-out"
+
+    participant_user = SimpleNamespace(id="participant", role=SimpleNamespace(value="contractor"))
+    other_user = SimpleNamespace(id="other", role=SimpleNamespace(value="contractor"))
+    db = _Db(
+        [in_scope, out_scope],
+        {
+            ("User", "participant"): participant_user,
+            ("User", "other"): other_user,
+        },
+    )
+
+    async def no_supervisor(_db, _project_id):
+        return None
+
+    async def active_participant(_db, *, project_id, user_id):
+        assert project_id == "p1"
+        assert user_id == "participant"
+        return SimpleNamespace(id="pp-1", participant_role="contractor")
+
+    async def visible_scope(_db, *, project, user_id):
+        assert project.id == "p1"
+        assert user_id == "participant"
+        return {"stage-in"}, set()
+
+    async def persona(_db, *, user, project):
+        return SimpleNamespace(persona="participant" if user.id == "participant" else "member")
+
+    monkeypatch.setattr(actions.supervision_actions, "active_supervisor_user_id", no_supervisor)
+    monkeypatch.setattr(actions.participant_svc, "active_participant", active_participant)
+    monkeypatch.setattr(actions.participant_svc, "participant_visible_scope", visible_scope)
+    monkeypatch.setattr(actions.capability_svc, "resolve_operational_context", persona)
+
+    result = await actions.build_action_responsibilities(
+        db,
+        project=_project(),
+        actor=SimpleNamespace(id="participant"),
+    )
+
+    assert [item.resource_id for item in result] == ["issue-in"]
