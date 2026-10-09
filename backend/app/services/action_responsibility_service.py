@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.timeutil import utc_now
 from app.models.entities import Payment, PaymentStatus, Project, ProjectIssue, Stage, User, WorkAcceptance
 from app.services import project_capability_service as capability_svc
+from app.services import project_participant_service as participant_svc
 from app.services import technical_supervision_action_service as supervision_actions
 
 
@@ -172,6 +173,24 @@ async def build_action_responsibilities(
             )
         ).all()
     )
+
+    if actor.id not in {project.customer_id, project.contractor_id}:
+        participant = await participant_svc.active_participant(
+            db, project_id=project.id, user_id=actor.id
+        )
+        if participant is not None and participant.participant_role != "lead_contractor":
+            visible_stage_ids, visible_room_ids = await participant_svc.participant_visible_scope(
+                db, project=project, user_id=actor.id
+            )
+            issues = [
+                issue for issue in issues
+                if (issue.stage_id and issue.stage_id in visible_stage_ids)
+                or (issue.room_id and issue.room_id in visible_room_ids)
+            ]
+            acceptances = [
+                acceptance for acceptance in acceptances
+                if acceptance.stage_id in visible_stage_ids
+            ]
 
     supervisor_id = await supervision_actions.active_supervisor_user_id(db, project.id)
     items: list[ResponsibilityItem] = []
