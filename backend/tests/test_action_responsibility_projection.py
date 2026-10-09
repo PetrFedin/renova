@@ -17,15 +17,20 @@ class _ScalarRows:
 
 
 class _Db:
-    def __init__(self, issues, entities, payments=None):
+    def __init__(self, issues, entities, payments=None, acceptances=None):
         self.issues = issues
         self.entities = entities
         self.payments = payments or []
+        self.acceptances = acceptances or []
         self._scalars_calls = 0
 
     async def scalars(self, _query):
         self._scalars_calls += 1
-        return _ScalarRows(self.issues if self._scalars_calls == 1 else self.payments)
+        if self._scalars_calls == 1:
+            return _ScalarRows(self.issues)
+        if self._scalars_calls == 2:
+            return _ScalarRows(self.payments)
+        return _ScalarRows(self.acceptances)
 
     async def scalar(self, _query):
         return None
@@ -248,3 +253,35 @@ def test_action_queue_bucket_priority():
 
     other = _responsibility_item(action="resolve_issue", responsible_user_id="lead")
     assert actions.responsibility_bucket(other, actor_id="owner", now=now) == "waiting_other"
+
+
+@pytest.mark.asyncio
+async def test_pending_acceptance_points_to_owner_decision(monkeypatch):
+    acceptance = SimpleNamespace(
+        id="acc-1",
+        project_id="p1",
+        stage_id="stage-1",
+        status="requested",
+        requested_at=datetime(2026, 10, 9, 9, 0, 0),
+        created_at=datetime(2026, 10, 9, 9, 0, 0),
+    )
+    stage = SimpleNamespace(id="stage-1", project_id="p1", name="Чистовая отделка")
+    db = _Db([], {("Stage", "stage-1"): stage}, acceptances=[acceptance])
+
+    async def no_supervisor(_db, _project_id):
+        return None
+
+    monkeypatch.setattr(actions.supervision_actions, "active_supervisor_user_id", no_supervisor)
+
+    result = await actions.build_action_responsibilities(
+        db,
+        project=_project(),
+        actor=SimpleNamespace(id="owner"),
+    )
+
+    item = next(x for x in result if x.resource_type == "acceptance")
+    assert item.action == "decide_work_acceptance"
+    assert item.required_capability == "acceptance.decide"
+    assert item.responsible_persona == "owner"
+    assert item.responsible_user_id == "owner"
+    assert item.resource_title == "Приёмка: Чистовая отделка"
