@@ -136,10 +136,7 @@ async def test_pending_payment_points_to_owner_then_lead(monkeypatch):
     assert item.responsible_persona == "owner"
     assert item.responsible_user_id == "owner"
     assert item.action == "pay_invoice"
-    assert item.next is not None
-    assert item.next.capability == "payment.receive.confirm"
-    assert item.next.persona == "lead"
-    assert item.next.user_id == "lead"
+    assert item.next is None
 
 
 @pytest.mark.asyncio
@@ -162,3 +159,17 @@ async def test_paid_unverified_payment_points_to_lead_recipient(monkeypatch):
     assert item.action == "confirm_payment_received"
     assert item.evidence.present == ("transfer_marked",)
     assert item.next is None
+
+
+@pytest.mark.asyncio
+async def test_processing_payment_is_provider_wait_not_human_responsibility(monkeypatch):
+    db = _Db([], {}, [_payment(actions.PaymentStatus.processing)])
+
+    async def no_supervisor(_db, _project_id):
+        return None
+
+    monkeypatch.setattr(actions.supervision_actions, "active_supervisor_user_id", no_supervisor)
+
+    result = await actions.build_action_responsibilities(db, project=_project())
+
+    assert result == []
