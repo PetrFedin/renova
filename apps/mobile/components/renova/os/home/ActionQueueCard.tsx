@@ -12,6 +12,16 @@ const BUCKETS: Array<{ key: ResponsibilityBucketKey; label: string }> = [
   { key: 'waiting_owner_decision', label: 'ЖДЁТ РЕШЕНИЯ ВЛАДЕЛЬЦА' },
 ];
 
+const PERSONA_LABEL: Record<string, string> = {
+  owner: 'Владелец',
+  lead: 'Ведущий исполнитель',
+  foreman: 'Прораб',
+  member: 'Исполнитель',
+  participant: 'Участник работ',
+  supervisor: 'Технадзор',
+  guest: 'Наблюдатель',
+};
+
 const ACTION_LABEL: Record<string, string> = {
   resolve_issue: 'Устранить замечание',
   verify_remediation: 'Проверить исправление',
@@ -65,6 +75,32 @@ export function ActionQueueCard({
           );
         })}
       </View>
+      {queue.parallel && queue.parallel.active_actor_count > 1 ? (
+        <View style={s.parallel}>
+          <Text style={s.parallelTitle}>Сейчас действуют параллельно</Text>
+          {queue.parallel.lanes.slice(0, 3).map((lane) => (
+            <Pressable
+              accessibilityRole="button"
+              key={lane.actor_key}
+              onPress={() => onOpenItem(lane.top_item)}
+              style={s.parallelLane}
+            >
+              <View style={s.parallelCopy}>
+                <Text style={s.parallelPersona}>
+                  {lane.is_current_actor ? 'Вы' : (PERSONA_LABEL[lane.persona] || lane.persona)}
+                </Text>
+                <Text numberOfLines={1} style={s.parallelAction}>
+                  {ACTION_LABEL[lane.top_item.action] || lane.top_item.action}
+                </Text>
+              </View>
+              <Text style={s.parallelCount}>{lane.count}</Text>
+            </Pressable>
+          ))}
+          {queue.parallel.active_actor_count > 3 ? (
+            <Text style={s.parallelMore}>Ещё участников: {queue.parallel.active_actor_count - 3}</Text>
+          ) : null}
+        </View>
+      ) : null}
       <Pressable accessibilityRole="button" onPress={() => onOpenItem(primary)} style={s.primary}>
         <View style={s.primaryCopy}>
           <Text style={s.primaryTitle}>{ACTION_LABEL[primary.action] || primary.action}</Text>
@@ -116,6 +152,46 @@ const s = StyleSheet.create({
     lineHeight: 13,
     color: RenovaTheme.colors.textMuted,
     fontWeight: RenovaTheme.fontWeight.semibold,
+  },
+  parallel: {
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: RenovaTheme.colors.border,
+    gap: 8,
+  },
+  parallelTitle: {
+    fontSize: RenovaTheme.fontSize.caption,
+    color: RenovaTheme.colors.textMuted,
+    fontWeight: RenovaTheme.fontWeight.semibold,
+  },
+  parallelLane: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 6,
+  },
+  parallelCopy: { flex: 1 },
+  parallelPersona: {
+    fontSize: RenovaTheme.fontSize.caption,
+    color: RenovaTheme.colors.text,
+    fontWeight: RenovaTheme.fontWeight.semibold,
+  },
+  parallelAction: {
+    marginTop: 1,
+    fontSize: RenovaTheme.fontSize.caption,
+    color: RenovaTheme.colors.textMuted,
+  },
+  parallelCount: {
+    minWidth: 20,
+    textAlign: 'right',
+    fontSize: RenovaTheme.fontSize.body,
+    color: RenovaTheme.colors.text,
+    fontWeight: RenovaTheme.fontWeight.bold,
+  },
+  parallelMore: {
+    fontSize: RenovaTheme.fontSize.caption,
+    color: RenovaTheme.colors.textMuted,
   },
   primary: {
     marginTop: 12,
