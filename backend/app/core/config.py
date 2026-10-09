@@ -74,6 +74,11 @@ class Settings(BaseSettings):
     fns_receipt_login: str | None = None
     fns_receipt_password: str | None = None
     public_base_url: str = "http://127.0.0.1:8100"
+    # Ed25519 raw 32-byte private key, URL-safe/base64 encoded. No default:
+    # production issuance must fail closed until an issuer key is provisioned.
+    execution_proof_signing_private_key_b64: str | None = None
+    execution_proof_signing_key_id: str = "renova-execution-proof-v1"
+    execution_proof_issuer_id: str = "renova-platform"
 
     cloudfront_domain: str | None = None
     cloudfront_key_id: str | None = None
