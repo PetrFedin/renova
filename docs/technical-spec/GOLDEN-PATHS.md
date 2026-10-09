@@ -160,15 +160,15 @@
 
 | GP | API | mobile-web | Блокирует | Последний PR |
 |---|---|---|---|---|
-| GP1 | 🟠 written, run blocked | 🟠 written, run blocked | A1 | #687 |
-| GP2 | 🟠 written, run blocked | 🟠 written, run blocked | A1, B1–B5 | #687 |
-| GP3 | 🟠 written, run blocked | 🟠 written, run blocked | A1, B1 | #687 |
-| GP4 | 🟠 written, run blocked | 🟠 written, run blocked | A1, C5 | #687 |
-| GP5 | 🟠 written, run blocked | 🟠 written, run blocked | A1, A3–A5 | #687 |
-| GP6 | 🟠 written, run blocked | 🟠 written, run blocked | A1, A5 | #687 |
-| GP7 | 🟠 written, run blocked | 🟠 written, run blocked | A1, A6, C6 | #687 |
-| GP8 | 🟠 written, run blocked | 🟠 written, run blocked | A1, A6 | #687 |
+| GP1 | 🟢 canonical-runtime CI | 🟢 canonical-runtime CI | — | #698 |
+| GP2 | 🟢 canonical-runtime CI | 🟢 canonical-runtime CI | — | #698 |
+| GP3 | 🟢 canonical-runtime CI | 🟢 canonical-runtime CI | — | #698 |
+| GP4 | 🟢 canonical-runtime CI | 🟢 canonical-runtime CI | — | #698 |
+| GP5 | 🟢 canonical-runtime CI | 🟢 canonical-runtime CI | — | #698 |
+| GP6 | 🟢 canonical-runtime CI | 🟢 canonical-runtime CI | — | #698 |
+| GP7 | 🟢 canonical-runtime CI | 🟢 canonical-runtime CI | — | #698 |
+| GP8 | 🟢 canonical-runtime CI | 🟢 canonical-runtime CI | — | #698 |
 
-Легенда: ❌ not written · 🟠 written, execution blocked before assertions · 🔴 written, failing · 🟡 passing on SQLite/local only · 🟢 passing on PostgreSQL topology in CI.
+Легенда: ❌ not written · 🟠 written, execution blocked before assertions · 🔴 written, failing · 🟡 passing on SQLite/local only · 🟢 passing on canonical local runtime in CI (PostgreSQL + Redis + MinIO + API + Worker).
 
-> #687 создал API + mobile-web контракты GP1–GP8. Первый canonical-runtime запуск остановился до assertions на известном P0 #672: текущий `main` всё ещё содержит недоступный Debian pin `libpcre2-8-0=10.42-1+deb12u1`. Это инфраструктурный blocker запуска, а не verdict по пользовательским сценариям. Исправление уже квалифицировано в #683; A1 не дублирует его.
+> Exact qualification evidence: PR #698, head `233b21a04a7b56c95f91d221268c5b2b5c210d22`, GitHub Actions run `37965354177`. API GP1–GP8: `12/12 passed`; mobile-web GP1–GP8: `8/8 passed`. API container identity and `StartedAt` remained unchanged across both suites, with `RestartCount=0`. The same exact candidate passed backend-complete (`1681 passed`, `30` dedicated-topology skips), Playwright API/UI, project-participant PostgreSQL, production-readiness, security and technical-specification gates. This qualifies the stated canonical-runtime contour only; it is not evidence of production deployment or broad-production readiness, and #683 governance admission remains externally blocked.
