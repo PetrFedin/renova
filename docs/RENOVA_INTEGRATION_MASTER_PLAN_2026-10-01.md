@@ -1371,3 +1371,33 @@ Export must remain possible; lock-in should come from useful history and network
 **Sequencing:** Verified Execution Record -> reference specification -> synthetic passport -> institutional verifier API -> approved service network -> insurer/property-manager pilots -> enterprise bundle.
 
 **Moat:** Renova becomes the shared evidence rail connecting property work, contractor capability, warranty and institutional risk workflows.
+
+
+## Portable Execution Trust Layer
+
+Цель — превратить приёмку работ из внутреннего UI-события в переносимое доказательство без утечки персональных/финансовых данных.
+
+**P0 trust chain**
+
+`canonical acceptance → Verified Execution Record → Portable Execution Proof → platform checkpoint → external verify → current / stale / revoked`
+
+Обязательные границы:
+
+- platform attestation подтверждает состояние Renova ledger, но не заменяет ЭП клиента/подрядчика;
+- private issuer key provisioned извне и отсутствует в repository/default configuration;
+- key rotation и status list должны быть отдельными authority-механизмами;
+- старый checkpoint становится `STALE` при изменении source proof даже без ручного revoke;
+- warranty lifecycle может ссылаться на checkpoint, но не изменяет исходный execution record;
+- partner API получает только redacted evidence projection;
+- все human/legal signatures подключаются как внешние issuer adapters, а не генерируются платформой от имени стороны.
+
+**P1 institutional adoption**
+
+1. issuer key registry + rotation/retirement;
+2. signed public status list / revocation feed;
+3. verifier SDK / reference CLI;
+4. contractor/company credential binding;
+5. customer acceptance credential binding;
+6. insurer / bank / warranty-provider verification profile;
+7. portable evidence package export with immutable media/evidence references;
+8. cross-project contractor reputation derived only from verified, non-revoked proofs and never from a universal opaque score.
