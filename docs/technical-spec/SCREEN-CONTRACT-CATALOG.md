@@ -81,7 +81,7 @@ Calendar/Сроки — secondary/optional dock entry. Documents, approvals, inb
 
 # 3. Object hub
 
-**Source:** `OsObjectHubScreen.tsx` blob `3082b1bf59cbf420d403ed82b35bbc2e78697728`.
+**Source:** `OsObjectHubScreen.tsx` blob `b339134cc81941f15b1a363e6872acef0673f9dc`.
 
 Route:
 
@@ -123,7 +123,7 @@ Tabs:
 
 # 4. Repair hub
 
-**Source:** `OsRepairHubScreen.tsx` blob `62060329592176b8d42591b92fe197aaa52e59d7`.
+**Source:** `OsRepairHubScreen.tsx` blob `55ecda475da110a384bc2837136f0ccf0c7716e6`.
 
 Tabs:
 

@@ -108,3 +108,70 @@ export type ProjectIssue = {
   photo_key?: string | null;
   photo_url?: string | null;
 };
+
+
+export type ResponsibilityEvidence = {
+  required: string[];
+  present: string[];
+};
+
+export type ResponsibilityNext = {
+  capability: string;
+  persona: string;
+  user_id?: string | null;
+  action: string;
+};
+
+export type ResponsibilityItem = {
+  resource_type: string;
+  resource_id: string;
+  resource_title: string;
+  current_state: string;
+  required_capability: string;
+  responsible_persona: string;
+  responsible_user_id?: string | null;
+  action: string;
+  due_at?: string | null;
+  evidence: ResponsibilityEvidence;
+  completion_condition: string;
+  next?: ResponsibilityNext | null;
+};
+
+export type ParallelResponsibilityLane = {
+  actor_key: string;
+  persona: string;
+  responsible_user_id?: string | null;
+  is_current_actor: boolean;
+  count: number;
+  bucket_counts: ResponsibilityBucketCounts;
+  top_bucket: ResponsibilityBucketKey;
+  top_item: ResponsibilityItem;
+};
+
+export type ParallelResponsibilitySummary = {
+  active_actor_count: number;
+  active_responsibility_count: number;
+  lanes: ParallelResponsibilityLane[];
+};
+
+export type ResponsibilityQueue = {
+  project_id: string;
+  count: number;
+  items: ResponsibilityItem[];
+  buckets?: ResponsibilityBuckets;
+  bucket_counts?: ResponsibilityBucketCounts;
+  parallel?: ParallelResponsibilitySummary;
+};
+
+
+export type ResponsibilityBucketKey =
+  | 'mine_now'
+  | 'waiting_other'
+  | 'overdue'
+  | 'needs_evidence'
+  | 'waiting_review'
+  | 'waiting_owner_decision';
+
+export type ResponsibilityBuckets = Record<ResponsibilityBucketKey, ResponsibilityItem[]>;
+
+export type ResponsibilityBucketCounts = Record<ResponsibilityBucketKey, number>;

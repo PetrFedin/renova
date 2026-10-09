@@ -17,6 +17,7 @@ import { useRenova } from '@/lib/context/RenovaContext';
 import { RenovaTheme, card } from '@/constants/Theme';
 import { reportError } from '@/lib/reportError';
 import { issueSeverityLabel } from '@/constants/labels';
+import { projectCapabilitySet, operationalPersona } from '@/lib/projectCapabilities';
 
 export function TechnicalSupervisionControlView() {
   const { activeProject, user } = useRenova();
@@ -34,12 +35,12 @@ export function TechnicalSupervisionControlView() {
   const projectId = activeProject?.id || '';
   const userId = user?.id || '';
   const capabilities = useMemo(
-    () => new Set(activeProject?.technical_capabilities || []),
-    [activeProject?.technical_capabilities],
+    () => projectCapabilitySet(activeProject),
+    [activeProject?.capabilities, activeProject?.technical_capabilities],
   );
-  const canIssue = capabilities.has('quality_issue_write');
-  const canReturn = capabilities.has('quality_review');
-  const isSupervisor = activeProject?.access_mode === 'supervisor';
+  const canIssue = capabilities.has('quality.issue');
+  const canReturn = capabilities.has('quality.review');
+  const isSupervisor = operationalPersona(activeProject) === 'supervisor';
   const capabilityList = useMemo(() => Array.from(capabilities), [capabilities]);
   const workStages = (activeProject?.stages ?? []).filter((stage) => stage.status !== 'done');
 
@@ -273,7 +274,13 @@ export function TechnicalSupervisionControlView() {
             <EmptyActionState title="Замечаний пока нет" hint="Зафиксированные замечания и их исправление будут видны здесь." />
           ) : (
             issues.map((issue) => {
-              const actions = supervisorIssueActions(issue, { isSupervisor, capabilities: capabilityList });
+              const legacyCapabilities = capabilityList.map((capability) => (
+                capability === 'quality.issue' ? 'quality_issue_write'
+                  : capability === 'quality.review' ? 'quality_review'
+                    : capability === 'schedule.review' ? 'schedule_review'
+                      : capability
+              ));
+              const actions = supervisorIssueActions(issue, { isSupervisor, capabilities: legacyCapabilities });
               return (
                 <View key={issue.id} style={s.issue}>
                   <View style={s.itemText}>

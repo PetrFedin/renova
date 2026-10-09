@@ -61,8 +61,11 @@ def works_counts(stage: Stage) -> tuple[int, int]:
     return len(items), done
 
 
+PROJECT_PROGRESS_CALCULATION_VERSION = "weighted-stage-v1"
+
+
 def weighted_progress(stages: list[Stage]) -> float:
-    """§4.8–4.9 — прогресс проекта по весам этапов."""
+    """§4.8–4.9 — канонический project-level progress по весам этапов."""
     if not stages:
         return 0.0
     total_w = sum(getattr(s, "weight_coefficient", 0) or 0 for s in stages)
@@ -70,6 +73,26 @@ def weighted_progress(stages: list[Stage]) -> float:
         return round(sum(s.percent_complete for s in stages) / len(stages), 1)
     acc = sum((getattr(s, "weight_coefficient", 0) or 0) * s.percent_complete for s in stages)
     return round(acc / total_w, 1)
+
+
+def project_progress_snapshot(stages: list[Stage]) -> dict[str, object]:
+    """Single source of truth for project-level progress exposed to all consumers."""
+    rows = list(stages or [])
+    total_weight = round(
+        sum(float(getattr(stage, "weight_coefficient", 0) or 0) for stage in rows),
+        6,
+    )
+    return {
+        "value": weighted_progress(rows),
+        "source": "stage_weighted_progress",
+        "calculation_version": PROJECT_PROGRESS_CALCULATION_VERSION,
+        "stage_count": len(rows),
+        "weight_total": total_weight,
+    }
+
+
+def project_progress(stages: list[Stage]) -> float:
+    return float(project_progress_snapshot(stages)["value"])
 
 
 def delay_days(stage: Stage, today: date | None = None) -> int:

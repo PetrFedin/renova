@@ -9,7 +9,9 @@ from copy import deepcopy
 from pathlib import Path
 from unittest import mock
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = Path(__file__).with_name("production_readiness.py")
+WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "production-readiness-integrity.yml"
 SPEC = importlib.util.spec_from_file_location("renova_production_readiness", MODULE_PATH)
 if SPEC is None or SPEC.loader is None:
     raise RuntimeError("cannot load production_readiness.py")
@@ -27,6 +29,14 @@ class ProductionReadinessPolicyTests(unittest.TestCase):
     def setUp(self) -> None:
         self.facts = readiness.repo_facts()
         self.evidence = json.loads(readiness.EVIDENCE_PATH.read_text(encoding="utf-8"))
+
+    def test_pr_snapshot_concurrency_isolated_from_workflow_run(self) -> None:
+        workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+        self.assertIn(
+            "group: production-readiness-${{ github.event_name }}-${{",
+            workflow,
+            "PR snapshot and downstream workflow_run must not share a cancellation key",
+        )
 
     def test_current_blocked_manifest_is_valid(self) -> None:
         readiness._validate_manifest(deepcopy(self.evidence), self.facts)

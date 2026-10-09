@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.entities import MaterialPick, MaterialPickStatus, Payment, PaymentStatus, Project, Stage, StageStatus
 from app.services import dependency_service as dep_svc
 from app.services import schedule_service as sched_svc
+from app.services import stage_status_service as stage_status_svc
 
 
 def _insight(
@@ -39,7 +40,7 @@ async def compute_project_insights(db: AsyncSession, project: Project, *, role: 
     today = date.today()
     insights: list[dict] = []
     stages = sorted(project.stages or [], key=lambda s: s.sort_order)
-    progress = sum(s.percent_complete for s in stages) / (len(stages) or 1)
+    progress = stage_status_svc.project_progress(stages)
     planned = project.budget_planned or 0
     spent = project.budget_spent or 0
 

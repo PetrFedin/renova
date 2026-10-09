@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import MaterialPick, Project, Purchase, Stage, StageStatus
+from app.services import stage_status_service as stage_status_svc
 
 
 def _today() -> date:
@@ -35,7 +36,8 @@ async def build_schedule_summary(db: AsyncSession, project: Project) -> dict:
     current = review or active
 
     remaining = [s for s in stages if s.status not in (StageStatus.done,)]
-    progress = sum(s.percent_complete for s in stages) / (len(stages) or 1)
+    progress_snapshot = stage_status_svc.project_progress_snapshot(stages)
+    progress = float(progress_snapshot["value"])
 
     # Прогноз: сегодня + оставшаяся длительность по плану + накопленная задержка
     remaining_days = 0
@@ -97,6 +99,8 @@ async def build_schedule_summary(db: AsyncSession, project: Project) -> dict:
         "max_delay_days": max_delay,
         "overdue_count": len(overdue_stages),
         "progress_percent": round(progress, 1),
+        "progress_source": progress_snapshot["source"],
+        "progress_calculation_version": progress_snapshot["calculation_version"],
         "remaining_works": len(remaining),
         "risk_level": risk_level,
         "risk_score": risk_score,

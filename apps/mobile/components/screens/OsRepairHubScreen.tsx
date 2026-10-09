@@ -15,6 +15,8 @@ import { api } from '@/lib/api';
 import { tabsRoute, type OsRole } from '@/constants/osSections';
 import { replaceOsNav } from '@/lib/pushOsNav';
 import { reportError } from '@/lib/reportError';
+import type { ResponsibilityQueue } from '@/lib/api';
+import { RepairResponsibilityStrip } from '@/components/renova/os/RepairResponsibilityStrip';
 
 const TAB_IDS = ['works', 'materials', 'selections', 'control'] as const;
 type RepairTab = (typeof TAB_IDS)[number];
@@ -29,6 +31,7 @@ export function OsRepairHubScreen({ role }: { role: OsRole }) {
   const [active, setActive] = useHubTab(TAB_IDS, 'works');
   const [pendingAcceptance, setPendingAcceptance] = useState(0);
   const [pendingSelections, setPendingSelections] = useState(0);
+  const [responsibilityQueue, setResponsibilityQueue] = useState<ResponsibilityQueue | null>(null);
 
   /** Календарь — отдельный раздел dock/меню, не вкладка «Ремонт» */
   useEffect(() => {
@@ -54,6 +57,7 @@ export function OsRepairHubScreen({ role }: { role: OsRole }) {
     if (!user || !activeProject) return;
     api.acceptancesPendingCount(user.id, activeProject.id).then((r) => setPendingAcceptance(r.count)).catch((e) => { reportError('components.screens.OsRepairHubScreen.PendingAcceptance', e); setPendingAcceptance(0); });
     api.selectionsPendingCount(user.id, activeProject.id).then((r) => setPendingSelections(r.count)).catch((e) => { reportError('components.screens.OsRepairHubScreen.PendingSelections', e); setPendingSelections(0); });
+    api.responsibilityQueue(user.id, activeProject.id).then(setResponsibilityQueue).catch((e) => { reportError('components.screens.OsRepairHubScreen.ResponsibilityQueue', e); });
   }, [user?.id, activeProject?.id]);
 
   useFocusEffect(useCallback(() => { reloadBadge(); }, [reloadBadge]));
@@ -91,6 +95,13 @@ export function OsRepairHubScreen({ role }: { role: OsRole }) {
     <ProjectScopeLoader role={role}>
       <View style={s.root}>
         <OsHubTabs tabs={tabs} value={active} onChange={handleTabChange} />
+        {user ? (
+          <RepairResponsibilityStrip
+            queue={responsibilityQueue}
+            userId={user.id}
+            onOpenControl={() => setActive('control')}
+          />
+        ) : null}
         <View style={s.body}>
           {active === 'works' && <OsWorksScreen role={role} />}
           {active === 'materials' && <OsMaterialsScreen role={role} />}

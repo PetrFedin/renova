@@ -341,12 +341,18 @@ async def list_leads(
     if user.role == UserRole.customer:
         q = q.where(JobLead.customer_id == user.id)
     else:
-        q = q.where(
-            or_(
-                JobLead.status == JobLeadStatus.open,
-                JobLead.assigned_contractor_id == user.id,
+        # GP2 / A5: new marketplace supply is available only to contractors with
+        # a currently confirmed NPD status. Already-assigned work remains visible
+        # so a later status lapse cannot hide an existing customer relationship.
+        if user.role == UserRole.contractor and not bool(user.npd_verified):
+            q = q.where(JobLead.assigned_contractor_id == user.id)
+        else:
+            q = q.where(
+                or_(
+                    JobLead.status == JobLeadStatus.open,
+                    JobLead.assigned_contractor_id == user.id,
+                )
             )
-        )
     if status:
         try:
             q = q.where(JobLead.status == JobLeadStatus(status))
@@ -397,6 +403,14 @@ async def quote_lead(
     """Add/update contractor quote without auto-assign (P2.18 — customer picks)."""
     if user.role != UserRole.contractor:
         raise HTTPException(403, "contractor_only")
+    if not bool(user.npd_verified):
+        raise HTTPException(
+            403,
+            detail={
+                "code": "npd_active_required",
+                "message": "Подтвердите активный статус НПД перед откликом на новую заявку.",
+            },
+        )
     lead = await db.get(JobLead, lead_id)
     if not lead or lead.status not in {JobLeadStatus.open, JobLeadStatus.quoted}:
         raise HTTPException(404, "lead_not_open")

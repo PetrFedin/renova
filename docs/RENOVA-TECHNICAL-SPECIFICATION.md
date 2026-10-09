@@ -23,7 +23,7 @@
 | Source | Blob SHA | Назначение |
 |---|---|---|
 | `AGENTS.md` | `767d38e76d04209e609bbe7173a2c448cfc5fa00` | Engineering policy |
-| `backend/app/api/v1/router.py` | `64513bc097c74b3f807d16e442c2b0452c2d0854` | Реальная composition маршрутов |
+| `backend/app/api/v1/router.py` | `f0e0167d8f347a30cb73851e0b5491a118fe4e86` | Реальная composition маршрутов |
 | `backend/app/models/entities.py` | `67f8e6a557134690c5c2d3d7295b21808974d7fc` | Базовые entities/enums |
 | `backend/app/main.py` | `7f778fc54e7ff0a05b512791a8841615b24e33c1` | API lifespan + middleware chain |
 | `backend/app/services/seed_demo.py` | `c62ba920130a7ba7f6e2bd0a54e63feadce5c6cd` | Явный development seed |
@@ -36,9 +36,9 @@
 | `apps/mobile/constants/uiTokens.ts` | `ca2d8e9e03f56efb058041ad8a81c04d15c7a8a0` | Surfaces/chips/inputs |
 | `apps/mobile/constants/screenLayout.ts` | `8961bbbbaa614b9b6f962bafe8649bbec3d0a744` | Screen layout (+tabContentStyle: FAB-safe bottom padding) |
 | `apps/mobile/components/renova/os/OsHubTabs.tsx` | `b04ac08459926439b0533db3decce28a4791843c` | Hub tabs (+auto-scroll to selected tab) |
-| `apps/mobile/components/screens/OsObjectHubScreen.tsx` | `3082b1bf59cbf420d403ed82b35bbc2e78697728` | Object hub |
-| `apps/mobile/components/screens/OsRepairHubScreen.tsx` | `62060329592176b8d42591b92fe197aaa52e59d7` | Repair hub |
-| `apps/mobile/components/screens/OsBudgetHubScreen.tsx` | `4e0e8267d68b600cf0d8bdf716a4c8eddaa3bcbd` | Budget hub |
+| `apps/mobile/components/screens/OsObjectHubScreen.tsx` | `b339134cc81941f15b1a363e6872acef0673f9dc` | Object hub |
+| `apps/mobile/components/screens/OsRepairHubScreen.tsx` | `55ecda475da110a384bc2837136f0ccf0c7716e6` | Repair hub |
+| `apps/mobile/components/screens/OsBudgetHubScreen.tsx` | `789631cf5d74f657a318baed176b98aada208c26` | Budget hub |
 | `apps/mobile/constants/budgetTabs.ts` | `d02c05560176535e130d76960c2b67691bcbb3b7` | Budget tab canon |
 | `.cursor/rules/renova-design-system.mdc` | `2f48e46f5b348b8cbc3a370615a5a5e93d93421f` | UI rules |
 | `package.json` | `75b7390c2d4d0dbb49dc48e299caf46ee585292d` | Root commands/test entrypoints (+5 sessionFence tests wired into mobile:test) |
@@ -48,7 +48,7 @@
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
 | `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | Evidence versions |
 | `backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py` | `6de2c048fddc7bea5e385eaa80ca8d30fbe4eb3c` | Participants/scopes/audit |
-| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `7942b12961d967b39d1f77e98deccc0c301ad9e6` | Текущий план и историческая прослеживаемость |
+| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `e0e0de488145f5900dd3759dd88f2cef405625cf` | Текущий план и историческая прослеживаемость |
 
 # 1. Назначение продукта и границы системы
 
@@ -319,3 +319,22 @@ Full acceptance G01–G10 задана в аудите. В этом проход
 Изменение считается сопровождаемым, когда requirement/result, реализация, роли, failure/retry/concurrency, schema, side effects, UI, тест и статус одного exact candidate связаны. Source SHA без семантической сверки недостаточен. Исторический полный текст сохранён; повторно использовать из него старый next-step/schema/head нельзя.
 
 Запрещено закрывать issue по ограниченному foundation, выдавать audit report за runtime test, сохранять неизвестные показатели как 0, обозначать promised-but-disabled capability как DONE либо выводить срок запуска без согласованного ресурса и внешних условий. Аудит синхронизирует план; F01–F10 всё ещё требуют продуктовых исправлений.
+
+
+# 19. Action Responsibility / Action Queue read model
+
+The canonical Action OS responsibility layer is read-only. It projects existing Issue, WorkAcceptance and Payment authorities into human-operational obligations; it does not create independent workflow truth.
+
+Admitted sequence through exact head `2d70b9542fd18b1f460e778b800f61963eaed294`:
+- Action Responsibility v1;
+- responsibility-aware Home / Repair / Object / Budget surfaces;
+- Action Queue v2 with six exclusive buckets: `mine_now`, `waiting_other`, `overdue`, `needs_evidence`, `waiting_review`, `waiting_owner_decision`.
+
+Parallel-responsibility extension:
+- groups the same admitted responsibility items by concrete actor/persona;
+- exposes active actor count, per-lane responsibility count, per-bucket counts and the lane top item;
+- preserves project-participant visibility filtering and finance principal scoping already applied before grouping;
+- introduces no assignment mutation, escalation state, SLA state, hidden role grant or second ownership source of truth;
+- Home may render at most a bounded operational summary and routes the selected top item back to the canonical Repair or Budget action surface.
+
+Escalation and SLA routing are separate future layers and remain prohibited until this parallel read-model candidate is CI-admitted.

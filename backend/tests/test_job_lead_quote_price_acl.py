@@ -1,6 +1,7 @@
 """Job-lead quote price ACL: a contractor's pre_estimate is hidden from competing contractors."""
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 
 from app.db.session import init_db
 from app.main import app
@@ -32,7 +33,10 @@ async def setup_db(tmp_path, monkeypatch):
     from app.models.entities import User, UserRole
 
     async with sess.SessionLocal() as db:
-        db.add(User(id="rival-contractor", phone="+70000000999", role=UserRole.contractor))
+        db.add(User(id="rival-contractor", phone="+70000000999", role=UserRole.contractor, npd_verified=True))
+        demo_contractors = (await db.execute(select(User).where(User.role == UserRole.contractor))).scalars().all()
+        for contractor in demo_contractors:
+            contractor.npd_verified = True
         await db.commit()
 
 
