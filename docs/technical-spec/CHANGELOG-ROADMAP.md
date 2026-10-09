@@ -73,3 +73,17 @@ ACTIVE: текущий каталог и registry — исходный inventory
 Выявлены и зарегистрированы #316–#320; расширены #315 и #305 конкретными исходными цепочками. Синхронизируются текущий паспорт, roadmap, реестр расчётов, readiness и строгая проверка заголовка схемы. Производственные дефекты этими документами не исправлены; их статус SOURCE CONFIRMED / OPEN. Старые source snapshots сохраняются в history без использования как текущего launch verdict.
 
 Субъективный процент готовности и календарный ETA не рассчитываются без весов требований, принятого release scope, команды и внешних условий. Закрытие реальных приёмочных критериев важнее числа новых функций.
+
+
+## 7. Action OS responsibility progression — 2026-10-10
+
+Canonical sequence:
+
+`Action Responsibility v1 -> Home/Repair/Object/Budget responsibility surfaces -> Action Queue v2 -> parallel responsibilities -> escalation -> SLA routing`.
+
+Current evidence:
+- Action Queue v2 admitted on exact head `2d70b9542fd18b1f460e778b800f61963eaed294`: policy, mobile typecheck/contracts, backend-complete, Golden Paths, Playwright, participant PostgreSQL, security operations and technical-spec integrity GREEN.
+- Parallel responsibilities is now IMPLEMENTED as a read-only projection over the existing `ResponsibilityItem[]` authority. It groups concurrent active obligations by concrete actor/persona, exposes counts and the highest-priority current item, and does not create a second ownership/state machine.
+- Escalation and SLA routing remain gated and MUST NOT be implemented until the parallel-responsibility exact-head admission is GREEN.
+
+Evidence boundary: parallel lanes are repository-level IMPLEMENTED only until their candidate exact head passes the applicable CI/security/participant/Golden/Playwright gates.
