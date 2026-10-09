@@ -4,7 +4,7 @@
 **Язык:** русский
 **Дата текущей сверки:** 2026-09-08
 **Проверенный продуктовый срез:** `95dd4a8e117289df11e1300891490768c22f585f`
-**Текущий schema head в этой редакции:** `x09selectionqty01`
+**Текущий schema head в этой редакции:** `x10executionproof01`
 **Текущий verification status:** `SOURCE AUDITED / BOUNDED CI EVIDENCE / FULL PRODUCT ACCEPTANCE INCOMPLETE`
 **Широкий production-запуск:** `BLOCKED_FOR_BROAD_PRODUCTION`
 
@@ -23,7 +23,7 @@
 | Source | Blob SHA | Назначение |
 |---|---|---|
 | `AGENTS.md` | `767d38e76d04209e609bbe7173a2c448cfc5fa00` | Engineering policy |
-| `backend/app/api/v1/router.py` | `292dd48b37b77cc408db9f0c215ad7a5007e6cd0` | Реальная composition маршрутов |
+| `backend/app/api/v1/router.py` | `64513bc097c74b3f807d16e442c2b0452c2d0854` | Реальная composition маршрутов |
 | `backend/app/models/entities.py` | `67f8e6a557134690c5c2d3d7295b21808974d7fc` | Базовые entities/enums |
 | `backend/app/main.py` | `7f778fc54e7ff0a05b512791a8841615b24e33c1` | API lifespan + middleware chain |
 | `backend/app/services/seed_demo.py` | `c62ba920130a7ba7f6e2bd0a54e63feadce5c6cd` | Явный development seed |
@@ -225,6 +225,24 @@ Closeout проверяется по работам/замечаниям/док�
 
 ## 10.8. Ошибки и идентичность
 Весь путь сохраняет владельца намерения: аккаунт/сессия/проект/request-id. При commit+потере ответа нельзя создавать новую сущность; при commit+ошибке UI нельзя объявлять запись неуспешной. Нельзя отправлять очередь A с токеном B. Нормализованные transport errors обязаны быть совместимы с offline producers.
+
+## 10.9. Portable execution proof и trust checkpoint
+
+Каноническая цепочка доверия для принятого этапа:
+
+`accepted stage → Verified Execution Record → redacted Portable Execution Proof → platform Ed25519 checkpoint → public verification → current / stale / revoked`.
+
+Граница доказательства обязательна:
+
+- platform checkpoint подтверждает, что на момент выпуска Renova видела соответствующий канонический execution proof и его hash;
+- checkpoint **не является электронной подписью заказчика, подрядчика или технадзора** и не должен маркироваться как такая подпись;
+- issuance работает fail-closed без provisioned private issuer key;
+- verifier повторно сверяет текущий proof hash, поэтому изменение канонического record автоматически переводит старый checkpoint в `STALE`;
+- explicit revocation хранится в отдельном persistent ledger и не уничтожает исходный execution record;
+- portable proof не включает user IDs, assignee IDs, storage keys/URLs, comments и financial data;
+- внешний verifier должен различать минимум `VALID / REVOKED / STALE / INVALID_SIGNATURE / INVALID_ENVELOPE_HASH / ISSUER_NOT_CONFIGURED`.
+
+Следующий institutional layer после qualification этого контура: key rotation, issuer metadata/status list, external verifier profile, contractor/customer signature adapters и warranty-linked validity. До появления реальных ключей сторон platform issuer не имеет права выдавать подпись за участника сделки.
 
 # 11. Calculations and derived state
 

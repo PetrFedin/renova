@@ -13,8 +13,8 @@ import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { ReadOnlyBanner, useWriteAllowed } from '@/components/renova/ReadOnlyGuard';
-import { api, StageDetail, WorkSnapshot } from '@/lib/api';
-import { isRateLimitError } from '@/lib/api/client';
+import { api, StageDetail, VerifiedExecutionRecord, WorkSnapshot } from '@/lib/api';
+import { ApiError, isRateLimitError } from '@/lib/api/client';
 import { compressUri } from '@/lib/compressImage';
 import { checklistForStage } from '@/lib/checklistTemplates';
 import { StageExpensePanel } from '@/components/renova/StageExpensePanel';
@@ -37,6 +37,7 @@ import { isQueueableWriteError } from '@/lib/api/queueableError';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { reportError, reportCatch } from '@/lib/reportError';
 import { StageDetailExecutorChecklist } from '@/components/screens/stage/StageDetailExecutorChecklist';
+import { VerifiedExecutionRecordCard } from '@/components/screens/stage/VerifiedExecutionRecordCard';
 import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
 import { formatEventDateTime } from '@/lib/formatScheduleDate';
 
@@ -107,6 +108,9 @@ export function StageDetailScreen() {
   const [customChecks, setCustomChecks] = useState<string[]>([]);
   const [wfChecks, setWfChecks] = useState<{ id: string; text: string; done: boolean }[]>([]);
   const [workSnap, setWorkSnap] = useState<WorkSnapshot | null>(null);
+  const [executionRecord, setExecutionRecord] = useState<VerifiedExecutionRecord | null>(null);
+  const [executionRecordLoading, setExecutionRecordLoading] = useState(false);
+  const [executionRecordUnavailable, setExecutionRecordUnavailable] = useState(true);
   const [contractGate, setContractGate] = useState<{ ok: boolean; reason?: string; message?: string; pending_titles?: string[] } | null>(null);
   const [loadError, setLoadError] = useState(false);
   const stageRef = useRef<StageDetail | null>(null);
@@ -119,6 +123,25 @@ export function StageDetailScreen() {
       const st = await api.getStage(user.id, activeProject.id, id);
       setStage(st);
       setLoadError(false);
+      if (st.status === 'done' || Boolean(st.customer_accepted_at)) {
+        setExecutionRecordLoading(true);
+        api.verifiedExecutionRecord(user.id, activeProject.id, id)
+          .then((record) => {
+            setExecutionRecord(record);
+            setExecutionRecordUnavailable(false);
+          })
+          .catch((error: unknown) => {
+            setExecutionRecord(null);
+            const notAccepted = error instanceof ApiError && error.status === 409;
+            setExecutionRecordUnavailable(notAccepted);
+            if (!notAccepted) reportError('stage.verifiedExecutionRecord', error, { stageId: id });
+          })
+          .finally(() => setExecutionRecordLoading(false));
+      } else {
+        setExecutionRecord(null);
+        setExecutionRecordUnavailable(true);
+        setExecutionRecordLoading(false);
+      }
     } catch (e) {
       // 429 / сеть: оставляем предыдущий stage, не роняем экран (Uncaught).
       // Но если stage ещё ни разу не загрузился, «Загрузка…» иначе висит
@@ -407,6 +430,14 @@ export function StageDetailScreen() {
       />
       <ReadOnlyBanner />
       <ScrollView style={styles.wrap} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
+        {isArchived ? (
+          <VerifiedExecutionRecordCard
+            record={executionRecord}
+            loading={executionRecordLoading}
+            unavailable={executionRecordUnavailable}
+          />
+        ) : null}
+
         {isArchived && (
           <View style={styles.archiveBanner}>
             <Text style={styles.archiveText}>Этап завершён</Text>
