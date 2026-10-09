@@ -38,7 +38,7 @@
 | `apps/mobile/components/renova/os/OsHubTabs.tsx` | `b04ac08459926439b0533db3decce28a4791843c` | Hub tabs (+auto-scroll to selected tab) |
 | `apps/mobile/components/screens/OsObjectHubScreen.tsx` | `b339134cc81941f15b1a363e6872acef0673f9dc` | Object hub |
 | `apps/mobile/components/screens/OsRepairHubScreen.tsx` | `55ecda475da110a384bc2837136f0ccf0c7716e6` | Repair hub |
-| `apps/mobile/components/screens/OsBudgetHubScreen.tsx` | `4e0e8267d68b600cf0d8bdf716a4c8eddaa3bcbd` | Budget hub |
+| `apps/mobile/components/screens/OsBudgetHubScreen.tsx` | `789631cf5d74f657a318baed176b98aada208c26` | Budget hub |
 | `apps/mobile/constants/budgetTabs.ts` | `d02c05560176535e130d76960c2b67691bcbb3b7` | Budget tab canon |
 | `.cursor/rules/renova-design-system.mdc` | `2f48e46f5b348b8cbc3a370615a5a5e93d93421f` | UI rules |
 | `package.json` | `75b7390c2d4d0dbb49dc48e299caf46ee585292d` | Root commands/test entrypoints (+5 sessionFence tests wired into mobile:test) |
