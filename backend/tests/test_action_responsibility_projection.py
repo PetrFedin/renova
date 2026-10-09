@@ -335,3 +335,50 @@ async def test_scoped_participant_only_sees_responsibilities_in_visible_scope(mo
     )
 
     assert [item.resource_id for item in result] == ["issue-in"]
+
+def test_parallel_responsibility_summary_groups_by_actor_and_preserves_priority(monkeypatch):
+    items = [
+        _responsibility_item(
+            action="resolve_issue",
+            responsible_user_id="owner",
+            due_at="2026-10-08T12:00:00",
+        ),
+        _responsibility_item(
+            action="resolve_issue",
+            responsible_user_id="owner",
+        ),
+        actions.ResponsibilityItem(
+            resource_type="issue",
+            resource_id="review-1",
+            resource_title="Проверка",
+            current_state="fixed",
+            required_capability="quality.review",
+            responsible_persona="supervisor",
+            responsible_user_id="supervisor",
+            action="verify_remediation",
+            due_at=None,
+            evidence=actions.ResponsibilityEvidence(required=(), present=()),
+            completion_condition="done",
+            next=None,
+        ),
+    ]
+
+    monkeypatch.setattr(actions, "utc_now", lambda: datetime(2026, 10, 9, 12, 0, 0))
+
+    summary = actions.parallel_responsibility_summary(items, actor_id="owner")
+
+    assert summary["active_actor_count"] == 2
+    assert summary["active_responsibility_count"] == 3
+    assert [lane["actor_key"] for lane in summary["lanes"]] == ["owner", "supervisor"]
+
+    owner_lane = summary["lanes"][0]
+    assert owner_lane["is_current_actor"] is True
+    assert owner_lane["count"] == 2
+    assert owner_lane["top_bucket"] == "overdue"
+    assert owner_lane["bucket_counts"]["overdue"] == 1
+    assert owner_lane["bucket_counts"]["mine_now"] == 1
+
+    supervisor_lane = summary["lanes"][1]
+    assert supervisor_lane["is_current_actor"] is False
+    assert supervisor_lane["count"] == 1
+    assert supervisor_lane["top_bucket"] == "waiting_review"
