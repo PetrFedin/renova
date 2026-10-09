@@ -17,7 +17,7 @@ import {
 import { ProjectProfileHint } from '@/components/renova/os/ProjectProfileHint';
 import { HomeSetupChecklist } from '@/components/renova/os/home/HomeSetupChecklist';
 import { HomeAcceptanceBanner } from '@/components/renova/os/home/HomeAcceptanceBanner';
-import { ActionResponsibilityCard } from '@/components/renova/os/home/ActionResponsibilityCard';
+import { ActionQueueCard } from '@/components/renova/os/home/ActionQueueCard';
 import type { HomeWidgetId } from '@/constants/homeWidgets';
 import { budgetTabRoute, type OsRole } from '@/constants/osSections';
 import type { MaterialPick, OsInsight, ProjectDetail, ReceiptItem, ResponsibilityQueue, User } from '@/lib/api';
@@ -138,10 +138,15 @@ export function HomeScreenBody({
           href={snap.activeWorks.find((w) => w.status === 'review')?.href}
         />
       ) : null}
-      <ActionResponsibilityCard
+      <ActionQueueCard
         queue={responsibilityQueue}
-        userId={user.id}
-        onOpen={() => pushTab('repair', 'control')}
+        onOpenItem={(item) => {
+          if (item.resource_type === 'payment') {
+            pushTab('budget', 'payments');
+            return;
+          }
+          pushTab('repair', 'control');
+        }}
       />
       {showAttention && phase !== 'complete' && (
         <HomeActionHero
