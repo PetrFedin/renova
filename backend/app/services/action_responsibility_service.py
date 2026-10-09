@@ -7,10 +7,12 @@ who acts next" records. Domain mutation endpoints remain authoritative.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timeutil import utc_now
 from app.models.entities import Payment, PaymentStatus, Project, ProjectIssue, Stage, User, WorkAcceptance
 from app.services import project_capability_service as capability_svc
 from app.services import technical_supervision_action_service as supervision_actions
@@ -158,6 +160,19 @@ async def build_action_responsibilities(
         else []
     )
 
+    acceptances = list(
+        (
+            await db.scalars(
+                select(WorkAcceptance)
+                .where(
+                    WorkAcceptance.project_id == project.id,
+                    WorkAcceptance.status.in_(_PENDING_ACCEPTANCE_STATES),
+                )
+                .order_by(WorkAcceptance.requested_at.asc(), WorkAcceptance.created_at.asc(), WorkAcceptance.id.asc())
+            )
+        ).all()
+    )
+
     supervisor_id = await supervision_actions.active_supervisor_user_id(db, project.id)
     items: list[ResponsibilityItem] = []
 
@@ -242,6 +257,26 @@ async def build_action_responsibilities(
                 )
             )
 
+    for acceptance in acceptances:
+        stage = await db.get(Stage, acceptance.stage_id)
+        stage_title = stage.name if stage is not None and stage.project_id == project.id else "Этап"
+        items.append(
+            ResponsibilityItem(
+                resource_type="acceptance",
+                resource_id=acceptance.id,
+                resource_title=f"Приёмка: {stage_title}",
+                current_state=acceptance.status,
+                required_capability="acceptance.decide",
+                responsible_persona="owner",
+                responsible_user_id=project.customer_id,
+                action="decide_work_acceptance",
+                due_at=None,
+                evidence=ResponsibilityEvidence(required=(), present=()),
+                completion_condition="acceptance.status in {accepted, accepted_with_remarks, returned}",
+                next=None,
+            )
+        )
+
     for payment in payments:
         if payment.status == PaymentStatus.pending:
             items.append(
@@ -281,3 +316,65 @@ async def build_action_responsibilities(
             )
 
     return items
+
+
+QUEUE_BUCKETS = (
+    "mine_now",
+    "waiting_other",
+    "overdue",
+    "needs_evidence",
+    "waiting_review",
+    "waiting_owner_decision",
+)
+
+
+def _item_is_overdue(item: ResponsibilityItem, now: datetime) -> bool:
+    if not item.due_at:
+        return False
+    try:
+        due = datetime.fromisoformat(item.due_at)
+    except ValueError:
+        return False
+    if due.tzinfo is not None:
+        due = due.replace(tzinfo=None)
+    if now.tzinfo is not None:
+        now = now.replace(tzinfo=None)
+    return due < now
+
+
+def _item_missing_evidence(item: ResponsibilityItem) -> bool:
+    required = set(item.evidence.required)
+    return bool(required and not required.issubset(set(item.evidence.present)))
+
+
+def responsibility_bucket(
+    item: ResponsibilityItem,
+    *,
+    actor_id: str,
+    now: datetime | None = None,
+) -> str:
+    """Assign exactly one human queue bucket with stable operational priority."""
+    current = now or utc_now()
+    if _item_is_overdue(item, current):
+        return "overdue"
+    if _item_missing_evidence(item):
+        return "needs_evidence"
+    if item.action == "verify_remediation":
+        return "waiting_review"
+    if item.action == "decide_work_acceptance":
+        return "waiting_owner_decision"
+    if item.responsible_user_id == actor_id:
+        return "mine_now"
+    return "waiting_other"
+
+
+def group_action_responsibilities(
+    items: list[ResponsibilityItem],
+    *,
+    actor_id: str,
+) -> dict[str, list[dict]]:
+    grouped: dict[str, list[dict]] = {bucket: [] for bucket in QUEUE_BUCKETS}
+    now = utc_now()
+    for item in items:
+        grouped[responsibility_bucket(item, actor_id=actor_id, now=now)].append(item.to_dict())
+    return grouped
