@@ -1317,10 +1317,12 @@ No other ambiguous status words.
 
 | Layer | Current status | Immediate blocker |
 |---|---|---|
-| Core project/payment/docs/warranty | LIVE/PARTIAL by domain | Golden Path release qualification |
-| Security/admission #683 | QUALIFIED-BUT-GATED | second-agent / exact required gate |
-| Verified Execution #668 | QUALIFIED historical / requires refresh | #683 merge + requalification |
-| Golden Paths | PARTIAL qualification | exact-head policy/agent gate + final 12/12 API proof |
+| Core project/payment/docs/warranty | LIVE/PARTIAL by domain | #683 governance admission before merge of qualified release contour |
+| Security/admission #683 | QUALIFIED / BLOCKED | mandatory second-agent review cannot authenticate: Anthropic credential absent |
+| Participant PostgreSQL race fixture #699 | QUALIFICATION IN PROGRESS | exact-head CI |
+| Verified Execution #668 | QUALIFIED | proven on #696 and integrated #698; waits for #683 admission + real merge path |
+| Golden Paths GP1–GP8 | QUALIFIED | #698 exact integrated contour GREEN: API 12/12, mobile-web 8/8; waits for #683 admission |
+| Capability-aware UX / Action Responsibility / Action Queue v2 | QUALIFIED | integrated #695/#698 evidence-only contour; waits for admitted merge path |
 | Property Passport | RESEARCH/PARTIAL foundations | Gate 0 + identity/asset schema |
 | Decision Ledger | RESEARCH | property/evidence foundation |
 | Trust Matrix | RESEARCH | Passport/history/policy engine |
@@ -1537,34 +1539,37 @@ This is the strict near-term sequence from today's repository state:
 
 ```
 1. #683 exact-head admission
-   -> restore second-agent gate
-   -> all required checks green
-   -> merge
+   -> restore Anthropic second-agent credential/workload identity
+   -> rerun mandatory review
+   -> APPROVE + required checks/threads clean
+   -> merge exact head
 
-2. capture new main SHA
+2. #699 participant PostgreSQL race fixture
+   -> exact-head CI GREEN
+   -> keep as bounded post-admission merge candidate if #683 still contains the stale fixture
 
-3. #668 refresh/rebase
-   -> exact-head full qualification
-   -> merge
+3. capture new main SHA after #683
 
-4. integrate bounded Golden Path fixes
-   -> #695 qualification 12/12 API + 8/8 mobile
-   -> reconcile GOLDEN-PATHS status
-   -> merge real bounded product PRs, not evidence-only #695
+4. integrate already-qualified release contour
+   -> Verified Execution proof from #696/#698
+   -> Golden Paths GP1–GP8 from #695/#698
+   -> capability-aware UX / Action Responsibility / Action Queue v2
+   -> use real bounded merge PRs; evidence-only #695/#696/#698 are never merged
+   -> re-run exact-head CI after each bounded merge slice
 
-5. capability-aware UX
-   -> owner / lead / foreman / participant / supervisor / guest
-   -> phone/tablet/desktop
+5. close current release contour
+   -> API 12/12
+   -> mobile-web 8/8
+   -> backend-complete / PostgreSQL / Playwright / security / readiness GREEN
+   -> no second-agent or required-policy red
 
-6. close current release contour
-
-7. create implementation epic/branch for Wave 1
+6. create implementation epic/branch for Wave 1
    -> Property Identity
    -> Installed Asset Registry
    -> Verified Building History
    -> Decision Ledger
 
-8. only after Wave 1 evidence
+7. only after Wave 1 evidence
    -> Trust Matrix v1
 ```
 
