@@ -72,7 +72,7 @@ async def test_open_issue_points_to_executor_then_supervisor(monkeypatch):
     monkeypatch.setattr(actions.supervision_actions, "active_supervisor_user_id", supervisor_id)
     monkeypatch.setattr(actions.capability_svc, "resolve_operational_context", persona)
 
-    result = await actions.build_action_responsibilities(db, project=_project())
+    result = await actions.build_action_responsibilities(db, project=_project(), actor=SimpleNamespace(id="owner"))
 
     assert len(result) == 1
     item = result[0]
@@ -97,7 +97,7 @@ async def test_fixed_issue_points_to_owner_when_no_supervisor(monkeypatch):
 
     monkeypatch.setattr(actions.supervision_actions, "active_supervisor_user_id", no_supervisor)
 
-    result = await actions.build_action_responsibilities(db, project=_project())
+    result = await actions.build_action_responsibilities(db, project=_project(), actor=SimpleNamespace(id="owner"))
 
     assert len(result) == 1
     item = result[0]
@@ -127,7 +127,7 @@ async def test_pending_payment_points_to_owner_then_lead(monkeypatch):
 
     monkeypatch.setattr(actions.supervision_actions, "active_supervisor_user_id", no_supervisor)
 
-    result = await actions.build_action_responsibilities(db, project=_project())
+    result = await actions.build_action_responsibilities(db, project=_project(), actor=SimpleNamespace(id="owner"))
 
     assert len(result) == 1
     item = result[0]
@@ -148,7 +148,7 @@ async def test_paid_unverified_payment_points_to_lead_recipient(monkeypatch):
 
     monkeypatch.setattr(actions.supervision_actions, "active_supervisor_user_id", no_supervisor)
 
-    result = await actions.build_action_responsibilities(db, project=_project())
+    result = await actions.build_action_responsibilities(db, project=_project(), actor=SimpleNamespace(id="lead"))
 
     assert len(result) == 1
     item = result[0]
@@ -170,6 +170,24 @@ async def test_processing_payment_is_provider_wait_not_human_responsibility(monk
 
     monkeypatch.setattr(actions.supervision_actions, "active_supervisor_user_id", no_supervisor)
 
-    result = await actions.build_action_responsibilities(db, project=_project())
+    result = await actions.build_action_responsibilities(db, project=_project(), actor=SimpleNamespace(id="owner"))
+
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_payment_responsibility_is_hidden_from_non_principal(monkeypatch):
+    db = _Db([], {}, [_payment(actions.PaymentStatus.pending)])
+
+    async def no_supervisor(_db, _project_id):
+        return None
+
+    monkeypatch.setattr(actions.supervision_actions, "active_supervisor_user_id", no_supervisor)
+
+    result = await actions.build_action_responsibilities(
+        db,
+        project=_project(),
+        actor=SimpleNamespace(id="scoped-participant"),
+    )
 
     assert result == []
