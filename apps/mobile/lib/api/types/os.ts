@@ -137,12 +137,30 @@ export type ResponsibilityItem = {
   next?: ResponsibilityNext | null;
 };
 
+export type ParallelResponsibilityLane = {
+  actor_key: string;
+  persona: string;
+  responsible_user_id?: string | null;
+  is_current_actor: boolean;
+  count: number;
+  bucket_counts: ResponsibilityBucketCounts;
+  top_bucket: ResponsibilityBucketKey;
+  top_item: ResponsibilityItem;
+};
+
+export type ParallelResponsibilitySummary = {
+  active_actor_count: number;
+  active_responsibility_count: number;
+  lanes: ParallelResponsibilityLane[];
+};
+
 export type ResponsibilityQueue = {
   project_id: string;
   count: number;
   items: ResponsibilityItem[];
   buckets?: ResponsibilityBuckets;
   bucket_counts?: ResponsibilityBucketCounts;
+  parallel?: ParallelResponsibilitySummary;
 };
 
 

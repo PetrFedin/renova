@@ -346,6 +346,16 @@ QUEUE_BUCKETS = (
     "waiting_owner_decision",
 )
 
+QUEUE_PRIORITY = (
+    "overdue",
+    "needs_evidence",
+    "waiting_review",
+    "waiting_owner_decision",
+    "mine_now",
+    "waiting_other",
+)
+_QUEUE_PRIORITY_INDEX = {bucket: index for index, bucket in enumerate(QUEUE_PRIORITY)}
+
 
 def _item_is_overdue(item: ResponsibilityItem, now: datetime) -> bool:
     if not item.due_at:
@@ -397,3 +407,65 @@ def group_action_responsibilities(
     for item in items:
         grouped[responsibility_bucket(item, actor_id=actor_id, now=now)].append(item.to_dict())
     return grouped
+
+
+def parallel_responsibility_summary(
+    items: list[ResponsibilityItem],
+    *,
+    actor_id: str,
+) -> dict:
+    """Group concurrent human obligations by concrete actor without creating new authority."""
+    now = utc_now()
+    lane_items: dict[tuple[str, str], list[tuple[str, ResponsibilityItem]]] = {}
+
+    for item in items:
+        actor_key = item.responsible_user_id or f"persona:{item.responsible_persona}"
+        key = (actor_key, item.responsible_persona)
+        bucket = responsibility_bucket(item, actor_id=actor_id, now=now)
+        lane_items.setdefault(key, []).append((bucket, item))
+
+    lanes: list[dict] = []
+    for (actor_key, persona), entries in lane_items.items():
+        bucket_counts = {bucket: 0 for bucket in QUEUE_BUCKETS}
+        for bucket, _item in entries:
+            bucket_counts[bucket] += 1
+
+        ordered_entries = sorted(
+            entries,
+            key=lambda entry: (
+                _QUEUE_PRIORITY_INDEX[entry[0]],
+                entry[1].due_at or "9999-12-31T23:59:59",
+                entry[1].resource_type,
+                entry[1].resource_id,
+            ),
+        )
+        top_bucket, top_item = ordered_entries[0]
+        responsible_user_id = top_item.responsible_user_id
+
+        lanes.append(
+            {
+                "actor_key": actor_key,
+                "persona": persona,
+                "responsible_user_id": responsible_user_id,
+                "is_current_actor": responsible_user_id == actor_id,
+                "count": len(entries),
+                "bucket_counts": bucket_counts,
+                "top_bucket": top_bucket,
+                "top_item": top_item.to_dict(),
+            }
+        )
+
+    lanes.sort(
+        key=lambda lane: (
+            _QUEUE_PRIORITY_INDEX[lane["top_bucket"]],
+            0 if lane["is_current_actor"] else 1,
+            lane["persona"],
+            lane["actor_key"],
+        )
+    )
+
+    return {
+        "active_actor_count": len(lanes),
+        "active_responsibility_count": len(items),
+        "lanes": lanes,
+    }
