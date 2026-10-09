@@ -191,3 +191,60 @@ async def test_payment_responsibility_is_hidden_from_non_principal(monkeypatch):
     )
 
     assert result == []
+
+
+def _responsibility_item(
+    *,
+    action: str,
+    responsible_user_id: str | None,
+    due_at: str | None = None,
+    required: tuple[str, ...] = (),
+    present: tuple[str, ...] = (),
+):
+    return actions.ResponsibilityItem(
+        resource_type="issue",
+        resource_id="r1",
+        resource_title="Тест",
+        current_state="open",
+        required_capability="field.write",
+        responsible_persona="member",
+        responsible_user_id=responsible_user_id,
+        action=action,
+        due_at=due_at,
+        evidence=actions.ResponsibilityEvidence(required=required, present=present),
+        completion_condition="done",
+        next=None,
+    )
+
+
+def test_action_queue_bucket_priority():
+    now = datetime(2026, 10, 9, 12, 0, 0)
+
+    overdue = _responsibility_item(
+        action="verify_remediation",
+        responsible_user_id="owner",
+        due_at="2026-10-08T12:00:00",
+        required=("photo",),
+        present=(),
+    )
+    assert actions.responsibility_bucket(overdue, actor_id="owner", now=now) == "overdue"
+
+    evidence = _responsibility_item(
+        action="resolve_issue",
+        responsible_user_id="owner",
+        required=("photo",),
+        present=(),
+    )
+    assert actions.responsibility_bucket(evidence, actor_id="owner", now=now) == "needs_evidence"
+
+    review = _responsibility_item(action="verify_remediation", responsible_user_id="owner")
+    assert actions.responsibility_bucket(review, actor_id="owner", now=now) == "waiting_review"
+
+    owner_decision = _responsibility_item(action="decide_work_acceptance", responsible_user_id="owner")
+    assert actions.responsibility_bucket(owner_decision, actor_id="owner", now=now) == "waiting_owner_decision"
+
+    mine = _responsibility_item(action="resolve_issue", responsible_user_id="owner")
+    assert actions.responsibility_bucket(mine, actor_id="owner", now=now) == "mine_now"
+
+    other = _responsibility_item(action="resolve_issue", responsible_user_id="lead")
+    assert actions.responsibility_bucket(other, actor_id="owner", now=now) == "waiting_other"
