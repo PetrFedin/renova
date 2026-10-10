@@ -105,6 +105,39 @@ export function ActionQueueCard({
           ))}
         </View>
       ) : null}
+      {queue.sla && queue.sla.count > 0 ? (
+        <View style={s.sla}>
+          <Text style={s.slaTitle}>
+            Контроль сроков · активно {queue.sla.active_count} · нарушено {queue.sla.breached_count}
+          </Text>
+          {queue.sla.routes[0] ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                const route = queue.sla?.routes[0];
+                if (!route) return;
+                const item = queue.items.find(
+                  (candidate) =>
+                    candidate.resource_type === route.resource_type &&
+                    candidate.resource_id === route.resource_id,
+                );
+                if (item) onOpenItem(item);
+              }}
+              style={s.slaRow}
+            >
+              <View style={s.slaCopy}>
+                <Text style={s.slaState}>
+                  {queue.sla.routes[0].state === 'breached' ? 'Срок нарушен' : 'Срок активен'}
+                  {' · '}
+                  {PERSONA_LABEL[queue.sla.routes[0].routed_persona] || queue.sla.routes[0].routed_persona}
+                </Text>
+                <Text numberOfLines={1} style={s.slaMeta}>{queue.sla.routes[0].resource_title}</Text>
+              </View>
+              <Text style={s.arrow}>→</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
       {queue.parallel && queue.parallel.active_actor_count > 1 ? (
         <View style={s.parallel}>
           <Text style={s.parallelTitle}>Сейчас действуют параллельно</Text>
@@ -208,6 +241,35 @@ const s = StyleSheet.create({
     fontWeight: RenovaTheme.fontWeight.semibold,
   },
   escalationMeta: {
+    marginTop: 1,
+    fontSize: RenovaTheme.fontSize.caption,
+    color: RenovaTheme.colors.textMuted,
+  },
+  sla: {
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: RenovaTheme.colors.border,
+    gap: 8,
+  },
+  slaTitle: {
+    fontSize: RenovaTheme.fontSize.caption,
+    color: RenovaTheme.colors.text,
+    fontWeight: RenovaTheme.fontWeight.semibold,
+  },
+  slaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 6,
+  },
+  slaCopy: { flex: 1 },
+  slaState: {
+    fontSize: RenovaTheme.fontSize.caption,
+    color: RenovaTheme.colors.text,
+    fontWeight: RenovaTheme.fontWeight.semibold,
+  },
+  slaMeta: {
     marginTop: 1,
     fontSize: RenovaTheme.fontSize.caption,
     color: RenovaTheme.colors.textMuted,
