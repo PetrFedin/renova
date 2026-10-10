@@ -46,7 +46,7 @@ LEAD_CAPABILITIES = frozenset(
         "team.manage",
         "acceptance.submit",
         "billing.issue",
-        "acceptance.submit",
+        "payment.receive.confirm",
         "escalation.raise",
         "communication.write",
     }

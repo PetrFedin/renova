@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import Project, ProjectIssue, Stage, User, WorkAcceptance
+from app.models.entities import Payment, PaymentStatus, Project, ProjectIssue, Stage, User, WorkAcceptance
 from app.services import project_capability_service as capability_svc
 from app.services import technical_supervision_action_service as supervision_actions
 
@@ -119,6 +119,7 @@ async def build_action_responsibilities(
     db: AsyncSession,
     *,
     project: Project,
+    actor: User,
 ) -> list[ResponsibilityItem]:
     """Project existing issue/acceptance truth into a deterministic action queue."""
     issues = list(
@@ -132,6 +133,29 @@ async def build_action_responsibilities(
                 .order_by(ProjectIssue.due_at.asc(), ProjectIssue.created_at.asc(), ProjectIssue.id.asc())
             )
         ).all()
+    )
+
+    finance_visible = actor.id in {project.customer_id, project.contractor_id}
+    payments = (
+        list(
+            (
+                await db.scalars(
+                    select(Payment)
+                    .where(
+                        Payment.project_id == project.id,
+                        Payment.status.in_(
+                            {
+                                PaymentStatus.pending,
+                                PaymentStatus.paid_unverified,
+                            }
+                        ),
+                    )
+                    .order_by(Payment.created_at.asc(), Payment.id.asc())
+                )
+            ).all()
+        )
+        if finance_visible
+        else []
     )
 
     supervisor_id = await supervision_actions.active_supervisor_user_id(db, project.id)
@@ -215,6 +239,44 @@ async def build_action_responsibilities(
                     evidence=_issue_evidence(issue),
                     completion_condition="issue.status == closed",
                     next=next_step,
+                )
+            )
+
+    for payment in payments:
+        if payment.status == PaymentStatus.pending:
+            items.append(
+                ResponsibilityItem(
+                    resource_type="payment",
+                    resource_id=payment.id,
+                    resource_title=payment.title,
+                    current_state=payment.status.value,
+                    required_capability="payment.pay",
+                    responsible_persona="owner",
+                    responsible_user_id=project.customer_id,
+                    action="pay_invoice",
+                    due_at=None,
+                    evidence=ResponsibilityEvidence(required=(), present=()),
+                    completion_condition="payment.status != pending",
+                    next=None,
+                )
+            )
+            continue
+
+        if payment.status == PaymentStatus.paid_unverified and project.contractor_id:
+            items.append(
+                ResponsibilityItem(
+                    resource_type="payment",
+                    resource_id=payment.id,
+                    resource_title=payment.title,
+                    current_state=payment.status.value,
+                    required_capability="payment.receive.confirm",
+                    responsible_persona="lead",
+                    responsible_user_id=project.contractor_id,
+                    action="confirm_payment_received",
+                    due_at=None,
+                    evidence=ResponsibilityEvidence(required=(), present=("transfer_marked",)),
+                    completion_condition="payment.status in {confirmed, pending}",
+                    next=None,
                 )
             )
 

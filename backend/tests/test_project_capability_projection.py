@@ -40,6 +40,7 @@ async def test_owner_and_lead_are_derived_from_project_authority(monkeypatch):
     assert lead.persona == "lead"
     assert "team.manage" in lead.capabilities
     assert "billing.issue" in lead.capabilities
+    assert "payment.receive.confirm" in lead.capabilities
     assert lead.read_only is False
 
 

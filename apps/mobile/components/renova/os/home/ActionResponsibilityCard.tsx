@@ -18,6 +18,8 @@ const ACTION_LABEL: Record<string, string> = {
   verify_remediation: 'Проверить исправление',
   decide_work_acceptance: 'Принять решение по работе',
   resubmit_stage: 'Повторно сдать этап на приёмку',
+  pay_invoice: 'Оплатить счёт',
+  confirm_payment_received: 'Подтвердить получение денег',
 };
 
 function evidenceLabel(item: ResponsibilityItem): string {

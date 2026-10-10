@@ -3,32 +3,45 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { RenovaTheme } from '@/constants/Theme';
 import type { ResponsibilityQueue } from '@/lib/api';
 
-const ACTION_LABEL: Record<string, string> = {
-  resolve_issue: 'Устранить замечание',
-  verify_remediation: 'Проверить исправление',
-  resubmit_stage: 'Повторно сдать этап',
-  decide_work_acceptance: 'Принять решение по работе',
+const PERSONA_LABEL: Record<string, string> = {
+  owner: 'Владелец',
+  lead: 'Ведущий исполнитель',
 };
 
-export function RepairResponsibilityStrip({
+const ACTION_LABEL: Record<string, string> = {
+  pay_invoice: 'Оплатить счёт',
+  confirm_payment_received: 'Подтвердить получение денег',
+};
+
+export function BudgetResponsibilityStrip({
   queue,
   userId,
-  onOpenControl,
+  onOpenPayments,
 }: {
   queue: ResponsibilityQueue | null;
   userId: string;
-  onOpenControl: () => void;
+  onOpenPayments: () => void;
 }) {
-  const item = queue?.items?.find((candidate) => candidate.resource_type === 'issue');
+  const item = queue?.items?.find((candidate) => candidate.resource_type === 'payment');
   if (!item) return null;
 
   const mine = item.responsible_user_id === userId;
+  const actor = PERSONA_LABEL[item.responsible_persona] || item.responsible_persona;
+  const next = item.next ? (PERSONA_LABEL[item.next.persona] || item.next.persona) : null;
+
   return (
-    <Pressable accessibilityRole="button" onPress={onOpenControl} style={s.wrap}>
+    <Pressable accessibilityRole="button" onPress={onOpenPayments} style={s.wrap}>
       <View style={s.copy}>
-        <Text style={s.kicker}>{mine ? 'МОЁ СЕЙЧАС' : 'ЖДУ ДРУГОГО'}</Text>
+        <Text style={s.kicker}>{mine ? 'ДЕНЬГИ · МОЁ ДЕЙСТВИЕ' : 'ДЕНЬГИ · ЖДУ ДРУГОГО'}</Text>
         <Text style={s.title}>{ACTION_LABEL[item.action] || item.action}</Text>
-        <Text numberOfLines={1} style={s.meta}>{item.resource_title}</Text>
+        <Text numberOfLines={1} style={s.meta}>
+          {mine ? item.resource_title : actor + ': ' + item.resource_title}
+        </Text>
+        {item.current_state === 'paid_unverified' ? (
+          <Text style={s.next}>Перевод отмечен, но ещё не вошёл в финансовый факт.</Text>
+        ) : next ? (
+          <Text style={s.next}>После оплаты: {next}</Text>
+        ) : null}
       </View>
       <Text style={s.arrow}>→</Text>
     </Pressable>
@@ -63,6 +76,11 @@ const s = StyleSheet.create({
     fontWeight: RenovaTheme.fontWeight.semibold,
   },
   meta: {
+    marginTop: 2,
+    fontSize: RenovaTheme.fontSize.caption,
+    color: RenovaTheme.colors.textMuted,
+  },
+  next: {
     marginTop: 2,
     fontSize: RenovaTheme.fontSize.caption,
     color: RenovaTheme.colors.textMuted,
