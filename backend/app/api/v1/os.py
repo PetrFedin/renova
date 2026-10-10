@@ -107,6 +107,10 @@ async def action_responsibility(
     items = await action_svc.build_action_responsibilities(db, project=project, actor=user)
     buckets = action_svc.group_action_responsibilities(items, actor_id=user.id)
     parallel = action_svc.parallel_responsibility_summary(items, actor_id=user.id)
+    escalations = action_svc.escalation_signals(
+        items,
+        owner_user_id=project.customer_id,
+    )
     return {
         "project_id": project_id,
         "count": len(items),
@@ -114,6 +118,8 @@ async def action_responsibility(
         "buckets": buckets,
         "bucket_counts": {name: len(values) for name, values in buckets.items()},
         "parallel": parallel,
+        "escalations": [signal.to_dict() for signal in escalations],
+        "escalation_count": len(escalations),
     }
 
 
