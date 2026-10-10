@@ -1324,7 +1324,7 @@ No other ambiguous status words.
 | Golden Paths GP1–GP8 | QUALIFIED | current #695/#698 exact contours GREEN; API 12/12, mobile-web 8/8; waits for #683 admission |
 | Capability-aware operational context #700 | QUALIFIED | exact `c305be76…`: 7 focused cases + backend 1651/30 + Playwright/mobile/spec/security/readiness GREEN |
 | Action Responsibility v1 + Home #701 | QUALIFIED | exact `f0fd7549…`: focused 2/2 + backend 1653/30 + Playwright/mobile/readiness/policy GREEN |
-| Repair responsibility #702 | QUALIFICATION IN PROGRESS | stacked five-file Repair surface on #701; exact-head CI pending |
+| Repair responsibility #702 | QUALIFIED | exact `48e5a5a3…`: focused 2/2 + backend 1653/30 + Playwright/mobile/spec/security/readiness/policy GREEN |
 | Capability-aware UX / Action Responsibility / Action Queue v2 | QUALIFIED | integrated #695/#698 evidence-only contour; waits for admitted merge path |
 | Property Passport | RESEARCH/PARTIAL foundations | Gate 0 + identity/asset schema |
 | Decision Ledger | RESEARCH | property/evidence foundation |
