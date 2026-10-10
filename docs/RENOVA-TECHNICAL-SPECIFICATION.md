@@ -41,14 +41,14 @@
 | `apps/mobile/components/screens/OsBudgetHubScreen.tsx` | `789631cf5d74f657a318baed176b98aada208c26` | Budget hub |
 | `apps/mobile/constants/budgetTabs.ts` | `d02c05560176535e130d76960c2b67691bcbb3b7` | Budget tab canon |
 | `.cursor/rules/renova-design-system.mdc` | `2f48e46f5b348b8cbc3a370615a5a5e93d93421f` | UI rules |
-| `package.json` | `75b7390c2d4d0dbb49dc48e299caf46ee585292d` | Root commands/test entrypoints (+5 sessionFence tests wired into mobile:test) |
+| `package.json` | `16a7a6e3f672e3b45b6608dc36c7e4a6aeee49c6` | Root commands/test entrypoints (+5 sessionFence tests wired into mobile:test) |
 | `.github/workflows/local-runtime-integrity.yml` | `63831ec7622794843ca724319178e2de18cdb971` | Local runtime proof |
 | `backend/alembic/versions/w16legacystatus01_legacy_status_enum_parity.py` | `d2137f2b87c1ac6f679093331bd034aff17c8188` | Legacy status repair |
 | `backend/alembic/versions/w17chatmessageenum01_chat_message_enum_parity.py` | `0537268c85e26b7a607d36f967a3402b8bba53c4` | Chat enum repair |
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
 | `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | Evidence versions |
 | `backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py` | `6de2c048fddc7bea5e385eaa80ca8d30fbe4eb3c` | Participants/scopes/audit |
-| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `8790c623872f04620d804367f460fc3a97f76569` | Текущий план и историческая прослеживаемость |
+| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `3263aa85ee9524587c534736c52768ec08790950` | Текущий план и историческая прослеживаемость |
 
 # 1. Назначение продукта и границы системы
 
@@ -368,3 +368,7 @@ Handoff:
 The mobile Home surface may summarize blocked stages and deep-link to canonical Repair/Works or Repair/Materials. It adds no dependency waiver, stage mutation, procurement command or assignment authority.
 
 Status: IMPLEMENTED / QUALIFICATION REQUIRED. Exact-head admission must include backend-complete, Golden Paths, Playwright, mobile/typecheck, participant PostgreSQL, technical supervision, security, readiness, policy and technical-spec integrity.
+
+## Action OS — blocked-only visibility follow-up
+
+Home Action Queue must remain visible when there are canonical blocked-work handoffs even if ordinary responsibility items are empty. For an acceptance-related predecessor, its entrypoint is Repair / Control; material blockers route to Materials and other work blockers to Works. This is a presentation/navigation projection only. Regression test is included in the blocking mobile suite. Evidence remains pending for the candidate exact head, and the authoritative dependency/acceptance workflow is unchanged.
