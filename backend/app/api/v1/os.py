@@ -111,6 +111,10 @@ async def action_responsibility(
         items,
         owner_user_id=project.customer_id,
     )
+    sla = action_svc.sla_routing_summary(
+        items,
+        escalations=escalations,
+    )
     return {
         "project_id": project_id,
         "count": len(items),
@@ -120,6 +124,7 @@ async def action_responsibility(
         "parallel": parallel,
         "escalations": [signal.to_dict() for signal in escalations],
         "escalation_count": len(escalations),
+        "sla": sla,
     }
 
 
