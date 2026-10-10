@@ -382,3 +382,86 @@ def test_parallel_responsibility_summary_groups_by_actor_and_preserves_priority(
     assert supervisor_lane["is_current_actor"] is False
     assert supervisor_lane["count"] == 1
     assert supervisor_lane["top_bucket"] == "waiting_review"
+
+
+def test_escalation_signal_routes_overdue_executor_to_supervisor():
+    item = actions.ResponsibilityItem(
+        resource_type="issue",
+        resource_id="issue-1",
+        resource_title="Плитка",
+        current_state="open",
+        required_capability="field.write",
+        responsible_persona="foreman",
+        responsible_user_id="foreman",
+        action="resolve_issue",
+        due_at="2026-10-08T12:00:00",
+        evidence=actions.ResponsibilityEvidence(required=(), present=()),
+        completion_condition="issue.status == fixed",
+        next=actions.ResponsibilityNext(
+            capability="quality.review",
+            persona="supervisor",
+            user_id="supervisor",
+            action="verify_remediation",
+        ),
+    )
+
+    signals = actions.escalation_signals(
+        [item],
+        owner_user_id="owner",
+        now=datetime(2026, 10, 9, 12, 0, 0),
+    )
+
+    assert len(signals) == 1
+    signal = signals[0]
+    assert signal.reason == "overdue"
+    assert signal.target_persona == "supervisor"
+    assert signal.target_user_id == "supervisor"
+    assert signal.responsible_user_id == "foreman"
+
+
+def test_escalation_signal_routes_overdue_supervisor_to_owner():
+    item = actions.ResponsibilityItem(
+        resource_type="issue",
+        resource_id="issue-2",
+        resource_title="Проверка",
+        current_state="fixed",
+        required_capability="quality.review",
+        responsible_persona="supervisor",
+        responsible_user_id="supervisor",
+        action="verify_remediation",
+        due_at="2026-10-08T12:00:00",
+        evidence=actions.ResponsibilityEvidence(required=(), present=()),
+        completion_condition="issue.status == closed",
+        next=None,
+    )
+
+    signals = actions.escalation_signals(
+        [item],
+        owner_user_id="owner",
+        now=datetime(2026, 10, 9, 12, 0, 0),
+    )
+
+    assert len(signals) == 1
+    assert signals[0].target_persona == "owner"
+    assert signals[0].target_user_id == "owner"
+
+
+def test_escalation_signal_does_not_self_escalate_owner_or_future_work():
+    owner_item = _responsibility_item(
+        action="resolve_issue",
+        responsible_user_id="owner",
+        due_at="2026-10-08T12:00:00",
+    )
+    future_item = _responsibility_item(
+        action="resolve_issue",
+        responsible_user_id="lead",
+        due_at="2026-10-10T12:00:00",
+    )
+
+    signals = actions.escalation_signals(
+        [owner_item, future_item],
+        owner_user_id="owner",
+        now=datetime(2026, 10, 9, 12, 0, 0),
+    )
+
+    assert signals == []
