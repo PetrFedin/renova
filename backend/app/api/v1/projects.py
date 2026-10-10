@@ -17,6 +17,7 @@ from app.services import project_document_service as docs_svc
 from app.services import dashboard_integrity_service as dashboard_svc
 from app.services import project_viewer_service as viewer_svc
 from app.services import technical_supervision_service as supervision
+from app.services import project_capability_service as capability_svc
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -62,6 +63,8 @@ def _project_out(
     *,
     access_mode: str = "owner",
     technical_capabilities: list[str] | None = None,
+    operational_persona: str = "guest",
+    capabilities: list[str] | tuple[str, ...] | None = None,
 ) -> ProjectOut:
     payments = getattr(p, "payments", None) or []
     pending = sum(1 for pay in payments if pay.status == PaymentStatus.pending)
@@ -99,17 +102,22 @@ def _project_out(
         contractor_id=(getattr(p, "contractor_id", None) if access_mode in {"owner", "contractor"} else None),
         access_mode=access_mode,
         technical_capabilities=technical_capabilities or [],
+        operational_persona=operational_persona,
+        capabilities=list(capabilities or []),
     )
 
 
 async def _project_out_for_user(db, user: User, p) -> ProjectOut:
-    access_mode, _read_only, capabilities = await supervision.project_access_descriptor(
+    access_mode, _read_only, technical_capabilities = await supervision.project_access_descriptor(
         db, user=user, project=p
     )
+    operational = await capability_svc.resolve_operational_context(db, user=user, project=p)
     return _project_out(
         p,
         access_mode=access_mode,
-        technical_capabilities=capabilities,
+        technical_capabilities=technical_capabilities,
+        operational_persona=operational.persona,
+        capabilities=operational.capabilities,
     )
 
 
@@ -125,11 +133,14 @@ def _lifecycle_http_error(e: ValueError) -> HTTPException:
 
 
 async def _detail(db, p, user: User | None = None) -> ProjectDetail:
-    read_only, access_mode, capabilities = False, "owner", []
+    read_only, access_mode, technical_capabilities = False, "owner", []
+    operational_persona, operational_capabilities = "owner", ()
     if user:
-        access_mode, read_only, capabilities = await supervision.project_access_descriptor(
+        access_mode, read_only, technical_capabilities = await supervision.project_access_descriptor(
             db, user=user, project=p
         )
+        operational = await capability_svc.resolve_operational_context(db, user=user, project=p)
+        operational_persona, operational_capabilities = operational.persona, operational.capabilities
 
     participant_stage_ids: set[str] | None = None
     participant_room_ids: set[str] = set()
@@ -201,7 +212,9 @@ async def _detail(db, p, user: User | None = None) -> ProjectDetail:
         **_project_out(
             p,
             access_mode=access_mode,
-            technical_capabilities=capabilities,
+            technical_capabilities=technical_capabilities,
+            operational_persona=operational_persona,
+            capabilities=operational_capabilities,
         ).model_dump(),
         estimate_lines=lines,
         stages=stages,
