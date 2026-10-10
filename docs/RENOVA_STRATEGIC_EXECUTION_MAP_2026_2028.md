@@ -1325,7 +1325,7 @@ No other ambiguous status words.
 | Capability-aware operational context #700 | QUALIFIED | exact `c305be76…`: 7 focused cases + backend 1651/30 + Playwright/mobile/spec/security/readiness GREEN |
 | Action Responsibility v1 + Home #701 | QUALIFIED | exact `f0fd7549…`: focused 2/2 + backend 1653/30 + Playwright/mobile/readiness/policy GREEN |
 | Repair responsibility #702 | QUALIFIED | exact `48e5a5a3…`: focused 2/2 + backend 1653/30 + Playwright/mobile/spec/security/readiness/policy GREEN |
-| Object responsibility #703 | QUALIFICATION IN PROGRESS | stacked five-file Object surface on #702; exact-head checks pending |
+| Object responsibility #703 | QUALIFIED | exact `5fa69414…`: focused 2/2 + backend 1653/30 + Playwright/mobile/spec/security/readiness/policy GREEN |
 | Capability-aware UX / Action Responsibility / Action Queue v2 | QUALIFIED | integrated #695/#698 evidence-only contour; waits for admitted merge path |
 | Property Passport | RESEARCH/PARTIAL foundations | Gate 0 + identity/asset schema |
 | Decision Ledger | RESEARCH | property/evidence foundation |
