@@ -83,7 +83,8 @@ Canonical sequence:
 
 Current evidence:
 - Action Queue v2 admitted on exact head `2d70b9542fd18b1f460e778b800f61963eaed294`: policy, mobile typecheck/contracts, backend-complete, Golden Paths, Playwright, participant PostgreSQL, security operations and technical-spec integrity GREEN.
-- Parallel responsibilities is now IMPLEMENTED as a read-only projection over the existing `ResponsibilityItem[]` authority. It groups concurrent active obligations by concrete actor/persona, exposes counts and the highest-priority current item, and does not create a second ownership/state machine.
-- Escalation and SLA routing remain gated and MUST NOT be implemented until the parallel-responsibility exact-head admission is GREEN.
+- Parallel responsibilities is ADMITTED on exact head `965e5e856d6474ea0c2cd684a2c5ff408b89d844`: policy, mobile/typecheck, backend-complete, Golden Paths, Playwright, participant PostgreSQL, technical supervision, security operations and technical-spec integrity GREEN.
+- Escalation v1 is IMPLEMENTED as a read-only overdue signal over the same responsibility items. It does not reassign work, mutate deadlines, send notifications or create a second escalation state machine. Overdue executor work targets the existing next supervisor when present; otherwise the project owner. Overdue supervisor work targets the owner. Owner-owned overdue work remains in the overdue queue and does not self-escalate.
+- SLA routing remains gated and MUST NOT be implemented until the escalation exact-head admission is GREEN.
 
-Evidence boundary: parallel lanes are repository-level IMPLEMENTED only until their candidate exact head passes the applicable CI/security/participant/Golden/Playwright gates.
+Evidence boundary: escalation signals are repository-level IMPLEMENTED only until their candidate exact head passes the applicable CI/security/participant/Golden/Playwright gates.
