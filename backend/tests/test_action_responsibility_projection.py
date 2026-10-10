@@ -466,3 +466,89 @@ def test_escalation_signal_does_not_self_escalate_owner_or_future_work():
     )
 
     assert signals == []
+
+
+def test_sla_routing_keeps_future_deadline_with_responsible_actor():
+    item = _responsibility_item(
+        action="resolve_issue",
+        responsible_user_id="lead",
+        due_at="2026-10-10T12:00:00",
+    )
+
+    summary = actions.sla_routing_summary(
+        [item],
+        escalations=[],
+        now=datetime(2026, 10, 9, 12, 0, 0),
+    )
+
+    assert summary["count"] == 1
+    assert summary["active_count"] == 1
+    assert summary["breached_count"] == 0
+    route = summary["routes"][0]
+    assert route["state"] == "active"
+    assert route["routed_user_id"] == "lead"
+    assert route["route_reason"] == "responsibility"
+
+
+def test_sla_routing_uses_admitted_escalation_target_after_breach():
+    item = actions.ResponsibilityItem(
+        resource_type="issue",
+        resource_id="issue-sla-1",
+        resource_title="Плитка",
+        current_state="open",
+        required_capability="field.write",
+        responsible_persona="foreman",
+        responsible_user_id="foreman",
+        action="resolve_issue",
+        due_at="2026-10-08T12:00:00",
+        evidence=actions.ResponsibilityEvidence(required=(), present=()),
+        completion_condition="issue.status == fixed",
+        next=actions.ResponsibilityNext(
+            capability="quality.review",
+            persona="supervisor",
+            user_id="supervisor",
+            action="verify_remediation",
+        ),
+    )
+    signals = actions.escalation_signals(
+        [item],
+        owner_user_id="owner",
+        now=datetime(2026, 10, 9, 12, 0, 0),
+    )
+
+    summary = actions.sla_routing_summary(
+        [item],
+        escalations=signals,
+        now=datetime(2026, 10, 9, 12, 0, 0),
+    )
+
+    assert summary["breached_count"] == 1
+    route = summary["routes"][0]
+    assert route["state"] == "breached"
+    assert route["routed_persona"] == "supervisor"
+    assert route["routed_user_id"] == "supervisor"
+    assert route["route_reason"] == "escalation"
+
+
+def test_sla_routing_keeps_owner_breach_with_owner_and_skips_missing_deadline():
+    owner_item = _responsibility_item(
+        action="resolve_issue",
+        responsible_user_id="owner",
+        due_at="2026-10-08T12:00:00",
+    )
+    no_deadline = _responsibility_item(
+        action="resolve_issue",
+        responsible_user_id="lead",
+    )
+
+    summary = actions.sla_routing_summary(
+        [owner_item, no_deadline],
+        escalations=[],
+        now=datetime(2026, 10, 9, 12, 0, 0),
+    )
+
+    assert summary["count"] == 1
+    assert summary["breached_count"] == 1
+    route = summary["routes"][0]
+    assert route["routed_user_id"] == "owner"
+    assert route["route_reason"] == "responsibility"
