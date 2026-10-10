@@ -106,3 +106,7 @@ Next bounded Action OS layer after admitted SLA routing:
 - no blocker mutation, waiver, dependency rewrite, assignment change or purchase/acceptance command is introduced by this read model.
 
 Status: IMPLEMENTED / EXACT-HEAD QUALIFICATION REQUIRED. No successor Action OS layer may be added until this slice is GREEN.
+
+### Blocked Work / Handoff v1 — human UX regression fix
+
+Observed: Home Action Queue was hidden when `ResponsibilityQueue.count == 0` despite existing `blocked_work.items`; the user could not see why an otherwise action-free stage was blocked. Fixed with a shared presentation predicate, and handoff `decide_work_acceptance` now enters canonical Repair / Control rather than the general Works tab. Added `actionQueuePresentation.test.ts` to the blocking `mobile:test` suite. Implementation is **QUALIFICATION REQUIRED** on its own exact head; no new blocker authority or mutation is introduced.
