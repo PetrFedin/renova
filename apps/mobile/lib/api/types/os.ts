@@ -167,6 +167,27 @@ export type EscalationSignal = {
   source_action: string;
 };
 
+export type SlaRoute = {
+  resource_type: string;
+  resource_id: string;
+  resource_title: string;
+  due_at: string;
+  state: 'active' | 'breached' | string;
+  responsible_persona: string;
+  responsible_user_id: string;
+  routed_persona: string;
+  routed_user_id: string;
+  route_reason: 'responsibility' | 'escalation' | string;
+  source_action: string;
+};
+
+export type SlaRoutingSummary = {
+  count: number;
+  breached_count: number;
+  active_count: number;
+  routes: SlaRoute[];
+};
+
 export type ResponsibilityQueue = {
   project_id: string;
   count: number;
@@ -176,6 +197,7 @@ export type ResponsibilityQueue = {
   parallel?: ParallelResponsibilitySummary;
   escalations?: EscalationSignal[];
   escalation_count?: number;
+  sla?: SlaRoutingSummary;
 };
 
 
