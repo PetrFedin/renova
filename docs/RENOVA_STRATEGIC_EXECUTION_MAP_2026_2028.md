@@ -1319,9 +1319,10 @@ No other ambiguous status words.
 |---|---|---|
 | Core project/payment/docs/warranty | LIVE/PARTIAL by domain | #683 governance admission before merge of qualified release contour |
 | Security/admission #683 | QUALIFIED / BLOCKED | mandatory second-agent review cannot authenticate: Anthropic credential absent |
-| Participant PostgreSQL race fixture #699 | QUALIFICATION IN PROGRESS | exact-head CI |
+| Participant PostgreSQL race fixture #699 | QUALIFIED | exact head `019322837…`: participant PostgreSQL 37/37 + complete workflow set GREEN |
 | Verified Execution #668 | QUALIFIED | proven on #696 and integrated #698; waits for #683 admission + real merge path |
-| Golden Paths GP1–GP8 | QUALIFIED | #698 exact integrated contour GREEN: API 12/12, mobile-web 8/8; waits for #683 admission |
+| Golden Paths GP1–GP8 | QUALIFIED | current #695/#698 exact contours GREEN; API 12/12, mobile-web 8/8; waits for #683 admission |
+| Capability-aware operational context #700 | QUALIFICATION IN PROGRESS | bounded nine-file product slice on exact #683; policy/spec GREEN, runtime CI pending |
 | Capability-aware UX / Action Responsibility / Action Queue v2 | QUALIFIED | integrated #695/#698 evidence-only contour; waits for admitted merge path |
 | Property Passport | RESEARCH/PARTIAL foundations | Gate 0 + identity/asset schema |
 | Decision Ledger | RESEARCH | property/evidence foundation |
