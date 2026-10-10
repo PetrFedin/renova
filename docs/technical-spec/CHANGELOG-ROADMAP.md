@@ -90,3 +90,19 @@ Current evidence:
 - No generic “due soon” threshold is invented. Existing domain-specific reminder semantics such as the rework 24-hour reminder remain authoritative and separate.
 
 Evidence boundary: any next Action OS layer must preserve this read-model/authority separation and receive its own exact-head admission.
+
+
+### Blocked Work / Handoff v1
+
+Next bounded Action OS layer after admitted SLA routing:
+
+- source authority remains `Stage`, `WorkDependency`, `MaterialPick` and existing dependency/supply services;
+- only stages visible under the existing project-detail visibility contract are projected;
+- dependency evaluation is read-only: `commit=False, persist_status=False`;
+- work blockers route to the current canonical actor of the predecessor stage; predecessor in review routes to owner acceptance;
+- material blockers route first to owner approval when the pick is not approved/purchased, then to the canonical supply side from `supply_source`;
+- `third_party` stays an external handoff and does not manufacture a Renova user;
+- a visible stage depending on a hidden sibling stage exposes only neutral `Ждёт предыдущую работу`: no sibling title, ref ID or actor metadata;
+- no blocker mutation, waiver, dependency rewrite, assignment change or purchase/acceptance command is introduced by this read model.
+
+Status: IMPLEMENTED / EXACT-HEAD QUALIFICATION REQUIRED. No successor Action OS layer may be added until this slice is GREEN.
