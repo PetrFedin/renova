@@ -48,7 +48,7 @@
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
 | `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | Evidence versions |
 | `backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py` | `6de2c048fddc7bea5e385eaa80ca8d30fbe4eb3c` | Participants/scopes/audit |
-| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `e0e0de488145f5900dd3759dd88f2cef405625cf` | Текущий план и историческая прослеживаемость |
+| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `bb75a08480b5ba026a08ee4b189eef12da01fb7c` | Текущий план и историческая прослеживаемость |
 
 # 1. Назначение продукта и границы системы
 
@@ -319,4 +319,13 @@ Parallel-responsibility extension:
 - introduces no assignment mutation, escalation state, SLA state, hidden role grant or second ownership source of truth;
 - Home may render at most a bounded operational summary and routes the selected top item back to the canonical Repair or Budget action surface.
 
-Escalation and SLA routing are separate future layers and remain prohibited until this parallel read-model candidate is CI-admitted.
+Parallel responsibilities are admitted on exact head `965e5e856d6474ea0c2cd684a2c5ff408b89d844`.
+
+Escalation v1:
+- is a read-only projection for already-overdue human responsibilities;
+- targets the existing next supervisor for overdue executor work when that next actor already exists, otherwise the project owner;
+- targets the owner for overdue supervisor work;
+- never self-escalates owner-owned work;
+- does not reassign responsibility, mutate due dates, send notifications or create durable escalation state.
+
+SLA routing is a separate future layer and remains prohibited until the escalation exact-head candidate is CI-admitted.
