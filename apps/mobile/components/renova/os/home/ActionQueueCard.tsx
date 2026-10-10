@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { RenovaTheme } from '@/constants/Theme';
-import { hasActionQueueContent } from '@/lib/domain/actionQueuePresentation';
+import { hasActionQueueContent, isBlockedOnlyQueue, blockedHandoffVisibility } from '@/lib/domain/actionQueuePresentation';
 import type { BlockedWorkHandoff, ResponsibilityBucketKey, ResponsibilityItem, ResponsibilityQueue } from '@/lib/api';
 
 const BUCKETS: Array<{ key: ResponsibilityBucketKey; label: string }> = [
@@ -55,18 +55,21 @@ export function ActionQueueCard({
   queue,
   onOpenItem,
   onOpenBlocked,
+  userId,
 }: {
   queue: ResponsibilityQueue | null;
   onOpenItem: (item: ResponsibilityItem) => void;
   onOpenBlocked: (item: BlockedWorkHandoff) => void;
+  userId: string;
 }) {
   if (!hasActionQueueContent(queue) || !queue) return null;
   const primary = firstPriority(queue);
+  const blockedOnly = isBlockedOnlyQueue(queue);
 
   return (
     <View style={s.card}>
-      <Text style={s.eyebrow}>ACTION QUEUE</Text>
-      <View style={s.bucketGrid}>
+      <Text style={s.eyebrow}>{blockedOnly ? 'Работа заблокирована' : 'ACTION QUEUE'}</Text>
+      {!blockedOnly ? <View style={s.bucketGrid}>
         {BUCKETS.map(({ key, label }) => {
           const count = queue.bucket_counts?.[key] ?? queue.buckets?.[key]?.length ?? 0;
           return (
@@ -76,7 +79,7 @@ export function ActionQueueCard({
             </View>
           );
         })}
-      </View>
+      </View> : null}
       {queue.blocked_work && queue.blocked_work.count > 0 ? (
         <View style={s.blocked}>
           <Text style={s.blockedTitle}>
@@ -93,7 +96,8 @@ export function ActionQueueCard({
                 <Text numberOfLines={1} style={s.blockedStage}>{blocker.stage_title}</Text>
                 <Text numberOfLines={1} style={s.blockedMeta}>
                   {blocker.blocker_title}
-                  {blocker.handoff_persona
+                  {blockedHandoffVisibility(blocker, userId) === 'mine' ? ' · ваш следующий шаг' : ''}
+                  {blockedHandoffVisibility(blocker, userId) === 'other' && blocker.handoff_persona
                     ? ` · ждёт: ${PERSONA_LABEL[blocker.handoff_persona] || blocker.handoff_persona}`
                     : blocker.handoff_kind === 'external'
                       ? ' · внешняя поставка'
