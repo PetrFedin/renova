@@ -75,6 +75,36 @@ export function ActionQueueCard({
           );
         })}
       </View>
+      {queue.escalation_count && queue.escalation_count > 0 ? (
+        <View style={s.escalation}>
+          <Text style={s.escalationTitle}>Требует эскалации: {queue.escalation_count}</Text>
+          {queue.escalations?.slice(0, 2).map((signal) => (
+            <Pressable
+              accessibilityRole="button"
+              key={`${signal.resource_type}:${signal.resource_id}`}
+              onPress={() => {
+                const item = queue.items.find(
+                  (candidate) =>
+                    candidate.resource_type === signal.resource_type &&
+                    candidate.resource_id === signal.resource_id,
+                );
+                if (item) onOpenItem(item);
+              }}
+              style={s.escalationRow}
+            >
+              <View style={s.escalationCopy}>
+                <Text style={s.escalationPersona}>
+                  {PERSONA_LABEL[signal.responsible_persona] || signal.responsible_persona}
+                  {' → '}
+                  {PERSONA_LABEL[signal.target_persona] || signal.target_persona}
+                </Text>
+                <Text numberOfLines={1} style={s.escalationMeta}>{signal.resource_title}</Text>
+              </View>
+              <Text style={s.arrow}>→</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
       {queue.parallel && queue.parallel.active_actor_count > 1 ? (
         <View style={s.parallel}>
           <Text style={s.parallelTitle}>Сейчас действуют параллельно</Text>
@@ -152,6 +182,35 @@ const s = StyleSheet.create({
     lineHeight: 13,
     color: RenovaTheme.colors.textMuted,
     fontWeight: RenovaTheme.fontWeight.semibold,
+  },
+  escalation: {
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: RenovaTheme.colors.border,
+    gap: 8,
+  },
+  escalationTitle: {
+    fontSize: RenovaTheme.fontSize.caption,
+    color: RenovaTheme.colors.text,
+    fontWeight: RenovaTheme.fontWeight.semibold,
+  },
+  escalationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 6,
+  },
+  escalationCopy: { flex: 1 },
+  escalationPersona: {
+    fontSize: RenovaTheme.fontSize.caption,
+    color: RenovaTheme.colors.text,
+    fontWeight: RenovaTheme.fontWeight.semibold,
+  },
+  escalationMeta: {
+    marginTop: 1,
+    fontSize: RenovaTheme.fontSize.caption,
+    color: RenovaTheme.colors.textMuted,
   },
   parallel: {
     marginTop: 12,
