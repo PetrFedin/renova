@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { RenovaTheme } from '@/constants/Theme';
+import { hasActionQueueContent } from '@/lib/domain/actionQueuePresentation';
 import type { BlockedWorkHandoff, ResponsibilityBucketKey, ResponsibilityItem, ResponsibilityQueue } from '@/lib/api';
 
 const BUCKETS: Array<{ key: ResponsibilityBucketKey; label: string }> = [
@@ -59,9 +60,8 @@ export function ActionQueueCard({
   onOpenItem: (item: ResponsibilityItem) => void;
   onOpenBlocked: (item: BlockedWorkHandoff) => void;
 }) {
-  if (!queue || queue.count === 0) return null;
+  if (!hasActionQueueContent(queue) || !queue) return null;
   const primary = firstPriority(queue);
-  if (!primary) return null;
 
   return (
     <View style={s.card}>
@@ -194,13 +194,13 @@ export function ActionQueueCard({
           ) : null}
         </View>
       ) : null}
-      <Pressable accessibilityRole="button" onPress={() => onOpenItem(primary)} style={s.primary}>
+      {primary ? <Pressable accessibilityRole="button" onPress={() => onOpenItem(primary)} style={s.primary}>
         <View style={s.primaryCopy}>
           <Text style={s.primaryTitle}>{ACTION_LABEL[primary.action] || primary.action}</Text>
           <Text numberOfLines={1} style={s.primaryMeta}>{primary.resource_title}</Text>
         </View>
         <Text style={s.arrow}>→</Text>
-      </Pressable>
+      </Pressable> : null}
     </View>
   );
 }
