@@ -18,6 +18,7 @@ import { ProjectProfileHint } from '@/components/renova/os/ProjectProfileHint';
 import { HomeSetupChecklist } from '@/components/renova/os/home/HomeSetupChecklist';
 import { HomeAcceptanceBanner } from '@/components/renova/os/home/HomeAcceptanceBanner';
 import { ActionQueueCard } from '@/components/renova/os/home/ActionQueueCard';
+import { blockedWorkDestination } from '@/lib/domain/actionQueuePresentation';
 import type { HomeWidgetId } from '@/constants/homeWidgets';
 import { budgetTabRoute, type OsRole } from '@/constants/osSections';
 import type { MaterialPick, OsInsight, ProjectDetail, ReceiptItem, ResponsibilityQueue, User } from '@/lib/api';
@@ -148,7 +149,7 @@ export function HomeScreenBody({
           pushTab('repair', 'control');
         }}
         onOpenBlocked={(blocker) => {
-          pushTab('repair', blocker.blocker_type === 'material' ? 'materials' : 'works');
+          pushTab('repair', blockedWorkDestination(blocker));
         }}
       />
       {showAttention && phase !== 'complete' && (
