@@ -17,9 +17,10 @@ import {
 import { ProjectProfileHint } from '@/components/renova/os/ProjectProfileHint';
 import { HomeSetupChecklist } from '@/components/renova/os/home/HomeSetupChecklist';
 import { HomeAcceptanceBanner } from '@/components/renova/os/home/HomeAcceptanceBanner';
+import { ActionResponsibilityCard } from '@/components/renova/os/home/ActionResponsibilityCard';
 import type { HomeWidgetId } from '@/constants/homeWidgets';
 import { budgetTabRoute, type OsRole } from '@/constants/osSections';
-import type { MaterialPick, OsInsight, ProjectDetail, ReceiptItem, User } from '@/lib/api';
+import type { MaterialPick, OsInsight, ProjectDetail, ReceiptItem, ResponsibilityQueue, User } from '@/lib/api';
 import type { ProjectOsSnapshot } from '@/lib/domain/osTypes';
 import { HomeCompletionLinks } from '@/components/renova/os/home/HomeCompletionStrip';
 import { roleScopeLabel } from '@/lib/domain/roleCapabilities';
@@ -41,6 +42,7 @@ export type HomeScreenBodyProps = {
   budgetAlerts: BudgetAlert[];
   receipts: ReceiptItem[];
   picks: MaterialPick[];
+  responsibilityQueue: ResponsibilityQueue | null;
   moreSummary: string;
   moreHasContent: boolean;
   showWorksMaterials: boolean;
@@ -61,6 +63,7 @@ export function HomeScreenBody({
   budgetAlerts,
   receipts,
   picks,
+  responsibilityQueue,
   moreSummary,
   moreHasContent,
   showWorksMaterials,
@@ -135,6 +138,11 @@ export function HomeScreenBody({
           href={snap.activeWorks.find((w) => w.status === 'review')?.href}
         />
       ) : null}
+      <ActionResponsibilityCard
+        queue={responsibilityQueue}
+        userId={user.id}
+        onOpen={() => pushTab('repair', 'control')}
+      />
       {showAttention && phase !== 'complete' && (
         <HomeActionHero
           role={inboxRole}
