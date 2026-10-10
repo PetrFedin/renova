@@ -1327,6 +1327,7 @@ No other ambiguous status words.
 | Repair responsibility #702 | QUALIFIED | exact `48e5a5a3…`: focused 2/2 + backend 1653/30 + Playwright/mobile/spec/security/readiness/policy GREEN |
 | Object responsibility #703 | QUALIFIED | exact `5fa69414…`: focused 2/2 + backend 1653/30 + Playwright/mobile/spec/security/readiness/policy GREEN |
 | Budget responsibility #704 | QUALIFIED | exact `952046e…`: backend 1657/30, focused 6/6, PostgreSQL/schema, Playwright/mobile/spec/security/readiness/policy GREEN; remains draft |
+| Action Queue v2 #705 | QUALIFICATION IN PROGRESS | exact `85910c50…`: six-bucket read-only projection on #704, full exact-head CI/policy pending |
 | Capability-aware UX / Action Responsibility / Action Queue v2 | QUALIFIED | integrated #695/#698 evidence-only contour; waits for admitted merge path |
 | Property Passport | RESEARCH/PARTIAL foundations | Gate 0 + identity/asset schema |
 | Decision Ledger | RESEARCH | property/evidence foundation |
