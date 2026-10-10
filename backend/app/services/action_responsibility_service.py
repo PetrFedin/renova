@@ -39,6 +39,23 @@ class ResponsibilityNext:
 
 
 @dataclass(frozen=True)
+class EscalationSignal:
+    resource_type: str
+    resource_id: str
+    resource_title: str
+    reason: str
+    due_at: str
+    responsible_persona: str
+    responsible_user_id: str | None
+    target_persona: str
+    target_user_id: str
+    source_action: str
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class ResponsibilityItem:
     resource_type: str
     resource_id: str
@@ -469,3 +486,61 @@ def parallel_responsibility_summary(
         "active_responsibility_count": len(items),
         "lanes": lanes,
     }
+
+
+def escalation_signals(
+    items: list[ResponsibilityItem],
+    *,
+    owner_user_id: str,
+    now: datetime | None = None,
+) -> list[EscalationSignal]:
+    """Project overdue responsibilities into non-mutating escalation signals.
+
+    This read model does not reassign work, notify users or create SLA state.
+    Owner-owned overdue work stays in the overdue queue instead of escalating to
+    the same person.
+    """
+    current = now or utc_now()
+    signals: list[EscalationSignal] = []
+
+    for item in items:
+        if not _item_is_overdue(item, current):
+            continue
+        if not item.due_at or item.responsible_user_id == owner_user_id:
+            continue
+
+        target_persona = "owner"
+        target_user_id = owner_user_id
+        if (
+            item.responsible_persona in {"lead", "foreman", "member", "participant"}
+            and item.next is not None
+            and item.next.persona == "supervisor"
+            and item.next.user_id
+        ):
+            target_persona = "supervisor"
+            target_user_id = item.next.user_id
+
+        signals.append(
+            EscalationSignal(
+                resource_type=item.resource_type,
+                resource_id=item.resource_id,
+                resource_title=item.resource_title,
+                reason="overdue",
+                due_at=item.due_at,
+                responsible_persona=item.responsible_persona,
+                responsible_user_id=item.responsible_user_id,
+                target_persona=target_persona,
+                target_user_id=target_user_id,
+                source_action=item.action,
+            )
+        )
+
+    signals.sort(
+        key=lambda signal: (
+            signal.due_at,
+            signal.target_persona,
+            signal.resource_type,
+            signal.resource_id,
+        )
+    )
+    return signals
