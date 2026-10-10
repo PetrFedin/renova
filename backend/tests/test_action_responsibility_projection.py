@@ -17,15 +17,21 @@ class _ScalarRows:
 
 
 class _Db:
-    def __init__(self, issues, entities, payments=None):
+    def __init__(self, issues, entities, payments=None, acceptances=None):
         self.issues = issues
         self.entities = entities
         self.payments = payments or []
-        self._scalars_calls = 0
+        self.acceptances = acceptances or []
 
-    async def scalars(self, _query):
-        self._scalars_calls += 1
-        return _ScalarRows(self.issues if self._scalars_calls == 1 else self.payments)
+    async def scalars(self, query):
+        entity = query.column_descriptions[0].get("entity")
+        if entity is actions.ProjectIssue:
+            return _ScalarRows(self.issues)
+        if entity is actions.Payment:
+            return _ScalarRows(self.payments)
+        if entity is actions.WorkAcceptance:
+            return _ScalarRows(self.acceptances)
+        raise AssertionError(f"unexpected scalar query entity: {entity}")
 
     async def scalar(self, _query):
         return None
@@ -191,3 +197,141 @@ async def test_payment_responsibility_is_hidden_from_non_principal(monkeypatch):
     )
 
     assert result == []
+
+
+def _responsibility_item(
+    *,
+    action: str,
+    responsible_user_id: str | None,
+    due_at: str | None = None,
+    required: tuple[str, ...] = (),
+    present: tuple[str, ...] = (),
+):
+    return actions.ResponsibilityItem(
+        resource_type="issue",
+        resource_id="r1",
+        resource_title="Тест",
+        current_state="open",
+        required_capability="field.write",
+        responsible_persona="member",
+        responsible_user_id=responsible_user_id,
+        action=action,
+        due_at=due_at,
+        evidence=actions.ResponsibilityEvidence(required=required, present=present),
+        completion_condition="done",
+        next=None,
+    )
+
+
+def test_action_queue_bucket_priority():
+    now = datetime(2026, 10, 9, 12, 0, 0)
+
+    overdue = _responsibility_item(
+        action="verify_remediation",
+        responsible_user_id="owner",
+        due_at="2026-10-08T12:00:00",
+        required=("photo",),
+        present=(),
+    )
+    assert actions.responsibility_bucket(overdue, actor_id="owner", now=now) == "overdue"
+
+    evidence = _responsibility_item(
+        action="resolve_issue",
+        responsible_user_id="owner",
+        required=("photo",),
+        present=(),
+    )
+    assert actions.responsibility_bucket(evidence, actor_id="owner", now=now) == "needs_evidence"
+
+    review = _responsibility_item(action="verify_remediation", responsible_user_id="owner")
+    assert actions.responsibility_bucket(review, actor_id="owner", now=now) == "waiting_review"
+
+    owner_decision = _responsibility_item(action="decide_work_acceptance", responsible_user_id="owner")
+    assert actions.responsibility_bucket(owner_decision, actor_id="owner", now=now) == "waiting_owner_decision"
+
+    mine = _responsibility_item(action="resolve_issue", responsible_user_id="owner")
+    assert actions.responsibility_bucket(mine, actor_id="owner", now=now) == "mine_now"
+
+    other = _responsibility_item(action="resolve_issue", responsible_user_id="lead")
+    assert actions.responsibility_bucket(other, actor_id="owner", now=now) == "waiting_other"
+
+
+@pytest.mark.asyncio
+async def test_pending_acceptance_points_to_owner_decision(monkeypatch):
+    acceptance = SimpleNamespace(
+        id="acc-1",
+        project_id="p1",
+        stage_id="stage-1",
+        status="requested",
+        requested_at=datetime(2026, 10, 9, 9, 0, 0),
+        created_at=datetime(2026, 10, 9, 9, 0, 0),
+    )
+    stage = SimpleNamespace(id="stage-1", project_id="p1", name="Чистовая отделка")
+    db = _Db([], {("Stage", "stage-1"): stage}, acceptances=[acceptance])
+
+    async def no_supervisor(_db, _project_id):
+        return None
+
+    monkeypatch.setattr(actions.supervision_actions, "active_supervisor_user_id", no_supervisor)
+
+    result = await actions.build_action_responsibilities(
+        db,
+        project=_project(),
+        actor=SimpleNamespace(id="owner"),
+    )
+
+    item = next(x for x in result if x.resource_type == "acceptance")
+    assert item.action == "decide_work_acceptance"
+    assert item.required_capability == "acceptance.decide"
+    assert item.responsible_persona == "owner"
+    assert item.responsible_user_id == "owner"
+    assert item.resource_title == "Приёмка: Чистовая отделка"
+
+
+@pytest.mark.asyncio
+async def test_scoped_participant_only_sees_responsibilities_in_visible_scope(monkeypatch):
+    in_scope = _issue("open", assignee_id="participant")
+    in_scope.id = "issue-in"
+    in_scope.stage_id = "stage-in"
+    out_scope = _issue("open", assignee_id="other")
+    out_scope.id = "issue-out"
+    out_scope.stage_id = "stage-out"
+
+    participant_user = SimpleNamespace(id="participant", role=SimpleNamespace(value="contractor"))
+    other_user = SimpleNamespace(id="other", role=SimpleNamespace(value="contractor"))
+    db = _Db(
+        [in_scope, out_scope],
+        {
+            ("User", "participant"): participant_user,
+            ("User", "other"): other_user,
+        },
+    )
+
+    async def no_supervisor(_db, _project_id):
+        return None
+
+    async def active_participant(_db, *, project_id, user_id):
+        assert project_id == "p1"
+        assert user_id == "participant"
+        return SimpleNamespace(id="pp-1", participant_role="contractor")
+
+    async def visible_scope(_db, *, project, user_id):
+        assert project.id == "p1"
+        assert user_id == "participant"
+        return {"stage-in"}, set()
+
+    async def persona(_db, *, user, project):
+        return SimpleNamespace(persona="participant" if user.id == "participant" else "member")
+
+    monkeypatch.setattr(actions.supervision_actions, "active_supervisor_user_id", no_supervisor)
+    monkeypatch.setattr(actions.participant_svc, "active_participant", active_participant)
+    monkeypatch.setattr(actions.participant_svc, "participant_visible_scope", visible_scope)
+    monkeypatch.setattr(actions.capability_svc, "resolve_operational_context", persona)
+
+    result = await actions.build_action_responsibilities(
+        db,
+        project=_project(),
+        actor=SimpleNamespace(id="participant"),
+    )
+
+    assert [item.resource_id for item in result] == ["issue-in"]

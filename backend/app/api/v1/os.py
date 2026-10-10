@@ -105,7 +105,14 @@ async def action_responsibility(
 
     project = await require_project(db, project_id, user, write=False, participant_ok=True)
     items = await action_svc.build_action_responsibilities(db, project=project, actor=user)
-    return {"project_id": project_id, "count": len(items), "items": [item.to_dict() for item in items]}
+    buckets = action_svc.group_action_responsibilities(items, actor_id=user.id)
+    return {
+        "project_id": project_id,
+        "count": len(items),
+        "items": [item.to_dict() for item in items],
+        "buckets": buckets,
+        "bucket_counts": {name: len(values) for name, values in buckets.items()},
+    }
 
 
 @router.get("/projects/{project_id}/issues")
