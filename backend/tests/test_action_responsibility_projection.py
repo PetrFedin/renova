@@ -384,6 +384,7 @@ def test_parallel_responsibility_summary_groups_by_actor_and_preserves_priority(
     assert supervisor_lane["top_bucket"] == "waiting_review"
 
 
+# Qualification ratchet: escalation stays a read-only projection; no reassignment, notification, or deadline mutation.
 def test_escalation_signal_routes_overdue_executor_to_supervisor():
     item = actions.ResponsibilityItem(
         resource_type="issue",
