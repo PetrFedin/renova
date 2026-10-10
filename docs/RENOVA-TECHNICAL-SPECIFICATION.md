@@ -48,7 +48,7 @@
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
 | `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | Evidence versions |
 | `backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py` | `6de2c048fddc7bea5e385eaa80ca8d30fbe4eb3c` | Participants/scopes/audit |
-| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `3263aa85ee9524587c534736c52768ec08790950` | Текущий план и историческая прослеживаемость |
+| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `6cb391a591c950af26240c75a8e28b2dee0107a7` | Текущий план и историческая прослеживаемость |
 
 # 1. Назначение продукта и границы системы
 
@@ -372,3 +372,5 @@ Status: IMPLEMENTED / QUALIFICATION REQUIRED. Exact-head admission must include 
 ## Action OS — blocked-only visibility follow-up
 
 Home Action Queue must remain visible when there are canonical blocked-work handoffs even if ordinary responsibility items are empty. For an acceptance-related predecessor, its entrypoint is Repair / Control; material blockers route to Materials and other work blockers to Works. This is a presentation/navigation projection only. Regression test is included in the blocking mobile suite. Evidence remains pending for the candidate exact head, and the authoritative dependency/acceptance workflow is unchanged.
+
+Blocked-only Home presentation: when the canonical blocked_work read-model has blockers but the action item list is empty, the user sees the blocking context rather than six zero counters. The actor is described as 'your next step' only for matching current user ID. Hidden predecessor actor metadata must not be exposed. Qualification pending on current exact head.
