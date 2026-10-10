@@ -110,3 +110,7 @@ Status: IMPLEMENTED / EXACT-HEAD QUALIFICATION REQUIRED. No successor Action OS 
 ### Blocked Work / Handoff v1 — human UX regression fix
 
 Observed: Home Action Queue was hidden when `ResponsibilityQueue.count == 0` despite existing `blocked_work.items`; the user could not see why an otherwise action-free stage was blocked. Fixed with a shared presentation predicate, and handoff `decide_work_acceptance` now enters canonical Repair / Control rather than the general Works tab. Added `actionQueuePresentation.test.ts` to the blocking `mobile:test` suite. Implementation is **QUALIFICATION REQUIRED** on its own exact head; no new blocker authority or mutation is introduced.
+
+### Blocked-only human UX — qualification candidate
+
+When only blocked work is present, Home hides six misleading zero counters and presents the work blocker as the primary context. A handoff is labelled as the current user's next step only when the canonical handoff_user_id matches the active user; hidden/external blockers never disclose actor metadata. This is presentation-only, with blocking mobile regression tests. Status: IMPLEMENTED / EXACT-HEAD QUALIFICATION REQUIRED.
