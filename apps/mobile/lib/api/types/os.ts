@@ -141,4 +141,19 @@ export type ResponsibilityQueue = {
   project_id: string;
   count: number;
   items: ResponsibilityItem[];
+  buckets?: ResponsibilityBuckets;
+  bucket_counts?: ResponsibilityBucketCounts;
 };
+
+
+export type ResponsibilityBucketKey =
+  | 'mine_now'
+  | 'waiting_other'
+  | 'overdue'
+  | 'needs_evidence'
+  | 'waiting_review'
+  | 'waiting_owner_decision';
+
+export type ResponsibilityBuckets = Record<ResponsibilityBucketKey, ResponsibilityItem[]>;
+
+export type ResponsibilityBucketCounts = Record<ResponsibilityBucketKey, number>;
