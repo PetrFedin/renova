@@ -188,6 +188,26 @@ export type SlaRoutingSummary = {
   routes: SlaRoute[];
 };
 
+export type BlockedWorkHandoff = {
+  stage_id: string;
+  stage_title: string;
+  stage_status: string;
+  blocker_type: string;
+  blocker_title: string;
+  blocker_ref_id?: string | null;
+  criticality: string;
+  handoff_kind: string;
+  handoff_persona?: string | null;
+  handoff_user_id?: string | null;
+  handoff_action: string;
+};
+
+export type BlockedWorkSummary = {
+  count: number;
+  blocked_stage_count: number;
+  items: BlockedWorkHandoff[];
+};
+
 export type ResponsibilityQueue = {
   project_id: string;
   count: number;
@@ -198,6 +218,7 @@ export type ResponsibilityQueue = {
   escalations?: EscalationSignal[];
   escalation_count?: number;
   sla?: SlaRoutingSummary;
+  blocked_work?: BlockedWorkSummary;
 };
 
 
