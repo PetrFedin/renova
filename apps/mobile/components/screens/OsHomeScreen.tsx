@@ -22,7 +22,7 @@ import { formatProjectHeaderMeta } from '@/lib/domain/resolveProjectPhase';
 import { buildHomeSearchHints } from '@/lib/domain/buildHomeSearchHints';
 import { clearHomeSearchHints, setHomeSearchHints } from '@/lib/homeSearchHints';
 import { fallbackDashboard } from '@/lib/domain/fallbackDashboard';
-import { api, Dashboard, ReceiptItem, MaterialPick, Purchase, OsRisk, OsScheduleSummary, OsInsight, OsBudgetSummary } from '@/lib/api';
+import { api, Dashboard, ReceiptItem, MaterialPick, Purchase, OsRisk, OsScheduleSummary, OsInsight, OsBudgetSummary, ResponsibilityQueue } from '@/lib/api';
 import type { OsRole } from '@/constants/osSections';
 import { IntegrationHonestyBadge } from '@/components/renova/IntegrationHonestyBadge';
 import { getOfflineOutboxStatus, subscribeOfflineFlush } from '@/lib/offline';
@@ -63,6 +63,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
   const [insights, setInsights] = useState<OsInsight[]>([]);
   const [budgetAlerts, setBudgetAlerts] = useState<BudgetAlert[]>([]);
   const [osBudget, setOsBudget] = useState<OsBudgetSummary | null>(null);
+  const [responsibilityQueue, setResponsibilityQueue] = useState<ResponsibilityQueue | null>(null);
   const [pendingAcceptance, setPendingAcceptance] = useState(0);
   const [pendingPayments, setPendingPayments] = useState(0);
   const [pendingPaymentTotal, setPendingPaymentTotal] = useState(0);
@@ -112,6 +113,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
     setInsights([]);
     setBudgetAlerts([]);
     setOsBudget(null);
+    setResponsibilityQueue(null);
     setPendingAcceptance(0);
     setPendingPayments(0);
     setPendingPaymentTotal(0);
@@ -163,6 +165,18 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
         // A same-project refresh keeps the last confirmed dashboard. On first load,
         // project-only fallback keeps navigation usable but is explicitly degraded.
         if (!sameProject) setDash(fallbackDashboard(activeProject));
+      }
+
+      // Action OS v1: read-only responsibility projection. Failure is visible
+      // as partial home data and never invents an empty queue.
+      try {
+        const queue = await api.responsibilityQueue(user.id, projectId);
+        if (!isCurrentLoad()) return;
+        setResponsibilityQueue(queue);
+      } catch (error) {
+        if (!isCurrentLoad()) return;
+        reportError('home.responsibilityQueue', error, { userId: user.id, projectId });
+        issues.push('responsibility');
       }
 
       // W65: pending payments для обеих ролей (заказчик платит, исполнитель ждёт)
@@ -396,6 +410,7 @@ export function OsHomeScreen({ role }: { role: OsRole }) {
         budgetAlerts={budgetAlerts}
         receipts={receipts}
         picks={picks}
+        responsibilityQueue={responsibilityQueue}
         moreSummary={moreSummary}
         moreHasContent={moreHasContent}
         showWorksMaterials={showWorksMaterials}

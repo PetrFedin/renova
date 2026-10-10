@@ -2,7 +2,7 @@
 import { req, cachedGet, invalidateCachedGet, ApiError } from './client';
 import { isQueueableWriteError } from './queueableError';
 import { createClientRequestId } from '@/lib/clientRequestId';
-import type { ProjectIssue } from './types';
+import type { ProjectIssue, ResponsibilityQueue } from './types';
 
 async function enqueueOffline(path: string, method: string, body: string | undefined, userId: string) {
   const { enqueue } = await import('@/lib/offlineQueue');
@@ -11,6 +11,7 @@ async function enqueueOffline(path: string, method: string, body: string | undef
 }
 
 export const issuesApi = {
+  responsibilityQueue: (userId: string, projectId: string) => cachedGet<ResponsibilityQueue>(`/api/v1/projects/${projectId}/actions/responsibility`, userId),
   /** Общий TTL-кэш: несколько экранов опрашивают issues по фильтру статуса независимо (#432). */
   listIssues: (userId: string, projectId: string, status?: string) => cachedGet<ProjectIssue[]>(`/api/v1/projects/${projectId}/issues${status ? `?status=${status}` : ''}`, userId),
   createIssue: async (userId: string, projectId: string, body: object) => {
