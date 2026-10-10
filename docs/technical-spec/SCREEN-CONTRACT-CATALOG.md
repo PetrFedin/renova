@@ -617,6 +617,8 @@ list | rooms | stages
 
 Financial formulas and ledger ownership: `docs/technical-spec/CALCULATION-REGISTRY.md` + `docs/BUDGET_FACT.md`.
 
+**Budget Responsibility (#704, qualification candidate):** the Budget hub reads the canonical project responsibility queue for the active actor and renders a financial responsibility strip only from that projection. Owner `pay_invoice` and lead `confirm_payment_received` remain governed by existing capability/payment services; provider `processing` is not a human task and non-principal payment data stays hidden. The strip CTA switches to the existing `payments` tab; it does not create a payment mutation or alternative queue authority. Failure to fetch the queue must not be interpreted as a new financial fact.
+
 ---
 
 # 12. Hub tab component geometry
