@@ -54,6 +54,23 @@ class EscalationSignal:
     def to_dict(self) -> dict:
         return asdict(self)
 
+@dataclass(frozen=True)
+class SlaRoute:
+    resource_type: str
+    resource_id: str
+    resource_title: str
+    due_at: str
+    state: str
+    responsible_persona: str
+    responsible_user_id: str
+    routed_persona: str
+    routed_user_id: str
+    route_reason: str
+    source_action: str
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
 
 @dataclass(frozen=True)
 class ResponsibilityItem:
@@ -544,3 +561,71 @@ def escalation_signals(
         )
     )
     return signals
+
+
+def sla_routing_summary(
+    items: list[ResponsibilityItem],
+    *,
+    escalations: list[EscalationSignal],
+    now: datetime | None = None,
+) -> dict:
+    """Route canonical responsibility deadlines without creating SLA authority.
+
+    Future deadlines remain with the current responsible actor. Breached
+    deadlines follow an already-derived escalation target when one exists.
+    Owner-owned breaches remain with the owner because escalation_signals()
+    intentionally avoids self-escalation.
+    """
+    current = now or utc_now()
+    escalation_by_resource = {
+        (signal.resource_type, signal.resource_id): signal
+        for signal in escalations
+    }
+    routes: list[SlaRoute] = []
+
+    for item in items:
+        if not item.due_at or not item.responsible_user_id:
+            continue
+
+        breached = _item_is_overdue(item, current)
+        signal = escalation_by_resource.get((item.resource_type, item.resource_id))
+        if breached and signal is not None:
+            routed_persona = signal.target_persona
+            routed_user_id = signal.target_user_id
+            route_reason = "escalation"
+        else:
+            routed_persona = item.responsible_persona
+            routed_user_id = item.responsible_user_id
+            route_reason = "responsibility"
+
+        routes.append(
+            SlaRoute(
+                resource_type=item.resource_type,
+                resource_id=item.resource_id,
+                resource_title=item.resource_title,
+                due_at=item.due_at,
+                state="breached" if breached else "active",
+                responsible_persona=item.responsible_persona,
+                responsible_user_id=item.responsible_user_id,
+                routed_persona=routed_persona,
+                routed_user_id=routed_user_id,
+                route_reason=route_reason,
+                source_action=item.action,
+            )
+        )
+
+    routes.sort(
+        key=lambda route: (
+            0 if route.state == "breached" else 1,
+            route.due_at,
+            route.routed_persona,
+            route.resource_type,
+            route.resource_id,
+        )
+    )
+    return {
+        "count": len(routes),
+        "breached_count": sum(1 for route in routes if route.state == "breached"),
+        "active_count": sum(1 for route in routes if route.state == "active"),
+        "routes": [route.to_dict() for route in routes],
+    }
