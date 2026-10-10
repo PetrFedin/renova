@@ -48,7 +48,7 @@
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
 | `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | Evidence versions |
 | `backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py` | `6de2c048fddc7bea5e385eaa80ca8d30fbe4eb3c` | Participants/scopes/audit |
-| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `b3bf08c40cb9af76840e5b7e428e7ebc0b20d246` | Текущий план и историческая прослеживаемость |
+| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `bb878892e7bd6492a6ea1014494ed16551e97b9a` | Текущий план и историческая прослеживаемость |
 
 # 1. Назначение продукта и границы системы
 
@@ -338,4 +338,4 @@ SLA routing v1:
 - does not invent a generic “due soon” threshold, create timers, mutate deadlines, send notifications or create a second SLA state machine;
 - leaves existing domain-specific reminder behavior, including rework reminder timing, authoritative in its current services.
 
-SLA routing remains IMPLEMENTED / QUALIFICATION REQUIRED until its own exact-head admission is GREEN.
+SLA routing v1 is admitted on exact head `ade615bc0d144bbb7fdfb1b8194fffda1d94c61e`. Any successor layer must preserve canonical domain authority and receive its own exact-head admission.
