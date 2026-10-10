@@ -1322,7 +1322,7 @@ No other ambiguous status words.
 | Participant PostgreSQL race fixture #699 | QUALIFIED | exact head `019322837…`: participant PostgreSQL 37/37 + complete workflow set GREEN |
 | Verified Execution #668 | QUALIFIED | proven on #696 and integrated #698; waits for #683 admission + real merge path |
 | Golden Paths GP1–GP8 | QUALIFIED | current #695/#698 exact contours GREEN; API 12/12, mobile-web 8/8; waits for #683 admission |
-| Capability-aware operational context #700 | QUALIFICATION IN PROGRESS | bounded nine-file product slice on exact #683; policy/spec GREEN, runtime CI pending |
+| Capability-aware operational context #700 | QUALIFIED | exact `c305be76…`: 7 focused cases + backend 1651/30 + Playwright/mobile/spec/security/readiness GREEN |
 | Capability-aware UX / Action Responsibility / Action Queue v2 | QUALIFIED | integrated #695/#698 evidence-only contour; waits for admitted merge path |
 | Property Passport | RESEARCH/PARTIAL foundations | Gate 0 + identity/asset schema |
 | Decision Ledger | RESEARCH | property/evidence foundation |
