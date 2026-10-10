@@ -154,6 +154,19 @@ export type ParallelResponsibilitySummary = {
   lanes: ParallelResponsibilityLane[];
 };
 
+export type EscalationSignal = {
+  resource_type: string;
+  resource_id: string;
+  resource_title: string;
+  reason: 'overdue' | string;
+  due_at: string;
+  responsible_persona: string;
+  responsible_user_id?: string | null;
+  target_persona: string;
+  target_user_id: string;
+  source_action: string;
+};
+
 export type ResponsibilityQueue = {
   project_id: string;
   count: number;
@@ -161,6 +174,8 @@ export type ResponsibilityQueue = {
   buckets?: ResponsibilityBuckets;
   bucket_counts?: ResponsibilityBucketCounts;
   parallel?: ParallelResponsibilitySummary;
+  escalations?: EscalationSignal[];
+  escalation_count?: number;
 };
 
 
