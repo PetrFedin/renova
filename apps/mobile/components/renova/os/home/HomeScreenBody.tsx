@@ -147,6 +147,9 @@ export function HomeScreenBody({
           }
           pushTab('repair', 'control');
         }}
+        onOpenBlocked={(blocker) => {
+          pushTab('repair', blocker.blocker_type === 'material' ? 'materials' : 'works');
+        }}
       />
       {showAttention && phase !== 'complete' && (
         <HomeActionHero
