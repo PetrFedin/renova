@@ -114,3 +114,7 @@ Observed: Home Action Queue was hidden when `ResponsibilityQueue.count == 0` des
 ### Blocked-only human UX — qualification candidate
 
 When only blocked work is present, Home hides six misleading zero counters and presents the work blocker as the primary context. A handoff is labelled as the current user's next step only when the canonical handoff_user_id matches the active user; hidden/external blockers never disclose actor metadata. This is presentation-only, with blocking mobile regression tests. Status: IMPLEMENTED / EXACT-HEAD QUALIFICATION REQUIRED.
+
+### Cross-role Blocked Work / Handoff — executable E2E qualification
+
+One fresh real API project now exercises lead dependency configuration, principal-specific blocked-work responsibility, denial of premature stage start, signed contract, stage evidence/checklist, first submission, owner review and return, continued dependency block during rework, resubmission, owner acceptance, automatic blocker disappearance and **explicit** successor start. An unrelated guest is denied the responsibility projection. New `e2e/blocked-work-handoff-lifecycle.spec.ts` is included in the required `scripts/ci-playwright.sh api` suite; implementation is **QUALIFICATION PENDING** until exact-head Playwright, backend, Golden, security, mobile and specification gates pass.
