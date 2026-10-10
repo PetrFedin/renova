@@ -141,6 +141,7 @@ export function HomeScreenBody({
       ) : null}
       <ActionQueueCard
         queue={responsibilityQueue}
+        userId={user.id}
         onOpenItem={(item) => {
           if (item.resource_type === 'payment') {
             pushTab('budget', 'payments');
