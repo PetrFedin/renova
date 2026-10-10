@@ -17,11 +17,12 @@ class _ScalarRows:
 
 
 class _Db:
-    def __init__(self, issues, entities, payments=None, acceptances=None):
+    def __init__(self, issues, entities, payments=None, acceptances=None, stages=None):
         self.issues = issues
         self.entities = entities
         self.payments = payments or []
         self.acceptances = acceptances or []
+        self.stages = stages or []
 
     async def scalars(self, query):
         entity = query.column_descriptions[0].get("entity")
@@ -31,6 +32,8 @@ class _Db:
             return _ScalarRows(self.payments)
         if entity is actions.WorkAcceptance:
             return _ScalarRows(self.acceptances)
+        if entity is actions.Stage:
+            return _ScalarRows(self.stages)
         raise AssertionError(f"unexpected scalar query entity: {entity}")
 
     async def scalar(self, _query):
@@ -552,3 +555,230 @@ def test_sla_routing_keeps_owner_breach_with_owner_and_skips_missing_deadline():
     route = summary["routes"][0]
     assert route["routed_user_id"] == "owner"
     assert route["route_reason"] == "responsibility"
+
+
+
+def _blocked_stage(stage_id: str, *, status=None, assignee_id=None):
+    return SimpleNamespace(
+        id=stage_id,
+        project_id="p1",
+        name=f"Этап {stage_id}",
+        status=status or actions.StageStatus.planned,
+        sort_order=1 if stage_id == "target" else 0,
+        assignee_id=assignee_id,
+        work_type=None,
+        room_ids_json=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_blocked_work_routes_visible_work_dependency_to_predecessor_actor(monkeypatch):
+    target = _blocked_stage("target")
+    predecessor = _blocked_stage("pred", status=actions.StageStatus.active, assignee_id="foreman")
+    foreman = SimpleNamespace(id="foreman", role=actions.UserRole.contractor)
+    db = _Db(
+        [],
+        {
+            ("Stage", "pred"): predecessor,
+            ("User", "foreman"): foreman,
+        },
+        stages=[predecessor, target],
+    )
+
+    async def visible(_db, *, project, actor, stages):
+        return {stage.id for stage in stages}
+
+    async def evaluate(_db, stage, *, commit, persist_status):
+        assert commit is False
+        assert persist_status is False
+        if stage.id == "target":
+            return {
+                "blocked": True,
+                "reasons": [{
+                    "type": "work",
+                    "title": "Завершите: Этап pred",
+                    "severity": "high",
+                    "ref_id": "pred",
+                }],
+            }
+        return {"blocked": False, "reasons": []}
+
+    async def persona(_db, *, user, project):
+        assert user.id == "foreman"
+        return SimpleNamespace(persona="foreman")
+
+    monkeypatch.setattr(actions, "_visible_stage_ids_for_actor", visible)
+    monkeypatch.setattr(actions.dependency_svc, "evaluate_stage", evaluate)
+    monkeypatch.setattr(actions.capability_svc, "resolve_operational_context", persona)
+
+    summary = await actions.blocked_work_handoff_summary(
+        db,
+        project=_project(),
+        actor=SimpleNamespace(id="owner", role=actions.UserRole.customer),
+    )
+
+    assert summary["count"] == 1
+    assert summary["blocked_stage_count"] == 1
+    item = summary["items"][0]
+    assert item["stage_id"] == "target"
+    assert item["blocker_type"] == "work"
+    assert item["blocker_ref_id"] == "pred"
+    assert item["handoff_persona"] == "foreman"
+    assert item["handoff_user_id"] == "foreman"
+    assert item["handoff_action"] == "complete_dependency_stage"
+
+
+@pytest.mark.asyncio
+async def test_blocked_work_hides_sibling_predecessor_metadata(monkeypatch):
+    target = _blocked_stage("target")
+    hidden = _blocked_stage("hidden", status=actions.StageStatus.active, assignee_id="other")
+    db = _Db([], {("Stage", "hidden"): hidden}, stages=[hidden, target])
+
+    async def visible(_db, *, project, actor, stages):
+        return {"target"}
+
+    async def evaluate(_db, stage, *, commit, persist_status):
+        assert commit is False and persist_status is False
+        return {
+            "blocked": True,
+            "reasons": [{
+                "type": "work",
+                "title": "Завершите: Секретный этап",
+                "severity": "high",
+                "ref_id": "hidden",
+            }],
+        }
+
+    monkeypatch.setattr(actions, "_visible_stage_ids_for_actor", visible)
+    monkeypatch.setattr(actions.dependency_svc, "evaluate_stage", evaluate)
+
+    summary = await actions.blocked_work_handoff_summary(
+        db,
+        project=_project(),
+        actor=SimpleNamespace(id="participant", role=actions.UserRole.contractor),
+    )
+
+    assert summary["count"] == 1
+    item = summary["items"][0]
+    assert item["blocker_title"] == "Ждёт предыдущую работу"
+    assert item["blocker_ref_id"] is None
+    assert item["handoff_user_id"] is None
+    assert item["handoff_persona"] is None
+    assert item["handoff_kind"] == "hidden"
+
+
+@pytest.mark.asyncio
+async def test_blocked_material_handoff_uses_approval_then_supply_authority(monkeypatch):
+    target = _blocked_stage("target")
+    pending_pick = SimpleNamespace(
+        id="pick-pending",
+        project_id="p1",
+        stage_id="target",
+        name="Плитка",
+        status=actions.MaterialPickStatus.pending,
+        supply_source="contractor_to_buy",
+    )
+    approved_pick = SimpleNamespace(
+        id="pick-approved",
+        project_id="p1",
+        stage_id="target",
+        name="Клей",
+        status=actions.MaterialPickStatus.approved,
+        supply_source="contractor_to_buy",
+    )
+    db = _Db(
+        [],
+        {
+            ("MaterialPick", "pick-pending"): pending_pick,
+            ("MaterialPick", "pick-approved"): approved_pick,
+        },
+        stages=[target],
+    )
+
+    async def visible(_db, *, project, actor, stages):
+        return {"target"}
+
+    async def evaluate(_db, stage, *, commit, persist_status):
+        assert commit is False and persist_status is False
+        return {
+            "blocked": True,
+            "reasons": [
+                {"type": "material", "title": "Доставьте: Плитка", "severity": "high", "ref_id": "pick-pending"},
+                {"type": "material", "title": "Доставьте: Клей", "severity": "high", "ref_id": "pick-approved"},
+            ],
+        }
+
+    monkeypatch.setattr(actions, "_visible_stage_ids_for_actor", visible)
+    monkeypatch.setattr(actions.dependency_svc, "evaluate_stage", evaluate)
+
+    summary = await actions.blocked_work_handoff_summary(
+        db,
+        project=_project(),
+        actor=SimpleNamespace(id="owner", role=actions.UserRole.customer),
+    )
+
+    assert summary["count"] == 2
+    pending, approved = summary["items"]
+    assert pending["handoff_user_id"] == "owner"
+    assert pending["handoff_persona"] == "owner"
+    assert pending["handoff_action"] == "approve_material"
+    assert pending["handoff_kind"] == "approval"
+    assert approved["handoff_user_id"] == "lead"
+    assert approved["handoff_persona"] == "lead"
+    assert approved["handoff_action"] == "provide_material"
+    assert approved["handoff_kind"] == "supply"
+
+
+@pytest.mark.asyncio
+async def test_blocked_work_visibility_uses_participant_scope(monkeypatch):
+    target = _blocked_stage("target")
+    sibling = _blocked_stage("sibling")
+    db = _Db([], {}, stages=[target, sibling])
+    actor = SimpleNamespace(id="participant", role=actions.UserRole.contractor)
+
+    async def not_supervisor(_db, *, project_id, user_id):
+        return False
+
+    async def participant(_db, *, project_id, user_id):
+        return SimpleNamespace(id="pp-1", participant_role="contractor")
+
+    async def visible_scope(_db, *, project, user_id):
+        return {"target"}, set()
+
+    monkeypatch.setattr(actions.supervision_svc, "is_active_supervisor", not_supervisor)
+    monkeypatch.setattr(actions.participant_svc, "active_participant", participant)
+    monkeypatch.setattr(actions.participant_svc, "participant_visible_scope", visible_scope)
+
+    visible = await actions._visible_stage_ids_for_actor(
+        db,
+        project=_project(),
+        actor=actor,
+        stages=[target, sibling],
+    )
+
+    assert visible == {"target"}
+
+
+@pytest.mark.asyncio
+async def test_blocked_work_ignores_unblocked_stage_and_never_persists_dependency_status(monkeypatch):
+    target = _blocked_stage("target")
+    db = _Db([], {}, stages=[target])
+
+    async def visible(_db, *, project, actor, stages):
+        return {"target"}
+
+    async def evaluate(_db, stage, *, commit, persist_status):
+        assert commit is False
+        assert persist_status is False
+        return {"blocked": False, "reasons": []}
+
+    monkeypatch.setattr(actions, "_visible_stage_ids_for_actor", visible)
+    monkeypatch.setattr(actions.dependency_svc, "evaluate_stage", evaluate)
+
+    summary = await actions.blocked_work_handoff_summary(
+        db,
+        project=_project(),
+        actor=SimpleNamespace(id="owner", role=actions.UserRole.customer),
+    )
+
+    assert summary == {"count": 0, "blocked_stage_count": 0, "items": []}
