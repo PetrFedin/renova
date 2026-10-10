@@ -1323,7 +1323,7 @@ No other ambiguous status words.
 | Verified Execution #668 | QUALIFIED | proven on #696 and integrated #698; waits for #683 admission + real merge path |
 | Golden Paths GP1–GP8 | QUALIFIED | current #695/#698 exact contours GREEN; API 12/12, mobile-web 8/8; waits for #683 admission |
 | Capability-aware operational context #700 | QUALIFIED | exact `c305be76…`: 7 focused cases + backend 1651/30 + Playwright/mobile/spec/security/readiness GREEN |
-| Action Responsibility v1 + Home #701 | QUALIFICATION IN PROGRESS | stacked nine-file read-only responsibility slice on #700; exact-head CI pending |
+| Action Responsibility v1 + Home #701 | QUALIFIED | exact `f0fd7549…`: focused 2/2 + backend 1653/30 + Playwright/mobile/readiness/policy GREEN |
 | Capability-aware UX / Action Responsibility / Action Queue v2 | QUALIFIED | integrated #695/#698 evidence-only contour; waits for admitted merge path |
 | Property Passport | RESEARCH/PARTIAL foundations | Gate 0 + identity/asset schema |
 | Decision Ledger | RESEARCH | property/evidence foundation |
