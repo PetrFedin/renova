@@ -1,6 +1,7 @@
 /** Hub «Объект»: ≤2 primary (Комнаты · Смета), Данные/План — «Ещё» */
-import { useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { OsHubTabs, type HubTab } from '@/components/renova/os/OsHubTabs';
 import { OsProjectProfileScreen } from '@/components/screens/OsProjectProfileScreen';
 import { OsRoomsScreen } from '@/components/screens/OsRoomsScreen';
@@ -10,11 +11,28 @@ import { ProjectScopeLoader } from '@/components/renova/ProjectScopeLoader';
 import { useHubTab } from '@/lib/useHubTab';
 import type { OsRole } from '@/constants/osSections';
 import type { ObjectTabId } from '@/components/screens/object/ObjectTabGuide';
+import { useRenova } from '@/lib/context/RenovaContext';
+import { api, type ResponsibilityQueue } from '@/lib/api';
+import { ObjectResponsibilityStrip } from '@/components/renova/os/ObjectResponsibilityStrip';
+import { repairTabRoute } from '@/constants/osSections';
+import { pushOsNav } from '@/lib/pushOsNav';
+import { reportError } from '@/lib/reportError';
 
 const TAB_IDS = ['profile', 'rooms', 'estimate', 'plan'] as const;
 
 export function OsObjectHubScreen({ role }: { role: OsRole }) {
+  const { user, activeProject } = useRenova();
   const [active, setActive] = useHubTab(TAB_IDS, 'rooms', `renova_object_hub_tab_${role}`);
+  const [responsibilityQueue, setResponsibilityQueue] = useState<ResponsibilityQueue | null>(null);
+
+  const reloadResponsibility = useCallback(() => {
+    if (!user || !activeProject) return;
+    api.responsibilityQueue(user.id, activeProject.id)
+      .then(setResponsibilityQueue)
+      .catch((error) => reportError('components.screens.OsObjectHubScreen.ResponsibilityQueue', error));
+  }, [user?.id, activeProject?.id]);
+
+  useFocusEffect(useCallback(() => { reloadResponsibility(); }, [reloadResponsibility]));
 
   const goTab = (tab: ObjectTabId) => setActive(tab);
 
@@ -32,6 +50,13 @@ export function OsObjectHubScreen({ role }: { role: OsRole }) {
     <ProjectScopeLoader role={role}>
       <View style={s.root}>
         <OsHubTabs tabs={tabs} value={active} onChange={(id) => goTab(id as ObjectTabId)} />
+        {user ? (
+          <ObjectResponsibilityStrip
+            queue={responsibilityQueue}
+            userId={user.id}
+            onOpenAction={() => pushOsNav(repairTabRoute(role, 'control'), undefined, role)}
+          />
+        ) : null}
         <View style={s.body}>
           {active === 'profile' && <OsProjectProfileScreen role={role} onNextTab={goTab} />}
           {active === 'rooms' && <OsRoomsScreen role={role} onNextTab={goTab} />}
