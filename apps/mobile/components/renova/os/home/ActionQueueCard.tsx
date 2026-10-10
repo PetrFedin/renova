@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { RenovaTheme } from '@/constants/Theme';
-import type { ResponsibilityBucketKey, ResponsibilityItem, ResponsibilityQueue } from '@/lib/api';
+import type { BlockedWorkHandoff, ResponsibilityBucketKey, ResponsibilityItem, ResponsibilityQueue } from '@/lib/api';
 
 const BUCKETS: Array<{ key: ResponsibilityBucketKey; label: string }> = [
   { key: 'mine_now', label: 'МОЁ СЕЙЧАС' },
@@ -53,9 +53,11 @@ function firstPriority(queue: ResponsibilityQueue): ResponsibilityItem | null {
 export function ActionQueueCard({
   queue,
   onOpenItem,
+  onOpenBlocked,
 }: {
   queue: ResponsibilityQueue | null;
   onOpenItem: (item: ResponsibilityItem) => void;
+  onOpenBlocked: (item: BlockedWorkHandoff) => void;
 }) {
   if (!queue || queue.count === 0) return null;
   const primary = firstPriority(queue);
@@ -75,6 +77,34 @@ export function ActionQueueCard({
           );
         })}
       </View>
+      {queue.blocked_work && queue.blocked_work.count > 0 ? (
+        <View style={s.blocked}>
+          <Text style={s.blockedTitle}>
+            Блокирует работу · этапов {queue.blocked_work.blocked_stage_count}
+          </Text>
+          {queue.blocked_work.items.slice(0, 2).map((blocker) => (
+            <Pressable
+              accessibilityRole="button"
+              key={`${blocker.stage_id}:${blocker.blocker_type}:${blocker.blocker_ref_id || blocker.blocker_title}`}
+              onPress={() => onOpenBlocked(blocker)}
+              style={s.blockedRow}
+            >
+              <View style={s.blockedCopy}>
+                <Text numberOfLines={1} style={s.blockedStage}>{blocker.stage_title}</Text>
+                <Text numberOfLines={1} style={s.blockedMeta}>
+                  {blocker.blocker_title}
+                  {blocker.handoff_persona
+                    ? ` · ждёт: ${PERSONA_LABEL[blocker.handoff_persona] || blocker.handoff_persona}`
+                    : blocker.handoff_kind === 'external'
+                      ? ' · внешняя поставка'
+                      : ''}
+                </Text>
+              </View>
+              <Text style={s.arrow}>→</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
       {queue.escalation_count && queue.escalation_count > 0 ? (
         <View style={s.escalation}>
           <Text style={s.escalationTitle}>Требует эскалации: {queue.escalation_count}</Text>
@@ -215,6 +245,35 @@ const s = StyleSheet.create({
     lineHeight: 13,
     color: RenovaTheme.colors.textMuted,
     fontWeight: RenovaTheme.fontWeight.semibold,
+  },
+  blocked: {
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: RenovaTheme.colors.border,
+    gap: 8,
+  },
+  blockedTitle: {
+    fontSize: RenovaTheme.fontSize.caption,
+    color: RenovaTheme.colors.text,
+    fontWeight: RenovaTheme.fontWeight.semibold,
+  },
+  blockedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 6,
+  },
+  blockedCopy: { flex: 1 },
+  blockedStage: {
+    fontSize: RenovaTheme.fontSize.caption,
+    color: RenovaTheme.colors.text,
+    fontWeight: RenovaTheme.fontWeight.semibold,
+  },
+  blockedMeta: {
+    marginTop: 1,
+    fontSize: RenovaTheme.fontSize.caption,
+    color: RenovaTheme.colors.textMuted,
   },
   escalation: {
     marginTop: 12,
