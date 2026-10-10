@@ -48,7 +48,7 @@
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
 | `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | Evidence versions |
 | `backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py` | `6de2c048fddc7bea5e385eaa80ca8d30fbe4eb3c` | Participants/scopes/audit |
-| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `bb878892e7bd6492a6ea1014494ed16551e97b9a` | Текущий план и историческая прослеживаемость |
+| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `8790c623872f04620d804367f460fc3a97f76569` | Текущий план и историческая прослеживаемость |
 
 # 1. Назначение продукта и границы системы
 
@@ -339,3 +339,32 @@ SLA routing v1:
 - leaves existing domain-specific reminder behavior, including rework reminder timing, authoritative in its current services.
 
 SLA routing v1 is admitted on exact head `ade615bc0d144bbb7fdfb1b8194fffda1d94c61e`. Any successor layer must preserve canonical domain authority and receive its own exact-head admission.
+
+
+## 19.1. Blocked Work / Handoff v1
+
+Blocked Work / Handoff is a read-only Action OS projection over the existing execution graph.
+
+Authority:
+- stage state remains in `Stage`;
+- dependency truth remains in `dependency_service.evaluate_stage`;
+- material approval/availability/responsibility remains in `MaterialPick` + `material_supply_service`;
+- this projection must never persist dependency status from the responsibility GET path.
+
+Visibility:
+- owner / lead / foreman / technical supervisor follow the existing project stage-read contract;
+- team member/viewer follow the existing own-or-unassigned stage projection;
+- scoped ProjectParticipant is restricted to `participant_visible_scope`;
+- if a visible stage depends on a predecessor stage outside the viewer's visible stage set, the projection MUST hide predecessor title, ID and actor metadata.
+
+Handoff:
+- a visible work dependency may identify the canonical actor currently responsible for the visible predecessor stage;
+- predecessor in review routes to owner acceptance;
+- material pending approval routes to owner review;
+- approved/purchased but unavailable customer supply routes to owner;
+- approved/purchased but unavailable contractor supply routes to lead contractor;
+- third-party supply remains an external handoff with no manufactured Renova user.
+
+The mobile Home surface may summarize blocked stages and deep-link to canonical Repair/Works or Repair/Materials. It adds no dependency waiver, stage mutation, procurement command or assignment authority.
+
+Status: IMPLEMENTED / QUALIFICATION REQUIRED. Exact-head admission must include backend-complete, Golden Paths, Playwright, mobile/typecheck, participant PostgreSQL, technical supervision, security, readiness, policy and technical-spec integrity.
