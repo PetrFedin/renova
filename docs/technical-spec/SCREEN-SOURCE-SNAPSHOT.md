@@ -5,7 +5,7 @@
 | Source | Git blob SHA | Contract area |
 |---|---|---|
 | `apps/mobile/components/renova/PrimaryButton.tsx` | `36a04974f20a8218e56c11cf11d5014fa7c2cb04` | shared CTA variants/sizes/states |
-| `apps/mobile/components/screens/OsObjectHubScreen.tsx` | `3082b1bf59cbf420d403ed82b35bbc2e78697728` | Object hub |
+| `apps/mobile/components/screens/OsObjectHubScreen.tsx` | `b339134cc81941f15b1a363e6872acef0673f9dc` | Object hub |
 | `apps/mobile/components/screens/OsRepairHubScreen.tsx` | `55ecda475da110a384bc2837136f0ccf0c7716e6` | Repair hub |
 | `apps/mobile/components/screens/OsBudgetHubScreen.tsx` | `4e0e8267d68b600cf0d8bdf716a4c8eddaa3bcbd` | Budget hub |
 | `apps/mobile/components/screens/OsMaterialsScreen.tsx` | `310f8c9dc20c9580baa2772a7397062fb0456d1b` | Materials/procurement hub + supply-aware next action |
