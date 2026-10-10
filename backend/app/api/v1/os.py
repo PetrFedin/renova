@@ -115,6 +115,11 @@ async def action_responsibility(
         items,
         escalations=escalations,
     )
+    blocked_work = await action_svc.blocked_work_handoff_summary(
+        db,
+        project=project,
+        actor=user,
+    )
     return {
         "project_id": project_id,
         "count": len(items),
@@ -125,6 +130,7 @@ async def action_responsibility(
         "escalations": [signal.to_dict() for signal in escalations],
         "escalation_count": len(escalations),
         "sla": sla,
+        "blocked_work": blocked_work,
     }
 
 
