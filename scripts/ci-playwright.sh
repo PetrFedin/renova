@@ -124,7 +124,8 @@ run_api_e2e() {
     e2e/portal-documents.spec.ts \
     e2e/contract-gate-path.spec.ts \
     e2e/chat-message-idempotency.spec.ts \
-    e2e/change-order-lifecycle.spec.ts
+    e2e/change-order-lifecycle.spec.ts \
+    e2e/blocked-work-handoff-lifecycle.spec.ts
   npm run cleanup:e2e-gate || true
 }
 
