@@ -124,12 +124,18 @@ test.describe('Action OS — blocked work, real actor handoff and unblock', () =
       }
       const evidence = await request.post(`${stageUrl}/${s.stageId}/photos`, {
         headers: hLead,
-        data: { image_data: PROOF_PNG, caption: 'Предшествующая работа выполнена' },
+        data: { image_data: PROOF_PNG, caption: 'Результат работы после выполнения' },
       });
       expect(evidence.ok()).toBeTruthy();
 
+      // The same server-side readiness gate used by canonical submit must be satisfied.
+      const readiness = await request.get(`${stageUrl}/${s.stageId}/completion-check`, { headers: hLead });
+      expect(readiness.ok()).toBeTruthy();
+      const readinessBody = (await readiness.json()) as { ok: boolean; failed?: Array<{ id: string; message: string }> };
+      expect(readinessBody.ok, `canonical completion blockers: ${JSON.stringify(readinessBody.failed ?? [])}`).toBe(true);
+
       const submitted = await request.post(`${stageUrl}/${s.stageId}/submit`, { headers: hLead });
-      expect(submitted.ok()).toBeTruthy();
+      expect(submitted.ok(), `first submit HTTP ${submitted.status()}: ${await submitted.text()}`).toBeTruthy();
       const firstAcceptanceId = ((await submitted.json()) as { acceptance_id: string }).acceptance_id;
       expect(firstAcceptanceId).toBeTruthy();
 
@@ -168,8 +174,23 @@ test.describe('Action OS — blocked work, real actor handoff and unblock', () =
         headers: hLead,
       });
       expect(fixed.ok()).toBeTruthy();
+      // Returning the work adds a canonical rework checklist entry. Complete it as a human executor.
+      const reworkWorkflow = await request.get(`${stageUrl}/${s.stageId}/workflow`, { headers: hLead });
+      expect(reworkWorkflow.ok()).toBeTruthy();
+      const pendingRework = (await reworkWorkflow.json()) as { checklist?: Array<{ id: string; done: boolean }> };
+      for (const item of pendingRework.checklist ?? []) {
+        if (item.done) continue;
+        const done = await request.post(`${stageUrl}/${s.stageId}/checklist/toggle`, {
+          headers: hLead, data: { item_id: item.id, done: true },
+        });
+        expect(done.ok()).toBeTruthy();
+      }
+      const secondReadiness = await request.get(`${stageUrl}/${s.stageId}/completion-check`, { headers: hLead });
+      expect(secondReadiness.ok()).toBeTruthy();
+      const secondReadinessBody = (await secondReadiness.json()) as { ok: boolean; failed?: Array<{ id: string; message: string }> };
+      expect(secondReadinessBody.ok, `rework completion blockers: ${JSON.stringify(secondReadinessBody.failed ?? [])}`).toBe(true);
       const resubmitted = await request.post(`${stageUrl}/${s.stageId}/submit`, { headers: hLead });
-      expect(resubmitted.ok()).toBeTruthy();
+      expect(resubmitted.ok(), `resubmit HTTP ${resubmitted.status()}: ${await resubmitted.text()}`).toBeTruthy();
       const finalAcceptanceId = ((await resubmitted.json()) as { acceptance_id: string }).acceptance_id;
       expect(finalAcceptanceId).toBeTruthy();
 
