@@ -1326,6 +1326,7 @@ No other ambiguous status words.
 | Action Responsibility v1 + Home #701 | QUALIFIED | exact `f0fd7549…`: focused 2/2 + backend 1653/30 + Playwright/mobile/readiness/policy GREEN |
 | Repair responsibility #702 | QUALIFIED | exact `48e5a5a3…`: focused 2/2 + backend 1653/30 + Playwright/mobile/spec/security/readiness/policy GREEN |
 | Object responsibility #703 | QUALIFIED | exact `5fa69414…`: focused 2/2 + backend 1653/30 + Playwright/mobile/spec/security/readiness/policy GREEN |
+| Budget responsibility #704 | QUALIFICATION IN PROGRESS | exact `b2d8394…`: ten-file payment responsibility slice; CI/spec snapshot admission pending |
 | Capability-aware UX / Action Responsibility / Action Queue v2 | QUALIFIED | integrated #695/#698 evidence-only contour; waits for admitted merge path |
 | Property Passport | RESEARCH/PARTIAL foundations | Gate 0 + identity/asset schema |
 | Decision Ledger | RESEARCH | property/evidence foundation |
