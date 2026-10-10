@@ -13,10 +13,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timeutil import utc_now
-from app.models.entities import Payment, PaymentStatus, Project, ProjectIssue, Stage, User, WorkAcceptance
+from app.models.entities import MaterialPick, MaterialPickStatus, Payment, PaymentStatus, Project, ProjectIssue, Stage, StageStatus, User, UserRole, WorkAcceptance
+from app.services import dependency_service as dependency_svc
+from app.services import material_supply_service
 from app.services import project_capability_service as capability_svc
 from app.services import project_participant_service as participant_svc
+from app.services import team_service
 from app.services import technical_supervision_action_service as supervision_actions
+from app.services import technical_supervision_service as supervision_svc
 
 
 _OPEN_EXECUTOR_STATES = {"open", "assigned", "in_progress"}
@@ -67,6 +71,23 @@ class SlaRoute:
     routed_user_id: str
     route_reason: str
     source_action: str
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+@dataclass(frozen=True)
+class BlockedWorkHandoff:
+    stage_id: str
+    stage_title: str
+    stage_status: str
+    blocker_type: str
+    blocker_title: str
+    blocker_ref_id: str | None
+    criticality: str
+    handoff_kind: str
+    handoff_persona: str | None
+    handoff_user_id: str | None
+    handoff_action: str
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -628,4 +649,188 @@ def sla_routing_summary(
         "breached_count": sum(1 for route in routes if route.state == "breached"),
         "active_count": sum(1 for route in routes if route.state == "active"),
         "routes": [route.to_dict() for route in routes],
+    }
+
+
+async def _visible_stage_ids_for_actor(
+    db: AsyncSession,
+    *,
+    project: Project,
+    actor: User,
+    stages: list[Stage],
+) -> set[str]:
+    """Mirror canonical project-detail stage visibility without widening ACL."""
+    all_ids = {stage.id for stage in stages}
+    if actor.id in {project.customer_id, project.contractor_id}:
+        return all_ids
+
+    if await supervision_svc.is_active_supervisor(
+        db, project_id=project.id, user_id=actor.id
+    ):
+        return all_ids
+
+    if actor.role != UserRole.contractor:
+        return all_ids
+
+    participant = await participant_svc.active_participant(
+        db, project_id=project.id, user_id=actor.id
+    )
+    if participant is not None and participant.participant_role != "lead_contractor":
+        visible_stage_ids, _visible_room_ids = await participant_svc.participant_visible_scope(
+            db, project=project, user_id=actor.id
+        )
+        return visible_stage_ids
+
+    membership = await team_service.project_team_membership(
+        db, user_id=actor.id, contractor_id=project.contractor_id
+    )
+    if membership is not None:
+        if membership.role == "foreman":
+            return all_ids
+        if membership.role in {"member", "viewer"}:
+            return {
+                stage.id
+                for stage in stages
+                if stage.assignee_id in {None, actor.id}
+            }
+
+    return {
+        stage.id
+        for stage in stages
+        if stage.assignee_id == actor.id
+        or (stage.assignee_id is None and project.contractor_id == actor.id)
+    }
+
+
+async def _stage_handoff_actor(
+    db: AsyncSession,
+    *,
+    project: Project,
+    stage: Stage,
+) -> tuple[str | None, str | None, str]:
+    if stage.status == StageStatus.review:
+        return project.customer_id, "owner", "decide_work_acceptance"
+    user_id = stage.assignee_id or project.contractor_id or project.customer_id
+    if not user_id:
+        return None, None, "complete_dependency_stage"
+    fallback = "lead" if project.contractor_id else "owner"
+    persona = await _persona_for_user(
+        db, project=project, user_id=user_id, fallback=fallback
+    )
+    return user_id, persona, "complete_dependency_stage"
+
+
+def _material_handoff(
+    *,
+    project: Project,
+    pick: MaterialPick,
+) -> tuple[str | None, str | None, str, str]:
+    if pick.status not in {MaterialPickStatus.approved, MaterialPickStatus.purchased}:
+        return project.customer_id, "owner", "approve_material", "approval"
+
+    source = material_supply_service.supply_source(pick)
+    if source in {"customer_on_hand", "customer_to_buy"}:
+        return project.customer_id, "owner", "provide_material", "supply"
+    if source in {"contractor_to_buy", "contractor_included"}:
+        if project.contractor_id:
+            return project.contractor_id, "lead", "provide_material", "supply"
+        return project.customer_id, "owner", "provide_material", "supply"
+    if source == "third_party":
+        return None, None, "wait_external_supply", "external"
+    return None, None, "resolve_material_blocker", "unknown"
+
+
+async def blocked_work_handoff_summary(
+    db: AsyncSession,
+    *,
+    project: Project,
+    actor: User,
+) -> dict:
+    """Project canonical stage dependencies into a privacy-safe handoff read model."""
+    stages = list(
+        (
+            await db.scalars(
+                select(Stage)
+                .where(Stage.project_id == project.id)
+                .order_by(Stage.sort_order.asc(), Stage.id.asc())
+            )
+        ).all()
+    )
+    visible_stage_ids = await _visible_stage_ids_for_actor(
+        db, project=project, actor=actor, stages=stages
+    )
+    stage_by_id = {stage.id: stage for stage in stages}
+    items: list[BlockedWorkHandoff] = []
+    blocked_stage_ids: set[str] = set()
+
+    for stage in stages:
+        if stage.id not in visible_stage_ids or stage.status == StageStatus.done:
+            continue
+        evaluation = await dependency_svc.evaluate_stage(
+            db, stage, commit=False, persist_status=False
+        )
+        if not evaluation.get("blocked"):
+            continue
+
+        seen: set[tuple[str, str | None]] = set()
+        for reason in evaluation.get("reasons") or []:
+            blocker_type = str(reason.get("type") or "dependency")
+            ref_id = str(reason.get("ref_id")) if reason.get("ref_id") else None
+            dedupe_key = (blocker_type, ref_id)
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+
+            title = str(reason.get("title") or "Есть блокирующая зависимость")
+            criticality = str(reason.get("severity") or "high")
+            handoff_user_id: str | None = None
+            handoff_persona: str | None = None
+            handoff_action = "resolve_dependency"
+            handoff_kind = "dependency"
+
+            if blocker_type == "work" and ref_id:
+                predecessor = stage_by_id.get(ref_id) or await db.get(Stage, ref_id)
+                if ref_id not in visible_stage_ids:
+                    title = "Ждёт предыдущую работу"
+                    ref_id = None
+                    handoff_action = "wait_hidden_dependency"
+                    handoff_kind = "hidden"
+                elif predecessor is not None and predecessor.project_id == project.id:
+                    handoff_user_id, handoff_persona, handoff_action = await _stage_handoff_actor(
+                        db, project=project, stage=predecessor
+                    )
+                    handoff_kind = "work"
+            elif blocker_type == "material" and ref_id:
+                pick = await db.get(MaterialPick, ref_id)
+                if pick is not None and pick.project_id == project.id and pick.stage_id == stage.id:
+                    handoff_user_id, handoff_persona, handoff_action, handoff_kind = _material_handoff(
+                        project=project, pick=pick
+                    )
+                else:
+                    ref_id = None
+                    title = "Ждёт материал"
+                    handoff_kind = "hidden"
+                    handoff_action = "wait_material"
+
+            items.append(
+                BlockedWorkHandoff(
+                    stage_id=stage.id,
+                    stage_title=stage.name,
+                    stage_status=stage.status.value,
+                    blocker_type=blocker_type,
+                    blocker_title=title,
+                    blocker_ref_id=ref_id,
+                    criticality=criticality,
+                    handoff_kind=handoff_kind,
+                    handoff_persona=handoff_persona,
+                    handoff_user_id=handoff_user_id,
+                    handoff_action=handoff_action,
+                )
+            )
+            blocked_stage_ids.add(stage.id)
+
+    return {
+        "count": len(items),
+        "blocked_stage_count": len(blocked_stage_ids),
+        "items": [item.to_dict() for item in items],
     }
