@@ -10,3 +10,14 @@ condition = "AND"
 paths = ['''(?:^|/)backend/tests/test_esign_idempotency_key\.py$''']
 regexTarget = "line"
 regexes = ['''idempotency_key="renova-durable-intent-123"''']
+
+[[allowlists]]
+description = "GP5 deterministic simulated-refund idempotency key in two test files only (historical commit e80588e6; not an API credential)"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = [
+  '''(?:^|/)backend/tests/providers/test_persistent_simulated_payment\.py$''',
+  '''(?:^|/)e2e/golden/gp5\.payment-receipt-dispute\.spec\.ts$''',
+]
+regexTarget = "line"
+regexes = ['''idempotency_key\s*[=:]\s*['"]gp5-refund-contract['"]''']
