@@ -33,7 +33,7 @@ import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
 export function CustomerControlView() {
   const pathname = usePathname();
   const nav = useNavFromHere('customer');
-  const { issueId: focusIssueId, focus } = useLocalSearchParams<{ issueId?: string; focus?: string }>();
+  const { issueId: focusIssueId, acceptanceId: focusAcceptanceId, focus } = useLocalSearchParams<{ issueId?: string; acceptanceId?: string; focus?: string }>();
   const focusWarranty = focus === 'warranty';
   const { user, activeProject, readOnly } = useRenova();
   const [issues, setIssues] = useState<ProjectIssue[]>([]);
@@ -288,6 +288,7 @@ export function CustomerControlView() {
       <Text style={s.section}>{readOnly ? 'Приёмка' : 'Решение'}</Text>
       <Text style={s.decisionHint}>{readOnly ? READ_ONLY_ACCEPTANCE_HINT : 'Примите этап или верните на доработку. Оценка — только если реально проверили.'}</Text>
       <UnifiedAcceptanceList
+        focusAcceptanceId={focusAcceptanceId}
         stages={activeProject.stages}
         acceptances={acceptances}
         returnTo={pathname}
