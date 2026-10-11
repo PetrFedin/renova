@@ -48,7 +48,7 @@
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
 | `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | Evidence versions |
 | `backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py` | `6de2c048fddc7bea5e385eaa80ca8d30fbe4eb3c` | Participants/scopes/audit |
-| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `116a417b9400c92f98287d7abfd25bff572548b4` | Текущий план и историческая прослеживаемость |
+| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `ec27974e48ec035a659d0524f5b936ebf8fa7af4` | Текущий план и историческая прослеживаемость |
 
 # 1. Назначение продукта и границы системы
 
@@ -167,6 +167,9 @@ Dock: Главная, Объект, Ремонт, Бюджет/Деньги, о�
 Это registry inventory, не все физические screens/sheets/динамические состояния. Дополнительный полный экранный inventory и требования приёмки остаются обязательными. Deeplink повторно проверяет session/role/project/entity access, не доверяет сохранённому activeProject.
 
 # 8. Hub screens — состав, переходы, badges и progressive disclosure
+
+Action Queue expanded list (draft successor to #708): the Home queue supports client-local expansion, `Все / Мои / Ожидание` filtering, selection of six server-defined buckets, stable de-duplication and chunked display of five rows. `responsible_user_id` controls whether a CTA is rendered; backend project authorization remains authoritative. The list never creates a task, payment, or acceptance and does not alter source-of-truth workflow. Tests cover actor isolation at presentation layer, legacy and partial bucket payloads, stable priority, read-only state, and duplicates. Browser/device visual evidence and exact-head CI remain PENDING.
+
 
 Action Queue v2 (#708, draft): Home highlights actor-owned work ahead of work assigned to others, preserving the six server-defined bucket categories; other-party/read-only actions remain visible without a false actionable CTA. This is a client-side projection, not an authorization grant. Source: `apps/mobile/lib/domain/actionQueuePrimary.ts`; baseline CI 38180250280 (1660 backend passed / 30 skipped), prior spec/policy checks red pending this exact-doc synchronization. No staging/production attestation.
 

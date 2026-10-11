@@ -85,3 +85,13 @@ ACTIVE: текущий каталог и registry — исходный inventory
 **Evidence:** первая проверка PR #708, SHA `e095d5d9a27a6b1e7686b70c8b44b06a2767f022`: CI `38180250280` SUCCESS; mobile-contracts и Playwright SUCCESS; backend **1660 passed / 30 skipped**. Policy `38180250252` FAIL из-за шаблона описания PR; technical-spec `38180250293` FAIL из-за изменившегося `package.json` blob. Этот документ и master dossier обновляются вместе с исправлением шаблона — **новый SHA и повторные проверки обязательны**.
 
 **Граница:** PR #708 остаётся Draft поверх #705; это UI-проекция, не новая capability, не proof фактических device screenshots и не production. #683 независимо заблокирован отсутствующими credentials для обязательного second-agent review (#685). 0 ₽ новых ресурсов; внешние квоты CI отдельно не верифицированы.
+
+## 8. Дополнение 2026-10-12 — Action Queue expandable list (Draft)
+
+**Наблюдение → решение:** одна Home-карточка скрывала остальные уже разрешённые для чтения действия. Добавлен раскрываемый список с фильтрами `Все / Мои / Ожидание`, фильтром по шести серверным категориям, показом по 5 элементов и дальнейшим раскрытием. Список читается только из существующего scoped `ResponsibilityQueue` — без отдельной записи в БД или параллельного источника обязанностей.
+
+**Контракт:** server bucket описывает состояние, а не полномочия. Внутри `getActionQueueRows` собственные назначения идут первыми, затем чужие, приоритет внутри группы стабилен. `getActionQueueRows` дедуплицирует совпадающие `resource_type/resource_id/action`, сохраняет scoped items даже при частичном ответе buckets и поддерживает старый формат API. Пользователь без прав изменения видит только информационные элементы; вызов `onOpenItem` выключен. При переходе всё равно применяются штатные серверные RBAC/ACL.
+
+**Source/test:** `apps/mobile/lib/domain/actionQueuePrimary.ts`, `actionQueuePrimary.test.ts`, `apps/mobile/components/renova/os/home/ActionQueueCard.tsx`. Тест включён в `mobile:test` в предшествующем #708. Проверены роли, фильтры, приоритет, дубликаты, legacy и partial buckets, read-only. Не выдавать исходный код за evidence успешного browser/device UX.
+
+**Статус:** IN CODE / AWAITING exact-head CI, отдельный Draft PR поверх #708, после которого нужны screen/device proof и upstream security admission #683. Новые production-сервисы и расходы не создавались; лимиты GitHub Actions неизвестны.
