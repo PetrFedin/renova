@@ -135,7 +135,10 @@ const partial = getActionQueueRows(
 assert.deepEqual(partial.map((row) => row.item.resource_id), ['my-ordinary', 'other-overdue']);
 assert.equal(partial[0].bucket, null, 'unbucketed API item should remain visible without a fabricated server bucket');
 
-const viewer = getActionQueueRows(queue([otherOverdue, myOrdinary], buckets), 'owner', true);
+const viewer = getActionQueueRows(queue([otherOverdue, myOrdinary], {
+  ...buckets,
+  overdue: [otherOverdue],
+}), 'owner', true);
 assert.equal(filterActionQueueRows(viewer, 'mine').length, 0, 'read-only viewer has no callable assignments');
 assert.equal(filterActionQueueRows(viewer, 'waiting').length, 2);
 assert.deepEqual(getActionQueueRows(null, 'owner'), []);
