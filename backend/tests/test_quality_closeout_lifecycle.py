@@ -55,6 +55,12 @@ async def _call(db, actor, method, path, json=None):
         yield db
 
     async def _user():
+        # Repeated in-process HTTP calls share db in this suite. A rejected
+        # acceptance rolls back that session and expires ORM attributes, so
+        # the next request must reload its actor as a real fresh request does.
+        # Otherwise project ACL reads actor.id by implicit async lazy IO and
+        # raises MissingGreenlet instead of returning the intended 403/409.
+        await db.refresh(actor)
         return actor
 
     app.dependency_overrides[get_db] = _db

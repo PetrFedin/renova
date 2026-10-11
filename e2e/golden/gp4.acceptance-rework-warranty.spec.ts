@@ -78,6 +78,23 @@ test.describe('@golden @gp4 acceptance → rework → acceptance → warranty', 
       const secondAcceptance = (await resubmit.json()).acceptance_id as string;
       expect(secondAcceptance).toBeTruthy();
 
+      // A contractor's "fixed" claim only marks the rework checklist done.
+      // The customer must independently verify the linked issue before the
+      // next acceptance can be admitted (including medium severity issues).
+      const beforeVerification = await request.post(
+        `${API}/api/v1/projects/${s.projectId}/work-acceptances/${secondAcceptance}/accept`,
+        { headers: hC, data: { quality_score: 9, comment: 'Принято' } },
+      );
+      expect(beforeVerification.status()).toBe(409);
+      expect((await beforeVerification.json()).detail.code).toBe('rework_issue_verification_required');
+
+      const verified = await request.post(
+        `${API}/api/v1/projects/${s.projectId}/issues/${issueId}/close`,
+        { headers: hC },
+      );
+      expect(verified.ok()).toBeTruthy();
+      expect((await verified.json()).status).toBe('closed');
+
       const accept = await request.post(
         `${API}/api/v1/projects/${s.projectId}/work-acceptances/${secondAcceptance}/accept`,
         { headers: hC, data: { quality_score: 9, comment: 'Принято' } },
