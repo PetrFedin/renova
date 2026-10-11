@@ -316,3 +316,36 @@ async def test_warranty_respond_rejects_invalid_state(db):
     plain = await _issue(db, project)
     r = await _call(db, contractor, "POST", f"/projects/{project.id}/warranty-claims/{plain.id}/respond", {"decision": "accept"})
     assert r.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_rework_linked_medium_issue_requires_independent_verification(db):
+    customer, contractor, _, project = await _seed(db)
+    stage = Stage(
+        id="q-rework-gate", project_id=project.id, name="Стены",
+        status=StageStatus.review, contractor_ready=True,
+        checklist_json='[{"id":"rework-issue-q-linked","title":"Устранить замечание","done":true}]',
+    )
+    db.add(stage)
+    db.add(StagePhoto(stage_id=stage.id, user_id=contractor.id, caption="Результат после", image_data="x"))
+    db.add(WorkAcceptance(id="q-rework-wa", project_id=project.id, stage_id=stage.id, status="requested"))
+    db.add(ProjectIssue(id="q-linked", project_id=project.id, stage_id=stage.id,
+                        title="Доработка: устранить замечание", severity="medium", status="fixed"))
+    await db.commit()
+
+    r = await _call(db, customer, "POST", f"/projects/{project.id}/work-acceptances/q-rework-wa/accept", {})
+    assert r.status_code == 409, r.text
+    assert r.json()["detail"]["code"] == "rework_issue_verification_required"
+    await db.refresh(stage)
+    assert stage.status == StageStatus.review
+
+    # Contractor cannot substitute for the reviewer.
+    denied = await _call(db, contractor, "POST", f"/projects/{project.id}/issues/q-linked/close")
+    assert denied.status_code in (403, 409), denied.text
+    verified = await _call(db, customer, "POST", f"/projects/{project.id}/issues/q-linked/close")
+    assert verified.status_code == 200, verified.text
+    assert verified.json()["status"] == "closed"
+
+    admitted = await _call(db, customer, "POST", f"/projects/{project.id}/work-acceptances/q-rework-wa/accept", {})
+    assert admitted.status_code == 200, admitted.text
+    assert (await db.get(Stage, stage.id)).status == StageStatus.done
