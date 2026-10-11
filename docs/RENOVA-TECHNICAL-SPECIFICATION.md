@@ -48,7 +48,7 @@
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
 | `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | Evidence versions |
 | `backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py` | `6de2c048fddc7bea5e385eaa80ca8d30fbe4eb3c` | Participants/scopes/audit |
-| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `2280d8367f80eabb7c1e9830ee3f6c04ce178b6c` | Текущий план и историческая прослеживаемость |
+| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `7be0568785621f7f3cf5e491c1ac0d9c8fd44e1f` | Текущий план и историческая прослеживаемость |
 
 # 1. Назначение продукта и границы системы
 
@@ -168,7 +168,7 @@ Dock: Главная, Объект, Ремонт, Бюджет/Деньги, о�
 
 # 8. Hub screens — состав, переходы, badges и progressive disclosure
 
-Action Queue target routing candidate: known issue/acceptance/payment actions navigate with explicit resource identifiers; no automatic writes. Missing targeted payment never falls back to an unrelated pending payment. Accepted ID is surfaced in the customer acceptance list, without auto-decision. Exact-head CI and real-device/browser acceptance are required before qualification.
+Action Queue target routing candidate: known issue/acceptance/payment actions navigate with explicit resource identifiers; no automatic writes. Missing targeted payment never falls back to an unrelated pending payment. Accepted ID is raised and visually highlighted in the customer acceptance list, without auto-decision. Exact-head CI and real-device/browser acceptance are required before qualification.
 
 
 Action Queue expanded list (draft successor to #708): the Home queue supports client-local expansion, `Все / Мои / Ожидание` filtering, selection of six server-defined buckets, stable de-duplication and chunked display of five rows. `responsible_user_id` controls whether a CTA is rendered; backend project authorization remains authoritative. The list never creates a task, payment, or acceptance and does not alter source-of-truth workflow. Tests cover actor isolation at presentation layer, legacy and partial bucket payloads, stable priority, read-only state, and duplicates. Browser/device visual evidence and exact-head CI remain PENDING.
