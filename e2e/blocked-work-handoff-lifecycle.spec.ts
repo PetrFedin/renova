@@ -174,6 +174,7 @@ test.describe('Action OS — blocked work, real actor handoff and unblock', () =
         headers: hLead,
       });
       expect(fixed.ok()).toBeTruthy();
+      expect(((await fixed.json()) as { status: string }).status).toBe('fixed');
       // Returning the work adds a canonical rework checklist entry. Complete it as a human executor.
       const reworkWorkflow = await request.get(`${stageUrl}/${s.stageId}/workflow`, { headers: hLead });
       expect(reworkWorkflow.ok()).toBeTruthy();
@@ -194,11 +195,25 @@ test.describe('Action OS — blocked work, real actor handoff and unblock', () =
       const finalAcceptanceId = ((await resubmitted.json()) as { acceptance_id: string }).acceptance_id;
       expect(finalAcceptanceId).toBeTruthy();
 
+      const prematureAcceptance = await request.post(
+        `${API}/api/v1/projects/${s.projectId}/work-acceptances/${finalAcceptanceId}/accept`,
+        { headers: hOwner, data: { quality_score: 9, comment: 'Проверить после устранения' } },
+      );
+      expect(prematureAcceptance.status()).toBe(409);
+      expect((await prematureAcceptance.json()).detail.code).toBe('rework_issue_verification_required');
+      const reviewPending = await request.get(`${stageUrl}/${s.stageId}`, { headers: hOwner });
+      expect((await reviewPending.json()).status).toBe('review');
+
+      const verified = await request.post(`${API}/api/v1/projects/${s.projectId}/issues/${issueId}/close`, {
+        headers: hOwner,
+      });
+      expect(verified.ok(), `owner must confirm remediation: ${await verified.text()}`).toBeTruthy();
+      expect(((await verified.json()) as { status: string }).status).toBe('closed');
       const accepted = await request.post(
         `${API}/api/v1/projects/${s.projectId}/work-acceptances/${finalAcceptanceId}/accept`,
-        { headers: hOwner, data: { quality_score: 9, comment: 'Работы приняты' } },
+        { headers: hOwner, data: { quality_score: 9, comment: 'Работы приняты после подтверждения' } },
       );
-      expect(accepted.ok()).toBeTruthy();
+      expect(accepted.ok(), `accept after verification: ${await accepted.text()}`).toBeTruthy();
 
       for (const headers of [hOwner, hLead]) {
         const queue = await readQueue(request, s.projectId, headers);
