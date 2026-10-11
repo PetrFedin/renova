@@ -22,6 +22,7 @@ import { ActionConfirmSheet } from '@/components/renova/ActionConfirmSheet';
 import { buildReworkItems, effectiveAcceptanceRole, type ReworkItem } from '@/lib/domain/acceptanceActions';
 import { submitStageWithFeedback } from '@/lib/submitStageUi';
 import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
+import { RenovaTheme } from '@/constants/Theme';
 
 export function UnifiedAcceptanceList({
   stages,
@@ -29,6 +30,7 @@ export function UnifiedAcceptanceList({
   returnTo,
   role = 'customer',
   onChanged,
+  focusAcceptanceId,
 }: {
   stages: Stage[] | undefined;
   acceptances: WorkAcceptance[];
@@ -36,9 +38,13 @@ export function UnifiedAcceptanceList({
   role?: 'customer' | 'contractor';
   /** После accept/return — обновить parent (список acceptances) */
   onChanged?: () => void;
+  focusAcceptanceId?: string;
 }) {
   const { user, activeProject, submitStage, readOnly } = useRenova();
   const items = buildUnifiedAcceptanceItems(stages, acceptances);
+  const orderedItems = focusAcceptanceId
+    ? [...items].sort((a, b) => Number(b.kind === 'acceptance' && b.acceptanceId === focusAcceptanceId) - Number(a.kind === 'acceptance' && a.acceptanceId === focusAcceptanceId))
+    : items;
   // UI-010: исполнитель никогда не видит кнопки заказчика, что бы ни передал родитель
   const effectiveRole = effectiveAcceptanceRole(user?.role, role);
   const isContractor = effectiveRole === 'contractor';
@@ -153,10 +159,11 @@ export function UnifiedAcceptanceList({
             : `${items.length} ждут решения — примите или верните (причина обязательна).`}
         </Text>
       ) : null}
-      {items.map((it) => (
+      {orderedItems.map((it) => (
         <AcceptanceRow
           key={it.id}
           item={it}
+          focused={it.kind === 'acceptance' && it.acceptanceId === focusAcceptanceId}
           isContractor={isContractor}
           readOnly={readOnly}
           busy={busyId === it.id}
@@ -200,6 +207,7 @@ export function UnifiedAcceptanceList({
 
 function AcceptanceRow({
   item,
+  focused,
   onOpen,
   onAccept,
   onReturn,
@@ -208,6 +216,7 @@ function AcceptanceRow({
   busy,
 }: {
   item: UnifiedAcceptanceItem;
+  focused?: boolean;
   onOpen: () => void;
   onAccept: (qualityScore: number | null) => void;
   onReturn: (reason: string, qualityScore: number | null) => Promise<boolean>;
@@ -217,7 +226,7 @@ function AcceptanceRow({
 }) {
   const orphan = item.kind !== 'acceptance';
   return (
-    <View style={s.rowCard}>
+    <View style={[s.rowCard, focused ? s.rowFocused : null]}>
       <View style={s.rowTop}>
         <Pressable onPress={onOpen} style={{ flex: 1 }}>
           <Text style={s.title}>{item.title}</Text>
@@ -269,6 +278,7 @@ const s = StyleSheet.create({
     gap: 8,
     paddingBottom: 14,
   },
+  rowFocused: { borderColor: RenovaTheme.colors.accent, borderWidth: 2 },
   rowTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { ...screenTypography.listTitle },
   meta: { ...screenTypography.listMeta },

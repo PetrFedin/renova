@@ -18,6 +18,7 @@ import { ProjectProfileHint } from '@/components/renova/os/ProjectProfileHint';
 import { HomeSetupChecklist } from '@/components/renova/os/home/HomeSetupChecklist';
 import { HomeAcceptanceBanner } from '@/components/renova/os/home/HomeAcceptanceBanner';
 import { ActionQueueCard } from '@/components/renova/os/home/ActionQueueCard';
+import { actionQueueDestination } from '@/lib/domain/actionQueueDestination';
 import type { HomeWidgetId } from '@/constants/homeWidgets';
 import { budgetTabRoute, type OsRole } from '@/constants/osSections';
 import type { MaterialPick, OsInsight, ProjectDetail, ReceiptItem, ResponsibilityQueue, User } from '@/lib/api';
@@ -143,11 +144,8 @@ export function HomeScreenBody({
         userId={user.id}
         readOnly={readOnly}
         onOpenItem={(item) => {
-          if (item.resource_type === 'payment') {
-            pushTab('budget', 'payments');
-            return;
-          }
-          pushTab('repair', 'control');
+          const target = actionQueueDestination(item, role);
+          if (target) pushNav(target);
         }}
       />
       {showAttention && phase !== 'complete' && (
