@@ -413,7 +413,7 @@ else:
 
 # 8. Customer Control view
 
-**VERIFIED. Source:** `CustomerControlView.tsx` blob `3d78b00a8bb1429ff7cde3b57b4135f4d25e5a8f`.
+**BASELINE VERIFIED / NEW ACTION QUEUE LINK PENDING CI. Source:** `CustomerControlView.tsx` blob `a6cfc6c253b07ca6b55df43354152df49bc6469a`.
 
 Loads concurrently:
 
@@ -439,6 +439,8 @@ label     = Гарантия if warrantyOpen else Критичные
 ## 8.2. Acceptance decisions
 
 Main block: `UnifiedAcceptanceList` with role customer.
+
+Action Queue deep-link contract (Draft #710, pending exact-head qualification): `CustomerControlView` reads `issueId` and `acceptanceId` from scoped route params. It places a matching open issue before other displayed issue rows, and passes `acceptanceId` into `UnifiedAcceptanceList` to show that pending acceptance first. Neither parameter triggers accept/return/issue mutation. Missing or inaccessible resource IDs must not change the action chosen by the user; server authorization still applies to actual operations.
 
 Decision hint explicitly instructs customer to accept or return for rework only after actual inspection.
 
