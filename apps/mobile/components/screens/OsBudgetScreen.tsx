@@ -84,10 +84,9 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
     if (!wantOpen) return;
     if (resolvedTab !== 'payments' && resolvedTab !== 'summary') return;
     const pendingList = payments.filter((x) => x.status === 'pending');
-    const target =
-      (paymentIdParam && payments.find((x) => x.id === paymentIdParam))
-      || pendingList[0]
-      || null;
+    const target = paymentIdParam
+      ? payments.find((x) => x.id === paymentIdParam) ?? null
+      : pendingList[0] ?? null;
     if (target) setPaymentDetail(target);
   }, [openPaymentParam, paymentIdParam, payments, resolvedTab, paymentDetail]);
 
