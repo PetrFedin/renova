@@ -48,7 +48,7 @@
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
 | `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | Evidence versions |
 | `backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py` | `6de2c048fddc7bea5e385eaa80ca8d30fbe4eb3c` | Participants/scopes/audit |
-| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `db587b9dddce72655fc76b16c37a8865079fa881` | Текущий план и историческая прослеживаемость |
+| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `efa788f0f2903023ccec1f65ce9eb1c4cbc986d0` | Текущий план и историческая прослеживаемость |
 
 # 1. Назначение продукта и границы системы
 
@@ -378,3 +378,5 @@ Blocked-only Home presentation: when the canonical blocked_work read-model has b
 Cross-role Blocked Work / Handoff verification: the canonical sequence (dependency -> blocked start -> executor checklist/evidence -> owner review/return -> rework -> accepted predecessor -> explicit successor start) is implemented as a required Playwright API test `e2e/blocked-work-handoff-lifecycle.spec.ts` via `scripts/ci-playwright.sh`. Role-bound responsibility projection and unrelated-guest denial are assertions, not new authorization rules. This candidate is not admitted before exact-head CI passes.
 
 Acceptance/rework verification invariant: an issue created by returned-stage rework and linked to the stage through a canonical `rework-issue-{issue_id}` checklist marker cannot be silently treated as verified when executor sets `fixed`. A new acceptance decision is blocked with `rework_issue_verification_required` until issue status becomes `closed` through existing reviewer authority. Work may be resubmitted for review beforehand, but the stage and dependent stage are not accepted/unblocked until independent verification. This applies through canonical app and portal acceptance finalization. Ordinary unrelated medium/low issues remain warnings. Exact-head admission remains required.
+
+Reviewer-verification regression qualification: the unchanged canonical blocker requires contractor issue `fixed`, reviewer issue `closed`, then acceptance. The aggregate journey test performs all three steps and verifies the prohibited early acceptance; the backend negative test snapshots project/stage IDs before any rollback to avoid asynchronous ORM lazy-loading. These test-only repairs remain pending their own exact-head CI admission.
