@@ -22,6 +22,7 @@ import { ActionConfirmSheet } from '@/components/renova/ActionConfirmSheet';
 import { buildReworkItems, effectiveAcceptanceRole, type ReworkItem } from '@/lib/domain/acceptanceActions';
 import { submitStageWithFeedback } from '@/lib/submitStageUi';
 import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
+import { RenovaTheme } from '@/constants/Theme';
 
 export function UnifiedAcceptanceList({
   stages,
@@ -162,6 +163,7 @@ export function UnifiedAcceptanceList({
         <AcceptanceRow
           key={it.id}
           item={it}
+          focused={it.kind === 'acceptance' && it.acceptanceId === focusAcceptanceId}
           isContractor={isContractor}
           readOnly={readOnly}
           busy={busyId === it.id}
@@ -205,6 +207,7 @@ export function UnifiedAcceptanceList({
 
 function AcceptanceRow({
   item,
+  focused,
   onOpen,
   onAccept,
   onReturn,
@@ -213,6 +216,7 @@ function AcceptanceRow({
   busy,
 }: {
   item: UnifiedAcceptanceItem;
+  focused?: boolean;
   onOpen: () => void;
   onAccept: (qualityScore: number | null) => void;
   onReturn: (reason: string, qualityScore: number | null) => Promise<boolean>;
@@ -222,7 +226,7 @@ function AcceptanceRow({
 }) {
   const orphan = item.kind !== 'acceptance';
   return (
-    <View style={s.rowCard}>
+    <View style={[s.rowCard, focused ? s.rowFocused : null]}>
       <View style={s.rowTop}>
         <Pressable onPress={onOpen} style={{ flex: 1 }}>
           <Text style={s.title}>{item.title}</Text>
@@ -274,6 +278,7 @@ const s = StyleSheet.create({
     gap: 8,
     paddingBottom: 14,
   },
+  rowFocused: { borderColor: RenovaTheme.colors.accent, borderWidth: 2 },
   rowTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { ...screenTypography.listTitle },
   meta: { ...screenTypography.listMeta },
