@@ -118,3 +118,9 @@ When only blocked work is present, Home hides six misleading zero counters and p
 ### Cross-role Blocked Work / Handoff — executable E2E qualification
 
 One fresh real API project now exercises lead dependency configuration, principal-specific blocked-work responsibility, denial of premature stage start, signed contract, stage evidence/checklist, first submission, owner review and return, continued dependency block during rework, resubmission, owner acceptance, automatic blocker disappearance and **explicit** successor start. An unrelated guest is denied the responsibility projection. New `e2e/blocked-work-handoff-lifecycle.spec.ts` is included in the required `scripts/ci-playwright.sh api` suite; implementation is **QUALIFICATION PENDING** until exact-head Playwright, backend, Golden, security, mobile and specification gates pass.
+
+### Rework issue reviewer verification — 2026-10-11
+
+Observed business gap after cross-role E2E admission `53054823a115576af7458b9160302fe16136227d`: a medium-severity issue created specifically by acceptance return could be marked `fixed` by the contractor, re-submitted, then accepted while that exact issue was not yet independently verified. This is distinct from ordinary medium warnings.
+
+Bounded fix: canonical `finalize_work_acceptance` (app and portal entrypoints) blocks accepted state with `rework_issue_verification_required` while any issue linked by the durable `rework-issue-{id}` checklist marker is not `closed`. Submission for review remains allowed; only the authorized reviewer can close the issue. A contractor `fixed` status is never equivalent to reviewer confirmation. Normal medium/low unrelated warnings retain their existing semantics. API E2E and backend negative contract updated; exact-head CI/security/spec/participant evidence is **PENDING**, not admitted.
