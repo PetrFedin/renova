@@ -133,13 +133,21 @@ test("historical Gitleaks baseline is exact bounded and separate from current-tr
   assert.match(gitleaksSanitizer, /review window exceeds 90 days/);
 });
 
-test("Gitleaks allowlist is restricted to one synthetic test key", () => {
+test("Gitleaks allowlists are restricted to exact synthetic test keys and paths", () => {
   assert.match(gitleaksConfig, /useDefault = true/);
-  assert.match(gitleaksConfig, /targetRules = \["generic-api-key"\]/);
-  assert.match(gitleaksConfig, /condition = "AND"/);
-  assert.match(gitleaksConfig, /\(\?:\^\|\/\)backend\/tests\/test_esign_idempotency_key\\\.py\$/);
-  assert.match(gitleaksConfig, /idempotency_key=\\?"renova-durable-intent-123\\?"/);
-  assert.equal((gitleaksConfig.match(/\[\[allowlists\]\]/g) || []).length, 1);
+  assert.equal((gitleaksConfig.match(/\[\[allowlists\]\]/g) || []).length, 2);
+  const blocks = gitleaksConfig.split("[[allowlists]]").slice(1);
+  for (const block of blocks) {
+    assert.match(block, /targetRules = \["generic-api-key"\]/);
+    assert.match(block, /condition = "AND"/);
+    assert.match(block, /regexTarget = "line"/);
+  }
+  assert.match(blocks[0], /test_esign_idempotency_key/);
+  assert.match(blocks[0], /renova-durable-intent-123/);
+  assert.match(blocks[1], /test_persistent_simulated_payment/);
+  assert.match(blocks[1], /gp5\\.payment-receipt-dispute/);
+  assert.match(blocks[1], /gp5-refund-contract/);
+  assert.match(blocks[1], /idempotency_key/);
   assert.equal(gitleaksConfig.includes("commits ="), false);
   assert.equal(gitleaksConfig.includes("stopwords ="), false);
 });
