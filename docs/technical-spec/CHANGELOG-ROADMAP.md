@@ -101,3 +101,7 @@ ACTIVE: текущий каталог и registry — исходный inventory
 Код: `actionQueueDestination.ts` преобразует только проверенные сочетания resource_type/action в канонические маршруты: платеж → budget/payments?paymentId; замечание → repair/control?issueId; приёмка → repair/control?acceptanceId. Неизвестные сочетания возвращают null. Клиентская навигация не даёт прав на операцию: API экрана и серверный RBAC остаются авторитетными. `OsBudgetScreen` при указанном `paymentId` более не подставляет первый ожидающий платёж, если целевой отсутствует. `CustomerControlView` передаёт acceptanceId в `UnifiedAcceptanceList`, который поднимает нужный элемент списка и выделяет его визуально, но не подтверждает работу автоматически. Добавлен контрактный тест маршрутов в `mobile:test`.
 
 Статус IN CODE, Draft, CI/браузерная приёмка для точного SHA требуются. Никаких финансовых мутаций, новой инфраструктуры, production-деплоя. #683/#685 security admission остаётся блокером выпуска.
+
+### 9.1. Deep-link payment safeguards (candidate, CI pending)
+
+`actionQueueTargetFocus.ts` resolves a project-scoped payment ID only after successful read-model loading; missing IDs never open another pending invoice. `OsBudgetScreen` consumes/clears the deep-link when the detail sheet closes and shows an unavailable-resource warning. `actionQueueTargetFocus.test.ts` covers missing IDs, loading state, legacy pending fallback and stable focus. Source SHA and exact-head CI must be rerun; no financial writes changed.
