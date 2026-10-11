@@ -41,14 +41,14 @@
 | `apps/mobile/components/screens/OsBudgetHubScreen.tsx` | `789631cf5d74f657a318baed176b98aada208c26` | Budget hub |
 | `apps/mobile/constants/budgetTabs.ts` | `d02c05560176535e130d76960c2b67691bcbb3b7` | Budget tab canon |
 | `.cursor/rules/renova-design-system.mdc` | `2f48e46f5b348b8cbc3a370615a5a5e93d93421f` | UI rules |
-| `package.json` | `da6670209f6ec06a9f760cd99b5804a0964e5d49` | Root commands/test entrypoints (sessionFence and actor-aware Action Queue tests in mobile:test) |
+| `package.json` | `3261d0d8e1f122ae2ebe15274ca30020484e3e35` | Root commands/test entrypoints (sessionFence and actor-aware Action Queue tests in mobile:test) |
 | `.github/workflows/local-runtime-integrity.yml` | `63831ec7622794843ca724319178e2de18cdb971` | Local runtime proof |
 | `backend/alembic/versions/w16legacystatus01_legacy_status_enum_parity.py` | `d2137f2b87c1ac6f679093331bd034aff17c8188` | Legacy status repair |
 | `backend/alembic/versions/w17chatmessageenum01_chat_message_enum_parity.py` | `0537268c85e26b7a607d36f967a3402b8bba53c4` | Chat enum repair |
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
 | `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | Evidence versions |
 | `backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py` | `6de2c048fddc7bea5e385eaa80ca8d30fbe4eb3c` | Participants/scopes/audit |
-| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `ec27974e48ec035a659d0524f5b936ebf8fa7af4` | Текущий план и историческая прослеживаемость |
+| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `2280d8367f80eabb7c1e9830ee3f6c04ce178b6c` | Текущий план и историческая прослеживаемость |
 
 # 1. Назначение продукта и границы системы
 
@@ -167,6 +167,9 @@ Dock: Главная, Объект, Ремонт, Бюджет/Деньги, о�
 Это registry inventory, не все физические screens/sheets/динамические состояния. Дополнительный полный экранный inventory и требования приёмки остаются обязательными. Deeplink повторно проверяет session/role/project/entity access, не доверяет сохранённому activeProject.
 
 # 8. Hub screens — состав, переходы, badges и progressive disclosure
+
+Action Queue target routing candidate: known issue/acceptance/payment actions navigate with explicit resource identifiers; no automatic writes. Missing targeted payment never falls back to an unrelated pending payment. Accepted ID is surfaced in the customer acceptance list, without auto-decision. Exact-head CI and real-device/browser acceptance are required before qualification.
+
 
 Action Queue expanded list (draft successor to #708): the Home queue supports client-local expansion, `Все / Мои / Ожидание` filtering, selection of six server-defined buckets, stable de-duplication and chunked display of five rows. `responsible_user_id` controls whether a CTA is rendered; backend project authorization remains authoritative. The list never creates a task, payment, or acceptance and does not alter source-of-truth workflow. Tests cover actor isolation at presentation layer, legacy and partial bucket payloads, stable priority, read-only state, and duplicates. Browser/device visual evidence and exact-head CI remain PENDING.
 
