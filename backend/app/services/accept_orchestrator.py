@@ -189,6 +189,9 @@ async def finalize_work_acceptance(
     gate = await issue_svc.open_issues_gate(db, project.id, stage_id=stage.id)
     if gate["blocking_count"]:
         raise issue_svc.OpenIssuesBlock(gate)
+    rework_gate = await issue_svc.unverified_stage_rework_gate(db, stage)
+    if rework_gate["blocking_count"]:
+        raise issue_svc.UnverifiedReworkIssueBlock(rework_gate)
     row.status = status
     row.accepted_by = accepted_by
     row.accepted_at = now
