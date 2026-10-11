@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { RenovaTheme } from '@/constants/Theme';
 import type { ResponsibilityBucketKey, ResponsibilityItem, ResponsibilityQueue } from '@/lib/api';
+import { selectActionQueueFocus } from '@/lib/domain/actionQueuePrimary';
 
 const BUCKETS: Array<{ key: ResponsibilityBucketKey; label: string }> = [
   { key: 'mine_now', label: 'МОЁ СЕЙЧАС' },
@@ -21,39 +22,25 @@ const ACTION_LABEL: Record<string, string> = {
   confirm_payment_received: 'Подтвердить получение денег',
 };
 
-const PRIORITY: ResponsibilityBucketKey[] = [
-  'overdue',
-  'needs_evidence',
-  'waiting_review',
-  'waiting_owner_decision',
-  'mine_now',
-  'waiting_other',
-];
-
-function firstPriority(queue: ResponsibilityQueue): ResponsibilityItem | null {
-  if (queue.buckets) {
-    for (const key of PRIORITY) {
-      const item = queue.buckets[key]?.[0];
-      if (item) return item;
-    }
-  }
-  return queue.items[0] ?? null;
-}
-
 export function ActionQueueCard({
   queue,
+  userId,
+  readOnly,
   onOpenItem,
 }: {
   queue: ResponsibilityQueue | null;
+  userId: string;
+  readOnly: boolean;
   onOpenItem: (item: ResponsibilityItem) => void;
 }) {
   if (!queue || queue.count === 0) return null;
-  const primary = firstPriority(queue);
-  if (!primary) return null;
+  const focus = selectActionQueueFocus(queue, userId, readOnly);
+  if (!focus) return null;
+  const { item: primary, isMine } = focus;
 
   return (
     <View style={s.card}>
-      <Text style={s.eyebrow}>ACTION QUEUE</Text>
+      <Text style={s.eyebrow}>Очередь действий</Text>
       <View style={s.bucketGrid}>
         {BUCKETS.map(({ key, label }) => {
           const count = queue.bucket_counts?.[key] ?? queue.buckets?.[key]?.length ?? 0;
@@ -65,12 +52,19 @@ export function ActionQueueCard({
           );
         })}
       </View>
-      <Pressable accessibilityRole="button" onPress={() => onOpenItem(primary)} style={s.primary}>
+      <Pressable
+        accessibilityRole={isMine ? 'button' : undefined}
+        accessibilityState={{ disabled: !isMine }}
+        disabled={!isMine}
+        onPress={() => onOpenItem(primary)}
+        style={s.primary}
+      >
         <View style={s.primaryCopy}>
-          <Text style={s.primaryTitle}>{ACTION_LABEL[primary.action] || primary.action}</Text>
+          <Text style={s.primaryTitle}>{isMine ? ACTION_LABEL[primary.action] || primary.action : 'Ожидаем действие другого участника'}</Text>
           <Text numberOfLines={1} style={s.primaryMeta}>{primary.resource_title}</Text>
+          {!isMine ? <Text style={s.primaryMeta}>{ACTION_LABEL[primary.action] || 'Действие участника'}</Text> : null}
         </View>
-        <Text style={s.arrow}>→</Text>
+        {isMine ? <Text style={s.arrow}>→</Text> : null}
       </Pressable>
     </View>
   );

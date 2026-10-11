@@ -73,3 +73,15 @@ ACTIVE: текущий каталог и registry — исходный inventory
 Выявлены и зарегистрированы #316–#320; расширены #315 и #305 конкретными исходными цепочками. Синхронизируются текущий паспорт, roadmap, реестр расчётов, readiness и строгая проверка заголовка схемы. Производственные дефекты этими документами не исправлены; их статус SOURCE CONFIRMED / OPEN. Старые source snapshots сохраняются в history без использования как текущего launch verdict.
 
 Субъективный процент готовности и календарный ETA не рассчитываются без весов требований, принятого release scope, команды и внешних условий. Закрытие реальных приёмочных критериев важнее числа новых функций.
+
+## 7. Дополнение 2026-10-12 — Action Queue v2 (PR #708, Draft)
+
+**Наблюдение:** первоначальный Home Action Queue (#705) сортировал bucket `overdue` перед `mine_now` без учёта `responsible_user_id` и позволял нажать основную карточку, даже если следующее действие назначено другому участнику.
+
+**Решение:** read-only клиентский selector сначала выбирает доступный объект с `responsible_user_id === currentUser.id`, сохраняя bucket-приоритет внутри действий этого пользователя. Если такого объекта нет или viewer в `readOnly`, карточка объясняет ожидание и не вызывает `onOpenItem`. Backend project/scope ACL и canonical action endpoints остаются авторитетными. Классификация API buckets не изменена.
+
+**Source:** `apps/mobile/lib/domain/actionQueuePrimary.ts`, `apps/mobile/lib/domain/actionQueuePrimary.test.ts`, `apps/mobile/components/renova/os/home/ActionQueueCard.tsx`, `apps/mobile/components/renova/os/home/HomeScreenBody.tsx`, `package.json` (`mobile:test`).
+
+**Evidence:** первая проверка PR #708, SHA `e095d5d9a27a6b1e7686b70c8b44b06a2767f022`: CI `38180250280` SUCCESS; mobile-contracts и Playwright SUCCESS; backend **1660 passed / 30 skipped**. Policy `38180250252` FAIL из-за шаблона описания PR; technical-spec `38180250293` FAIL из-за изменившегося `package.json` blob. Этот документ и master dossier обновляются вместе с исправлением шаблона — **новый SHA и повторные проверки обязательны**.
+
+**Граница:** PR #708 остаётся Draft поверх #705; это UI-проекция, не новая capability, не proof фактических device screenshots и не production. #683 независимо заблокирован отсутствующими credentials для обязательного second-agent review (#685). 0 ₽ новых ресурсов; внешние квоты CI отдельно не верифицированы.
