@@ -332,20 +332,21 @@ async def test_rework_linked_medium_issue_requires_independent_verification(db):
     db.add(ProjectIssue(id="q-linked", project_id=project.id, stage_id=stage.id,
                         title="Доработка: устранить замечание", severity="medium", status="fixed"))
     await db.commit()
+    project_id, stage_id = project.id, stage.id
 
-    r = await _call(db, customer, "POST", f"/projects/{project.id}/work-acceptances/q-rework-wa/accept", {})
+    r = await _call(db, customer, "POST", f"/projects/{project_id}/work-acceptances/q-rework-wa/accept", {})
     assert r.status_code == 409, r.text
     assert r.json()["detail"]["code"] == "rework_issue_verification_required"
     await db.refresh(stage)
     assert stage.status == StageStatus.review
 
     # Contractor cannot substitute for the reviewer.
-    denied = await _call(db, contractor, "POST", f"/projects/{project.id}/issues/q-linked/close")
+    denied = await _call(db, contractor, "POST", f"/projects/{project_id}/issues/q-linked/close")
     assert denied.status_code in (403, 409), denied.text
-    verified = await _call(db, customer, "POST", f"/projects/{project.id}/issues/q-linked/close")
+    verified = await _call(db, customer, "POST", f"/projects/{project_id}/issues/q-linked/close")
     assert verified.status_code == 200, verified.text
     assert verified.json()["status"] == "closed"
 
-    admitted = await _call(db, customer, "POST", f"/projects/{project.id}/work-acceptances/q-rework-wa/accept", {})
+    admitted = await _call(db, customer, "POST", f"/projects/{project_id}/work-acceptances/q-rework-wa/accept", {})
     assert admitted.status_code == 200, admitted.text
-    assert (await db.get(Stage, stage.id)).status == StageStatus.done
+    assert (await db.get(Stage, stage_id)).status == StageStatus.done
