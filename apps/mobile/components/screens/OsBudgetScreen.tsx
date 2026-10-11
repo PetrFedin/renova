@@ -1,5 +1,7 @@
 /** Единый «Бюджет» — оркестратор вкладок (данные в useOsBudgetScreen) */
 import { useEffect, useState } from 'react';
+import { useRouter } from 'expo-router';
+import { resolvePaymentTarget } from '@/lib/domain/actionQueueTargetFocus';
 import { ScrollView, View, Text } from 'react-native';
 import { useLocalSearchParams, usePathname } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
@@ -54,6 +56,8 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
     scratchpadText?: string;
   }>();
   const pathname = usePathname();
+  const router = useRouter();
+  const [dismissedTarget, setDismissedTarget] = useState<string | null>(null);
   const canWrite = useWriteAllowed();
   const { readOnly } = useRenova();
   const { isVisible: bwVisible } = useBudgetWidgets(role);
@@ -78,17 +82,20 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
     ?? normalizeBudgetTab(tabParam).view
     ?? 'list';
 
+  const targetKey = activeProject?.id + ':' + (paymentIdParam ?? '') + ':' + (openPaymentParam ?? '');
+  const target = resolvePaymentTarget(payments, paymentIdParam, openPaymentParam, loadState === 'loaded');
   useEffect(() => {
-    if (paymentDetail) return;
-    const wantOpen = openPaymentParam === '1' || openPaymentParam === 'true' || Boolean(paymentIdParam);
-    if (!wantOpen) return;
-    if (resolvedTab !== 'payments' && resolvedTab !== 'summary') return;
-    const pendingList = payments.filter((x) => x.status === 'pending');
-    const target = paymentIdParam
-      ? payments.find((x) => x.id === paymentIdParam) ?? null
-      : pendingList[0] ?? null;
-    if (target) setPaymentDetail(target);
-  }, [openPaymentParam, paymentIdParam, payments, resolvedTab, paymentDetail]);
+    if (dismissedTarget === targetKey || paymentDetail || target.kind !== 'found') return;
+    setPaymentDetail(target.payment);
+  }, [target.kind, target.payment, paymentDetail, dismissedTarget, targetKey]);
+
+  const closePayment = () => {
+    setPaymentDetail(null);
+    setDismissedTarget(targetKey);
+    if (paymentIdParam || openPaymentParam) {
+      router.setParams({ paymentId: undefined, openPayment: undefined });
+    }
+  };
 
   if (!activeProject || !user) {
     return <ProjectEmptyState role={role} />;
@@ -137,6 +144,11 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
     <>
       <ScrollView style={s.wrap} contentContainerStyle={{ padding: 16, paddingBottom: FAB_SAFE_BOTTOM }} onScroll={fabOnScroll} scrollEventThrottle={32}>
         <ReadOnlyBanner />
+        {target.kind === 'missing' && dismissedTarget !== targetKey ? (
+          <Text style={{ color: RenovaTheme.colors.warningText, marginBottom: 10 }}>
+            Указанный счёт недоступен в этом проекте. Проверьте актуальность действия и обновите данные.
+          </Text>
+        ) : null}
         {resolvedTab === 'summary' && (
           <BudgetSummarySection
             userId={user.id}
@@ -225,7 +237,7 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
         readOnly={readOnly}
         userId={user.id}
         projectId={activeProject.id}
-        onClose={() => setPaymentDetail(null)}
+        onClose={closePayment}
         onChanged={reload}
       />
     </>
