@@ -73,3 +73,58 @@ ACTIVE: текущий каталог и registry — исходный inventory
 Выявлены и зарегистрированы #316–#320; расширены #315 и #305 конкретными исходными цепочками. Синхронизируются текущий паспорт, roadmap, реестр расчётов, readiness и строгая проверка заголовка схемы. Производственные дефекты этими документами не исправлены; их статус SOURCE CONFIRMED / OPEN. Старые source snapshots сохраняются в history без использования как текущего launch verdict.
 
 Субъективный процент готовности и календарный ETA не рассчитываются без весов требований, принятого release scope, команды и внешних условий. Закрытие реальных приёмочных критериев важнее числа новых функций.
+
+
+## 7. Action OS responsibility progression — 2026-10-10
+
+Canonical sequence:
+
+`Action Responsibility v1 -> Home/Repair/Object/Budget responsibility surfaces -> Action Queue v2 -> parallel responsibilities -> escalation -> SLA routing`.
+
+Current evidence:
+- Action Queue v2 admitted on exact head `2d70b9542fd18b1f460e778b800f61963eaed294`: policy, mobile typecheck/contracts, backend-complete, Golden Paths, Playwright, participant PostgreSQL, security operations and technical-spec integrity GREEN.
+- Parallel responsibilities is ADMITTED on exact head `965e5e856d6474ea0c2cd684a2c5ff408b89d844`: policy, mobile/typecheck, backend-complete, Golden Paths, Playwright, participant PostgreSQL, technical supervision, security operations and technical-spec integrity GREEN.
+- Escalation v1 is ADMITTED on exact head `72674acc7377f844fa86c3ace40421b8d55bb17a`: policy, technical specification, security operations, participant PostgreSQL, mobile/typecheck, technical supervision, production readiness, Golden Paths, Playwright and backend-complete GREEN.
+- SLA routing v1 is ADMITTED on exact head `ade615bc0d144bbb7fdfb1b8194fffda1d94c61e`: policy, technical specification, security operations, participant PostgreSQL, mobile/typecheck, technical supervision, production readiness, Golden Paths, Playwright and backend-complete GREEN.
+- SLA routing remains a read-only projection over existing canonical `due_at` deadlines and admitted escalation signals. Before breach, the route stays with the current responsible actor. After breach, it follows the admitted escalation target when one exists; owner-owned breaches remain with the owner. It does not create timers, reassign work, mutate deadlines or send notifications.
+- No generic “due soon” threshold is invented. Existing domain-specific reminder semantics such as the rework 24-hour reminder remain authoritative and separate.
+
+Evidence boundary: any next Action OS layer must preserve this read-model/authority separation and receive its own exact-head admission.
+
+
+### Blocked Work / Handoff v1
+
+Next bounded Action OS layer after admitted SLA routing:
+
+- source authority remains `Stage`, `WorkDependency`, `MaterialPick` and existing dependency/supply services;
+- only stages visible under the existing project-detail visibility contract are projected;
+- dependency evaluation is read-only: `commit=False, persist_status=False`;
+- work blockers route to the current canonical actor of the predecessor stage; predecessor in review routes to owner acceptance;
+- material blockers route first to owner approval when the pick is not approved/purchased, then to the canonical supply side from `supply_source`;
+- `third_party` stays an external handoff and does not manufacture a Renova user;
+- a visible stage depending on a hidden sibling stage exposes only neutral `Ждёт предыдущую работу`: no sibling title, ref ID or actor metadata;
+- no blocker mutation, waiver, dependency rewrite, assignment change or purchase/acceptance command is introduced by this read model.
+
+Status: IMPLEMENTED / EXACT-HEAD QUALIFICATION REQUIRED. No successor Action OS layer may be added until this slice is GREEN.
+
+### Blocked Work / Handoff v1 — human UX regression fix
+
+Observed: Home Action Queue was hidden when `ResponsibilityQueue.count == 0` despite existing `blocked_work.items`; the user could not see why an otherwise action-free stage was blocked. Fixed with a shared presentation predicate, and handoff `decide_work_acceptance` now enters canonical Repair / Control rather than the general Works tab. Added `actionQueuePresentation.test.ts` to the blocking `mobile:test` suite. Implementation is **QUALIFICATION REQUIRED** on its own exact head; no new blocker authority or mutation is introduced.
+
+### Blocked-only human UX — qualification candidate
+
+When only blocked work is present, Home hides six misleading zero counters and presents the work blocker as the primary context. A handoff is labelled as the current user's next step only when the canonical handoff_user_id matches the active user; hidden/external blockers never disclose actor metadata. This is presentation-only, with blocking mobile regression tests. Status: IMPLEMENTED / EXACT-HEAD QUALIFICATION REQUIRED.
+
+### Cross-role Blocked Work / Handoff — executable E2E qualification
+
+One fresh real API project now exercises lead dependency configuration, principal-specific blocked-work responsibility, denial of premature stage start, signed contract, stage evidence/checklist, first submission, owner review and return, continued dependency block during rework, resubmission, owner acceptance, automatic blocker disappearance and **explicit** successor start. An unrelated guest is denied the responsibility projection. New `e2e/blocked-work-handoff-lifecycle.spec.ts` is included in the required `scripts/ci-playwright.sh api` suite; implementation is **QUALIFICATION PENDING** until exact-head Playwright, backend, Golden, security, mobile and specification gates pass.
+
+### Rework issue reviewer verification — 2026-10-11
+
+Observed business gap after cross-role E2E admission `53054823a115576af7458b9160302fe16136227d`: a medium-severity issue created specifically by acceptance return could be marked `fixed` by the contractor, re-submitted, then accepted while that exact issue was not yet independently verified. This is distinct from ordinary medium warnings.
+
+Bounded fix: canonical `finalize_work_acceptance` (app and portal entrypoints) blocks accepted state with `rework_issue_verification_required` while any issue linked by the durable `rework-issue-{id}` checklist marker is not `closed`. Submission for review remains allowed; only the authorized reviewer can close the issue. A contractor `fixed` status is never equivalent to reviewer confirmation. Normal medium/low unrelated warnings retain their existing semantics. API E2E and backend negative contract updated; exact-head CI/security/spec/participant evidence is **PENDING**, not admitted.
+
+### Qualification repair — cross-role rework verification
+
+Exact-head `3a9bbc54941336f294149034dbfcb368e39c020e` was RED: canonical reviewer confirmation gate correctly rejected an old regression journey that omitted `contractor fixed → customer closed`, cascading into payment/closeout/warranty assertions; the newly added backend test read expired SQLAlchemy ORM attributes after a rollback (`MissingGreenlet`). Tests were repaired to exercise the actual two-actor verification and preserve stable scalar IDs across rollback. The production gate is unchanged. New exact-head qualification REQUIRED; no other features admitted yet.

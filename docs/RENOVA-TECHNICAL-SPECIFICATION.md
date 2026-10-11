@@ -36,19 +36,19 @@
 | `apps/mobile/constants/uiTokens.ts` | `ca2d8e9e03f56efb058041ad8a81c04d15c7a8a0` | Surfaces/chips/inputs |
 | `apps/mobile/constants/screenLayout.ts` | `8961bbbbaa614b9b6f962bafe8649bbec3d0a744` | Screen layout (+tabContentStyle: FAB-safe bottom padding) |
 | `apps/mobile/components/renova/os/OsHubTabs.tsx` | `b04ac08459926439b0533db3decce28a4791843c` | Hub tabs (+auto-scroll to selected tab) |
-| `apps/mobile/components/screens/OsObjectHubScreen.tsx` | `3082b1bf59cbf420d403ed82b35bbc2e78697728` | Object hub |
-| `apps/mobile/components/screens/OsRepairHubScreen.tsx` | `62060329592176b8d42591b92fe197aaa52e59d7` | Repair hub |
-| `apps/mobile/components/screens/OsBudgetHubScreen.tsx` | `4e0e8267d68b600cf0d8bdf716a4c8eddaa3bcbd` | Budget hub |
+| `apps/mobile/components/screens/OsObjectHubScreen.tsx` | `b339134cc81941f15b1a363e6872acef0673f9dc` | Object hub |
+| `apps/mobile/components/screens/OsRepairHubScreen.tsx` | `55ecda475da110a384bc2837136f0ccf0c7716e6` | Repair hub |
+| `apps/mobile/components/screens/OsBudgetHubScreen.tsx` | `789631cf5d74f657a318baed176b98aada208c26` | Budget hub |
 | `apps/mobile/constants/budgetTabs.ts` | `d02c05560176535e130d76960c2b67691bcbb3b7` | Budget tab canon |
 | `.cursor/rules/renova-design-system.mdc` | `2f48e46f5b348b8cbc3a370615a5a5e93d93421f` | UI rules |
-| `package.json` | `75b7390c2d4d0dbb49dc48e299caf46ee585292d` | Root commands/test entrypoints (+5 sessionFence tests wired into mobile:test) |
+| `package.json` | `16a7a6e3f672e3b45b6608dc36c7e4a6aeee49c6` | Root commands/test entrypoints (+5 sessionFence tests wired into mobile:test) |
 | `.github/workflows/local-runtime-integrity.yml` | `63831ec7622794843ca724319178e2de18cdb971` | Local runtime proof |
 | `backend/alembic/versions/w16legacystatus01_legacy_status_enum_parity.py` | `d2137f2b87c1ac6f679093331bd034aff17c8188` | Legacy status repair |
 | `backend/alembic/versions/w17chatmessageenum01_chat_message_enum_parity.py` | `0537268c85e26b7a607d36f967a3402b8bba53c4` | Chat enum repair |
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
 | `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | Evidence versions |
 | `backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py` | `6de2c048fddc7bea5e385eaa80ca8d30fbe4eb3c` | Participants/scopes/audit |
-| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `7942b12961d967b39d1f77e98deccc0c301ad9e6` | Текущий план и историческая прослеживаемость |
+| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `efa788f0f2903023ccec1f65ce9eb1c4cbc986d0` | Текущий план и историческая прослеживаемость |
 
 # 1. Назначение продукта и границы системы
 
@@ -301,3 +301,82 @@ Full acceptance G01–G10 задана в аудите. В этом проход
 Изменение считается сопровождаемым, когда requirement/result, реализация, роли, failure/retry/concurrency, schema, side effects, UI, тест и статус одного exact candidate связаны. Source SHA без семантической сверки недостаточен. Исторический полный текст сохранён; повторно использовать из него старый next-step/schema/head нельзя.
 
 Запрещено закрывать issue по ограниченному foundation, выдавать audit report за runtime test, сохранять неизвестные показатели как 0, обозначать promised-but-disabled capability как DONE либо выводить срок запуска без согласованного ресурса и внешних условий. Аудит синхронизирует план; F01–F10 всё ещё требуют продуктовых исправлений.
+
+
+# 19. Action Responsibility / Action Queue read model
+
+The canonical Action OS responsibility layer is read-only. It projects existing Issue, WorkAcceptance and Payment authorities into human-operational obligations; it does not create independent workflow truth.
+
+Admitted sequence through exact head `2d70b9542fd18b1f460e778b800f61963eaed294`:
+- Action Responsibility v1;
+- responsibility-aware Home / Repair / Object / Budget surfaces;
+- Action Queue v2 with six exclusive buckets: `mine_now`, `waiting_other`, `overdue`, `needs_evidence`, `waiting_review`, `waiting_owner_decision`.
+
+Parallel-responsibility extension:
+- groups the same admitted responsibility items by concrete actor/persona;
+- exposes active actor count, per-lane responsibility count, per-bucket counts and the lane top item;
+- preserves project-participant visibility filtering and finance principal scoping already applied before grouping;
+- introduces no assignment mutation, escalation state, SLA state, hidden role grant or second ownership source of truth;
+- Home may render at most a bounded operational summary and routes the selected top item back to the canonical Repair or Budget action surface.
+
+Parallel responsibilities are admitted on exact head `965e5e856d6474ea0c2cd684a2c5ff408b89d844`.
+
+Escalation v1 is admitted on exact head `72674acc7377f844fa86c3ace40421b8d55bb17a`.
+
+Escalation v1:
+- is a read-only projection for already-overdue human responsibilities;
+- targets the existing next supervisor for overdue executor work when that next actor already exists, otherwise the project owner;
+- targets the owner for overdue supervisor work;
+- never self-escalates owner-owned work;
+- does not reassign responsibility, mutate due dates, send notifications or create durable escalation state.
+
+SLA routing v1:
+- reads the same canonical `due_at` deadline already attached to responsibility items;
+- keeps a future deadline routed to the current responsible actor;
+- routes a breached deadline through the admitted escalation target when one exists;
+- keeps an owner-owned breach with the owner rather than manufacturing self-escalation;
+- does not invent a generic “due soon” threshold, create timers, mutate deadlines, send notifications or create a second SLA state machine;
+- leaves existing domain-specific reminder behavior, including rework reminder timing, authoritative in its current services.
+
+SLA routing v1 is admitted on exact head `ade615bc0d144bbb7fdfb1b8194fffda1d94c61e`. Any successor layer must preserve canonical domain authority and receive its own exact-head admission.
+
+
+## 19.1. Blocked Work / Handoff v1
+
+Blocked Work / Handoff is a read-only Action OS projection over the existing execution graph.
+
+Authority:
+- stage state remains in `Stage`;
+- dependency truth remains in `dependency_service.evaluate_stage`;
+- material approval/availability/responsibility remains in `MaterialPick` + `material_supply_service`;
+- this projection must never persist dependency status from the responsibility GET path.
+
+Visibility:
+- owner / lead / foreman / technical supervisor follow the existing project stage-read contract;
+- team member/viewer follow the existing own-or-unassigned stage projection;
+- scoped ProjectParticipant is restricted to `participant_visible_scope`;
+- if a visible stage depends on a predecessor stage outside the viewer's visible stage set, the projection MUST hide predecessor title, ID and actor metadata.
+
+Handoff:
+- a visible work dependency may identify the canonical actor currently responsible for the visible predecessor stage;
+- predecessor in review routes to owner acceptance;
+- material pending approval routes to owner review;
+- approved/purchased but unavailable customer supply routes to owner;
+- approved/purchased but unavailable contractor supply routes to lead contractor;
+- third-party supply remains an external handoff with no manufactured Renova user.
+
+The mobile Home surface may summarize blocked stages and deep-link to canonical Repair/Works or Repair/Materials. It adds no dependency waiver, stage mutation, procurement command or assignment authority.
+
+Status: IMPLEMENTED / QUALIFICATION REQUIRED. Exact-head admission must include backend-complete, Golden Paths, Playwright, mobile/typecheck, participant PostgreSQL, technical supervision, security, readiness, policy and technical-spec integrity.
+
+## Action OS — blocked-only visibility follow-up
+
+Home Action Queue must remain visible when there are canonical blocked-work handoffs even if ordinary responsibility items are empty. For an acceptance-related predecessor, its entrypoint is Repair / Control; material blockers route to Materials and other work blockers to Works. This is a presentation/navigation projection only. Regression test is included in the blocking mobile suite. Evidence remains pending for the candidate exact head, and the authoritative dependency/acceptance workflow is unchanged.
+
+Blocked-only Home presentation: when the canonical blocked_work read-model has blockers but the action item list is empty, the user sees the blocking context rather than six zero counters. The actor is described as 'your next step' only for matching current user ID. Hidden predecessor actor metadata must not be exposed. Qualification pending on current exact head.
+
+Cross-role Blocked Work / Handoff verification: the canonical sequence (dependency -> blocked start -> executor checklist/evidence -> owner review/return -> rework -> accepted predecessor -> explicit successor start) is implemented as a required Playwright API test `e2e/blocked-work-handoff-lifecycle.spec.ts` via `scripts/ci-playwright.sh`. Role-bound responsibility projection and unrelated-guest denial are assertions, not new authorization rules. This candidate is not admitted before exact-head CI passes.
+
+Acceptance/rework verification invariant: an issue created by returned-stage rework and linked to the stage through a canonical `rework-issue-{issue_id}` checklist marker cannot be silently treated as verified when executor sets `fixed`. A new acceptance decision is blocked with `rework_issue_verification_required` until issue status becomes `closed` through existing reviewer authority. Work may be resubmitted for review beforehand, but the stage and dependent stage are not accepted/unblocked until independent verification. This applies through canonical app and portal acceptance finalization. Ordinary unrelated medium/low issues remain warnings. Exact-head admission remains required.
+
+Reviewer-verification regression qualification: the unchanged canonical blocker requires contractor issue `fixed`, reviewer issue `closed`, then acceptance. The aggregate journey test performs all three steps and verifies the prohibited early acceptance; the backend negative test snapshots project/stage IDs before any rollback to avoid asynchronous ORM lazy-loading. These test-only repairs remain pending their own exact-head CI admission.

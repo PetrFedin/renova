@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+import json
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -353,6 +354,30 @@ async def transition_issue(
     validate_issue_transition(issue.status, target, actor_role, self_managed=self_managed)
     issue.status = target
     issue.closed_at = utc_now() if target == "closed" else None
+
+    if target == "fixed" and issue.stage_id:
+        stage = await db.get(Stage, issue.stage_id)
+        if stage is not None and stage.project_id == issue.project_id:
+            stage_checklist = []
+            try:
+                parsed = json.loads(stage.checklist_json or "[]")
+                if isinstance(parsed, list):
+                    stage_checklist = parsed
+            except Exception:
+                stage_checklist = []
+            linked_id = f"rework-issue-{issue.id}"
+            changed = False
+            for item in stage_checklist:
+                if item.get("id") == linked_id and not item.get("done"):
+                    item["done"] = True
+                    changed = True
+                    break
+            if changed:
+                from app.services.workflow_service import checklist_progress
+
+                stage.checklist_json = json.dumps(stage_checklist, ensure_ascii=False)
+                stage.percent_complete = float(checklist_progress(stage_checklist))
+
     if commit:
         await db.commit()
         await db.refresh(issue)
@@ -456,6 +481,47 @@ class OpenIssuesBlock(ValueError):
     def __init__(self, gate: dict):
         super().__init__(self.code)
         self.gate = gate
+
+
+class UnverifiedReworkIssueBlock(OpenIssuesBlock):
+    """Возврат на доработку требует отдельного решения проверяющего по связанному замечанию."""
+
+    code = "rework_issue_verification_required"
+
+
+async def unverified_stage_rework_gate(db: AsyncSession, stage: Stage) -> dict:
+    """Find unconfirmed issues created by a return-to-rework, not ordinary medium warnings.
+
+    The canonical stage review service links each created rework issue to a
+    durable checklist item with id 'rework-issue-{issue.id}'. Only the issue
+    authority may close that issue; checking its task does not confirm quality.
+    """
+    try:
+        checklist = json.loads(stage.checklist_json or "[]")
+    except (TypeError, ValueError):
+        checklist = []
+    prefix = "rework-issue-"
+    linked_ids = {
+        item["id"][len(prefix):]
+        for item in checklist if isinstance(checklist, list) and isinstance(item, dict)
+        and isinstance(item.get("id"), str) and item["id"].startswith(prefix)
+        and item["id"][len(prefix):]
+    } if isinstance(checklist, list) else set()
+    if not linked_ids:
+        return {"blocking": [], "blocking_count": 0, "warning_count": 0}
+
+    query = select(ProjectIssue).where(
+        ProjectIssue.project_id == stage.project_id,
+        ProjectIssue.stage_id == stage.id,
+        ProjectIssue.id.in_(linked_ids),
+        ProjectIssue.status != ISSUE_TERMINAL_STATUS,
+    ).order_by(ProjectIssue.id.asc())
+    rows = list((await db.scalars(query)).all())
+    return {
+        "blocking": [_issue_brief(issue) for issue in rows],
+        "blocking_count": len(rows),
+        "warning_count": 0,
+    }
 
 
 def issue_transition_event(current: str, target: str) -> tuple[str, str]:

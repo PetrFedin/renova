@@ -94,6 +94,46 @@ async def toggle_checklist(
     return {"checklist": items, "progress": wf.checklist_progress(items)}
 
 
+@router.get("/projects/{project_id}/actions/responsibility")
+async def action_responsibility(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Read-only Action OS queue: who acts now, proof, completion and next actor."""
+    from app.services import action_responsibility_service as action_svc
+
+    project = await require_project(db, project_id, user, write=False, participant_ok=True)
+    items = await action_svc.build_action_responsibilities(db, project=project, actor=user)
+    buckets = action_svc.group_action_responsibilities(items, actor_id=user.id)
+    parallel = action_svc.parallel_responsibility_summary(items, actor_id=user.id)
+    escalations = action_svc.escalation_signals(
+        items,
+        owner_user_id=project.customer_id,
+    )
+    sla = action_svc.sla_routing_summary(
+        items,
+        escalations=escalations,
+    )
+    blocked_work = await action_svc.blocked_work_handoff_summary(
+        db,
+        project=project,
+        actor=user,
+    )
+    return {
+        "project_id": project_id,
+        "count": len(items),
+        "items": [item.to_dict() for item in items],
+        "buckets": buckets,
+        "bucket_counts": {name: len(values) for name, values in buckets.items()},
+        "parallel": parallel,
+        "escalations": [signal.to_dict() for signal in escalations],
+        "escalation_count": len(escalations),
+        "sla": sla,
+        "blocked_work": blocked_work,
+    }
+
+
 @router.get("/projects/{project_id}/issues")
 async def list_issues(project_id: str, status: str | None = None, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await require_project(db, project_id, user, write=False)

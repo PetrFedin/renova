@@ -480,7 +480,11 @@ async def portal_accept_work(
                 409,
                 detail={
                     "code": code,
-                    "message": f"Закройте критичные и высокие замечания по этапу: {gate['blocking_count']}",
+                    "message": (
+                    f"Подтвердите устранение замечаний после доработки: {gate['blocking_count']}"
+                    if code == "rework_issue_verification_required"
+                    else f"Закройте критичные и высокие замечания по этапу: {gate['blocking_count']}"
+                ),
                     "issues": gate["blocking"],
                     "warning_count": gate["warning_count"],
                 },

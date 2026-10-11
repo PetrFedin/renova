@@ -40,7 +40,7 @@ def stages_for_user(project, user) -> list:
     ]
 
 
-def build_dashboard_read_model(project, *, stages: Iterable) -> dict:
+def build_dashboard_read_model(project, *, stages: Iterable, access_mode: str | None = None) -> dict:
     """Build dashboard from a detached projection without mutating ORM relationships."""
     project_stages = list(getattr(project, "stages", None) or [])
     scoped_stages = list(stages)
@@ -55,6 +55,7 @@ def build_dashboard_read_model(project, *, stages: Iterable) -> dict:
         planned_start_date=getattr(project, "planned_start_date", None),
         planned_end_date=getattr(project, "planned_end_date", None),
         payments=list(getattr(project, "payments", None) or []),
+        contractor_id=getattr(project, "contractor_id", None),
     )
     dashboard = project_svc.build_dashboard(projection)
 
@@ -66,7 +67,16 @@ def build_dashboard_read_model(project, *, stages: Iterable) -> dict:
         _status_value(stage) == "done" for stage in project_stages
     )
 
-    if planned is not None:
+    owner_needs_contractor = (
+        access_mode == "owner"
+        and not getattr(project, "contractor_id", None)
+        and bool(getattr(project, "estimate_lines", None) or [])
+    )
+
+    if owner_needs_contractor:
+        dashboard["next_action_title"] = "Подключить исполнителя"
+        dashboard["next_action_type"] = "find_contractor"
+    elif planned is not None:
         dashboard["next_action_title"] = f"Следующий этап: {planned.name}"
         dashboard["next_action_type"] = "review_estimate"
     elif scoped_all_done and project_all_done:

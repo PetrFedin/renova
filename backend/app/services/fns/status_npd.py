@@ -96,8 +96,8 @@ def _raise_provider_error(response: httpx.Response) -> None:
     raise FnsNpdProtocolError(f"ФНС вернула HTTP {response.status_code}")
 
 
-async def check_taxpayer_npd_status(inn: str, on_date: date | None = None) -> dict:
-    """Check NPD status without coercing unknown provider values to truth."""
+async def _check_taxpayer_npd_status_live(inn: str, on_date: date | None = None) -> dict:
+    """Existing public-FNS HTTP implementation used by the real provider adapter."""
     canonical_inn = normalize_inn(inn)
     request_date = normalize_request_date(on_date)
     url = (settings.fns_npd_status_url or "").strip()
@@ -130,4 +130,46 @@ async def check_taxpayer_npd_status(inn: str, on_date: date | None = None) -> di
         "is_npd": provider_status,
         "message": message.strip(),
         "verified_live": True,
+    }
+
+async def check_taxpayer_npd_status(inn: str, on_date: date | None = None) -> dict:
+    """Resolve NPD status through the configured provider port.
+
+    Provider mode off preserves the legacy public-FNS lookup for compatibility.
+    Simulated and real modes go through providers.registry so Golden Paths and
+    production adapters share the same domain boundary.
+    """
+    from datetime import datetime, time, timezone
+
+    from app.services.providers import base as provider_base
+    from app.services.providers import registry as provider_registry
+    from app.services.providers.errors import ProviderConfigurationError
+
+    mode = (settings.npd_status_provider_mode or "off").strip().lower()
+    if mode == provider_base.ProviderMode.OFF.value:
+        return await _check_taxpayer_npd_status_live(inn, on_date)
+
+    canonical_inn = normalize_inn(inn)
+    request_date = normalize_request_date(on_date)
+    checked_for = datetime.combine(request_date, time.min, tzinfo=timezone.utc)
+    try:
+        result = await provider_registry.npd_status_provider().check(canonical_inn, checked_for)
+    except ProviderConfigurationError as exc:
+        raise FnsNpdUnavailable("Провайдер статуса НПД недоступен") from exc
+
+    if result.status is provider_base.NpdStatus.UNKNOWN:
+        return {
+            "inn": canonical_inn,
+            "request_date": request_date.isoformat(),
+            "is_npd": False,
+            "message": "Статус НПД не подтверждён провайдером.",
+            "verified_live": False,
+        }
+    active = result.status is provider_base.NpdStatus.ACTIVE
+    return {
+        "inn": canonical_inn,
+        "request_date": request_date.isoformat(),
+        "is_npd": active,
+        "message": "Статус НПД активен." if active else "Статус НПД неактивен.",
+        "verified_live": mode == provider_base.ProviderMode.REAL.value,
     }

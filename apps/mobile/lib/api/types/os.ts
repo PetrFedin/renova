@@ -108,3 +108,128 @@ export type ProjectIssue = {
   photo_key?: string | null;
   photo_url?: string | null;
 };
+
+
+export type ResponsibilityEvidence = {
+  required: string[];
+  present: string[];
+};
+
+export type ResponsibilityNext = {
+  capability: string;
+  persona: string;
+  user_id?: string | null;
+  action: string;
+};
+
+export type ResponsibilityItem = {
+  resource_type: string;
+  resource_id: string;
+  resource_title: string;
+  current_state: string;
+  required_capability: string;
+  responsible_persona: string;
+  responsible_user_id?: string | null;
+  action: string;
+  due_at?: string | null;
+  evidence: ResponsibilityEvidence;
+  completion_condition: string;
+  next?: ResponsibilityNext | null;
+};
+
+export type ParallelResponsibilityLane = {
+  actor_key: string;
+  persona: string;
+  responsible_user_id?: string | null;
+  is_current_actor: boolean;
+  count: number;
+  bucket_counts: ResponsibilityBucketCounts;
+  top_bucket: ResponsibilityBucketKey;
+  top_item: ResponsibilityItem;
+};
+
+export type ParallelResponsibilitySummary = {
+  active_actor_count: number;
+  active_responsibility_count: number;
+  lanes: ParallelResponsibilityLane[];
+};
+
+export type EscalationSignal = {
+  resource_type: string;
+  resource_id: string;
+  resource_title: string;
+  reason: 'overdue' | string;
+  due_at: string;
+  responsible_persona: string;
+  responsible_user_id?: string | null;
+  target_persona: string;
+  target_user_id: string;
+  source_action: string;
+};
+
+export type SlaRoute = {
+  resource_type: string;
+  resource_id: string;
+  resource_title: string;
+  due_at: string;
+  state: 'active' | 'breached' | string;
+  responsible_persona: string;
+  responsible_user_id: string;
+  routed_persona: string;
+  routed_user_id: string;
+  route_reason: 'responsibility' | 'escalation' | string;
+  source_action: string;
+};
+
+export type SlaRoutingSummary = {
+  count: number;
+  breached_count: number;
+  active_count: number;
+  routes: SlaRoute[];
+};
+
+export type BlockedWorkHandoff = {
+  stage_id: string;
+  stage_title: string;
+  stage_status: string;
+  blocker_type: string;
+  blocker_title: string;
+  blocker_ref_id?: string | null;
+  criticality: string;
+  handoff_kind: string;
+  handoff_persona?: string | null;
+  handoff_user_id?: string | null;
+  handoff_action: string;
+};
+
+export type BlockedWorkSummary = {
+  count: number;
+  blocked_stage_count: number;
+  items: BlockedWorkHandoff[];
+};
+
+export type ResponsibilityQueue = {
+  project_id: string;
+  count: number;
+  items: ResponsibilityItem[];
+  buckets?: ResponsibilityBuckets;
+  bucket_counts?: ResponsibilityBucketCounts;
+  parallel?: ParallelResponsibilitySummary;
+  escalations?: EscalationSignal[];
+  escalation_count?: number;
+  sla?: SlaRoutingSummary;
+  blocked_work?: BlockedWorkSummary;
+};
+
+
+export type ResponsibilityBucketKey =
+  | 'mine_now'
+  | 'waiting_other'
+  | 'overdue'
+  | 'needs_evidence'
+  | 'waiting_review'
+  | 'waiting_owner_decision';
+
+export type ResponsibilityBuckets = Record<ResponsibilityBucketKey, ResponsibilityItem[]>;
+
+export type ResponsibilityBucketCounts = Record<ResponsibilityBucketKey, number>;

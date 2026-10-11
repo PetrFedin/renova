@@ -210,8 +210,14 @@ class ProjectOut(BaseModel):
     contractor_id: str | None = None
     # owner | contractor | guest | supervisor | none — archive/trash только для owner
     access_mode: str = "owner"
-    # Capabilities are explicit and empty unless access_mode == supervisor.
+    # Legacy supervisor-specific capability surface kept for compatibility.
     technical_capabilities: list[str] = Field(default_factory=list)
+    # Canonical UX responsibility projection. Authorization remains enforced
+    # by server-side domain policies; clients use this only to shape actions.
+    operational_persona: Literal[
+        "owner", "lead", "foreman", "member", "participant", "supervisor", "guest"
+    ] = "guest"
+    capabilities: list[str] = Field(default_factory=list)
 
 
 class ProjectDetail(ProjectOut):

@@ -605,8 +605,10 @@ async def test_22_submit_return_resubmit_accept(w):
         r = await w.call(who, "POST", f"{P(w)}/work-acceptances/{acc}/accept", {"quality_score": 10})
         assert r.status_code in (403, 404), who
     assert (await w.call("cust", "POST", f"{P(w)}/work-acceptances/{acc}/return", {})).status_code in (400, 422)
-    await w.call("cust", "POST", f"{P(w)}/work-acceptances/{acc}/return",
-                 {"comment": "Не вывезен мусор", "create_issue": True}, expect=200)
+    returned = await w.call("cust", "POST", f"{P(w)}/work-acceptances/{acc}/return",
+                            {"comment": "Не вывезен мусор", "create_issue": True}, expect=200)
+    rework_issue_id = returned.json()["issue_id"]
+    assert rework_issue_id, "возврат с create_issue должен создавать связанное замечание"
     r = await w.call("lead", "GET", f"{P(w)}/stages/{st}", expect=200)
     assert r.json()["status"] != "done"
     wf = (await w.call("lead", "GET", f"{P(w)}/stages/{st}/workflow", expect=200)).json()
@@ -614,10 +616,22 @@ async def test_22_submit_return_resubmit_accept(w):
         if not it["done"]:
             await w.call("lead", "POST", f"{P(w)}/stages/{st}/checklist/toggle",
                          {"item_id": it["id"], "done": True}, expect=200)
+    # Исполнитель может заявить об исправлении, но не подтвердить его качество.
+    fixed = await w.call("lead", "POST", f"{P(w)}/issues/{rework_issue_id}/close", expect=200)
+    assert fixed.json()["status"] == "fixed"
     r = await w.call("lead", "POST", f"{P(w)}/stages/{st}/submit", expect=200)
     acc2 = r.json()["acceptance_id"]
     assert acc2
     w.s["acc_id_reused"] = acc2 == acc
+    premature = await w.call("cust", "POST", f"{P(w)}/work-acceptances/{acc2}/accept",
+                             {"quality_score": 9, "comment": "исправление ещё не проверено"})
+    assert premature.status_code == 409
+    assert premature.json()["detail"]["code"] == "rework_issue_verification_required"
+    # Следующее решение принимает заказчик, а не исполнитель и не чек-лист.
+    denied = await w.call("lead", "POST", f"{P(w)}/issues/{rework_issue_id}/close")
+    assert denied.status_code in (403, 409), denied.text
+    verified = await w.call("cust", "POST", f"{P(w)}/issues/{rework_issue_id}/close", expect=200)
+    assert verified.json()["status"] == "closed"
     r = await w.call("cust", "POST", f"{P(w)}/work-acceptances/{acc2}/accept", {"quality_score": 9, "comment": "ок"}, expect=200)
     assert r.json()["payment_id"], "приёмка порождает платёж за этап"
     w.s["pay"] = r.json()["payment_id"]

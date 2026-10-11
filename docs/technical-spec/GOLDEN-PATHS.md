@@ -160,13 +160,15 @@
 
 | GP | API | mobile-web | Блокирует | Последний PR |
 |---|---|---|---|---|
-| GP1 | ❌ not written | ❌ | A1 | — |
-| GP2 | ❌ | ❌ | A1, B1–B5 | — |
-| GP3 | ❌ | ❌ | A1, B1 | — |
-| GP4 | ❌ | ❌ | A1, C5 | — |
-| GP5 | ❌ | ❌ | A1, A3–A5 | — |
-| GP6 | ❌ | ❌ | A1, A5 | — |
-| GP7 | ❌ | ❌ | A1, A6, C6 | — |
-| GP8 | ❌ | ❌ | A1, A6 | — |
+| GP1 | 🟢 canonical-runtime CI | 🟢 canonical-runtime CI | — | #698 |
+| GP2 | 🟢 canonical-runtime CI | 🟢 canonical-runtime CI | — | #698 |
+| GP3 | 🟢 canonical-runtime CI | 🟢 canonical-runtime CI | — | #698 |
+| GP4 | 🟢 canonical-runtime CI | 🟢 canonical-runtime CI | — | #698 |
+| GP5 | 🟢 canonical-runtime CI | 🟢 canonical-runtime CI | — | #698 |
+| GP6 | 🟢 canonical-runtime CI | 🟢 canonical-runtime CI | — | #698 |
+| GP7 | 🟢 canonical-runtime CI | 🟢 canonical-runtime CI | — | #698 |
+| GP8 | 🟢 canonical-runtime CI | 🟢 canonical-runtime CI | — | #698 |
 
-Легенда: ❌ not written · 🔴 written, failing · 🟡 passing on SQLite/local only · 🟢 passing on PostgreSQL topology in CI.
+Легенда: ❌ not written · 🟠 written, execution blocked before assertions · 🔴 written, failing · 🟡 passing on SQLite/local only · 🟢 passing on canonical local runtime in CI (PostgreSQL + Redis + MinIO + API + Worker).
+
+> Exact qualification evidence: PR #698, head `233b21a04a7b56c95f91d221268c5b2b5c210d22`, GitHub Actions run `37965354177`. API GP1–GP8: `12/12 passed`; mobile-web GP1–GP8: `8/8 passed`. API container identity and `StartedAt` remained unchanged across both suites, with `RestartCount=0`. The same exact candidate passed backend-complete (`1681 passed`, `30` dedicated-topology skips), Playwright API/UI, project-participant PostgreSQL, production-readiness, security and technical-specification gates. This qualifies the stated canonical-runtime contour only; it is not evidence of production deployment or broad-production readiness, and #683 governance admission remains externally blocked.
