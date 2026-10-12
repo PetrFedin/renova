@@ -138,7 +138,8 @@ run_ui_e2e() {
     e2e/contract-gate-ui.spec.ts \
     e2e/mobile-surface-integrity.spec.ts \
     e2e/outbox-dead-letter-admin-ui.spec.ts \
-    e2e/deep-link-cold-start.spec.ts
+    e2e/deep-link-cold-start.spec.ts \
+    e2e/action-queue-targeted.spec.ts
   npm run cleanup:e2e-gate || true
 }
 
