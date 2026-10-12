@@ -83,7 +83,7 @@ export function ActionQueueCard({
   };
 
   return (
-    <View style={s.card}>
+    <View style={s.card} testID="home-action-queue">
       <View style={s.heading}>
         <Text style={s.eyebrow}>Очередь действий</Text>
         <Text style={s.total}>{queue.count} всего</Text>
@@ -117,6 +117,7 @@ export function ActionQueueCard({
 
       {!expanded ? (
         <Pressable
+          testID={primary.isMine ? `action-queue:${primary.item.resource_type}:${primary.item.resource_id}` : undefined}
           accessibilityRole={primary.isMine ? 'button' : undefined}
           accessibilityLabel={primary.isMine ? actionLabel(primary.item.action) : undefined}
           accessibilityState={{ disabled: !primary.isMine }}
@@ -175,6 +176,7 @@ export function ActionQueueCard({
           ) : visible.map((row) => (
             <Pressable
               key={row.key}
+              testID={row.isMine ? `action-queue:${row.item.resource_type}:${row.item.resource_id}` : undefined}
               accessibilityRole={row.isMine ? 'button' : undefined}
               accessibilityLabel={row.isMine ? actionLabel(row.item.action) + ': ' + row.item.resource_title : undefined}
               accessibilityState={{ disabled: !row.isMine }}
