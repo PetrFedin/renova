@@ -48,7 +48,7 @@
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
 | `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | Evidence versions |
 | `backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py` | `6de2c048fddc7bea5e385eaa80ca8d30fbe4eb3c` | Participants/scopes/audit |
-| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `29524f75452bcf3699889136dcb7d97dde177060` | Текущий план и историческая прослеживаемость |
+| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `d67edf7a100f0c3a2eb3ac0c136b0ce6e205addc` | Текущий план и историческая прослеживаемость |
 
 # 1. Назначение продукта и границы системы
 
@@ -257,6 +257,8 @@ Closeout проверяется по работам/замечаниям/док�
 - внешний verifier должен различать минимум `VALID / REVOKED / STALE / INVALID_SIGNATURE / INVALID_ENVELOPE_HASH / ISSUER_NOT_CONFIGURED`.
 
 Следующий institutional layer после qualification этого контура: key rotation, issuer metadata/status list, external verifier profile, contractor/customer signature adapters и warranty-linked validity. До появления реальных ключей сторон platform issuer не имеет права выдавать подпись за участника сделки.
+
+Integration acceptance contract (PR #712, pending exact-head CI): the canonical `work_acceptances` state drives both owner Action Queue decisions and Verified Execution Record availability. Requested/in-review acceptance remains an action and cannot issue portable proof; accepted+timestamp produces the evidence-backed record and eliminates the pending action. `backend/tests/test_action_execution_record_integration.py` also checks unsigned proof redaction, missing issuer key and cross-project/outsider API access on an isolated test DB. This is not a substitute for canonical mutation-transaction tests or external staging.
 
 # 11. Calculations and derived state
 
