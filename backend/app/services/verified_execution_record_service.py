@@ -75,7 +75,14 @@ def build_verified_execution_record(
     issues: list[ProjectIssue],
 ) -> dict[str, Any]:
     status = _enum_value(acceptance.status)
-    if status not in ACCEPTED_STATUSES or acceptance.accepted_at is None:
+    # A prior approval is never a valid current certificate when the stage
+    # has been reopened or returned for rework.
+    if (
+        status not in ACCEPTED_STATUSES
+        or acceptance.accepted_at is None
+        or _enum_value(stage.status) != "done"
+        or bool(stage.needs_rework)
+    ):
         raise ExecutionRecordNotAccepted("execution_record_not_accepted")
 
     checklist = _parse_checklist(acceptance.checklist_json or stage.checklist_json)
@@ -256,16 +263,17 @@ async def get_verified_execution_record(
     if stage is None or stage.project_id != project_id:
         raise ExecutionRecordStageNotFound(stage_id)
 
+    # Match the acceptance decision service's *current* acceptance ordering.
+    # Filtering for accepted rows first could resurrect an old certificate after
+    # a subsequent request/return and make an outdated checkpoint appear valid.
     acceptance = (
         await db.execute(
             select(WorkAcceptance)
             .where(
                 WorkAcceptance.project_id == project_id,
                 WorkAcceptance.stage_id == stage_id,
-                WorkAcceptance.status.in_(tuple(ACCEPTED_STATUSES)),
-                WorkAcceptance.accepted_at.is_not(None),
             )
-            .order_by(WorkAcceptance.accepted_at.desc(), WorkAcceptance.created_at.desc(), WorkAcceptance.id.desc())
+            .order_by(WorkAcceptance.created_at.desc(), WorkAcceptance.id.desc())
             .limit(1)
         )
     ).scalars().first()
