@@ -1,7 +1,7 @@
 import { reportError } from '@/lib/reportError';
 /** Контроль — приёмка, замечания, качество (исполнитель) */
 import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
-import { usePathname } from 'expo-router';
+import { useLocalSearchParams, usePathname } from 'expo-router';
 import { RenovaTheme } from '@/constants/Theme';
 import { screenTypography, listRowStyles } from '@/constants/screenTypography';
 import { ReadOnlyBanner } from '@/components/renova/ReadOnlyGuard';
@@ -27,9 +27,11 @@ import { pushOsNav } from '@/lib/pushOsNav';
 import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { writeResultMessage } from '@/lib/offlineResultMessage';
 import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
+import { targetFirst } from '@/lib/domain/actionQueueTargetFocus';
 
 export function ContractorControlView() {
   const pathname = usePathname();
+  const { issueId: focusIssueId } = useLocalSearchParams<{ issueId?: string }>();
   const nav = useNavFromHere();
   const { user, activeProject, readOnly } = useRenova();
   const [issues, setIssues] = useState<ProjectIssue[]>([]);
@@ -80,6 +82,9 @@ export function ContractorControlView() {
   const pendingCount = computePendingAcceptanceCount(activeProject.stages, acceptances);
   const summary = controlSummary(issues, pendingCount);
   const rework = activeProject.stages.filter((s) => s.needs_rework && s.status !== 'done');
+  const openIssues = issues.filter((item) => item.status !== 'closed');
+  const sortedIssues = targetFirst(openIssues, focusIssueId);
+  const missingIssue = Boolean(focusIssueId && !openIssues.some((item) => item.id === focusIssueId));
 
   return (
     <ScrollView style={s.wrap} contentContainerStyle={screenLayout.contentStyle}>
@@ -94,11 +99,13 @@ export function ContractorControlView() {
       <UnifiedAcceptanceList stages={activeProject.stages} acceptances={acceptances} returnTo={pathname} role="contractor" onChanged={reload} />
 
       <Text style={s.section}>Замечания</Text>
-      {!issues.filter(i => i.status !== 'closed').length && <Text style={s.empty}>Нет открытых замечаний</Text>}
-      {issues.filter(i => i.status !== 'closed').slice(0, 5).map((iss) => (
+      {missingIssue ? <Text testID="action-target-issue-missing" style={s.meta}>Указанное замечание закрыто либо недоступно в этом проекте.</Text> : null}
+      {!openIssues.length && <Text style={s.empty}>Нет открытых замечаний</Text>}
+      {sortedIssues.slice(0, 5).map((iss) => (
         <Pressable
           key={iss.id}
-          style={s.row}
+          testID={iss.id === focusIssueId ? 'action-target-issue' : undefined}
+          style={[s.row, iss.id === focusIssueId ? s.rowFocus : null]}
           onPress={() => { if (iss.stage_id) nav.stage(iss.stage_id); }}
           disabled={!iss.stage_id}
         >
@@ -177,6 +184,7 @@ const s = StyleSheet.create({
   l: { ...screenTypography.metricLabel },
   section: { ...screenTypography.section },
   row: { ...listRowStyles.row },
+  rowFocus: { ...listRowStyles.rowFocus },
   title: { ...screenTypography.listTitle },
   meta: { ...screenTypography.listMeta },
   empty: { ...screenTypography.empty, marginBottom: 12 },
