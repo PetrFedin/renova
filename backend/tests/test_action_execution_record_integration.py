@@ -5,14 +5,18 @@ session. It deliberately does NOT substitute for the canonical acceptance
 mutation endpoint or production PostgreSQL, which remain separate CI gates.
 """
 from datetime import datetime
+import base64
 
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from httpx import ASGITransport, AsyncClient
 
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.db.session import get_db
 from app.main import app
+from app.models.execution_proof_trust import ExecutionProofRevocation  # noqa: F401 - register isolated DB table
 from app.models.entities import (
     Project,
     Stage,
@@ -162,7 +166,7 @@ async def test_reopened_stage_never_resurrects_historical_accepted_record(db):
     with pytest.raises(records.ExecutionRecordNotAccepted):
         await records.get_verified_execution_record(
             db, project_id=project.id, stage_id=stage.id,
-        ), "old accepted cycle must not certify a newly requested review"
+        )
 
     # Even an inconsistent status='done' cannot resurrect older acceptance.
     stage.status = StageStatus.done
@@ -180,6 +184,53 @@ async def test_reopened_stage_never_resurrects_historical_accepted_record(db):
         await records.get_portable_execution_proof(
             db, project_id=project.id, stage_id=stage.id,
         )
+
+
+@pytest.mark.asyncio
+async def test_signed_checkpoint_turns_stale_after_new_review_cycle(db, monkeypatch):
+    owner, lead, _, project, stage, accepted = await _seed(db)
+    accepted.status = "accepted"
+    accepted.accepted_at = datetime(2026, 10, 12, 12)
+    accepted.accepted_by = owner.id
+    stage.status = StageStatus.done
+    await db.commit()
+
+    # Test-only ephemeral issuer key, never stored or provisioned externally.
+    issuer = Ed25519PrivateKey.generate()
+    raw = issuer.private_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PrivateFormat.Raw,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    monkeypatch.setattr(
+        settings, "execution_proof_signing_private_key_b64",
+        base64.urlsafe_b64encode(raw).decode("ascii").rstrip("="),
+    )
+    monkeypatch.setattr(settings, "execution_proof_signing_key_id", "integration-ephemeral-key")
+    monkeypatch.setattr(settings, "execution_proof_issuer_id", "renova-integration-test")
+
+    envelope = await trust.issue_checkpoint(db, project_id=project.id, stage_id=stage.id)
+    verified = await trust.verify_current_status(db, envelope=envelope)
+    assert verified["status"] == "VALID"
+    assert verified["signatureValid"] is True
+
+    db.add(WorkAcceptance(
+        id="int-ver-new-review",
+        project_id=project.id,
+        stage_id=stage.id,
+        requested_by=lead.id,
+        requested_at=datetime(2026, 10, 13, 9),
+        created_at=datetime(2026, 10, 13, 9),
+        status="requested",
+    ))
+    stage.status = StageStatus.review
+    await db.commit()
+
+    stale = await trust.verify_current_status(db, envelope=envelope)
+    assert stale["status"] == "STALE"
+    assert stale["signatureValid"] is True
+    assert stale["current"] is False
+    assert stale["revoked"] is False
 
 
 @pytest.mark.asyncio
