@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
+import { targetFirst } from '@/lib/domain/actionQueueTargetFocus';
 import { confirmAction, notifyAlert, notifyError } from '@/lib/notify';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { EmptyActionState } from '@/components/ui/EmptyActionState';
@@ -20,6 +22,7 @@ import { issueSeverityLabel } from '@/constants/labels';
 import { projectCapabilitySet, operationalPersona } from '@/lib/projectCapabilities';
 
 export function TechnicalSupervisionControlView() {
+  const { issueId: focusIssueId } = useLocalSearchParams<{ issueId?: string }>();
   const { activeProject, user } = useRenova();
   const [acceptances, setAcceptances] = useState<WorkAcceptance[]>([]);
   const [issues, setIssues] = useState<ProjectIssue[]>([]);
@@ -69,6 +72,8 @@ export function TechnicalSupervisionControlView() {
   }, [load]);
 
   const pending = acceptances.filter((item) => ['requested', 'in_review'].includes(item.status));
+  const sortedIssues = targetFirst(issues, focusIssueId);
+  const missingIssue = Boolean(focusIssueId && !issues.some((item) => item.id === focusIssueId));
   const stageName = (stageId: string) =>
     activeProject?.stages?.find((stage) => stage.id === stageId)?.name || 'Этап';
 
@@ -270,10 +275,11 @@ export function TechnicalSupervisionControlView() {
           ) : null}
 
           <Text style={s.sectionTitle}>Замечания по объекту</Text>
+          {missingIssue ? <Text testID="action-target-issue-missing" style={s.muted}>Указанное замечание закрыто либо недоступно в этом проекте.</Text> : null}
           {issues.length === 0 ? (
             <EmptyActionState title="Замечаний пока нет" hint="Зафиксированные замечания и их исправление будут видны здесь." />
           ) : (
-            issues.map((issue) => {
+            sortedIssues.map((issue) => {
               const legacyCapabilities = capabilityList.map((capability) => (
                 capability === 'quality.issue' ? 'quality_issue_write'
                   : capability === 'quality.review' ? 'quality_review'
@@ -282,7 +288,7 @@ export function TechnicalSupervisionControlView() {
               ));
               const actions = supervisorIssueActions(issue, { isSupervisor, capabilities: legacyCapabilities });
               return (
-                <View key={issue.id} style={s.issue}>
+                <View key={issue.id} testID={issue.id === focusIssueId ? 'action-target-issue' : undefined} style={[s.issue, issue.id === focusIssueId ? s.issueFocus : null]}>
                   <View style={s.itemText}>
                     <Text style={s.itemTitle}>{issue.title}</Text>
                     <Text style={s.muted}>{SUPERVISOR_ISSUE_STATUS_LABEL[issue.status] ?? issue.status} · {issueSeverityLabel(issue.severity)}</Text>
@@ -343,6 +349,7 @@ const s = StyleSheet.create({
   chipText: { color: RenovaTheme.colors.text, fontSize: RenovaTheme.fontSize.bodySmall },
   chipTextOn: { color: RenovaTheme.colors.primary, fontWeight: RenovaTheme.fontWeight.semibold },
   issue: { ...card },
+  issueFocus: { borderColor: RenovaTheme.colors.accent, borderWidth: 2 },
   errorBox: { ...card, borderColor: RenovaTheme.colors.dangerBorder, backgroundColor: RenovaTheme.colors.dangerBg },
   errorText: { color: RenovaTheme.colors.dangerText, fontSize: RenovaTheme.fontSize.bodySmall },
   retry: { marginTop: 8, color: RenovaTheme.colors.primary, fontWeight: RenovaTheme.fontWeight.semibold },
