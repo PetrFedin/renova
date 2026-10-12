@@ -3,7 +3,7 @@
 **Статус документа:** ACTIVE / LIVING SPECIFICATION
 **Язык:** русский
 **Дата текущей сверки:** 2026-09-08
-**Проверенный продуктовый срез:** `95dd4a8e117289df11e1300891490768c22f585f`
+**Проверенный продуктовый срез:** `686eec67c925d73fd1367da4704bdac11becdd71`
 **Текущий schema head в этой редакции:** `x09selectionqty01`
 **Текущий verification status:** `SOURCE AUDITED / BOUNDED CI EVIDENCE / FULL PRODUCT ACCEPTANCE INCOMPLETE`
 **Широкий production-запуск:** `BLOCKED_FOR_BROAD_PRODUCTION`
@@ -167,6 +167,9 @@ Dock: Главная, Объект, Ремонт, Бюджет/Деньги, о�
 Это registry inventory, не все физические screens/sheets/динамические состояния. Дополнительный полный экранный inventory и требования приёмки остаются обязательными. Deeplink повторно проверяет session/role/project/entity access, не доверяет сохранённому activeProject.
 
 # 8. Hub screens — состав, переходы, badges и progressive disclosure
+
+Action Queue browser admission successor (Draft, new exact-head CI pending): customer/contractor/technical-supervisor control views now display matching project-scoped issue IDs first, highlight targeted rows and report inaccessible/closed IDs without exposing another project's content. Customer acceptance focus follows the same rule; payment sheet has a deterministic non-mutating test selector. Four Playwright tests are added to the existing UI E2E runner, covering Home→exact payment→close, missing payment, acceptance focus/missing and cross-role/cross-project issue focus. Baseline #710 SHA `39fe010f` passed 63 Playwright tests but did not contain these new four tests. External browser, staging and release evidence remain pending.
+
 
 Action Queue target routing candidate: known issue/acceptance/payment actions navigate with explicit resource identifiers; no automatic writes. Missing targeted payment never falls back to an unrelated pending payment; it displays an explicit warning after read-model loading, and dismissed payment deep-link params are consumed to prevent automatic reopening. Accepted ID is raised and visually highlighted in the customer acceptance list, without auto-decision. Exact-head CI and real-device/browser acceptance are required before qualification.
 
