@@ -131,6 +131,58 @@ async def test_action_queue_requires_acceptance_before_verifiable_execution(db, 
 
 
 @pytest.mark.asyncio
+async def test_reopened_stage_never_resurrects_historical_accepted_record(db):
+    owner, lead, _, project, stage, prior = await _seed(db)
+    prior.status = "accepted"
+    prior.accepted_at = datetime(2026, 10, 12, 12)
+    prior.accepted_by = owner.id
+    stage.status = StageStatus.done
+    await db.commit()
+
+    original = await records.get_verified_execution_record(
+        db, project_id=project.id, stage_id=stage.id,
+    )
+    assert original["acceptance"]["acceptanceId"] == prior.id
+
+    # The canonical acceptance workflow creates a new row for a new review
+    # cycle; historical acceptance stays immutable but is no longer current.
+    new_review = WorkAcceptance(
+        id="int-ver-resubmission",
+        project_id=project.id,
+        stage_id=stage.id,
+        requested_by=lead.id,
+        requested_at=datetime(2026, 10, 13, 9),
+        created_at=datetime(2026, 10, 13, 9),
+        status="requested",
+    )
+    db.add(new_review)
+    stage.status = StageStatus.review
+    await db.commit()
+
+    with pytest.raises(records.ExecutionRecordNotAccepted):
+        await records.get_verified_execution_record(
+            db, project_id=project.id, stage_id=stage.id,
+        ), "old accepted cycle must not certify a newly requested review"
+
+    # Even an inconsistent status='done' cannot resurrect older acceptance.
+    stage.status = StageStatus.done
+    await db.commit()
+    with pytest.raises(records.ExecutionRecordNotAccepted):
+        await records.get_verified_execution_record(
+            db, project_id=project.id, stage_id=stage.id,
+        )
+
+    new_review.status = "returned"
+    stage.status = StageStatus.active
+    stage.needs_rework = True
+    await db.commit()
+    with pytest.raises(records.ExecutionRecordNotAccepted):
+        await records.get_portable_execution_proof(
+            db, project_id=project.id, stage_id=stage.id,
+        )
+
+
+@pytest.mark.asyncio
 async def test_execution_record_denies_outsider_and_cross_project_stage(db):
     owner, _, outsider, project, stage, acceptance = await _seed(db)
     acceptance.status = "accepted"
