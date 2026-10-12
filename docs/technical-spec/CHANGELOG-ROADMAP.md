@@ -125,3 +125,11 @@ ACTIVE: текущий каталог и registry — исходный inventory
 **Integration contract:** pending work acceptance remains an actionable item in the existing scoped Action Responsibility API; a Verified Execution Record and portable proof for that pending stage must reject issuance/read as unaccepted (`409`) without inventing an acceptance. Accepted records are validated separately by #668 record/hash/redaction tests. Platform-issued Ed25519 checkpoints do not impersonate customer/contractor signatures; absent issuer credentials cause explicit non-issuance, and external production proof remains UNVERIFIED.
 
 **Release constraints:** no main/prod merge, no external providers, no secrets, no signed stakeholder evidence and no staging proof. Independent approval for PR #683 must be real, not `SKIPPED`; ruleset's `always` bypass requires an owner-controlled negative protection test. Read the current CI run for the exact integration commit; neither #668 CI nor #711 CI qualifies the combined code.
+
+### 11.1. Integration acceptance boundary — real test session
+
+**Source:** `backend/tests/test_action_execution_record_integration.py`. Two focused regression cases run over the isolated DB fixture: pending `WorkAcceptance` must be an owner-owned Action Queue item but must not issue Verified Execution Record/checkpoint; once the acceptance status becomes `accepted` with a timestamp, the same Action Queue must no longer offer the decision and the record/portable proof must share a canonical hash. Portable proof must stay unsigned/redacted, and issuance fails without the actual platform issuer key. Cross-project stage lookup and unrelated customer access to the record are explicitly rejected.
+
+These tests assert **read-model state transitions after an accepted-state fixture**, not the implementation of the actual mutation transaction/outbox. The canonical acceptance mutation and authorization are still qualified by the existing `acceptance-decision-contracts`; current PostgreSQL Alembic upgrade and full Playwright remain mandatory on the exact head. No real customer/contractor electronic signatures or bank/insurance validation are claimed.
+
+**Evidence:** source added in PR #712, **exact-head CI PENDING**. Earlier successful checks from #711 cannot be carried forward to the combined candidate.
