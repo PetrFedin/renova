@@ -133,3 +133,9 @@ ACTIVE: текущий каталог и registry — исходный inventory
 These tests assert **read-model state transitions after an accepted-state fixture**, not the implementation of the actual mutation transaction/outbox. The canonical acceptance mutation and authorization are still qualified by the existing `acceptance-decision-contracts`; current PostgreSQL Alembic upgrade and full Playwright remain mandatory on the exact head. No real customer/contractor electronic signatures or bank/insurance validation are claimed.
 
 **Evidence:** source added in PR #712, **exact-head CI PENDING**. Earlier successful checks from #711 cannot be carried forward to the combined candidate.
+
+### 11.2. Integration PostgreSQL race fixture regression — PR #699 adopted
+
+The first integrated #712 exact-head run detected `Project participant PostgreSQL integrity` FAIL in `tests/test_project_participant_postgres_concurrency.py::test_concurrent_different_contractors_collapse_to_one_current_lead`: both outcomes `contractor_invalid` instead of `assigned` / `already_assigned`. The test was accidentally passing `contractor_id=customer_id` to `assignment_service.assign_contractor`. Existing independent Draft PR #699 (head `0193228372a77f9dda3de355fe4a5a708ed15fa9`) already diagnosed the same one-line correction. The integration branch now adopts exactly `contractor_id=contractor_id` **inside the test fixture only**, without relaxing role validation, scope, assignment uniqueness, concurrency semantics or runtime guards.
+
+**Evidence boundary:** previous run was RED (1 fail, 36 pass) and must be superseded by a new full exact-head run of the integration candidate. An isolated PostgreSQL race check, not SQLite, is mandatory before qualification. PR #699 remains a separate source/provenance and was not merged.
