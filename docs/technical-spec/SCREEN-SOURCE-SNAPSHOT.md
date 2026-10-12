@@ -12,9 +12,9 @@
 | `apps/mobile/components/renova/MaterialPickList.tsx` | `ae24469347576b0675b683545017960711198ad2` | material supply editor + approval + truthful supplier-price refresh UX; durable price provenance is governed by `MATERIAL-PRICE-TRUTH-CONTRACT.md` |
 | `apps/mobile/components/screens/OsSelectionsScreen.tsx` | `8a52566cfd463083b5055318871cc9668f1edf39` | Selections |
 | `apps/mobile/components/screens/OsControlScreen.tsx` | `299b29fe2571900663e290c35bc0096854b8eb7f` | role/access-mode control router |
-| `apps/mobile/components/screens/control/CustomerControlView.tsx` | `a6cfc6c253b07ca6b55df43354152df49bc6469a` | customer acceptance/QC/warranty view; accepts focused issueId/acceptanceId from canonical Action Queue routes (Draft #710) |
-| `apps/mobile/components/screens/control/ContractorControlView.tsx` | `2ceff127e38bb570d53b40ef3fd4506ce54419e0` | contractor acceptance/QC view |
-| `apps/mobile/components/screens/control/TechnicalSupervisionControlView.tsx` | `cbaa5c514a99db0a4309d9e06b5a39d42a77d2e4` | technical-supervision control view |
+| `apps/mobile/components/screens/control/CustomerControlView.tsx` | `3abb468ac9f0a7719fec63fec80a3905eac1ea23` | customer acceptance/QC/warranty; exact issue/acceptance target, missing target state and selectors (Draft browser admission) |
+| `apps/mobile/components/screens/control/ContractorControlView.tsx` | `dde1793c29fa45d27dacd8b98fafdd2abc693707` | contractor acceptance/QC; focused issue and missing target state |
+| `apps/mobile/components/screens/control/TechnicalSupervisionControlView.tsx` | `14dbc179c069a9ef4bfa7ae61d1cad5843842a38` | technical-supervision QC; focused issue and missing target state |
 | `apps/mobile/components/renova/os/OsHubTabs.tsx` | `b04ac08459926439b0533db3decce28a4791843c` | hub tab geometry/progressive disclosure |
 
 При изменении любого source выше `technicalSpecAnnexContract.test.mjs` должен потребовать обновить соответствующий screen contract и этот snapshot. SHA является traceability marker, а не самостоятельным доказательством корректности UX.

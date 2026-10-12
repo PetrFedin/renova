@@ -413,7 +413,7 @@ else:
 
 # 8. Customer Control view
 
-**BASELINE VERIFIED / NEW ACTION QUEUE LINK PENDING CI. Source:** `CustomerControlView.tsx` blob `a6cfc6c253b07ca6b55df43354152df49bc6469a`.
+**BASELINE VERIFIED / ACTION QUEUE BROWSER GATE PENDING CI. Source:** `CustomerControlView.tsx` blob `3abb468ac9f0a7719fec63fec80a3905eac1ea23`.
 
 Loads concurrently:
 
@@ -472,7 +472,7 @@ Rework stages are listed separately and link to stage details.
 
 # 9. Contractor Control view
 
-**VERIFIED. Source:** `ContractorControlView.tsx` blob `2ceff127e38bb570d53b40ef3fd4506ce54419e0`.
+**BASELINE VERIFIED / ACTION QUEUE BROWSER GATE PENDING CI. Source:** `ContractorControlView.tsx` blob `dde1793c29fa45d27dacd8b98fafdd2abc693707`.
 
 Loads:
 
@@ -507,7 +507,7 @@ Rework stages link to stage detail.
 
 # 10. Technical Supervision Control view
 
-**VERIFIED. Source:** `TechnicalSupervisionControlView.tsx` blob `c0d8856adeb78bdbd856ea8612a244b852af87c9`.
+**BASELINE VERIFIED / ACTION QUEUE BROWSER GATE PENDING CI. Source:** `TechnicalSupervisionControlView.tsx` blob `14dbc179c069a9ef4bfa7ae61d1cad5843842a38`.
 
 Access condition:
 
@@ -702,3 +702,9 @@ A dependency/API failure must never silently render as business-empty if that wo
 - admin surfaces.
 
 Для каждого следующего экрана обязательны: route, audience, access guard, data sources, derived metrics, filters, actions, state transitions, error/empty/loading/offline states, UI primitives, exact non-token geometry, cross-links и test/evidence pointer.
+
+## Targeted queue browser admission — 2026-10-13 (Draft / NOT VERIFIED)
+
+Existing role-specific Control surfaces now accept the already scoped `issueId` deep link, put a matching issue first and visually identify it without granting permission. Customer Control also highlights the exact pending `acceptanceId`. When an explicit ID is absent from the scoped response, surfaces report an unavailable/closed target instead of silently selecting another resource. Supervisor's existing capability-based controls and contractor's status gates are not modified.
+
+The canonical `PaymentDetailSheet` has a stable `payment-detail-sheet` test identifier; `ActionQueueCard` exposes the test-only `home-action-queue` and `action-queue:<type>:<id>` selectors. They do not affect business behavior. A new end-to-end Playwright file `e2e/action-queue-targeted.spec.ts` is scheduled by the *existing* `scripts/ci-playwright.sh ui` runner. It tests: Home queue → exact owned payment → close/no re-open; missing payment ID without other-invoice fallback; matching/missing pending acceptance; role-specific issue focus and negative cross-project focus. These are browser tests with isolated SQLite demo seed, **not** proof of external staging or PostgreSQL admission. Treat this as pending until exact-head CI succeeds with no skipped tests and retain the report link.

@@ -226,7 +226,7 @@ function AcceptanceRow({
 }) {
   const orphan = item.kind !== 'acceptance';
   return (
-    <View style={[s.rowCard, focused ? s.rowFocused : null]}>
+    <View testID={focused ? 'action-target-acceptance' : undefined} style={[s.rowCard, focused ? s.rowFocused : null]}>
       <View style={s.rowTop}>
         <Pressable onPress={onOpen} style={{ flex: 1 }}>
           <Text style={s.title}>{item.title}</Text>

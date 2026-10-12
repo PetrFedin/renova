@@ -29,6 +29,7 @@ import { showActionConfirm } from '@/lib/actionConfirmBus';
 import { writeResultMessage } from '@/lib/offlineResultMessage';
 import { controlSummary, customerIssueActions, customerIssueWaitingHint, type IssueAction } from '@/lib/domain/issueControlActions';
 import { formatScheduleDayFull } from '@/lib/formatScheduleDate';
+import { targetFirst } from '@/lib/domain/actionQueueTargetFocus';
 
 export function CustomerControlView() {
   const pathname = usePathname();
@@ -97,9 +98,9 @@ export function CustomerControlView() {
   const selfManaged = !activeProject.contractor_id;
   const rework = activeProject.stages.filter((s) => s.needs_rework && s.status !== 'done');
   const openIssues = issues.filter((i) => i.status !== 'closed');
-  const sortedIssues = focusIssueId
-    ? [...openIssues].sort((a, b) => Number(b.id === focusIssueId) - Number(a.id === focusIssueId))
-    : openIssues;
+  const sortedIssues = targetFirst(openIssues, focusIssueId);
+  const missingIssue = Boolean(focusIssueId && !sortedIssues.some((item) => item.id === focusIssueId));
+  const missingAcceptance = Boolean(focusAcceptanceId && !acceptances.some((item) => item.id === focusAcceptanceId && ['requested', 'in_review'].includes(item.status)));
   const summary = controlSummary(openIssues, pendingCount);
   const openWarranty = warrantyItems.filter((w) => w.status !== 'closed');
   const closedWarranty = warrantyItems.filter((w) => w.status === 'closed').slice(0, 3);
@@ -287,6 +288,7 @@ export function CustomerControlView() {
 
       <Text style={s.section}>{readOnly ? 'Приёмка' : 'Решение'}</Text>
       <Text style={s.decisionHint}>{readOnly ? READ_ONLY_ACCEPTANCE_HINT : 'Примите этап или верните на доработку. Оценка — только если реально проверили.'}</Text>
+      {missingAcceptance ? <Text testID="action-target-acceptance-missing" style={s.meta}>Выбранная приёмка больше не ожидает решения либо недоступна в этом проекте.</Text> : null}
       <UnifiedAcceptanceList
         focusAcceptanceId={focusAcceptanceId}
         stages={activeProject.stages}
@@ -299,10 +301,12 @@ export function CustomerControlView() {
       {!focusWarranty ? warrantyBlock : null}
 
       <Text style={s.section}>Замечания</Text>
+      {missingIssue ? <Text testID="action-target-issue-missing" style={s.meta}>Указанное замечание закрыто либо недоступно в этом проекте.</Text> : null}
       {!sortedIssues.length && <Text style={s.empty}>Нет открытых замечаний</Text>}
       {sortedIssues.slice(0, 5).map((iss) => (
         <Pressable
           key={iss.id}
+          testID={iss.id === focusIssueId ? 'action-target-issue' : undefined}
           style={[s.row, iss.id === focusIssueId && s.rowFocus]}
           onPress={() => { if (iss.stage_id) nav.stage(iss.stage_id); }}
           disabled={!iss.stage_id}
