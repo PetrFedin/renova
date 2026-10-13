@@ -289,3 +289,19 @@ def test_cli_refuses_fifo_input_without_waiting_for_writer(tmp_path):
     assert process.returncode == 2
     assert process.stdout == ""
     assert "input_not_regular_file" in process.stderr
+
+
+@pytest.mark.parametrize("unsigned_key,unsigned_value", [
+    ("bankApproved", True),
+    ("insuranceValidated", True),
+    ("publicKeyMultibase", "unauthenticated-key"),
+])
+def test_cli_rejects_unsigned_envelope_metadata(tmp_path, unsigned_key, unsigned_value):
+    envelope, key = _signed()
+    envelope[unsigned_key] = unsigned_value
+    process = _invoke(tmp_path, envelope=envelope, key=key)
+    assert process.returncode == 1
+    receipt = json.loads(process.stdout)
+    assert receipt["status"] == "MALFORMED_INPUT"
+    assert receipt["offlineIntegrityPassed"] is False
+    assert receipt["releaseAuthorized"] is False
