@@ -176,6 +176,8 @@ def verify_signature(envelope: dict[str, Any]) -> tuple[bool, str | None]:
         signature = _b64url_decode(encoded_signature)
         if payload.get("checkpointVersion") != CHECKPOINT_VERSION:
             return False, "unsupported_checkpoint_version"
+        if payload.get("alg") != "Ed25519":
+            return False, "unsupported_algorithm"
         keys = key_registry.load_trusted_keys()
         if keys is None:
             # Backwards compatible single-key verifier; still requires the

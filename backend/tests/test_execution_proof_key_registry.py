@@ -212,3 +212,49 @@ async def test_public_verifier_rejects_invalid_registry_without_server_error(db,
         registry_response = await client.get("/api/v1/execution-trust/public-keys")
         assert registry_response.status_code == 503
         assert registry_response.json()["detail"]["code"] == "execution_proof_key_registry_invalid"
+
+
+@pytest.mark.asyncio
+async def test_unknown_registry_key_never_falls_back_to_retained_private_signer(db, monkeypatch):
+    original_secret, original_public = _pair()
+    other_secret, other_public = _pair()
+    monkeypatch.setattr(trust.execution_records, "get_portable_execution_proof", _proof)
+    monkeypatch.setattr(settings, "execution_proof_issuer_id", "renova-test")
+    monkeypatch.setattr(settings, "execution_proof_signing_key_id", "legacy-key")
+    monkeypatch.setattr(settings, "execution_proof_signing_private_key_b64", original_secret)
+    monkeypatch.setattr(settings, "execution_proof_trusted_public_keys_json", None)
+    envelope = await trust.issue_checkpoint(db, project_id="project-rotated", stage_id="stage-rotated")
+
+    monkeypatch.setattr(settings, "execution_proof_trusted_public_keys_json", json.dumps([
+        _entry("other-key", other_public, "active"),
+    ]))
+    # The old private key deliberately remains in memory; it MUST NOT be a
+    # verification fallback after an explicit operator public trust registry.
+    assert trust.verify_signature(envelope) == (False, "untrusted_issuer_key")
+
+
+@pytest.mark.asyncio
+async def test_semantically_wrong_algorithm_rejected_even_with_valid_ed25519_signature(db, monkeypatch):
+    secret, public = _pair()
+    monkeypatch.setattr(trust.execution_records, "get_portable_execution_proof", _proof)
+    monkeypatch.setattr(settings, "execution_proof_issuer_id", "renova-test")
+    monkeypatch.setattr(settings, "execution_proof_signing_key_id", "signer")
+    monkeypatch.setattr(settings, "execution_proof_signing_private_key_b64", secret)
+    monkeypatch.setattr(settings, "execution_proof_trusted_public_keys_json", json.dumps([
+        _entry("signer", public, "active"),
+    ]))
+    envelope = await trust.issue_checkpoint(db, project_id="project-rotated", stage_id="stage-rotated")
+    assert trust.verify_signature(envelope) == (True, None)
+
+    # An issuer with the actual Ed25519 signing secret could otherwise sign
+    # a payload falsely claiming another algorithm; the verifier must reject
+    # the mismatch, not silently treat every algorithm as Ed25519.
+    altered = {**envelope["payload"], "alg": "none"}
+    raw = base64.urlsafe_b64decode(secret + "=" * (-len(secret) % 4))
+    private = Ed25519PrivateKey.from_private_bytes(raw)
+    sig = private.sign(trust._canonical_bytes(altered))
+    candidate = {
+        "payload": altered,
+        "signature": base64.urlsafe_b64encode(sig).decode("ascii").rstrip("="),
+    }
+    assert trust.verify_signature(candidate) == (False, "unsupported_algorithm")

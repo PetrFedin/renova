@@ -185,3 +185,11 @@ A source audit of `verified_execution_record_service.get_verified_execution_reco
 **Test sources:** `backend/tests/test_execution_proof_key_registry.py` uses ephemeral Ed25519 A→B rotation, retired/revoked outcomes, tamper cases, absent old private key, active signer mismatch, invalid/duplicate/oversized registry, and public API access. `backend/app/services/execution_proof_key_registry.py`, `execution_proof_trust_service.py`, `backend/app/api/v1/execution_trust.py`, `backend/app/core/config.py`. **Code and tests only: exact-head CI not yet verified.**
 
 **Governance limit:** environment-supplied registry is not an independently witnessed trust anchor or audited key custody process; institutional key provenance, validity intervals, revocation audit/receipts, transparency, external registry distribution and insurer/lender validation remain unimplemented. No private keys, production changes, additional infrastructure or costs created. #683 independent review and #247 ruleset bypass still block release.
+
+### 12.1. Independent trust admission: algorithm and unknown key checks
+
+Source audit found that verify_signature verified all payloads using Ed25519 but did not reject a signed envelope whose declared alg was not Ed25519. The verifier now rejects unsupported algorithm identifiers even when the underlying Ed25519 signature is mathematically valid. This avoids false cryptographic algorithm claims.
+
+New focused tests also prove a registered unknown key does not trigger verification fallback to a private key still present on the process. Existing issuer/recipient authorization, canonical proof currentness, per-checkpoint revocation, signer keys and database schema are unchanged.
+
+These are bounded public verifier checks in Draft PR #713. Exact-head CI and independent human security review are required. Production HOLD remains.
