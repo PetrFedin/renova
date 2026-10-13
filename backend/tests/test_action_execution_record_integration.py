@@ -265,3 +265,46 @@ async def test_execution_record_denies_outsider_and_cross_project_stage(db):
             assert "recordHashSha256" not in response.text
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_platform_issue_endpoint_owner_only_even_for_project_reader(db, monkeypatch):
+    owner, lead, outsider, project, stage, acceptance = await _seed(db)
+    acceptance.status = "accepted"
+    acceptance.accepted_at = datetime(2026, 10, 12, 12)
+    acceptance.accepted_by = owner.id
+    stage.status = StageStatus.done
+    await db.commit()
+    monkeypatch.setattr(settings, "execution_proof_signing_private_key_b64", None)
+
+    async def call(actor):
+        async def current_user():
+            return actor
+
+        async def current_db():
+            yield db
+
+        app.dependency_overrides[get_current_user] = current_user
+        app.dependency_overrides[get_db] = current_db
+        try:
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                return await client.post(
+                    f"/api/v1/execution-trust/projects/{project.id}/stages/{stage.id}/issue"
+                )
+        finally:
+            app.dependency_overrides.clear()
+
+    # Full-project contractor READ is not proof-issuing authority.
+    contractor_response = await call(lead)
+    assert contractor_response.status_code == 403, contractor_response.text
+    assert contractor_response.json()["detail"]["code"] == "execution_checkpoint_issuer_forbidden"
+
+    unrelated_response = await call(outsider)
+    assert unrelated_response.status_code in (403, 404), unrelated_response.text
+    assert "checkpointSha256" not in unrelated_response.text
+
+    # The owner can request an attestation but cannot create one without an
+    # authorized platform private key. No on-the-fly key provisioning occurs.
+    owner_response = await call(owner)
+    assert owner_response.status_code == 503, owner_response.text
+    assert owner_response.json()["detail"]["code"] == "execution_issuer_not_configured"

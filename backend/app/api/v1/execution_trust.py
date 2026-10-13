@@ -46,7 +46,16 @@ async def issue_checkpoint(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_project(db, project_id, user, write=False, participant_ok=True, stage_id=stage_id)
+    # Proof reads may be delegated to scoped participants or supervisors,
+    # but signing a NEW platform attestation is a privileged owner action.
+    # Read-only access must not implicitly grant platform-issuer authority.
+    project = await require_project(db, project_id, user, write=False)
+    if user.id != project.customer_id:
+        raise HTTPException(
+            403,
+            detail={"code": "execution_checkpoint_issuer_forbidden",
+                    "message": "Only the project owner may request an execution checkpoint"},
+        )
     try:
         return await trust.issue_checkpoint(db, project_id=project_id, stage_id=stage_id)
     except trust.ExecutionIssuerNotConfigured as exc:

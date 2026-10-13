@@ -48,7 +48,7 @@
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
 | `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | Evidence versions |
 | `backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py` | `6de2c048fddc7bea5e385eaa80ca8d30fbe4eb3c` | Participants/scopes/audit |
-| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `01858b0a2ca4057153ba5abe39c4e0140b84898c` | Текущий план и историческая прослеживаемость |
+| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `23f717772d7112c7d7cae99547cdb80877bdc87b` | Текущий план и историческая прослеживаемость |
 
 # 1. Назначение продукта и границы системы
 
@@ -241,6 +241,8 @@ Closeout проверяется по работам/замечаниям/док�
 Весь путь сохраняет владельца намерения: аккаунт/сессия/проект/request-id. При commit+потере ответа нельзя создавать новую сущность; при commit+ошибке UI нельзя объявлять запись неуспешной. Нельзя отправлять очередь A с токеном B. Нормализованные transport errors обязаны быть совместимы с offline producers.
 
 ## 10.9. Portable execution proof и trust checkpoint
+
+**Issuer authority (integration PR #712, pending CI):** project reading privileges and scoped participant access do not authorize a new Renova platform signature. The issuer endpoint requires the project owner's user identity and an explicitly provisioned platform key; everyone else is denied and no key is generated automatically.
 
 **Public verifier privacy (integration PR #712, pending CI):** the anonymous status verifier reveals `REVOKED` and revocation time, but never the internal revoker user ID or free-text reason. Malformed envelopes must be rejected fail-closed as `INVALID_SIGNATURE`, not HTTP 500. Administrative revocation audit remains persistent and access-controlled.
 

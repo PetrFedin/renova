@@ -155,3 +155,9 @@ A source audit of `verified_execution_record_service.get_verified_execution_reco
 **Candidate fix:** public verifier returns only `revocation.revokedAt` in addition to unchanged `status=REVOKED`, `signatureValid`, `current`, `revoked`; internal revoke/admin audit still stores the full row. Signature verification rejects malformed/oversized envelope payload/signature shapes, catches base64 decoder errors and responds `INVALID_SIGNATURE` without leaking exception details. `backend/tests/test_execution_proof_trust_service.py` adds negative shape cases and isolated DB revocation redaction proof. No real signing keys, external verifier service or transaction writers introduced.
 
 **Evidence:** code and test candidate only, requires exact-head CI; not a claim of independent pentest, staging or production approval.
+
+### 11.5. Platform checkpoint issuance authority (owner-only)
+
+**Risk:** prior `/execution-trust/projects/{project_id}/stages/{stage_id}/issue` accepted any project read identity, including scoped read participants, and signed a new **platform** attestation. Reading a Verified Execution Record is not authority to mint platform-signed checkpoints. The issuance endpoint now enforces the already-authorized project **owner's user ID** after a scoped project read, denying contractors/supervisors/observers with HTTP 403; it does not extend acceptance, payment or revocation writes and never auto-provisions an issuer key.
+
+**Regression:** `test_platform_issue_endpoint_owner_only_even_for_project_reader` checks canonical full-project contractor denied (403), outsider denied and owner with no issuer key fail-closed (503). Authenticated read-only record API remains untouched; anonymous checkpoint verification remains available. If a different explicit issuer governance model is needed in future, it requires a separate role/capability contract and review. Candidate **PENDING exact-head CI**.
