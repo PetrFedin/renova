@@ -14,6 +14,7 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import User
 from app.services import execution_proof_trust_service as trust
+from app.services import execution_proof_key_registry as registry
 from app.services import verified_execution_record_service as records
 
 
@@ -37,6 +38,28 @@ async def public_key():
         raise HTTPException(
             503,
             detail={"code": exc.code, "message": "Execution proof issuer key is not configured"},
+        ) from exc
+    except registry.TrustKeyRegistryInvalid as exc:
+        raise HTTPException(
+            503,
+            detail={"code": exc.code, "message": "Execution proof trust registry is invalid"},
+        ) from exc
+
+
+@router.get("/public-keys")
+async def public_keys():
+    """Public material, including retired/revoked keys, never private secrets."""
+    try:
+        return trust.public_keys_document()
+    except trust.ExecutionIssuerNotConfigured as exc:
+        raise HTTPException(
+            503,
+            detail={"code": exc.code, "message": "Execution proof issuer key is not configured"},
+        ) from exc
+    except registry.TrustKeyRegistryInvalid as exc:
+        raise HTTPException(
+            503,
+            detail={"code": exc.code, "message": "Execution proof trust registry is invalid"},
         ) from exc
 
 
@@ -63,6 +86,11 @@ async def issue_checkpoint(
         raise HTTPException(
             503,
             detail={"code": exc.code, "message": "Execution proof issuer key is not configured"},
+        ) from exc
+    except registry.TrustKeyRegistryInvalid as exc:
+        raise HTTPException(
+            503,
+            detail={"code": exc.code, "message": "Execution proof trust registry is invalid"},
         ) from exc
     except records.ExecutionRecordStageNotFound as exc:
         raise HTTPException(
