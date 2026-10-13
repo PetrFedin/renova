@@ -206,3 +206,60 @@ def test_cli_rejects_nonexistent_output_parent_without_stdout_leak(tmp_path):
     assert result.returncode == 3
     assert result.stdout == ""
     assert not output.exists()
+
+
+@pytest.mark.asyncio
+async def test_cli_verifies_real_renova_issuer_checkpoint(tmp_path, db, monkeypatch):
+    """Cross-check CLI with the actual issuer canonical signature/hash bytes."""
+    import base64
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from app.core.config import settings
+    from app.services import execution_proof_trust_service as trust
+
+    signer = Ed25519PrivateKey.generate()
+    private_raw = signer.private_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PrivateFormat.Raw,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    public_raw = signer.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    monkeypatch.setattr(
+        settings, "execution_proof_signing_private_key_b64",
+        base64.urlsafe_b64encode(private_raw).decode("ascii").rstrip("="),
+    )
+    monkeypatch.setattr(settings, "execution_proof_signing_key_id", "cli-fixture-key")
+    monkeypatch.setattr(settings, "execution_proof_issuer_id", "renova-cli-fixture")
+    monkeypatch.setattr(settings, "execution_proof_trusted_public_keys_json", None)
+
+    async def proof_fixture(_db, *, project_id, stage_id):
+        assert (project_id, stage_id) == ("cli-project", "cli-stage")
+        return {
+            "proofHashSha256": "a" * 64,
+            "sourceRecordHashSha256": "b" * 64,
+            "evidence": {"level": "E2"},
+            "acceptance": {"status": "accepted"},
+        }
+
+    monkeypatch.setattr(
+        trust.execution_records, "get_portable_execution_proof", proof_fixture,
+    )
+    envelope = await trust.issue_checkpoint(
+        db, project_id="cli-project", stage_id="cli-stage",
+    )
+    key = {
+        "issuerId": "renova-cli-fixture", "keyId": "cli-fixture-key",
+        "alg": "Ed25519", "status": "active",
+        "publicKeyMultibase": "u" + base64.urlsafe_b64encode(public_raw).decode("ascii").rstrip("="),
+    }
+    process = _invoke(tmp_path, envelope=envelope, key=key)
+    assert process.returncode == 0, process.stderr
+    receipt = json.loads(process.stdout)
+    assert receipt["status"] == "OFFLINE_SIGNATURE_VERIFIED"
+    assert receipt["checkpointSha256"] == envelope["checkpointSha256"]
+    assert receipt["signedIssuerId"] == "renova-cli-fixture"
+    assert receipt["signedKeyId"] == "cli-fixture-key"
+    assert receipt["releaseAuthorized"] is False
