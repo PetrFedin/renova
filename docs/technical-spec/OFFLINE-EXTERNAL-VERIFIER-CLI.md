@@ -18,7 +18,7 @@ python backend/scripts/verify_execution_proof_offline.py \
   --output verification-receipt.json
 ```
 
-Omit `--output` to emit JSON to stdout instead. The output file must **not** exist; an existing file or symlink is never overwritten. Input files are bounded to **1 MiB** (envelope) and **16 KiB** (single public key). Non-UTF-8, malformed JSON, duplicate JSON object keys, nonfinite JSON constants, oversized/unreadable inputs and non-object roots are rejected.
+Omit `--output` to emit JSON to stdout instead. The output file must **not** exist; an existing file or symlink is never overwritten. Input files are bounded to **1 MiB** (envelope) and **16 KiB** (single public key). Non-UTF-8, malformed JSON, duplicate JSON object keys, nonfinite JSON constants, oversized/unreadable inputs and non-object roots are rejected. On POSIX the reader also refuses input symbolic links, devices and FIFO pipes; it accepts regular files only, with nonblocking open.
 
 ## Exit codes
 
