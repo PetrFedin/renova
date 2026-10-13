@@ -263,3 +263,29 @@ async def test_cli_verifies_real_renova_issuer_checkpoint(tmp_path, db, monkeypa
     assert receipt["signedIssuerId"] == "renova-cli-fixture"
     assert receipt["signedKeyId"] == "cli-fixture-key"
     assert receipt["releaseAuthorized"] is False
+
+
+@pytest.mark.skipif(not hasattr(os, "O_NOFOLLOW"), reason="kernel O_NOFOLLOW unavailable")
+def test_cli_rejects_symlink_input_before_read(tmp_path):
+    envelope, key = _signed()
+    real = _json_file(tmp_path / "original-envelope.json", envelope)
+    symlink = tmp_path / "untrusted-alias.json"
+    try:
+        symlink.symlink_to(real)
+    except (NotImplementedError, OSError):
+        pytest.skip("symlinks unavailable")
+    process = _invoke(tmp_path, envelope=envelope, key=key, envelope_path=symlink)
+    assert process.returncode == 2
+    assert process.stdout == ""
+    assert "input_file_unavailable" in process.stderr
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo") or not hasattr(os, "O_NONBLOCK"), reason="FIFO support unavailable")
+def test_cli_refuses_fifo_input_without_waiting_for_writer(tmp_path):
+    envelope, key = _signed()
+    fifo = tmp_path / "checkpoint-pipe.json"
+    os.mkfifo(fifo)
+    process = _invoke(tmp_path, envelope=envelope, key=key, envelope_path=fifo)
+    assert process.returncode == 2
+    assert process.stdout == ""
+    assert "input_not_regular_file" in process.stderr
