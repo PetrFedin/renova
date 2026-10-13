@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.services import verified_execution_record_service as execution_records
+from app.services import execution_proof_key_registry as key_registry
 
 
 CHECKPOINT_VERSION = "renova-execution-checkpoint-v1"
@@ -57,14 +58,57 @@ def _private_key() -> Ed25519PrivateKey:
     raw = settings.execution_proof_signing_private_key_b64
     if not raw:
         raise ExecutionIssuerNotConfigured("execution_issuer_not_configured")
-    decoded = _b64url_decode(raw)
-    if len(decoded) != 32:
-        raise ExecutionIssuerNotConfigured("execution_issuer_key_invalid")
-    return Ed25519PrivateKey.from_private_bytes(decoded)
+    try:
+        decoded = _b64url_decode(raw)
+        if len(decoded) != 32:
+            raise ValueError("invalid signing key length")
+        return Ed25519PrivateKey.from_private_bytes(decoded)
+    except (ValueError, binascii.Error) as exc:
+        raise ExecutionIssuerNotConfigured("execution_issuer_key_invalid") from exc
+
+
+def _issuer_private_key() -> Ed25519PrivateKey:
+    private = _private_key()
+    keys = key_registry.load_trusted_keys()
+    if keys is not None:
+        active = key_registry.resolve_trusted_key(
+            keys,
+            issuer_id=settings.execution_proof_issuer_id,
+            key_id=settings.execution_proof_signing_key_id,
+        )
+        actual_public = private.public_key().public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
+        if active is None or active.status != "active" or active.public_key_bytes != actual_public:
+            raise ExecutionIssuerNotConfigured("execution_issuer_key_not_active")
+    return private
+
+
+def public_keys_document() -> dict[str, Any]:
+    """Public verification material; does not require access to signing keys."""
+    keys = key_registry.load_trusted_keys()
+    if keys is None:
+        private = _private_key()  # legacy key, only if present
+        raw = private.public_key().public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
+        return {
+            "checkpointVersion": CHECKPOINT_VERSION,
+            "keys": [{
+                "issuerId": settings.execution_proof_issuer_id,
+                "keyId": settings.execution_proof_signing_key_id,
+                "alg": "Ed25519",
+                "status": "active",
+                "publicKeyMultibase": "u" + _b64url_encode(raw),
+            }],
+        }
+    return {"checkpointVersion": CHECKPOINT_VERSION, "keys": [key.public_document() for key in keys]}
 
 
 def public_key_document() -> dict[str, Any]:
-    private = _private_key()
+    private = _issuer_private_key()
     raw = private.public_key().public_bytes(
         encoding=serialization.Encoding.Raw,
         format=serialization.PublicFormat.Raw,
@@ -105,7 +149,7 @@ async def issue_checkpoint(
         "evidenceLevel": proof["evidence"]["level"],
         "acceptanceStatus": proof["acceptance"]["status"],
     }
-    signature = _private_key().sign(_canonical_bytes(payload))
+    signature = _issuer_private_key().sign(_canonical_bytes(payload))
     envelope = {
         "payload": payload,
         "signature": _b64url_encode(signature),
@@ -132,12 +176,30 @@ def verify_signature(envelope: dict[str, Any]) -> tuple[bool, str | None]:
         signature = _b64url_decode(encoded_signature)
         if payload.get("checkpointVersion") != CHECKPOINT_VERSION:
             return False, "unsupported_checkpoint_version"
-        if payload.get("issuerId") != settings.execution_proof_issuer_id:
-            return False, "issuer_mismatch"
-        if payload.get("keyId") != settings.execution_proof_signing_key_id:
-            return False, "key_id_mismatch"
-        public = _private_key().public_key()
+        keys = key_registry.load_trusted_keys()
+        if keys is None:
+            # Backwards compatible single-key verifier; still requires the
+            # original private key when no public registry is configured.
+            if payload.get("issuerId") != settings.execution_proof_issuer_id:
+                return False, "issuer_mismatch"
+            if payload.get("keyId") != settings.execution_proof_signing_key_id:
+                return False, "key_id_mismatch"
+            public = _private_key().public_key()
+            trusted_status = "active"
+        else:
+            issuer_id, key_id = payload.get("issuerId"), payload.get("keyId")
+            if not isinstance(issuer_id, str) or not isinstance(key_id, str):
+                return False, "untrusted_issuer_key"
+            trusted = key_registry.resolve_trusted_key(
+                keys, issuer_id=issuer_id, key_id=key_id,
+            )
+            if trusted is None:
+                return False, "untrusted_issuer_key"
+            public = trusted.public_key()
+            trusted_status = trusted.status
         public.verify(signature, _canonical_bytes(payload))
+        if trusted_status == "revoked":
+            return False, "issuer_key_revoked"
         return True, None
     except ExecutionIssuerNotConfigured:
         raise
@@ -194,6 +256,20 @@ async def verify_current_status(
             "signatureValid": False,
             "current": False,
             "revoked": False,
+        }
+    except key_registry.TrustKeyRegistryInvalid:
+        return {
+            "status": "TRUST_REGISTRY_INVALID",
+            "signatureValid": False,
+            "current": False,
+            "revoked": False,
+        }
+    if signature_error == "issuer_key_revoked":
+        return {
+            "status": "ISSUER_KEY_REVOKED",
+            "signatureValid": True,
+            "current": False,
+            "revoked": True,
         }
     if not signature_valid:
         return {
