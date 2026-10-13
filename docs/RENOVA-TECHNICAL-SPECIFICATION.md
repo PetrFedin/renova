@@ -48,7 +48,7 @@
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
 | `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | Evidence versions |
 | `backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py` | `6de2c048fddc7bea5e385eaa80ca8d30fbe4eb3c` | Participants/scopes/audit |
-| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `98ee51a2eb651b0d4906710e9b12e9b68ae29c38` | Текущий план и историческая прослеживаемость |
+| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `5d0b606893d0ccc6c34c5f6995624d2f4750fdb9` | Текущий план и историческая прослеживаемость |
 
 # 1. Назначение продукта и границы системы
 
@@ -265,6 +265,8 @@ Closeout проверяется по работам/замечаниям/док�
 - explicit revocation хранится в отдельном persistent ledger и не уничтожает исходный execution record;
 - portable proof не включает user IDs, assignee IDs, storage keys/URLs, comments и financial data;
 - внешний verifier должен различать минимум `VALID / REVOKED / STALE / INVALID_SIGNATURE / INVALID_ENVELOPE_HASH / ISSUER_NOT_CONFIGURED`.
+
+**Offline verification candidate (Draft; CI pending):** a pure offline Ed25519 signature/checkpoint-hash verifier requires a pre-pinned trusted public key and never accepts issuer trust from envelope contents. Output always discloses UNKNOWN online canonical state, current revocation and independently verified issuance time; mathematical signature verification is NOT institutional proof or live clearance. See `backend/app/services/offline_execution_verifier.py` and `backend/tests/test_offline_execution_verifier.py`.
 
 **Public-key rotation candidate (Draft; CI pending):** optional strict operator-supplied PUBLIC Ed25519 registry `EXECUTION_PROOF_TRUSTED_PUBLIC_KEYS_JSON`, states `active/retired/revoked`. Active key must match the current issuer private signer; retired keys verify past checkpoints without private secrets; revoked/unknown keys never count as currently trusted; invalid registry fails closed. Public read-only `GET /execution-trust/public-keys` reveals only status and public bytes. Institutional provenance, key lifecycle approval, transparency and external verifier certification remain OPEN.
 
