@@ -193,3 +193,12 @@ Source audit found that verify_signature verified all payloads using Ed25519 but
 New focused tests also prove a registered unknown key does not trigger verification fallback to a private key still present on the process. Existing issuer/recipient authorization, canonical proof currentness, per-checkpoint revocation, signer keys and database schema are unchanged.
 
 These are bounded public verifier checks in Draft PR #713. Exact-head CI and independent human security review are required. Production HOLD remains.
+## 13. Offline portable proof verification (Draft, 2026-10-13)
+
+**Source:** `backend/app/services/offline_execution_verifier.py`, `backend/tests/test_offline_execution_verifier.py`. A standalone pure Python module validates the canonical Ed25519 envelope signature and SHA-256 checkpoint hash against an **externally pinned** public key supplied by the verifier, never one introduced by the envelope being checked. It requires no private key, network, database, user account, or mutation. Unknown key identity, malformed signatures, wrong algorithm, invalid hash and revoked keys produce distinct negative statuses.
+
+**Key boundary:** offline result `OFFLINE_SIGNATURE_VERIFIED` asserts ONLY the signature/hash mathematical correctness under the pre-pinned public key. It always returns `onlineStateChecked=false`, `canonicalProofCurrent=null`, `revocationCurrent=null`, `keyCustodyVerified=false`, `issuanceTimeIndependentlyVerified=false`, including when the key is `active`. `retired` signatures may be mathematically valid, but the signed `issuedAt` is not an externally trusted timestamp, so historical legitimacy is unproven. `REVOKED_KEY` cannot be represented as currently valid.
+
+**Test cases:** clean active, retired, revoked, tampered subject, broken hash, mismatched key ID, different public bytes, malformed inputs, algorithm substitution and untrusted key injected into envelope. Separate full-head CI mandatory. No external key source, API, storage, production infrastructure or provider services were added.
+
+**Next dependency:** Issue #714 still requires independently witnessed lifecycle, root-of-trust distribution, issuance timestamp anchoring, immutable ledger and online authority status before institutional confirmation. PR #683 independent reviewer #685 and #247 protected-main bypass remain release HOLD.
