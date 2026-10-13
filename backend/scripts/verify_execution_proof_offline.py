@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import stat
 import sys
 from pathlib import Path
 from typing import Any
@@ -48,8 +49,18 @@ def _reject_nonfinite(_token: str) -> None:
 
 
 def _read_bounded_object(path: Path, size_limit: int) -> dict[str, Any]:
+    # Do not block on FIFOs/devices or follow a swapped-in input symlink.
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0)
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
     try:
-        with path.open("rb") as handle:
+        descriptor = os.open(path, flags)
+        with os.fdopen(descriptor, "rb") as handle:
+            metadata = os.fstat(handle.fileno())
+            if not stat.S_ISREG(metadata.st_mode):
+                raise InputError("input_not_regular_file")
+            if metadata.st_size > size_limit:
+                raise InputError("input_too_large")
             raw = handle.read(size_limit + 1)
     except OSError as exc:
         raise InputError("input_file_unavailable") from exc
