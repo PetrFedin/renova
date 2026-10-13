@@ -4,7 +4,7 @@
 
 ## Inputs and example
 
-- `checkpoint.json`: Renova execution checkpoint envelope containing `payload`, `signature`, and `checkpointSha256`.
+- `checkpoint.json`: Renova execution checkpoint envelope containing **exactly** `payload`, `signature`, and `checkpointSha256`. Unsigned extra top-level claims (for example `bankApproved`, `insuranceValidated`, or a caller-provided public key) are rejected even when the signature covering `payload` is mathematically correct.
 - `trusted-public-key.json`: exactly one independently obtained public key entry with `issuerId`, `keyId`, `alg`, `status`, `publicKeyMultibase`. It is **not** the whole `/public-keys` response.
 - `PIN_SHA256`: the SHA-256 fingerprint of the exact public key entry (including its identity and status), **verified and recorded via a channel independent of the proof and the JSON file under test**. Do not trust a pin delivered together with an untrusted checkpoint.
 
@@ -18,7 +18,7 @@ python backend/scripts/verify_execution_proof_offline.py \
   --output verification-receipt.json
 ```
 
-Omit `--output` to emit JSON to stdout instead. The output file must **not** exist; an existing file or symlink is never overwritten. Input files are bounded to **1 MiB** (envelope) and **16 KiB** (single public key). Non-UTF-8, malformed JSON, duplicate JSON object keys, nonfinite JSON constants, oversized/unreadable inputs and non-object roots are rejected. On POSIX the reader also refuses input symbolic links, devices and FIFO pipes; it accepts regular files only, with nonblocking open.
+Omit `--output` to emit JSON to stdout instead. The output file must **not** exist; an existing file or symlink is never overwritten. Input files are bounded to **1 MiB** (envelope) and **16 KiB** (single public key). Non-UTF-8, malformed JSON, duplicate JSON object keys, nonfinite JSON constants, oversized/unreadable inputs, extra unsigned top-level envelope fields and non-object roots are rejected. On POSIX the reader also refuses input symbolic links, devices and FIFO pipes; it accepts regular files only, with nonblocking open.
 
 ## Exit codes
 
