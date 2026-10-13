@@ -14,6 +14,7 @@ from app.api.deps import get_current_user, require_project
 from app.db.session import get_db
 from app.models.entities import User
 from app.services import execution_proof_trust_service as trust
+from app.services import verified_execution_record_service as records
 
 
 router = APIRouter(prefix="/execution-trust", tags=["execution-trust"])
@@ -36,6 +37,16 @@ async def public_key():
         raise HTTPException(
             503,
             detail={"code": exc.code, "message": "Execution proof issuer key is not configured"},
+        ) from exc
+    except records.ExecutionRecordStageNotFound as exc:
+        raise HTTPException(
+            404,
+            detail={"code": exc.code, "message": "Этап не найден в этом проекте"},
+        ) from exc
+    except records.ExecutionRecordNotAccepted as exc:
+        raise HTTPException(
+            409,
+            detail={"code": exc.code, "message": "Аттестация доступна только после канонической приёмки этапа"},
         ) from exc
 
 

@@ -308,3 +308,35 @@ async def test_platform_issue_endpoint_owner_only_even_for_project_reader(db, mo
     owner_response = await call(owner)
     assert owner_response.status_code == 503, owner_response.text
     assert owner_response.json()["detail"]["code"] == "execution_issuer_not_configured"
+
+
+@pytest.mark.asyncio
+async def test_issue_endpoint_returns_409_before_acceptance_and_404_for_other_stage(db, monkeypatch):
+    owner, _, _, project, stage, _ = await _seed(db)
+    monkeypatch.setattr(settings, "execution_proof_signing_private_key_b64", None)
+
+    async def current_user():
+        return owner
+
+    async def current_db():
+        yield db
+
+    app.dependency_overrides[get_current_user] = current_user
+    app.dependency_overrides[get_db] = current_db
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            pending = await client.post(
+                f"/api/v1/execution-trust/projects/{project.id}/stages/{stage.id}/issue"
+            )
+            assert pending.status_code == 409, pending.text
+            assert pending.json()["detail"]["code"] == "execution_record_not_accepted"
+            assert "checkpointSha256" not in pending.text
+
+            unknown = await client.post(
+                f"/api/v1/execution-trust/projects/{project.id}/stages/unknown-other-stage/issue"
+            )
+            assert unknown.status_code == 404, unknown.text
+            assert unknown.json()["detail"]["code"] == "execution_record_stage_not_found"
+            assert "checkpointSha256" not in unknown.text
+    finally:
+        app.dependency_overrides.clear()
