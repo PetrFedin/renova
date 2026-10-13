@@ -48,7 +48,7 @@
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
 | `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | Evidence versions |
 | `backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py` | `6de2c048fddc7bea5e385eaa80ca8d30fbe4eb3c` | Participants/scopes/audit |
-| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `c5ef3bf561d2b1ab7e6a88d1b49649d690ef2027` | Текущий план и историческая прослеживаемость |
+| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `408fbe56d88d8c3b769f52b1bf1a66bbd1d09605` | Текущий план и историческая прослеживаемость |
 
 # 1. Назначение продукта и границы системы
 
@@ -265,6 +265,8 @@ Closeout проверяется по работам/замечаниям/док�
 - explicit revocation хранится в отдельном persistent ledger и не уничтожает исходный execution record;
 - portable proof не включает user IDs, assignee IDs, storage keys/URLs, comments и financial data;
 - внешний verifier должен различать минимум `VALID / REVOKED / STALE / INVALID_SIGNATURE / INVALID_ENVELOPE_HASH / ISSUER_NOT_CONFIGURED`.
+
+**Independent cryptographic witness candidate (Draft; exact-head CI pending):** `offline_execution_witness.py` verifies a second independently pinned Ed25519 witness signature and receipt hash covering the exact canonical checkpoint hash, claimed issuer identity, key and stated issuance time. Distinct keys/issuer IDs required. Claimed UTC order is checked, but `independentWitnessTimeVerified`, `witnessOrganizationalIndependenceVerified`, `keyCustodyVerified`, `onlineStateChecked` and `releaseAuthorized` remain false; current canonical acceptance and revocation remain unknown. `INDEPENDENT-WITNESS-PROFILE.md` contains the proof schema and negative tests. This is not timestamp/custody certification.
 
 **Strict external envelope boundary (Draft; CI pending):** a checkpoint is accepted offline only when its *top-level keys* are exactly `payload`, `signature`, `checkpointSha256`. Additional unsigned bank/insurance/timestamp/key claims are `MALFORMED_INPUT`, not authenticated attestations. The original issuer canonical payload/signature and hash are not changed.
 
