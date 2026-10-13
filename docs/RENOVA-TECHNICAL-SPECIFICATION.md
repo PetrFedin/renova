@@ -48,7 +48,7 @@
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
 | `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | Evidence versions |
 | `backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py` | `6de2c048fddc7bea5e385eaa80ca8d30fbe4eb3c` | Participants/scopes/audit |
-| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `277a1cd683466466af6d538997ca42313344f8ad` | Текущий план и историческая прослеживаемость |
+| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `c5ef3bf561d2b1ab7e6a88d1b49649d690ef2027` | Текущий план и историческая прослеживаемость |
 
 # 1. Назначение продукта и границы системы
 
@@ -265,6 +265,8 @@ Closeout проверяется по работам/замечаниям/док�
 - explicit revocation хранится в отдельном persistent ledger и не уничтожает исходный execution record;
 - portable proof не включает user IDs, assignee IDs, storage keys/URLs, comments и financial data;
 - внешний verifier должен различать минимум `VALID / REVOKED / STALE / INVALID_SIGNATURE / INVALID_ENVELOPE_HASH / ISSUER_NOT_CONFIGURED`.
+
+**Strict external envelope boundary (Draft; CI pending):** a checkpoint is accepted offline only when its *top-level keys* are exactly `payload`, `signature`, `checkpointSha256`. Additional unsigned bank/insurance/timestamp/key claims are `MALFORMED_INPUT`, not authenticated attestations. The original issuer canonical payload/signature and hash are not changed.
 
 **Independent CLI candidate (Draft; exact-head CI pending):** `backend/scripts/verify_execution_proof_offline.py` consumes an independently pinned public-key JSON entry and checkpoint file, produces the existing non-authorizing offline receipt, and exits with separate codes for integrity success, denial, invalid input or output failure. The input parser rejects duplicates/nonfinite JSON and nonregular/symlinked file inputs; exclusive output cannot overwrite an existing receipt. Exact-head subprocess tests cover actual issuer checkpoint compatibility. The CLI does not establish a live acceptance, key-custody or issuance-time claim.
 
