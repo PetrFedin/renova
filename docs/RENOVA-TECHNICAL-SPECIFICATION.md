@@ -4,7 +4,7 @@
 **Язык:** русский
 **Дата текущей сверки:** 2026-09-08
 **Проверенный продуктовый срез:** `686eec67c925d73fd1367da4704bdac11becdd71`
-**Текущий schema head в этой редакции:** `x09selectionqty01`
+**Текущий schema head в этой редакции:** `x10executionproof01`
 **Текущий verification status:** `SOURCE AUDITED / BOUNDED CI EVIDENCE / FULL PRODUCT ACCEPTANCE INCOMPLETE`
 **Широкий production-запуск:** `BLOCKED_FOR_BROAD_PRODUCTION`
 
@@ -23,7 +23,7 @@
 | Source | Blob SHA | Назначение |
 |---|---|---|
 | `AGENTS.md` | `767d38e76d04209e609bbe7173a2c448cfc5fa00` | Engineering policy |
-| `backend/app/api/v1/router.py` | `292dd48b37b77cc408db9f0c215ad7a5007e6cd0` | Реальная composition маршрутов |
+| `backend/app/api/v1/router.py` | `64513bc097c74b3f807d16e442c2b0452c2d0854` | Реальная composition маршрутов |
 | `backend/app/models/entities.py` | `67f8e6a557134690c5c2d3d7295b21808974d7fc` | Базовые entities/enums |
 | `backend/app/main.py` | `7f778fc54e7ff0a05b512791a8841615b24e33c1` | API lifespan + middleware chain |
 | `backend/app/services/seed_demo.py` | `c62ba920130a7ba7f6e2bd0a54e63feadce5c6cd` | Явный development seed |
@@ -48,7 +48,7 @@
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
 | `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | Evidence versions |
 | `backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py` | `6de2c048fddc7bea5e385eaa80ca8d30fbe4eb3c` | Participants/scopes/audit |
-| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `686eec67c925d73fd1367da4704bdac11becdd71` | Текущий план и историческая прослеживаемость |
+| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `8e65554dd324f2a7bc5573f373716869a3ab24d5` | Текущий план и историческая прослеживаемость |
 
 # 1. Назначение продукта и границы системы
 
@@ -239,6 +239,36 @@ Closeout проверяется по работам/замечаниям/док�
 
 ## 10.8. Ошибки и идентичность
 Весь путь сохраняет владельца намерения: аккаунт/сессия/проект/request-id. При commit+потере ответа нельзя создавать новую сущность; при commit+ошибке UI нельзя объявлять запись неуспешной. Нельзя отправлять очередь A с токеном B. Нормализованные transport errors обязаны быть совместимы с offline producers.
+
+## 10.9. Portable execution proof и trust checkpoint
+
+**Issuer handler placement (integration PR #712, pending CI):** 404/409 errors are handled by POST /execution-trust/projects/{project_id}/stages/{stage_id}/issue itself, not by the unrelated GET /execution-trust/public-key endpoint. An HTTP regression covers the no-key public-key response of 503.
+
+**Issuer negative-state API (integration PR #712, pending CI):** owner requesting a checkpoint before canonical acceptance receives 409; an absent/foreign stage receives 404, not an unhandled server error. No checkpoint is issued, and the proof/read routes keep their original project and scope checks.
+
+**Issuer authority (integration PR #712, pending CI):** project reading privileges and scoped participant access do not authorize a new Renova platform signature. The issuer endpoint requires the project owner's user identity and an explicitly provisioned platform key; everyone else is denied and no key is generated automatically.
+
+**Public verifier privacy (integration PR #712, pending CI):** the anonymous status verifier reveals `REVOKED` and revocation time, but never the internal revoker user ID or free-text reason. Malformed envelopes must be rejected fail-closed as `INVALID_SIGNATURE`, not HTTP 500. Administrative revocation audit remains persistent and access-controlled.
+
+**Current-proof safety (integration PR #712, awaiting CI):** do not select a historical accepted acceptance while a newer stage review is pending or returned. Verified Execution Record only exists when the latest canonical acceptance is accepted with an acceptance timestamp and the stage is `done` without rework. A previously signed platform checkpoint must become `STALE` after canonical resubmission; test with a generated ephemeral key only. These are ledger-state semantics, not external signature verification.
+
+Каноническая цепочка доверия для принятого этапа:
+
+`accepted stage → Verified Execution Record → redacted Portable Execution Proof → platform Ed25519 checkpoint → public verification → current / stale / revoked`.
+
+Граница доказательства обязательна:
+
+- platform checkpoint подтверждает, что на момент выпуска Renova видела соответствующий канонический execution proof и его hash;
+- checkpoint **не является электронной подписью заказчика, подрядчика или технадзора** и не должен маркироваться как такая подпись;
+- issuance работает fail-closed без provisioned private issuer key;
+- verifier повторно сверяет текущий proof hash, поэтому изменение канонического record автоматически переводит старый checkpoint в `STALE`;
+- explicit revocation хранится в отдельном persistent ledger и не уничтожает исходный execution record;
+- portable proof не включает user IDs, assignee IDs, storage keys/URLs, comments и financial data;
+- внешний verifier должен различать минимум `VALID / REVOKED / STALE / INVALID_SIGNATURE / INVALID_ENVELOPE_HASH / ISSUER_NOT_CONFIGURED`.
+
+Следующий institutional layer после qualification этого контура: key rotation, issuer metadata/status list, external verifier profile, contractor/customer signature adapters и warranty-linked validity. До появления реальных ключей сторон platform issuer не имеет права выдавать подпись за участника сделки.
+
+Integration acceptance contract (PR #712, pending exact-head CI; original PostgreSQL race fixture RED, #699 single-line test fix adopted without runtime changes): the canonical `work_acceptances` state drives both owner Action Queue decisions and Verified Execution Record availability. Requested/in-review acceptance remains an action and cannot issue portable proof; accepted+timestamp produces the evidence-backed record and eliminates the pending action. `backend/tests/test_action_execution_record_integration.py` also checks unsigned proof redaction, missing issuer key and cross-project/outsider API access on an isolated test DB. This is not a substitute for canonical mutation-transaction tests or external staging.
 
 # 11. Calculations and derived state
 

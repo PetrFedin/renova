@@ -115,3 +115,61 @@ ACTIVE: текущий каталог и registry — исходный inventory
 **Implementation:** one bounded successor to PR #710 on isolated branch `agent/action-queue-browser-admission-20261013`. Applied read-only actor focus to all relevant control views (no new write capability), explicit unavailable-target messages, stable semantic testIDs, and a four-case Playwright browser spec wired into existing `scripts/ci-playwright.sh ui` (not a new Actions workflow). Cases: owned payment navigates from Home and opens exact detail; closing does not reopen; unknown paymentId never picks an unrelated invoice; pending acceptance is highlighted and missing ID is explicit; customer/contractor see targeted issue while a different project cannot see its record. Disposable test project is trashed after the scenario.
 
 **Evidence needed:** new SHA CI with Mobile Typecheck, technical-spec contract, security operations, backend + all Playwright (zero skipped), and visual screenshot/device acceptance in a real browser if enabled. CI uses isolated demo SQLite; production PostgreSQL, external browser accounts, live providers, and mobile physical-device release are **not** verified by this test. Independent second-agent PR #683 remains blocked by #685. The present patch is `IMPLEMENTED / AWAITING EXACT HEAD`, not production-ready. No new infrastructure created; actual runner billing unverified.
+
+## 11. Verified Execution Record × Action Queue — integration candidate 2026-10-13
+
+**Status:** INTEGRATION CANDIDATE / REQUIRES EXACT-HEAD CI / NOT RELEASED. This candidate overlays the exact #668 Verified Execution Record source on top of the #711 Action Queue source, retaining the complete pre-admission lineage #683→#700–#705→#708–#711 without merging `main`. The upstream independent reviewer credential #685 and protected-main owner bypass #247 remain external blockers.
+
+**Conflict resolution:** 19 files changed in #668 compared with main. The migration verifier `backend/scripts/verify_migration_schema.py` has the same Git blob SHA `96179f92dde1eba97f53746f1c648d3298fffeaf` on both #668 and #711 and is retained unchanged. The master technical spec retains #711's mobile/action sections and source snapshot; it incorporates #668's §10.9 execution trust boundary, updates the Alembic head from `x09selectionqty01` to `x10executionproof01`, and registers the actual combined router blob. The remaining 17 #668 file changes are grafted unchanged (including migration, trust endpoints, read-model, UI and tests). The candidate must prove a single head, PostgreSQL Alembic upgrade/schema parity and both domain tests together before qualification.
+
+**Integration contract:** pending work acceptance remains an actionable item in the existing scoped Action Responsibility API; a Verified Execution Record and portable proof for that pending stage must reject issuance/read as unaccepted (`409`) without inventing an acceptance. Accepted records are validated separately by #668 record/hash/redaction tests. Platform-issued Ed25519 checkpoints do not impersonate customer/contractor signatures; absent issuer credentials cause explicit non-issuance, and external production proof remains UNVERIFIED.
+
+**Release constraints:** no main/prod merge, no external providers, no secrets, no signed stakeholder evidence and no staging proof. Independent approval for PR #683 must be real, not `SKIPPED`; ruleset's `always` bypass requires an owner-controlled negative protection test. Read the current CI run for the exact integration commit; neither #668 CI nor #711 CI qualifies the combined code.
+
+### 11.1. Integration acceptance boundary — real test session
+
+**Source:** `backend/tests/test_action_execution_record_integration.py`. Two focused regression cases run over the isolated DB fixture: pending `WorkAcceptance` must be an owner-owned Action Queue item but must not issue Verified Execution Record/checkpoint; once the acceptance status becomes `accepted` with a timestamp, the same Action Queue must no longer offer the decision and the record/portable proof must share a canonical hash. Portable proof must stay unsigned/redacted, and issuance fails without the actual platform issuer key. Cross-project stage lookup and unrelated customer access to the record are explicitly rejected.
+
+These tests assert **read-model state transitions after an accepted-state fixture**, not the implementation of the actual mutation transaction/outbox. The canonical acceptance mutation and authorization are still qualified by the existing `acceptance-decision-contracts`; current PostgreSQL Alembic upgrade and full Playwright remain mandatory on the exact head. No real customer/contractor electronic signatures or bank/insurance validation are claimed.
+
+**Evidence:** source added in PR #712, **exact-head CI PENDING**. Earlier successful checks from #711 cannot be carried forward to the combined candidate.
+
+### 11.2. Integration PostgreSQL race fixture regression — PR #699 adopted
+
+The first integrated #712 exact-head run detected `Project participant PostgreSQL integrity` FAIL in `tests/test_project_participant_postgres_concurrency.py::test_concurrent_different_contractors_collapse_to_one_current_lead`: both outcomes `contractor_invalid` instead of `assigned` / `already_assigned`. The test was accidentally passing `contractor_id=customer_id` to `assignment_service.assign_contractor`. Existing independent Draft PR #699 (head `0193228372a77f9dda3de355fe4a5a708ed15fa9`) already diagnosed the same one-line correction. The integration branch now adopts exactly `contractor_id=contractor_id` **inside the test fixture only**, without relaxing role validation, scope, assignment uniqueness, concurrency semantics or runtime guards.
+
+**Evidence boundary:** previous run was RED (1 fail, 36 pass) and must be superseded by a new full exact-head run of the integration candidate. An isolated PostgreSQL race check, not SQLite, is mandatory before qualification. PR #699 remains a separate source/provenance and was not merged.
+
+### 11.3. P0 trust integrity finding: historical acceptance is not current proof
+
+A source audit of `verified_execution_record_service.get_verified_execution_record` discovered that its query filtered for any historically accepted `WorkAcceptance` **before** selecting the latest row. A later canonical resubmission could leave an older accepted proof available despite the stage returning to review, and a previously signed checkpoint could incorrectly remain `VALID`. This is not institutionally safe.
+
+**Implemented fix:** select the *latest* acceptance across **all** statuses by `created_at DESC, id DESC`, consistent with the canonical decision service; require its status to be accepted/accepted_with_remarks and `accepted_at` non-null, and require stage status `done` with `needs_rework=false` inside the record builder. A newer `requested/returned` review invalidates previous proof availability. The verifier consequently returns `STALE` for a previously valid signed checkpoint. No historical acceptance data or revocation entries are deleted and no new signing capability is granted.
+
+**Tests:** `backend/tests/test_action_execution_record_integration.py`: pending→accepted read model, newer requested/returned rejection, ephemeral Ed25519 checkpoint `VALID→STALE` (no permanent key), and cross-project/outsider denial. Separate canonical acceptance transaction/outbox gates remain required. All tests added/updated in the integration Draft PR; status `AWAITING EXACT-HEAD FULL CI`. New proof is not a customer/contractor e-signature. External staging and issuer key rotation are unverified.
+
+### 11.4. Public execution verifier redaction + malformed-envelope admission
+
+**Finding (source audit):** `POST /execution-trust/verify` is unauthenticated by design but returned the internal revocation ledger row, including `revoked_by` (administrative user ID) and free-text `reason`. In addition, `verify_signature` dereferenced untrusted `payload` shapes and did not explicitly catch malformed base64 input, allowing a request error rather than a controlled INVALID_SIGNATURE result. These are privacy and request-boundary risks in the existing #668 trust API, not new institutional features.
+
+**Candidate fix:** public verifier returns only `revocation.revokedAt` in addition to unchanged `status=REVOKED`, `signatureValid`, `current`, `revoked`; internal revoke/admin audit still stores the full row. Signature verification rejects malformed/oversized envelope payload/signature shapes, catches base64 decoder errors and responds `INVALID_SIGNATURE` without leaking exception details. `backend/tests/test_execution_proof_trust_service.py` adds negative shape cases and isolated DB revocation redaction proof. No real signing keys, external verifier service or transaction writers introduced.
+
+**Evidence:** code and test candidate only, requires exact-head CI; not a claim of independent pentest, staging or production approval.
+
+### 11.5. Platform checkpoint issuance authority (owner-only)
+
+**Risk:** prior `/execution-trust/projects/{project_id}/stages/{stage_id}/issue` accepted any project read identity, including scoped read participants, and signed a new **platform** attestation. Reading a Verified Execution Record is not authority to mint platform-signed checkpoints. The issuance endpoint now enforces the already-authorized project **owner's user ID** after a scoped project read, denying contractors/supervisors/observers with HTTP 403; it does not extend acceptance, payment or revocation writes and never auto-provisions an issuer key.
+
+**Regression:** `test_platform_issue_endpoint_owner_only_even_for_project_reader` checks canonical full-project contractor denied (403), outsider denied and owner with no issuer key fail-closed (503). Authenticated read-only record API remains untouched; anonymous checkpoint verification remains available. If a different explicit issuer governance model is needed in future, it requires a separate role/capability contract and review. Candidate **PENDING exact-head CI**.
+
+### 11.6. Proof issuance negative-state HTTP contract
+
+**Finding:** authenticated project-owner requests to the platform `/execution-trust/.../issue` route for a stage that has not yet been accepted or does not belong to that project raised `ExecutionRecordNotAccepted` / `ExecutionRecordStageNotFound` without a route-level handler. That made expected user/ownership failures susceptible to HTTP 500 rather than a closed domain response. Implemented canonical `409 execution_record_not_accepted` and `404 execution_record_stage_not_found` branches matching the read-only record API; no signature created and no write or auth grant added.
+
+**Regression:** an isolated API contract verifies `409` before acceptance and `404` for a nonexistent/other stage, with no checkpoint material returned. The final exact-head CI remains required. Owner-only issuance and no-key `503` continue to apply.
+
+### 11.7. Issuer exception scope — source review correction (candidate)
+
+**Bug detected in PR #712:** previous 404/409 exception handlers were accidentally attached to the `GET /execution-trust/public-key` route. They could never handle errors raised by `POST /execution-trust/projects/{project_id}/stages/{stage_id}/issue`, violating the advertised negative-response contract. The handlers are now within the correct issuance try/except block; public-key remains a simple 503 when its issuer key is not configured.
+
+**Regression:** existing issuer route test exercises owner-owned pending stage (409) and missing stage (404); an additional HTTP test exercises GET public-key (503) without any configured key. No domain writer, key material or ruleset changed. **Exact-head CI required**, earlier green CI cannot qualify this corrected SHA.
