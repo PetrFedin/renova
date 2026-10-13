@@ -225,13 +225,18 @@ def test_unsigned_witness_top_level_claims_rejected(field, value):
 
 @pytest.mark.parametrize("field,value", [
     ("bankApproved", True),
-    ("observedAt", "bogus"),
     ("witnessSignatureValid", True),
 ])
-def test_extra_or_overwritten_witness_payload_not_signed(field, value):
+def test_extra_unsigned_witness_payload_fields_rejected(field, value):
     cp, issuer, witness, key, _ = _fixture()
     witness["payload"][field] = value
     assert _verify(cp, issuer, witness, key)["status"] == "MALFORMED_WITNESS"
+
+
+def test_existing_witness_payload_field_modified_without_resigning_rejected():
+    cp, issuer, witness, key, _ = _fixture()
+    witness["payload"]["observedAt"] = "bogus"
+    assert _verify(cp, issuer, witness, key)["status"] == "WITNESS_SIGNATURE_INVALID"
 
 
 def test_untrusted_witness_public_key_cannot_be_embedded_in_receipt():
