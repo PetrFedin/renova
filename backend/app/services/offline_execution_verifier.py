@@ -40,6 +40,10 @@ def verify_offline(envelope: Any, trusted_key: Any) -> dict[str, Any]:
     }
     if not isinstance(envelope, dict) or not isinstance(trusted_key, dict):
         return result | {"status": "MALFORMED_INPUT"}
+    # Canonical checkpoints contain exactly three envelope fields. Extra
+    # top-level metadata is NOT protected by the Ed25519 signature or hash.
+    if set(envelope) != {"payload", "signature", "checkpointSha256"}:
+        return result | {"status": "MALFORMED_INPUT"}
     payload, sig = envelope.get("payload"), envelope.get("signature")
     digest = envelope.get("checkpointSha256")
     if not isinstance(payload, dict) or not isinstance(payload.get("subject"), dict):
