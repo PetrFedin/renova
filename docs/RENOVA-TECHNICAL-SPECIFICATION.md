@@ -48,7 +48,7 @@
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
 | `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | Evidence versions |
 | `backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py` | `6de2c048fddc7bea5e385eaa80ca8d30fbe4eb3c` | Participants/scopes/audit |
-| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `5853f4fd2027b260862245ff4aa721bba4a94e37` | Текущий план и историческая прослеживаемость |
+| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `8e65554dd324f2a7bc5573f373716869a3ab24d5` | Текущий план и историческая прослеживаемость |
 
 # 1. Назначение продукта и границы системы
 
@@ -241,6 +241,8 @@ Closeout проверяется по работам/замечаниям/док�
 Весь путь сохраняет владельца намерения: аккаунт/сессия/проект/request-id. При commit+потере ответа нельзя создавать новую сущность; при commit+ошибке UI нельзя объявлять запись неуспешной. Нельзя отправлять очередь A с токеном B. Нормализованные transport errors обязаны быть совместимы с offline producers.
 
 ## 10.9. Portable execution proof и trust checkpoint
+
+**Issuer handler placement (integration PR #712, pending CI):** 404/409 errors are handled by POST /execution-trust/projects/{project_id}/stages/{stage_id}/issue itself, not by the unrelated GET /execution-trust/public-key endpoint. An HTTP regression covers the no-key public-key response of 503.
 
 **Issuer negative-state API (integration PR #712, pending CI):** owner requesting a checkpoint before canonical acceptance receives 409; an absent/foreign stage receives 404, not an unhandled server error. No checkpoint is issued, and the proof/read routes keep their original project and scope checks.
 

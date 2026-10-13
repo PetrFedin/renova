@@ -167,3 +167,9 @@ A source audit of `verified_execution_record_service.get_verified_execution_reco
 **Finding:** authenticated project-owner requests to the platform `/execution-trust/.../issue` route for a stage that has not yet been accepted or does not belong to that project raised `ExecutionRecordNotAccepted` / `ExecutionRecordStageNotFound` without a route-level handler. That made expected user/ownership failures susceptible to HTTP 500 rather than a closed domain response. Implemented canonical `409 execution_record_not_accepted` and `404 execution_record_stage_not_found` branches matching the read-only record API; no signature created and no write or auth grant added.
 
 **Regression:** an isolated API contract verifies `409` before acceptance and `404` for a nonexistent/other stage, with no checkpoint material returned. The final exact-head CI remains required. Owner-only issuance and no-key `503` continue to apply.
+
+### 11.7. Issuer exception scope — source review correction (candidate)
+
+**Bug detected in PR #712:** previous 404/409 exception handlers were accidentally attached to the `GET /execution-trust/public-key` route. They could never handle errors raised by `POST /execution-trust/projects/{project_id}/stages/{stage_id}/issue`, violating the advertised negative-response contract. The handlers are now within the correct issuance try/except block; public-key remains a simple 503 when its issuer key is not configured.
+
+**Regression:** existing issuer route test exercises owner-owned pending stage (409) and missing stage (404); an additional HTTP test exercises GET public-key (503) without any configured key. No domain writer, key material or ruleset changed. **Exact-head CI required**, earlier green CI cannot qualify this corrected SHA.

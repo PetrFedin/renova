@@ -340,3 +340,18 @@ async def test_issue_endpoint_returns_409_before_acceptance_and_404_for_other_st
             assert "checkpointSha256" not in unknown.text
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_public_key_route_reports_503_without_key(db, monkeypatch):
+    monkeypatch.setattr(settings, "execution_proof_signing_private_key_b64", None)
+    async def current_db():
+        yield db
+    app.dependency_overrides[get_db] = current_db
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            result = await client.get("/api/v1/execution-trust/public-key")
+            assert result.status_code == 503, result.text
+            assert result.json()["detail"]["code"] == "execution_issuer_not_configured"
+    finally:
+        app.dependency_overrides.pop(get_db, None)

@@ -38,16 +38,6 @@ async def public_key():
             503,
             detail={"code": exc.code, "message": "Execution proof issuer key is not configured"},
         ) from exc
-    except records.ExecutionRecordStageNotFound as exc:
-        raise HTTPException(
-            404,
-            detail={"code": exc.code, "message": "Этап не найден в этом проекте"},
-        ) from exc
-    except records.ExecutionRecordNotAccepted as exc:
-        raise HTTPException(
-            409,
-            detail={"code": exc.code, "message": "Аттестация доступна только после канонической приёмки этапа"},
-        ) from exc
 
 
 @router.post("/projects/{project_id}/stages/{stage_id}/issue")
@@ -73,6 +63,16 @@ async def issue_checkpoint(
         raise HTTPException(
             503,
             detail={"code": exc.code, "message": "Execution proof issuer key is not configured"},
+        ) from exc
+    except records.ExecutionRecordStageNotFound as exc:
+        raise HTTPException(
+            404,
+            detail={"code": exc.code, "message": "Этап не найден в этом проекте"},
+        ) from exc
+    except records.ExecutionRecordNotAccepted as exc:
+        raise HTTPException(
+            409,
+            detail={"code": exc.code, "message": "Аттестация доступна только после канонической приёмки этапа"},
         ) from exc
 
 
