@@ -48,7 +48,7 @@
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
 | `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | Evidence versions |
 | `backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py` | `6de2c048fddc7bea5e385eaa80ca8d30fbe4eb3c` | Participants/scopes/audit |
-| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `8e65554dd324f2a7bc5573f373716869a3ab24d5` | Текущий план и историческая прослеживаемость |
+| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `98ee51a2eb651b0d4906710e9b12e9b68ae29c38` | Текущий план и историческая прослеживаемость |
 
 # 1. Назначение продукта и границы системы
 
@@ -266,9 +266,15 @@ Closeout проверяется по работам/замечаниям/док�
 - portable proof не включает user IDs, assignee IDs, storage keys/URLs, comments и financial data;
 - внешний verifier должен различать минимум `VALID / REVOKED / STALE / INVALID_SIGNATURE / INVALID_ENVELOPE_HASH / ISSUER_NOT_CONFIGURED`.
 
+**Public-key rotation candidate (Draft; CI pending):** optional strict operator-supplied PUBLIC Ed25519 registry `EXECUTION_PROOF_TRUSTED_PUBLIC_KEYS_JSON`, states `active/retired/revoked`. Active key must match the current issuer private signer; retired keys verify past checkpoints without private secrets; revoked/unknown keys never count as currently trusted; invalid registry fails closed. Public read-only `GET /execution-trust/public-keys` reveals only status and public bytes. Institutional provenance, key lifecycle approval, transparency and external verifier certification remain OPEN.
+
 Следующий institutional layer после qualification этого контура: key rotation, issuer metadata/status list, external verifier profile, contractor/customer signature adapters и warranty-linked validity. До появления реальных ключей сторон platform issuer не имеет права выдавать подпись за участника сделки.
 
 Integration acceptance contract (PR #712, pending exact-head CI; original PostgreSQL race fixture RED, #699 single-line test fix adopted without runtime changes): the canonical `work_acceptances` state drives both owner Action Queue decisions and Verified Execution Record availability. Requested/in-review acceptance remains an action and cannot issue portable proof; accepted+timestamp produces the evidence-backed record and eliminates the pending action. `backend/tests/test_action_execution_record_integration.py` also checks unsigned proof redaction, missing issuer key and cross-project/outsider API access on an isolated test DB. This is not a substitute for canonical mutation-transaction tests or external staging.
+
+### 10.10.2. Verifier algorithm binding (Draft)
+
+Ed25519 checkpoint verification explicitly rejects payloads claiming other algorithms, even if accompanied by a mathematically valid Ed25519 signature. Unrecognized issuer/key ID must not fall back to a private key when public registry configuration is present. Added negative tests remain pending exact-head CI.
 
 # 11. Calculations and derived state
 
