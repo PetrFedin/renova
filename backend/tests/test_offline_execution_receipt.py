@@ -82,7 +82,10 @@ def test_wrong_checkpoint_hash_rejected():
 def test_untrusted_key_identity_not_laundered_from_envelope():
     envelope, key = _signed()
     envelope["publicKeyMultibase"] = key["publicKeyMultibase"]
-    assert _run(envelope, key)["offlineIntegrityPassed"] is True
+    receipt = _run(envelope, key)
+    assert receipt["status"] == "MALFORMED_INPUT"
+    assert receipt["offlineIntegrityPassed"] is False
+    assert receipt["releaseAuthorized"] is False
     assert _run(envelope, {})["offlineIntegrityPassed"] is False
 
 

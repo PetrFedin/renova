@@ -96,4 +96,20 @@ def test_unsupported_algorithm():
 def test_envelope_can_never_supply_its_own_trust_key():
     envelope, key = _signed()
     envelope["publicKeyMultibase"] = key["publicKeyMultibase"]
-    assert verify_offline(envelope, {})["status"] == "UNTRUSTED_KEY"
+    assert verify_offline(envelope, {})["status"] == "MALFORMED_INPUT"
+    assert verify_offline(envelope, key)["status"] == "MALFORMED_INPUT"
+
+
+@pytest.mark.parametrize("extra_key,extra_value", [
+    ("bankApproved", True),
+    ("insuranceValidated", True),
+    ("trustedTimestamp", "2026-10-13T00:00:00Z"),
+    ("publicKeyMultibase", "attacker-controlled"),
+])
+def test_unsigned_top_level_claims_are_rejected(extra_key, extra_value):
+    envelope, key = _signed()
+    envelope[extra_key] = extra_value
+    result = verify_offline(envelope, key)
+    assert result["status"] == "MALFORMED_INPUT"
+    assert result["cryptographicSignatureValid"] is False
+    assert result["checkpointHashValid"] is False
