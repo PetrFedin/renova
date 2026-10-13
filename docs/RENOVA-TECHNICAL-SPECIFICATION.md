@@ -48,7 +48,7 @@
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
 | `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | Evidence versions |
 | `backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py` | `6de2c048fddc7bea5e385eaa80ca8d30fbe4eb3c` | Participants/scopes/audit |
-| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `8e65554dd324f2a7bc5573f373716869a3ab24d5` | Текущий план и историческая прослеживаемость |
+| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `d4d6fcaae0e907afe183453c14540173e40f5195` | Текущий план и историческая прослеживаемость |
 
 # 1. Назначение продукта и границы системы
 
@@ -269,6 +269,10 @@ Closeout проверяется по работам/замечаниям/док�
 Следующий institutional layer после qualification этого контура: key rotation, issuer metadata/status list, external verifier profile, contractor/customer signature adapters и warranty-linked validity. До появления реальных ключей сторон platform issuer не имеет права выдавать подпись за участника сделки.
 
 Integration acceptance contract (PR #712, pending exact-head CI; original PostgreSQL race fixture RED, #699 single-line test fix adopted without runtime changes): the canonical `work_acceptances` state drives both owner Action Queue decisions and Verified Execution Record availability. Requested/in-review acceptance remains an action and cannot issue portable proof; accepted+timestamp produces the evidence-backed record and eliminates the pending action. `backend/tests/test_action_execution_record_integration.py` also checks unsigned proof redaction, missing issuer key and cross-project/outsider API access on an isolated test DB. This is not a substitute for canonical mutation-transaction tests or external staging.
+
+### 10.10.1. Verification key registry negative admission (Draft)
+
+The public verifier key status registry does not grant a writer or delegate authority. New tests in backend/tests/test_execution_proof_key_registry_admission.py assert historical retired-key verification without private material, fail-closed revoked/unknown keys, invalid configuration and public endpoint redaction. It is NOT approved production key-rotation or third-party verification. Exact-head CI and independent review are pending.
 
 # 11. Calculations and derived state
 

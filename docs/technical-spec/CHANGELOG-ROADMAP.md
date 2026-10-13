@@ -173,3 +173,11 @@ A source audit of `verified_execution_record_service.get_verified_execution_reco
 **Bug detected in PR #712:** previous 404/409 exception handlers were accidentally attached to the `GET /execution-trust/public-key` route. They could never handle errors raised by `POST /execution-trust/projects/{project_id}/stages/{stage_id}/issue`, violating the advertised negative-response contract. The handlers are now within the correct issuance try/except block; public-key remains a simple 503 when its issuer key is not configured.
 
 **Regression:** existing issuer route test exercises owner-owned pending stage (409) and missing stage (404); an additional HTTP test exercises GET public-key (503) without any configured key. No domain writer, key material or ruleset changed. **Exact-head CI required**, earlier green CI cannot qualify this corrected SHA.
+
+## 12. Execution proof PUBLIC key registry — independent negative admission
+
+Draft successor to integrated Action Queue and Verified Execution Record PR #712. Source branch contains public verification keyring code and GET /execution-trust/public-keys. The follow-on admission tests now explicitly cover historically signed checkpoint VALID after private key rotation using retired PUBLIC key; issuer key REVOKED vs checkpoint revocation; unknown key never falls back to old private key; active signer mismatch and retired/revoked signing keys rejected; malformed/empty/duplicate/noncanonical registry rejected; and public endpoint remains read-only and secret-free with a 503 on invalid configuration.
+
+This is verification and key-state hardening, not key issuance automation, external federation, certificate transparency, signature recognition for customers/contractors, deployment, or bank/insurer institutional approval. Public keys are operator-controlled configuration snapshots; production use requires independent reviewer and retained immutable registry history, external change control, credential custody and incident response.
+
+All assertions live in backend/tests/test_execution_proof_key_registry_admission.py and must pass the full EXACT-HEAD CI. No resources provisioned or production release undertaken.
