@@ -79,6 +79,10 @@ class Settings(BaseSettings):
     execution_proof_signing_private_key_b64: str | None = None
     execution_proof_signing_key_id: str = "renova-execution-proof-v1"
     execution_proof_issuer_id: str = "renova-platform"
+    # Operator-provisioned JSON array of trusted Ed25519 PUBLIC keys only.
+    # None keeps legacy single-key verification; malformed explicit JSON must
+    # never silently fall back to a signing private key.
+    execution_proof_trusted_public_keys_json: str | None = None
 
     cloudfront_domain: str | None = None
     cloudfront_key_id: str | None = None
