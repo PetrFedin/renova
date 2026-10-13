@@ -7,6 +7,7 @@ checked against both the revocation ledger and the current canonical proof hash.
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import json
 from datetime import datetime, timezone
@@ -114,9 +115,21 @@ async def issue_checkpoint(
 
 
 def verify_signature(envelope: dict[str, Any]) -> tuple[bool, str | None]:
+    # The public verifier receives untrusted JSON. Reject invalid nested
+    # shapes before dereferencing payload or attempting base64 decode.
+    if not isinstance(envelope, dict):
+        return False, "invalid_signature"
+    payload = envelope.get("payload")
+    encoded_signature = envelope.get("signature")
+    if (
+        not isinstance(payload, dict)
+        or not isinstance(encoded_signature, str)
+        or len(encoded_signature) > 128
+        or not isinstance(payload.get("subject"), dict)
+    ):
+        return False, "invalid_signature"
     try:
-        payload = envelope["payload"]
-        signature = _b64url_decode(envelope["signature"])
+        signature = _b64url_decode(encoded_signature)
         if payload.get("checkpointVersion") != CHECKPOINT_VERSION:
             return False, "unsupported_checkpoint_version"
         if payload.get("issuerId") != settings.execution_proof_issuer_id:
@@ -128,7 +141,7 @@ def verify_signature(envelope: dict[str, Any]) -> tuple[bool, str | None]:
         return True, None
     except ExecutionIssuerNotConfigured:
         raise
-    except (KeyError, ValueError, TypeError, InvalidSignature):
+    except (KeyError, ValueError, TypeError, AttributeError, binascii.Error, InvalidSignature):
         return False, "invalid_signature"
 
 
@@ -215,12 +228,18 @@ async def verify_current_status(
         )
     ).mappings().first()
     if revocation:
+        # This route is PUBLIC. Keep the revocation flag and timestamp, but
+        # never disclose the admin user ID or free-text internal reason.
+        revoked_at = revocation["revoked_at"]
         return {
             "status": "REVOKED",
             "signatureValid": True,
             "current": False,
             "revoked": True,
-            "revocation": dict(revocation),
+            "revocation": {
+                "revokedAt": revoked_at.isoformat()
+                if hasattr(revoked_at, "isoformat") else str(revoked_at),
+            },
         }
 
     subject = envelope["payload"].get("subject") or {}
