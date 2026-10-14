@@ -73,3 +73,10 @@ ACTIVE: текущий каталог и registry — исходный inventory
 Выявлены и зарегистрированы #316–#320; расширены #315 и #305 конкретными исходными цепочками. Синхронизируются текущий паспорт, roadmap, реестр расчётов, readiness и строгая проверка заголовка схемы. Производственные дефекты этими документами не исправлены; их статус SOURCE CONFIRMED / OPEN. Старые source snapshots сохраняются в history без использования как текущего launch verdict.
 
 Субъективный процент готовности и календарный ETA не рассчитываются без весов требований, принятого release scope, команды и внешних условий. Закрытие реальных приёмочных критериев важнее числа новых функций.
+
+
+## 7. P0 #672 Debian package pin recovery — isolated main-derived candidate 2026-10-15
+
+The immutable Python image digest `d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b` is unchanged. Main still pins `libpcre2-8-0=10.42-1+deb12u1`, which was reported unavailable in the configured Bookworm repository on 2026-10-07 (Issue #672). A reviewed security-admission branch #683 later moved to exact packages `libpcre2-8-0=10.42-1+deb12u2` and `perl-base=5.36.0-7+deb12u4` to satisfy the fail-closed image gate; #719's image validation on the same Dockerfile blob passed [run 38449613594](https://github.com/PetrFedin/renova/actions/runs/38449613594). This dedicated extraction adopts the **identical** previously reviewed Dockerfile blob, without changes to app runtime writers, provider integrations or migrations.
+
+**Acceptance, not yet claimed:** fresh `Backend image integrity / validate-image` on this PR's exact SHA, installed version assertions, non-root API/worker health, immutable OCI revision, Trivy fixed HIGH/CRITICAL and canonical PR policy/spec checks. Separately remain required: current JS/Python advisory remediation, gitleaks triage, #685 independent review and #247 ruleset negative protection proof. No production image or external deployment is published by this candidate. Details and provenance in `BACKEND-IMAGE-PCRE2-REMEDIATION.md`.
