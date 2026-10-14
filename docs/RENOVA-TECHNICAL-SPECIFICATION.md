@@ -48,7 +48,11 @@
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
 | `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | Evidence versions |
 | `backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py` | `6de2c048fddc7bea5e385eaa80ca8d30fbe4eb3c` | Participants/scopes/audit |
-| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `7942b12961d967b39d1f77e98deccc0c301ad9e6` | Текущий план и историческая прослеживаемость |
+| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `b066ce50bc331c8a11fcb4fc0c4eb5b2ec2bf71d` | Текущий план и историческая прослеживаемость |
+
+## 0.2. npm supply-chain recovery candidate — 2026-10-15
+
+**Status: DRAFT / PENDING exact-head CI.** Main's npm dependency audit failed on multiple unapproved HIGH/CRITICAL advisories, including patchable ones (run 38651460551). This candidate extracts the previously reviewed locked dependency graph from #683, without changing the manifest dependency declarations. Reviewable source blobs: `package-lock.json` `4732285c7e43418e6d8b81b20cd912d266386a16` and `scripts/check-npm-audit-baseline.mjs` `2b70c777a548e383cd2beef4fa362fb864f7c89a`. The audit gate remains strict and only two named, unpatched Expo/Metro build-tool advisories have time-limited review until 2026-11-06 (#670). No `--force`, critical severity exception or blanket ignore. `docs/js-dependency-security.md` documents the exact graph, reasoning and remaining exposure. Current Python/gitleaks findings, release governance #685/#247 and production remain unresolved; no readiness upgrade follows automatically from npm audit improvements.
 
 # 1. Назначение продукта и границы системы
 
