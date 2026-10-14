@@ -48,7 +48,7 @@
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
 | `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | Evidence versions |
 | `backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py` | `6de2c048fddc7bea5e385eaa80ca8d30fbe4eb3c` | Participants/scopes/audit |
-| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `ed91869ca9d827e38843ef4632a63b0bb91b5703` | Текущий план и историческая прослеживаемость |
+| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `d4bff4c9295fbeb86e3ace2b1c1344a95edc5945` | Текущий план и историческая прослеживаемость |
 
 ## 0.2. Проверка трёх CI-контрактов от 2026-10-15 — кандидат на базе main
 
@@ -59,6 +59,8 @@
 - **#679, push:** `nativeNotifications.ts` остаётся нативной точкой входа, а `notificationNavigation.ts` — единственным владельцем `return_to / returnTo` parsing; workflow отдельно проверяет их связь, запускает unit-проверку pure parser и не ослабляет delivery id/dedupe/retry/observability/role checks.
 
 **Приёмка:** требуются exact-head PASS основного backend CI, `postgres-schema-lifecycle`, `typecheck-integrity`, `mobile-push-interactions`/backend push, security/policy, и независимое ревью PR. До их получения статус **IMPLEMENTED IN DRAFT / PENDING CI**. Ни один из этих контрольных тестов не заменяет staging/prod и real iOS/Android push.
+
+**Первый CI показал отдельные блокеры:** push workflow содержал второй устаревший direct-notification ID check вместо канонического outbox; исправлен по фактической цепочке notify→DomainOutbox→worker. JS dependency integrity и Security operations оставались RED на lockfile/security-audit основаниях из исходной базы; никакого подавления security-gates в этом PR не выполнено. См. roadmap §7 и фактический CI последнего SHA.
 
 **Оставшиеся ограничения:** #672 — свежая повторная проверка неизменного PCRE2 pin и image/Trivy (исторический apt сбой не доказывает текущую неработоспособность), #676 — атомарная одноразовая portal acceptance, #678 — версия гарантийных сроков, #670 — аудит уязвимостей build-tool; обязательные административные P0 #685 (второй ревьюер) и #247 (непроверенный bypass main). `main` и production сохраняют HOLD; никаких закрытий Issues до merge и post-merge verification.
 
