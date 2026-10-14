@@ -73,3 +73,12 @@ ACTIVE: текущий каталог и registry — исходный inventory
 Выявлены и зарегистрированы #316–#320; расширены #315 и #305 конкретными исходными цепочками. Синхронизируются текущий паспорт, roadmap, реестр расчётов, readiness и строгая проверка заголовка схемы. Производственные дефекты этими документами не исправлены; их статус SOURCE CONFIRMED / OPEN. Старые source snapshots сохраняются в history без использования как текущего launch verdict.
 
 Субъективный процент готовности и календарный ETA не рассчитываются без весов требований, принятого release scope, команды и внешних условий. Закрытие реальных приёмочных критериев важнее числа новых функций.
+
+
+## 7. Fail-closed npm advisory gate refresh — 2026-10-15 (Draft)
+
+Current main exact-head [JS dependency integrity run 38651460551](https://github.com/PetrFedin/renova/actions/runs/38651460551) fails against seven **unapproved** HIGH/CRITICAL advisory IDs in its old npm lock, including patchable `shell-quote` CRITICAL, `compression`, `source-map-js`, and `brace-expansion`. Independently reviewed PR #683 and its descendant PR #719 already used a newer locked graph, with JS dependency integrity GREEN on that source lineage. This bounded main-derived candidate copies the exact reviewed `package-lock.json` blob `4732285c7e43418e6d8b81b20cd912d266386a16` without changing `package.json` or `apps/mobile/package.json`.
+
+The locked refresh contains reviewed fixed versions including `brace-expansion 5.0.12`, `compression 1.8.2`, `shell-quote 1.12.0`, and `source-map-js 1.2.2`. The audit policy stays fail-closed for unknown HIGH/CRITICAL; the only newly accepted HIGH advisories are the specific unpatched build-tool paths `GHSA-vfj7-8cjw-p6xm` (`braces`) and `GHSA-86w9-cpqp-85rv` (`node-forge`), each with review deadline **2026-11-06**, tracked by [#670](https://github.com/PetrFedin/renova/issues/670). The existing bounded audit policy and full history remain in `docs/js-dependency-security.md`. No blanket severity exception or `npm audit fix --force` has been added.
+
+**Acceptance:** `npm ci` consistency, full/production npm audit evidence, `JS dependency integrity`, `Security operations`, mobile Typecheck and full CI on this PR's *own* exact SHA. Earlier source SHA `60767c86` and descendant `68a341ae` success does **not** authorize this branch. External unreviewed production security, newly detected Python advisory, full-history gitleaks findings, owner-only independent review #685 and main bypass #247 remain separate open gates. Production and paid infrastructure unchanged.

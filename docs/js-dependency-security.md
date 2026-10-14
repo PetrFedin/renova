@@ -43,3 +43,26 @@ The `uuid` advisory remains visible in every audit artifact. The current `xcode`
 Only the two exact `image-size` GHSA identifiers are temporarily accepted. Critical severity is never accepted by the baseline. Full and production-only audit JSON plus the mobile test log are uploaded as CI artifacts for review.
 
 The review deadline is intentionally finite. Before or on 2026-10-31, the exception must be re-evaluated against Expo, Metro and `image-size` upstream changes; extending the deadline requires an explicit code review rather than silent CI suppression.
+
+
+## 2026-10-07 advisory refresh
+
+A bounded GitHub-hosted lock refresh was generated with `npm audit fix --package-lock-only --ignore-scripts --omit=dev` and **without** `--force`. Package manifests were required to remain unchanged.
+
+The refreshed lock resolves the newly observed patchable direct findings by moving to:
+
+- `brace-expansion 5.0.12`;
+- `compression 1.8.2`;
+- `shell-quote 1.12.0`;
+- `source-map-js 1.2.2`.
+
+After that refresh, the production audit reports **28 affected dependency nodes: 16 high, 12 moderate, 0 critical**. The direct HIGH sources are the two existing `image-size` advisories plus two newly observed upstream-unfixed build-tool advisories:
+
+| Advisory | Package | Current path | Policy |
+| --- | --- | --- | --- |
+| `GHSA-vfj7-8cjw-p6xm` | `braces 3.0.3` | `micromatch -> Metro/Expo file-map` | temporary exception through 2026-11-06; #670 |
+| `GHSA-86w9-cpqp-85rv` | `node-forge 1.4.0` | `@expo/cli`, `@expo/code-signing-certificates` | temporary exception through 2026-11-06; #670 |
+
+As of the review date, the upstream advisory records for these two packages list no patched package version. Their accepted reachability is limited to Expo/Metro build, development and publish tooling; Renova does not treat that as equivalent to installed-app or backend runtime exposure. This is a bounded risk acceptance, not a declaration that the packages are safe.
+
+The exception must be removed immediately if a compatible patched release or upstream Expo/Metro dependency path becomes available. A semver-major framework downgrade proposed by npm is not an acceptable substitute for a compatible security update.
