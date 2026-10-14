@@ -7,6 +7,8 @@ on:
       - "backend/app/services/notification_service.py"
       - "backend/tests/test_push_delivery_integrity.py"
       - "apps/mobile/lib/nativeNotifications.ts"
+      - "apps/mobile/lib/notificationNavigation.ts"
+      - "apps/mobile/lib/notificationNavigation.test.ts"
       - "apps/mobile/lib/notificationDeliveryDedup.ts"
       - "apps/mobile/lib/notificationDeliveryDedup.test.ts"
       - "apps/mobile/package.json"
@@ -74,6 +76,11 @@ jobs:
           set -euo pipefail
           export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
           npx tsx apps/mobile/lib/notificationDeliveryDedup.test.ts
+      - name: Verify pure notification navigation compatibility
+        run: |
+          set -euo pipefail
+          export TSX_TSCONFIG_PATH="$PWD/apps/mobile/tsconfig.json"
+          npx tsx apps/mobile/lib/notificationNavigation.test.ts
       - name: Verify async failure observability
         run: |
           set -euo pipefail
@@ -88,6 +95,7 @@ jobs:
           from pathlib import Path
 
           native = Path("apps/mobile/lib/nativeNotifications.ts").read_text(encoding="utf-8")
+          navigation = Path("apps/mobile/lib/notificationNavigation.ts").read_text(encoding="utf-8")
           push = Path("backend/app/services/push_service.py").read_text(encoding="utf-8")
           notification = Path("backend/app/services/notification_service.py").read_text(encoding="utf-8")
 
@@ -96,7 +104,7 @@ jobs:
               "clearLastNotificationResponseAsync",
               "createNotificationDeliveryRunner",
               "notificationDeliveryId(data)",
-              "data?.return_to ?? data?.returnTo",
+              "notificationNavigationPayload(data)",
               "onStorageError: (error) => onError?.('notifications.storage', error)",
               "registerNativePushToken",
               "scheduleNativeSyncConflictNotification",
@@ -106,6 +114,18 @@ jobs:
           missing_native = [token for token in required_native if token not in native]
           if missing_native:
               raise SystemExit(f"native notification retry contract missing: {missing_native}")
+
+          # The return_to/returnTo compatibility parser lives in the canonical
+          # pure navigation module; do not duplicate it in the native listener.
+          required_navigation = [
+              "export function notificationNavigationPayload(",
+              "data?.return_to ?? data?.returnTo",
+              "typeof returnToValue === 'string'",
+              "parseNotificationRole(data?.role)",
+          ]
+          missing_navigation = [token for token in required_navigation if token not in navigation]
+          if missing_navigation:
+              raise SystemExit(f"notification navigation compatibility contract missing: {missing_navigation}")
 
           required_backend = [
               'message["collapseId"] = normalized_delivery_id',
