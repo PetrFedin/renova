@@ -153,7 +153,7 @@ if (!/DocumentsHub\.ContextChangedAfterCommit/.test(documentsHub) || !/await loa
 if (!/reconcileProjectAfterCommit\('BankImport'\)/.test(documentsHub)) {
   throw new Error('bank import must reconcile the project only after committed import');
 }
-if (/OCR:\s*DEMO/.test(documentsHub) || !/const ocrModeLabel = 'LOCAL'/.test(documentsHub)) {
+if (/OCR:\s*DEMO/.test(documentsHub) || !/const ocrModeLabel = 'на устройстве'/.test(documentsHub)) {
   throw new Error('documents hub OCR mode must remain truthful for local heuristic classification');
 }
 
