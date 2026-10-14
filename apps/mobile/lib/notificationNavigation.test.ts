@@ -18,6 +18,9 @@ assert.equal(notificationNavigationPayload({ role: 'admin' }).role, undefined, '
 assert.equal(parseNotificationRole(42), undefined);
 assert.equal(notificationNavigationPayload({ return_to: '/a' }).returnTo, '/a');
 assert.equal(notificationNavigationPayload({ returnTo: '/b' }).returnTo, '/b');
+assert.equal(notificationNavigationPayload({ return_to: '/modern', returnTo: '/legacy' }).returnTo, '/modern', 'modern return_to has precedence');
+assert.equal(notificationNavigationPayload({ return_to: null, returnTo: '/legacy' }).returnTo, '/legacy', 'nullish modern value permits legacy fallback');
+assert.equal(notificationNavigationPayload({ return_to: 17, returnTo: '/legacy' }).returnTo, undefined, 'invalid modern value must not silently redirect');
 assert.equal(notificationNavigationPayload(undefined).linkPath, undefined);
 
 assert.equal(resolveNotificationRole('contractor', 'customer'), 'contractor', 'payload wins');
