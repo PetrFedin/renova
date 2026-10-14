@@ -283,3 +283,24 @@ Required behavior:
 - `test-focused` is the fast local contract gate; `test-full` is the broader local backend/mobile regression and must execute the focused gate first. GitHub Actions and dedicated PostgreSQL/E2E workflows remain stronger evidence where applicable.
 
 A successful local run is **local TESTED evidence only**. A successful PR workflow is `CI VERIFIED` only for the exact candidate. Neither proves external staging, production provider delivery, managed backup restore, alert delivery, store release, or production readiness.
+
+## Дополнительные ориентиры (справочные, не policy)
+
+- `DESIGN.md` (формализация дизайн-системы) отражает `apps/mobile/constants/Theme.ts`,
+  `typography.ts`, `uiTokens.ts` и `.cursor/rules/renova-design-system.mdc`.
+  При расхождении права `Theme.ts`; изменение вида делается правкой токенов и
+  `components/ui`, не локальными стилями.
+- Перед стратегическими решениями (монетизация, платёжный контур, границы релиза,
+  интеграция с платформой «Верно») читать `docs/business/`
+  (бизнес-план, детальный разбор, аудит UI). Эти документы не источник инженерной
+  истины и не меняют правила выше: при конфликте приоритет у этого файла, кода, CI
+  и `PRODUCTION-READINESS.md`.
+- Рыночные и финансовые числа в этих документах помечены как гипотезы; не
+  использовать их как факты в коде, релизных заметках или отчётах о готовности.
+- Известные отступления от канона UI (локальные hex, emoji, самодельные карточки)
+  сводятся к канону малыми PR и счётчиком, который не должен расти; не
+  переписывать оформление целиком.
+- Деньги этапов в продукте сейчас учётные (платформа не держит средства). Любой
+  платёжный контур с комиссией требует юридического решения до кода и проходит
+  правила разделов 4 и 6.
+- Размещение `docs/business/` вне `technical-spec/` и `archive/` — предложение, ожидающее решения владельца (см. PR). До принятия решения `PRODUCT-COMPLETION-MANDATE.md` §1.5 имеет приоритет; при отказе пакет переносится туда, куда укажет владелец.
