@@ -48,7 +48,21 @@
 | `backend/alembic/versions/w18nativeenumparity01_remaining_native_enum_parity.py` | `d210b757441efedf7c3e7959ba45321f02962dc4` | Native enum repair |
 | `backend/alembic/versions/w19paymentevidence01_manual_payment_evidence.py` | `78b24e27e4499def7254a75e770e863d35f311a6` | Evidence versions |
 | `backend/alembic/versions/w22projectparticipants01_project_participant_foundation.py` | `6de2c048fddc7bea5e385eaa80ca8d30fbe4eb3c` | Participants/scopes/audit |
-| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `7942b12961d967b39d1f77e98deccc0c301ad9e6` | Текущий план и историческая прослеживаемость |
+| `docs/technical-spec/CHANGELOG-ROADMAP.md` | `d4bff4c9295fbeb86e3ace2b1c1344a95edc5945` | Текущий план и историческая прослеживаемость |
+
+## 0.2. Проверка трёх CI-контрактов от 2026-10-15 — кандидат на базе main
+
+**Граница изменений:** branch `agent/release-gate-source-drift-20261015`, source baseline `f62e491aeb2c0b8a36bbbd15af719050d692546c`. Три source-расхождения документированы в `docs/technical-spec/CHANGELOG-ROADMAP.md` §7. Они **не исправляют runtime-дефект** и **не доказывают real device/provider delivery**.
+
+- **#674, PostgreSQL:** `w24projectpurgecascade01` и фактическое ORM/DDL требуют `ON DELETE SET NULL` на `project_technical_supervisor_assignments.supersedes_assignment_id`. Скрипт `backend/scripts/verify_migration_schema.py` теперь требует именно это, сохраняя остальные FK/nullability/indexes; историческая миграция неизменна.
+- **#684, OCR:** существующая локальная эвристика отображается пользователю как «на устройстве». `sideEffectContext.w177.test.ts` проверяет текущий русский контракт и продолжает отказывать на `OCR: DEMO`; ни механизм OCR, ни пользовательский UI не менялись.
+- **#679, push:** `nativeNotifications.ts` остаётся нативной точкой входа, а `notificationNavigation.ts` — единственным владельцем `return_to / returnTo` parsing; workflow отдельно проверяет их связь, запускает unit-проверку pure parser и не ослабляет delivery id/dedupe/retry/observability/role checks.
+
+**Приёмка:** требуются exact-head PASS основного backend CI, `postgres-schema-lifecycle`, `typecheck-integrity`, `mobile-push-interactions`/backend push, security/policy, и независимое ревью PR. До их получения статус **IMPLEMENTED IN DRAFT / PENDING CI**. Ни один из этих контрольных тестов не заменяет staging/prod и real iOS/Android push.
+
+**Первый CI показал отдельные блокеры:** push workflow содержал второй устаревший direct-notification ID check вместо канонического outbox; исправлен по фактической цепочке notify→DomainOutbox→worker. JS dependency integrity и Security operations оставались RED на lockfile/security-audit основаниях из исходной базы; никакого подавления security-gates в этом PR не выполнено. См. roadmap §7 и фактический CI последнего SHA.
+
+**Оставшиеся ограничения:** #672 — свежая повторная проверка неизменного PCRE2 pin и image/Trivy (исторический apt сбой не доказывает текущую неработоспособность), #676 — атомарная одноразовая portal acceptance, #678 — версия гарантийных сроков, #670 — аудит уязвимостей build-tool; обязательные административные P0 #685 (второй ревьюер) и #247 (непроверенный bypass main). `main` и production сохраняют HOLD; никаких закрытий Issues до merge и post-merge verification.
 
 # 1. Назначение продукта и границы системы
 
