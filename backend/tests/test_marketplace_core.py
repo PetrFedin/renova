@@ -1,6 +1,7 @@
 """Ядро биржи: MKT-001..005, 009, 014, 024, 026, 039, 040."""
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 
 from app.db.session import init_db
 from app.main import app
@@ -32,10 +33,13 @@ async def setup_db(tmp_path, monkeypatch):
     from app.models.entities import User, UserRole
 
     async with sess.SessionLocal() as db:
-        db.add(User(id="rival-contractor", phone="+70000000999", role=UserRole.contractor))
+        db.add(User(id="rival-contractor", phone="+70000000999", role=UserRole.contractor, npd_verified=True))
         db.add(User(id="gone-contractor", phone="+70000000888", role=UserRole.contractor, deleted_at=__import__("datetime").datetime(2026, 1, 1)))
+        demo_contractors = (await db.execute(select(User).where(User.role == UserRole.contractor))).scalars().all()
+        for contractor in demo_contractors:
+            if contractor.deleted_at is None:
+                contractor.npd_verified = True
         await db.commit()
-
 
 
 BASE = "/api/v1"

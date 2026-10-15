@@ -31,8 +31,12 @@ async def setup_db(tmp_path, monkeypatch):
     async with sess.SessionLocal() as db:
         await ensure_demo_users(db)
         await seed_articles(db)
-        db.add(User(id="rival-contractor", phone="+70000000999", role=UserRole.contractor))
+        db.add(User(id="rival-contractor", phone="+70000000999", role=UserRole.contractor, npd_verified=True))
         db.add(User(id="bystander", phone="+70000000996", role=UserRole.contractor))
+        contractors = (await db.execute(select(User).where(User.role == UserRole.contractor))).scalars().all()
+        for contractor in contractors:
+            if contractor.id != "bystander":
+                contractor.npd_verified = True
         await db.commit()
 
 

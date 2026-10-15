@@ -186,6 +186,14 @@ async def finalize_work_acceptance(
     # Тот же источник истины, что и у гейта сдачи (completion_check): критичные/высокие
     # замечания этапа блокируют приёмку, низкие/средние — нет.
     from app.services import issue_service as issue_svc
+    unverified_rework = await issue_svc.unverified_linked_rework_issues(
+        db,
+        project_id=project.id,
+        stage=stage,
+    )
+    if unverified_rework:
+        raise issue_svc.ReworkIssueVerificationRequired(unverified_rework)
+
     gate = await issue_svc.open_issues_gate(db, project.id, stage_id=stage.id)
     if gate["blocking_count"]:
         raise issue_svc.OpenIssuesBlock(gate)

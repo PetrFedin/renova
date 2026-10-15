@@ -605,8 +605,15 @@ async def test_22_submit_return_resubmit_accept(w):
         r = await w.call(who, "POST", f"{P(w)}/work-acceptances/{acc}/accept", {"quality_score": 10})
         assert r.status_code in (403, 404), who
     assert (await w.call("cust", "POST", f"{P(w)}/work-acceptances/{acc}/return", {})).status_code in (400, 422)
-    await w.call("cust", "POST", f"{P(w)}/work-acceptances/{acc}/return",
-                 {"comment": "Не вывезен мусор", "create_issue": True}, expect=200)
+    returned = await w.call(
+        "cust",
+        "POST",
+        f"{P(w)}/work-acceptances/{acc}/return",
+        {"comment": "Не вывезен мусор", "create_issue": True},
+        expect=200,
+    )
+    rework_issue = returned.json()["issue_id"]
+    assert rework_issue
     r = await w.call("lead", "GET", f"{P(w)}/stages/{st}", expect=200)
     assert r.json()["status"] != "done"
     wf = (await w.call("lead", "GET", f"{P(w)}/stages/{st}/workflow", expect=200)).json()
@@ -614,10 +621,38 @@ async def test_22_submit_return_resubmit_accept(w):
         if not it["done"]:
             await w.call("lead", "POST", f"{P(w)}/stages/{st}/checklist/toggle",
                          {"item_id": it["id"], "done": True}, expect=200)
+
+    # Rework completion and independent verification are separate authorities.
+    # The contractor may mark the linked defect fixed; only the customer may
+    # independently verify/close it before acceptance can succeed.
+    await w.call(
+        "lead",
+        "POST",
+        f"{P(w)}/issues/{rework_issue}/transition",
+        {"status": "fixed"},
+        expect=200,
+    )
     r = await w.call("lead", "POST", f"{P(w)}/stages/{st}/submit", expect=200)
     acc2 = r.json()["acceptance_id"]
     assert acc2
     w.s["acc_id_reused"] = acc2 == acc
+
+    blocked = await w.call(
+        "cust",
+        "POST",
+        f"{P(w)}/work-acceptances/{acc2}/accept",
+        {"quality_score": 9, "comment": "ок"},
+    )
+    assert blocked.status_code == 409, blocked.text
+    assert blocked.json()["detail"]["code"] == "rework_issue_verification_required"
+
+    await w.call(
+        "cust",
+        "POST",
+        f"{P(w)}/issues/{rework_issue}/transition",
+        {"status": "closed"},
+        expect=200,
+    )
     r = await w.call("cust", "POST", f"{P(w)}/work-acceptances/{acc2}/accept", {"quality_score": 9, "comment": "ок"}, expect=200)
     assert r.json()["payment_id"], "приёмка порождает платёж за этап"
     w.s["pay"] = r.json()["payment_id"]

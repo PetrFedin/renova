@@ -387,6 +387,10 @@ async def test_return_rejects_stale_acceptance_and_applies_sla_issue_once(db):
     assert returned.stage.needs_rework is True
     assert returned.stage.rework_deadline is not None
     assert returned.issue_id is not None
+    issue = await db.get(ProjectIssue, returned.issue_id)
+    assert issue is not None
+    assert "примык" in issue.title.lower(), "actionable issue title must expose the rework reason"
+    assert stage.name in (issue.description or "")
 
     checklist = json.loads(returned.stage.checklist_json)
     assert len(
@@ -402,6 +406,26 @@ async def test_return_rejects_stale_acceptance_and_applies_sla_issue_once(db):
     assert issue.room_id == room_id
     assert issue.assignee_id == contractor_id
     assert issue.due_at == returned.stage.rework_deadline
+
+
+    from app.services import issue_service as issue_svc
+
+    fixed_issue = await issue_svc.transition_issue(
+        db,
+        issue,
+        "fixed",
+        UserRole.contractor,
+    )
+    assert fixed_issue.status == "fixed"
+    refreshed_stage = await db.get(Stage, stage_id)
+    assert refreshed_stage is not None
+    linked = [
+        item
+        for item in json.loads(refreshed_stage.checklist_json)
+        if item.get("id") == f"rework-issue-{issue.id}"
+    ]
+    assert len(linked) == 1
+    assert linked[0]["done"] is True
     assert await db.scalar(
         select(func.count())
         .select_from(StageComment)

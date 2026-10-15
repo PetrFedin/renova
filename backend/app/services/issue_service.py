@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+import json
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -353,6 +354,30 @@ async def transition_issue(
     validate_issue_transition(issue.status, target, actor_role, self_managed=self_managed)
     issue.status = target
     issue.closed_at = utc_now() if target == "closed" else None
+
+    if target == "fixed" and issue.stage_id:
+        stage = await db.get(Stage, issue.stage_id)
+        if stage is not None and stage.project_id == issue.project_id:
+            stage_checklist = []
+            try:
+                parsed = json.loads(stage.checklist_json or "[]")
+                if isinstance(parsed, list):
+                    stage_checklist = parsed
+            except Exception:
+                stage_checklist = []
+            linked_id = f"rework-issue-{issue.id}"
+            changed = False
+            for item in stage_checklist:
+                if item.get("id") == linked_id and not item.get("done"):
+                    item["done"] = True
+                    changed = True
+                    break
+            if changed:
+                from app.services.workflow_service import checklist_progress
+
+                stage.checklist_json = json.dumps(stage_checklist, ensure_ascii=False)
+                stage.percent_complete = float(checklist_progress(stage_checklist))
+
     if commit:
         await db.commit()
         await db.refresh(issue)
@@ -446,6 +471,62 @@ async def open_issues_gate(
         "warning_count": len(warnings),
         "warnings": [_issue_brief(i) for i in warnings],
     }
+
+
+def linked_rework_issue_ids(stage: Stage) -> set[str]:
+    """Return durable ProjectIssue ids explicitly linked from this stage checklist."""
+    try:
+        parsed = json.loads(stage.checklist_json or "[]")
+    except (TypeError, ValueError):
+        return set()
+    if not isinstance(parsed, list):
+        return set()
+
+    prefix = "rework-issue-"
+    linked: set[str] = set()
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        item_id = str(item.get("id") or "")
+        if item_id.startswith(prefix) and len(item_id) > len(prefix):
+            linked.add(item_id[len(prefix):])
+    return linked
+
+
+async def unverified_linked_rework_issues(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    stage: Stage,
+) -> list[dict]:
+    """Linked rework issues require independent closure even when medium/low.
+
+    Generic medium/low issues remain warnings. This stricter rule applies only
+    to issues durably linked by the canonical rework checklist id.
+    """
+    linked_ids = linked_rework_issue_ids(stage)
+    if not linked_ids:
+        return []
+
+    query = (
+        select(ProjectIssue)
+        .where(
+            ProjectIssue.project_id == project_id,
+            ProjectIssue.stage_id == stage.id,
+            ProjectIssue.id.in_(linked_ids),
+            ProjectIssue.status != ISSUE_TERMINAL_STATUS,
+        )
+        .order_by(ProjectIssue.id)
+    )
+    return [_issue_brief(issue) for issue in (await db.execute(query)).scalars().all()]
+
+
+class ReworkIssueVerificationRequired(ValueError):
+    code = "rework_issue_verification_required"
+
+    def __init__(self, issues: list[dict]):
+        super().__init__(self.code)
+        self.issues = issues
 
 
 class OpenIssuesBlock(ValueError):

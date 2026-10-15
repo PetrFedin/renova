@@ -33,9 +33,9 @@ async def setup_db(tmp_path, monkeypatch):
     async with sess.SessionLocal() as db:
         await ensure_demo_users(db)
         await seed_articles(db)
-        db.add(User(id="rival-contractor", phone="+70000000999", role=UserRole.contractor))
+        db.add(User(id="rival-contractor", phone="+70000000999", role=UserRole.contractor, npd_verified=True))
         # демо-исполнитель уже занят демо-объектом (лимит бесплатного тарифа исчерпан)
-        db.add(User(id="fresh-contractor", phone="+70000000998", role=UserRole.contractor))
+        db.add(User(id="fresh-contractor", phone="+70000000998", role=UserRole.contractor, npd_verified=True))
         db.add(User(id="outsider-contractor", phone="+70000000997", role=UserRole.contractor))
         await db.commit()
     monkeypatch.setattr(config.settings, "contractor_free_project_limit", 1)
