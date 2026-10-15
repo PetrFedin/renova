@@ -2,7 +2,7 @@
 
 **Status:** ACTIVE / AUTHORITATIVE ANNEX
 **Parent dossier:** `docs/RENOVA-TECHNICAL-SPECIFICATION.md`
-**Effective from:** 2026-08-29. **Current reconciliation:** 2026-10-07.
+**Effective from:** 2026-08-29. **Current reconciliation:** 2026-10-15.
 
 This is mandatory specification governance, not optional process guidance. The prior full version is retained in `history/END-TO-END-GOVERNANCE-before-2026-09-08.md`; its old ordered next-step list is historical.
 
@@ -97,3 +97,17 @@ For secret scanning:
 - actual provider/production credentials are never baseline exceptions and require revoke/rotate/incident handling.
 
 This security admission state is a prerequisite for advancing Renova's portable execution evidence into issuer/signature/revocation/external-verifier interoperability. It does not upgrade external launch controls such as branch protection, provider credential drills or penetration testing.
+
+## 9.1 2026-10-15 scanner evidence integrity (#725)
+
+Owner: security/admission engineering. Priority: P0 evidence correctness; this is not a confirmed production secret leak.
+
+The complete boundary is the pinned scanner -> real raw report plus exit evidence -> `scripts/sanitizeGitleaksReport.mjs` -> redacted atomic receipt -> existing Security operations integrity gate/artifact. Reports must be present, nonempty files containing a JSON array; only exact exit 0/1 is accepted. Exit 0 requires zero findings and exit 1 requires findings, BEFORE considering any historical exception. Missing evidence, malformed shapes, coercible identities, ambiguous aliases, contradictory status, duplicate fingerprints, expired/future/invalid review dates and stale exceptions fail closed. The 90-day limit and exact merged-history-only baseline are not widened.
+
+With valid CLI arguments and a writable output path, each attempt atomically replaces the old receipt with a denial before evaluating input, then writes a positive receipt only after all checks. A controlled failure leaves `verified=false` and a fixed `error_code`, never raw JSON parser contents. Inputs are bounded regular files; symlinks are refused where O_NOFOLLOW is available. Output replacement never follows an output symlink. Output/input path alias and unavailable output storage are operator failures, not usable receipts; consumers must require BOTH exit 0 and a receipt with `verified=true`. This does not authenticate report provenance against a malicious runner or prove external credential rotation.
+
+The existing workflow no longer synthesizes `[]` when a scanner report is missing. Both scan paths remove old raw/exit/summary evidence before scanning. In addition to the retained leak-detection canary, the same immutable scanner must produce a real clean JSON report and have it accepted by the real sanitizer. New tests run in the existing security source-contract job; no workflow, scanner rule, severity or history exception is added.
+
+Local measured evidence on Linux / Node v22.16.0: **66 tests, 66 passed, 0 failed, 0 skipped** (`node --test scripts/gitleaksEvidencePolicy.test.mjs`). The same tests against byte-identical parent sanitizer blob `4c70500994a8587be39a237b31375a70b6e76abd` and workflow blob `9dc0c67f9784f47953709ec04a7132a91a4f7437` measured **22 passed / 44 failed / 0 skipped**. These are new adversarial regression cases, not a count of existing application failures. YAML parsed and all 16 workflow run-blocks passed `bash -n`. The earlier unretained 12/24 and 36/36 figures in the initial issue were withdrawn; only the fresh recorded runs qualify this local claim.
+
+Qualification sequence: new exact-head Security operations (including real pinned-scanner canaries) + required application/PostgreSQL/mobile/E2E/spec/policy CI -> independent review -> owner-controlled integration -> refresh dependent trust candidates. Local Docker/full canonical runtime is unavailable in this session, so no local scanner, PostgreSQL or complete application-suite pass is claimed. The child of #683 does not replace its mandatory independent reviewer or resolve #685 credentials/#247 bypass; no merge, production/staging, signing secrets, providers or paid resources are changed. Broad-production admission remains blocked until its separate evidence requirements are met.
