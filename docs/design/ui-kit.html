@@ -1,0 +1,696 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Renova UI-кит</title>
+<style>
+/* =========================================================
+   Токены: 1:1 с apps/mobile/constants/Theme.ts (RenovaTheme).
+   Имена переменных = ключи Theme.ts в kebab-case.
+   Блок «--x-*» это ПРЕДЛОЖЕНИЕ (в Theme.ts его нет), см. DESIGN.md proposed.
+   Тёмной палитры в Theme.ts нет: здесь её тоже нет (см. раздел «Тема»).
+   ========================================================= */
+:root{
+  color-scheme:light;
+  --primary:#334155;--primary-pressed:#1E293B;--primary-muted:#64748B;
+  --accent:#2563EB;--accent-muted:#DBEAFE;
+  --background:#F8FAFC;--surface:#FFFFFF;--surface-muted:#F1F5F9;
+  --text:#0F172A;--text-muted:#64748B;--text-subtle:#94A3B8;--inverse-text:#FFFFFF;
+  --border:#E2E8F0;--border-light:#F1F5F9;
+  --success:#15803D;--success-bg:#F0FDF4;--success-border:#BBF7D0;--success-text:#15803D;
+  --warning:#B45309;--warning-bg:#FFFBEB;--warning-border:#FDE68A;--warning-text:#B45309;
+  --danger:#B91C1C;--danger-bg:#FEF2F2;--danger-border:#FECACA;--danger-text:#B91C1C;
+  --info:#1D4ED8;--info-bg:#EFF6FF;--info-border:#BFDBFE;--info-text:#1D4ED8;
+  --neutral-bg:#F8FAFC;--neutral-border:#E2E8F0;--neutral-text:#475569;
+  --tab-active:#1E293B;--tab-inactive:#94A3B8;
+  /* spacing, radius, type */
+  --sp-xxs:2px;--sp-xs:4px;--sp-sm:8px;--sp-md:12px;--sp-lg:16px;--sp-xl:20px;--sp-xxl:24px;--sp-xxxl:32px;
+  --r-xs:6px;--r-sm:8px;--r-md:10px;--r-lg:12px;--r-xl:16px;--r-pill:999px;
+  --min-touch:44px;
+  --shadow-card:0 2px 8px rgba(0,0,0,.04);
+  /* ПРЕДЛОЖЕНИЕ: только значения, которых нет в Theme.ts; остальное переиспользует существующие токены */
+  --x-border-strong:#7C8CA3;               /* новый токен borderStrong: >=3:1 к surface/background/surfaceMuted */
+  --x-text-muted-strong:var(--neutral-text);/* не новый цвет: существующий neutralText #475569 */
+  --x-tab-inactive:var(--text-muted);      /* не новый цвет: существующий textMuted #64748B вместо tabInactive */
+  --x-focus:var(--accent);
+  --scrim:rgba(15,23,42,.35);--shadow-fab:0 2px 6px rgba(0,0,0,.2);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--background);color:var(--text);font:400 14px/20px -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;overflow-x:hidden}
+h1,h2,h3,p{margin:0}
+a{color:var(--accent)}
+.wrap{max-width:1120px;margin:0 auto;padding:0 var(--sp-lg)}
+header.top{background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:30}
+header.top .wrap{display:flex;gap:var(--sp-md);align-items:center;min-height:56px;flex-wrap:wrap;padding-top:var(--sp-sm);padding-bottom:var(--sp-sm)}
+.brand{font-size:18px;font-weight:800;letter-spacing:-.3px}
+nav.toc{display:flex;flex-wrap:wrap;gap:var(--sp-xs);flex:1}
+nav.toc a{display:inline-flex;align-items:center;min-height:var(--min-touch);padding:0 var(--sp-md);border-radius:var(--r-pill);text-decoration:none;font-size:13px;font-weight:600;color:var(--x-text-muted-strong)}
+nav.toc a:hover{background:var(--surface-muted)}
+:focus-visible{outline:2px solid var(--x-focus);outline-offset:2px}
+section{padding:var(--sp-xxxl) 0 var(--sp-sm)}
+section>.wrap>h2{font-size:22px;line-height:28px;font-weight:700;letter-spacing:-.3px;margin-bottom:var(--sp-xs)}
+.lead{color:var(--x-text-muted-strong);max-width:760px;margin-bottom:var(--sp-lg)}
+.note{font-size:12px;line-height:16px;color:var(--x-text-muted-strong);margin-top:var(--sp-sm)}
+.grid{display:grid;gap:var(--sp-md)}
+.g2{grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr))}
+.g4{grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr))}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:var(--sp-lg)}
+.panel>h3{font-size:16px;line-height:22px;font-weight:600;margin-bottom:var(--sp-md)}
+.row{display:flex;flex-wrap:wrap;gap:var(--sp-sm);align-items:center}
+.label{font-size:12px;line-height:16px;font-weight:600;color:var(--x-text-muted-strong)}
+code{font:600 12px/16px ui-monospace,Menlo,Consolas,monospace;background:var(--surface-muted);padding:1px 4px;border-radius:var(--r-xs);word-break:break-word}
+
+/* ---------- палитра ---------- */
+.sw{border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;background:var(--surface)}
+.sw i{display:block;height:44px;border-bottom:1px solid var(--border)}
+.sw div{padding:var(--sp-sm);font-size:12px;line-height:16px}
+.sw b{display:block;font-size:13px}
+.sw.prop{border-style:dashed}
+
+/* ---------- таблицы ---------- */
+table{width:100%;border-collapse:collapse;font-size:13px;line-height:18px;table-layout:fixed}
+th,td{text-align:left;padding:var(--sp-sm);border-bottom:1px solid var(--border);vertical-align:top;overflow-wrap:anywhere}
+th{font-size:12px;font-weight:600;color:var(--x-text-muted-strong)}
+.swpair{display:inline-block;width:100%;padding:var(--sp-xs) var(--sp-sm);border:1px solid var(--border);border-radius:var(--r-sm);font-weight:600;font-size:13px}
+.pass{color:var(--success-text);font-weight:700}
+.failtxt{color:var(--danger-text);font-weight:700}
+
+/* ---------- типографика ---------- */
+.ty{display:flex;gap:var(--sp-md);align-items:baseline;padding:var(--sp-sm) 0;border-bottom:1px solid var(--border-light);flex-wrap:wrap}
+.ty span.meta{font-size:12px;color:var(--x-text-muted-strong);min-width:120px}
+.t-display{font-size:32px;font-weight:800;letter-spacing:-.5px;line-height:38px}
+.t-hero{font-size:24px;font-weight:700;line-height:28px}
+.t-h1{font-size:22px;font-weight:700;letter-spacing:-.3px;line-height:28px}
+.t-h2{font-size:18px;font-weight:800;line-height:24px}
+.t-h3{font-size:16px;font-weight:600;line-height:22px}
+.t-body{font-size:14px;font-weight:400;line-height:20px}
+.t-small{font-size:13px;line-height:18px;color:var(--x-text-muted-strong)}
+.t-cap{font-size:12px;font-weight:500;line-height:16px;color:var(--x-text-muted-strong)}
+.t-metric{font-size:24px;font-weight:700;line-height:28px;font-variant-numeric:tabular-nums}
+
+/* ---------- сетка, отступы, радиусы ---------- */
+.sp{display:flex;align-items:center;gap:var(--sp-sm);font-size:12px;margin:var(--sp-xs) 0}
+.sp i{display:block;height:12px;background:var(--accent);border-radius:2px}
+.rad{width:64px;height:44px;border:1px solid var(--border);background:var(--surface-muted);display:flex;align-items:center;justify-content:center;font-size:12px}
+
+/* ---------- иконки ---------- */
+.ico{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.icocell{display:flex;flex-direction:column;align-items:center;gap:var(--sp-xs);padding:var(--sp-sm);border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface);font-size:12px;line-height:16px;text-align:center;overflow-wrap:anywhere}
+
+/* ---------- PrimaryButton ---------- */
+.btn{appearance:none;font:inherit;display:inline-flex;align-items:center;justify-content:center;gap:var(--sp-sm);min-height:var(--min-touch);border:0;border-radius:var(--r-md);background:var(--primary);color:var(--inverse-text);font-weight:600;cursor:pointer;padding:10px 14px;font-size:14px;line-height:20px;transition:opacity .12s}
+.btn.sm{padding:7px 10px;font-size:12px;line-height:16px}
+.btn.lg{padding:12px 18px;font-size:14px}
+.btn.accent{background:var(--accent)}
+.btn.secondary{background:var(--surface-muted);color:var(--text)}
+.btn.outline{background:transparent;border:1px solid var(--border);color:var(--text)}
+.btn.ghost{background:transparent;color:var(--primary-muted);font-size:12px;padding-top:6px;padding-bottom:6px}
+.btn.danger{background:var(--danger)}
+.btn.dangerOutline{background:transparent;border:1px solid var(--danger-border);color:var(--danger-text)}
+.btn.full{display:flex;width:100%}
+.btn:hover{opacity:.92}
+.btn:active,.btn.is-pressed{opacity:.85}
+.btn.is-hover{opacity:.92}
+.btn:disabled,.btn.is-disabled{opacity:.45;cursor:not-allowed}
+.btn.secondary:disabled,.btn.outline:disabled{color:var(--text-muted)}
+.btn.is-focus{outline:2px solid var(--x-focus);outline-offset:2px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.spin{width:18px;height:18px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}.spin{animation:none;border-right-color:currentColor;opacity:.6}}
+
+/* ---------- Card ---------- */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:var(--sp-md);margin-bottom:var(--sp-sm)}
+.card.action{min-height:64px;display:flex;flex-direction:column;justify-content:center;cursor:pointer}
+.card.action:active{opacity:.88}
+.card.info{background:var(--info-bg);border-color:var(--info-border)}
+.card.warning{background:var(--warning-bg);border-color:var(--warning-border)}
+.card.danger{background:var(--danger-bg);border-color:var(--danger-border)}
+.card.success{background:var(--success-bg);border-color:var(--success-border)}
+.card.metric{padding-top:var(--sp-sm);padding-bottom:var(--sp-sm);text-align:center}
+.shadowed{box-shadow:var(--shadow-card)}
+
+/* ---------- StatusPill ---------- */
+.pill{display:inline-flex;align-items:center;min-height:24px;padding:4px var(--sp-sm);border-radius:var(--r-pill);border:1px solid;font-size:12px;line-height:16px;font-weight:700;white-space:nowrap}
+.pill.neutral{background:var(--neutral-bg);border-color:var(--neutral-border);color:var(--neutral-text)}
+.pill.info{background:var(--info-bg);border-color:var(--info-border);color:var(--info-text)}
+.pill.success{background:var(--success-bg);border-color:var(--success-border);color:var(--success-text)}
+.pill.warning{background:var(--warning-bg);border-color:var(--warning-border);color:var(--warning-text)}
+.pill.danger{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger-text)}
+
+/* ---------- SectionHeader, TextLink ---------- */
+.sh{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-sm);margin-bottom:var(--sp-sm)}
+.sh .l{flex:1;min-width:0}
+.sh .t{font-size:13px;line-height:18px;font-weight:600;color:var(--x-text-muted-strong)}
+.sh .s{font-size:12px;line-height:16px;font-weight:500;color:var(--x-text-muted-strong)}
+.tl{display:inline-flex;align-items:center;min-height:var(--min-touch);padding:0 var(--sp-xs);font-size:12px;font-weight:600;color:var(--accent);background:none;border:0;cursor:pointer;font-family:inherit}
+
+/* ---------- поля, чипы, переключатель ---------- */
+.field{display:block;width:100%;min-height:var(--min-touch);border-radius:var(--r-md);border:1px solid var(--border);background:var(--surface);padding:0 var(--sp-md);font:400 14px/20px inherit;font-family:inherit;color:var(--text)}
+.field.strong{border-color:var(--x-border-strong)}
+.field.err{border-color:var(--danger)}
+.field::placeholder{color:var(--x-text-muted-strong)}
+.chip{display:inline-flex;align-items:center;min-height:var(--min-touch);padding:0 var(--sp-md);border-radius:var(--r-pill);border:1px solid var(--border);background:var(--surface);color:var(--text);font:600 12px/16px inherit;font-family:inherit;cursor:pointer}
+.chip.on{background:var(--info-bg);border-color:var(--accent);color:var(--info-text)}
+.switch{position:relative;display:inline-flex;align-items:center;gap:var(--sp-sm);min-height:var(--min-touch);cursor:pointer;font-size:14px}
+.switch input{position:absolute;opacity:0;width:44px;height:44px;margin:0;cursor:pointer}
+.switch .tr{width:44px;height:26px;border-radius:var(--r-pill);background:var(--x-border-strong);position:relative;flex:none;transition:background .12s}
+.switch .tr::after{content:"";position:absolute;left:3px;top:3px;width:20px;height:20px;border-radius:50%;background:var(--surface);transition:left .12s}
+.switch input:checked+.tr{background:var(--primary)}
+.switch input:checked+.tr::after{left:21px}
+.switch input:focus-visible+.tr{outline:2px solid var(--x-focus);outline-offset:2px}
+
+/* ---------- Рабочие элементы: смета, этап, бюджет ---------- */
+.est{display:grid;grid-template-columns:1fr auto;gap:2px var(--sp-sm);padding:var(--sp-sm) 0;border-bottom:1px solid var(--border-light);align-items:baseline}
+.est .n{font-size:14px;font-weight:600}
+.est .q{font-size:12px;line-height:16px;color:var(--x-text-muted-strong);font-variant-numeric:tabular-nums}
+.est .sum{font-size:14px;font-weight:700;text-align:right;font-variant-numeric:tabular-nums;grid-row:1/3;grid-column:2}
+.est.total{border-bottom:0}
+.money{font-variant-numeric:tabular-nums}
+.bar{height:8px;border-radius:var(--r-pill);background:var(--surface-muted);border:1px solid var(--border);overflow:hidden;position:relative}
+.bar>i{display:block;height:100%;background:var(--accent)}
+.bar.ok>i{background:var(--success)}
+.bar.warn>i{background:var(--warning)}
+.stage{display:flex;flex-direction:column;gap:var(--sp-sm)}
+.stage .hd{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--sp-sm)}
+.stage .nm{font-size:14px;font-weight:600}
+.budget-line{position:relative;height:12px;border-radius:var(--r-pill);background:var(--surface-muted);border:1px solid var(--border);overflow:hidden}
+.budget-line .plan{position:absolute;left:0;top:0;bottom:0;width:89.6%;background:var(--accent-muted)}
+.budget-line .fact{position:absolute;left:0;top:0;bottom:0;width:89.6%;background:var(--primary)}
+.budget-line .over{position:absolute;top:0;bottom:0;left:89.6%;right:0;background:var(--danger)}
+
+/* ---------- FAB и Dock ---------- */
+.fab{position:absolute;right:8px;bottom:76px;width:44px;height:44px;border-radius:50%;border:0;background:var(--primary);color:var(--inverse-text);display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow-fab);opacity:.82;cursor:pointer}
+.fab:hover,.fab:focus-visible{opacity:1}
+.dock{display:flex;background:var(--surface);border-top:1px solid var(--border);min-height:56px;padding-top:8px}
+.dock button{flex:1;min-width:0;min-height:var(--min-touch);display:flex;flex-direction:column;align-items:center;justify-content:center;background:none;border:0;padding:4px 2px;font-family:inherit;color:var(--x-tab-inactive);cursor:pointer}
+.dock button span{font-size:12px;line-height:14px;font-weight:600;margin-top:2px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dock button[aria-current=page]{color:var(--tab-active)}
+.dock .badge{position:absolute;top:-6px;right:-10px;min-width:16px;height:16px;border-radius:8px;background:var(--danger);color:var(--inverse-text);font-size:12px;line-height:16px;font-weight:700;text-align:center;padding:0 4px}
+.dock .ic{position:relative;display:inline-flex}
+
+/* ---------- Рамка телефона ---------- */
+.phones{display:grid;gap:var(--sp-lg);grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));align-items:start}
+.phone{width:100%;max-width:375px;margin:0 auto;border:1px solid var(--border);border-radius:28px;background:var(--surface-muted);padding:10px;box-shadow:var(--shadow-card)}
+.screen{position:relative;background:var(--background);border-radius:20px;overflow:hidden;height:640px;display:flex;flex-direction:column;border:1px solid var(--border)}
+.status{display:flex;justify-content:space-between;padding:8px 16px 0;font-size:12px;font-weight:600;color:var(--text)}
+.appbar{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-sm);padding:var(--sp-sm) var(--sp-lg);background:var(--surface);border-bottom:1px solid var(--border)}
+.appbar .pj{display:flex;flex-direction:column;min-width:0}
+.appbar .pj b{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.appbar .pj span{font-size:12px;color:var(--x-text-muted-strong)}
+.body{flex:1;overflow:hidden;padding:var(--sp-lg);padding-bottom:var(--sp-xxxl)}
+.hubtabs{display:flex;gap:var(--sp-xs);margin-bottom:var(--sp-md);flex-wrap:wrap}
+.cap{text-align:center;font-size:12px;line-height:16px;color:var(--x-text-muted-strong);margin-top:var(--sp-sm)}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-top-left-radius:var(--r-xl);border-top-right-radius:var(--r-xl);border:1px solid var(--border);padding:var(--sp-lg);padding-bottom:var(--sp-xl);z-index:3}
+.scrim{position:absolute;inset:0;background:var(--scrim);z-index:2}
+.kv{display:flex;justify-content:space-between;gap:var(--sp-sm);padding:6px 0;border-bottom:1px solid var(--border-light);font-size:14px}
+.kv span:first-child{color:var(--x-text-muted-strong)}
+.kv b{font-variant-numeric:tabular-nums}
+
+/* ---------- состояния ---------- */
+.state{display:flex;flex-direction:column;align-items:center;text-align:center;gap:var(--sp-sm);padding:var(--sp-lg)}
+.state .ib{width:44px;height:44px;border-radius:50%;background:var(--accent-muted);color:var(--info-text);display:flex;align-items:center;justify-content:center}
+.state .ib.d{background:var(--danger-bg);color:var(--danger-text)}
+.state .ib.w{background:var(--warning-bg);color:var(--warning-text)}
+.state h3{font-size:16px;line-height:22px;font-weight:600}
+.state p{font-size:13px;line-height:18px;color:var(--x-text-muted-strong);max-width:280px}
+.skel{height:14px;border-radius:var(--r-xs);background:var(--surface-muted);margin:8px 0}
+.banner{display:flex;gap:var(--sp-sm);align-items:flex-start;border-radius:var(--r-lg);border:1px solid;padding:var(--sp-md);font-size:13px;line-height:18px}
+.banner.warning{background:var(--warning-bg);border-color:var(--warning-border);color:var(--warning-text)}
+.banner.info{background:var(--info-bg);border-color:var(--info-border);color:var(--info-text)}
+.banner.danger{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger-text)}
+.banner b{display:block}
+
+/* ---------- корректность ---------- */
+.dont{border:1px dashed var(--danger-border);background:var(--danger-bg);border-radius:var(--r-md);padding:var(--sp-md);font-size:13px;line-height:18px}
+footer{padding:var(--sp-xxxl) 0;color:var(--x-text-muted-strong);font-size:12px;line-height:16px}
+</style>
+</head>
+<body>
+
+<!-- Спрайт иконок: формы приближены к Ionicons (имя глифа в подписи); оригинальные глифы берутся из @expo/vector-icons -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="home-outline" viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9.5h13V10"/><path d="M10 19.5v-5h4v5"/></symbol>
+    <symbol id="grid-outline" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="hammer-outline" viewBox="0 0 24 24"><path d="m14 6 4 4"/><path d="M12 8 5 15l4 4 7-7"/><path d="m11 5 3-2 5 5-2 3"/></symbol>
+    <symbol id="wallet-outline" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10h18"/><circle cx="16.5" cy="14.5" r="1.1"/></symbol>
+    <symbol id="chatbubble-outline" viewBox="0 0 24 24"><path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></symbol>
+    <symbol id="add" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="receipt-outline" viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></symbol>
+    <symbol id="camera-outline" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+    <symbol id="calendar-outline" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/></symbol>
+    <symbol id="checkmark-circle-outline" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="m8.5 12.3 2.4 2.4 4.6-5"/></symbol>
+    <symbol id="alert-circle-outline" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v5.5M12 16.2v.3"/></symbol>
+    <symbol id="cloud-offline-outline" viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 0 0 .8-7.9A5.5 5.5 0 0 0 7.2 9.2 4.4 4.4 0 0 0 7 18z"/><path d="m4 4 16 16"/></symbol>
+    <symbol id="file-tray-outline" viewBox="0 0 24 24"><path d="M4 13 6.5 5h11L20 13v6H4z"/><path d="M4 13h5l1 2h4l1-2h5"/></symbol>
+    <symbol id="chevron-forward" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+    <symbol id="list-outline" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.1M4.5 12h.1M4.5 18h.1"/></symbol>
+    <symbol id="shield-checkmark-outline" viewBox="0 0 24 24"><path d="M12 3 5 6v6c0 4 3 7 7 9 4-2 7-5 7-9V6z"/><path d="m9 12 2.2 2.2L15.5 10"/></symbol>
+    <symbol id="lock-closed-outline" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+    <symbol id="refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></symbol>
+  </defs>
+</svg>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand">Renova UI-кит</div>
+    <nav class="toc" aria-label="Разделы">
+      <a href="#palette">Палитра</a><a href="#contrast">Контраст</a><a href="#type">Типографика</a><a href="#space">Сетка</a>
+      <a href="#icons">Иконки</a><a href="#buttons">Кнопки</a><a href="#forms">Поля</a><a href="#cards">Карточки</a>
+      <a href="#work">Рабочие элементы</a><a href="#states">Состояния</a><a href="#screens">Экраны</a><a href="#theme">Тема</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<section id="intro"><div class="wrap">
+  <h2>Что это</h2>
+  <p class="lead">Живой кит на токенах <code>apps/mobile/constants/Theme.ts</code> (<code>RenovaTheme</code>), типографике <code>typography.ts</code>, <code>uiTokens.ts</code> и компонентах <code>components/ui</code>, <code>components/renova/PrimaryButton.tsx</code>. Это HTML-копия вида, а не код приложения: при расхождении права <code>Theme.ts</code> и компоненты React Native. Светлая тема единственная: тёмной палитры в <code>Theme.ts</code> нет и здесь она не придумывается (раздел «Тема»). Все цвета ниже заданы переменными; локальных hex в разметке нет, кроме блока токенов в начале файла.</p>
+  <div class="banner info" role="note"><div><b>Три вещи, которые кит исправляет относительно канона</b>Токен <code>borderStrong</code> для границы поля (предложение, 3:1), подпись нижней панели берётся из <code>textMuted</code> вместо <code>tabInactive</code>, вторичный текст на <code>surfaceMuted</code> и <code>accentMuted</code> берётся из <code>neutralText</code>. Первый новый, два других переиспользуют существующие токены. Подробности и расчёт в разделе «Контраст».</div></div>
+</div></section>
+
+<section id="palette"><div class="wrap">
+  <h2>Палитра и роли</h2>
+  <p class="lead">Роли по канону: <b>primary</b> главная кнопка (одна на экран); <b>accent</b> ссылки и активная вкладка; <b>success / warning / danger / info</b> статусы (фон, граница, текст); цвет не единственный носитель смысла: рядом слово.</p>
+  <div class="grid g4" id="palette-grid"></div>
+  <h3 style="margin:var(--sp-lg) 0 var(--sp-sm);font-size:16px">Предложение (нет в Theme.ts)</h3>
+  <div class="grid g4" id="palette-prop"></div>
+  <p class="note">Пунктирная рамка = предложение. <code>textMutedStrong</code> и исправленный <code>tabInactive</code> не требуют новых цветов: они указывают на уже существующие токены <code>neutralText</code> и <code>textMuted</code>.</p>
+</div></section>
+
+<section id="contrast"><div class="wrap">
+  <h2>Автоматическая таблица контраста (WCAG 2.x)</h2>
+  <p class="lead">Считается скриптом на странице по значениям переменных (формула относительной яркости, <code>(L1+0.05)/(L2+0.05)</code>). Пороги: 4.5 для обычного текста, 3.0 для крупного текста (от 18.66 px жирного или 24 px) и для нетекстовых элементов (границы полей, иконки).</p>
+  <div class="panel"><h3>Пары, которые проходят (текст и элементы, используемые в ките)</h3>
+    <table id="ctab"><thead><tr><th style="width:34%">Пара</th><th style="width:30%">Где используется</th><th style="width:16%">Контраст</th><th style="width:20%">Порог</th></tr></thead><tbody></tbody></table>
+  </div>
+  <div class="panel" style="margin-top:var(--sp-md)"><h3>Пары канона, которые НЕ проходят и в ките заменены</h3>
+    <table id="ftab"><thead><tr><th style="width:30%">Пара канона</th><th style="width:16%">Контраст</th><th style="width:30%">Чем заменено в ките</th><th style="width:24%">Новый контраст</th></tr></thead><tbody></tbody></table>
+    <p class="note">В рабочем коде замена делается правкой токенов в <code>Theme.ts</code>/<code>uiTokens.ts</code> (<code>borderStrong</code>; <code>tabInactive</code> сделать равным <code>textMuted</code>; для мелкого текста на <code>surfaceMuted</code> и <code>accentMuted</code> использовать <code>neutralText</code>), а не локальными hex. Декоративная граница карточки <code>border</code> на <code>surface</code> (1.23:1) допустима как декоративная линия; граница поля ввода такой быть не должна.</p>
+  </div>
+  <p class="note" id="csummary"></p>
+</div></section>
+
+<section id="type"><div class="wrap">
+  <h2>Типографика</h2>
+  <p class="lead">Шрифт системный: SF Pro на iOS, Roboto на Android; <code>fontFamily</code> в токенах не задан и новых шрифтов не вводим. Шкала из <code>Theme.ts</code>/<code>typography.ts</code>.</p>
+  <div class="panel">
+    <div class="ty"><span class="meta">display 32 / 800</span><span class="t-display">1 240 000 ₽</span></div>
+    <div class="ty"><span class="meta">hero 24 / 700</span><span class="t-hero">Сумма в листе</span></div>
+    <div class="ty"><span class="meta">h1 22 / 700</span><span class="t-h1">Заголовок экрана (один)</span></div>
+    <div class="ty"><span class="meta">h2 18 / 800</span><span class="t-h2">Секция</span></div>
+    <div class="ty"><span class="meta">h3 16 / 600</span><span class="t-h3">Подзаголовок</span></div>
+    <div class="ty"><span class="meta">body 14 / 400, lh 20</span><span class="t-body">Основной текст приложения для контроля ремонта.</span></div>
+    <div class="ty"><span class="meta">bodySmall 13, lh 18</span><span class="t-small">Вторичный текст (textMuted)</span></div>
+    <div class="ty"><span class="meta">caption 12 / 500, lh 16</span><span class="t-cap">Подпись, ссылка, служебная строка</span></div>
+    <div class="ty"><span class="meta">metric 24 / 700, lh 28</span><span class="t-metric">46 538 ₽</span></div>
+    <div class="ty"><span class="meta">tiny 11, tab 10</span><span class="t-cap">В <code>Theme.ts</code> есть размеры 11 и 10 (подписи Dock 10, StatusPill 11). В ките минимальный размер текста 12 px: это предложение U10 из пакета 03.</span></div>
+  </div>
+  <p class="note">Деньги: <code>formatRub</code> показывает рубли без копеек. Табличные цифры (<code>font-variant-numeric: tabular-nums</code>) включены в ките для сумм: в <code>typography.ts</code> их нет, это предложение U7.</p>
+</div></section>
+
+<section id="space"><div class="wrap">
+  <h2>Сетка, отступы, радиусы, границы, фокус</h2>
+  <div class="grid g2">
+    <div class="panel"><h3>Отступы (сетка 4/8)</h3><div id="spaces"></div></div>
+    <div class="panel"><h3>Радиусы</h3><div class="row" id="radii"></div>
+      <h3 style="margin-top:var(--sp-lg)">Границы и тень</h3>
+      <div class="row">
+        <div class="card" style="margin:0;width:140px">1 px <code>border</code></div>
+        <div class="card shadowed" style="margin:0;width:140px">тень <code>card</code></div>
+      </div>
+      <p class="note">Один токен тени: <code>0 2px 8px rgba(0,0,0,.04)</code>. Шапка и нижняя панель без тени, только линия 1 px.</p>
+      <h3 style="margin-top:var(--sp-lg)">Фокус</h3>
+      <div class="row"><button class="btn is-focus" type="button">Фокус 2 px, отступ 2 px</button></div>
+      <p class="note">В приложении видимого фокуса нет (предложение U8); в ките он есть для web и клавиатуры.</p>
+    </div>
+  </div>
+  <div class="panel" style="margin-top:var(--sp-md)"><h3>Правила экрана</h3>
+    <p class="t-small">Отступ экрана 16, между блоками 16, между карточками 8-12, нижний запас 32 и дополнительный под FAB (<code>FAB_SAFE_BOTTOM = FAB_BOTTOM + FAB_SIZE + 12</code>). Зона касания не меньше 44 pt (<code>minTouch</code>). Один primary-CTA на экран.</p></div>
+</div></section>
+
+<section id="icons"><div class="wrap">
+  <h2>Иконки</h2>
+  <p class="lead">В приложении: Ionicons (<code>@expo/vector-icons</code>), на iOS нижняя панель использует SF Symbols (<code>TabIcon.tsx</code>). Ниже набор тех, что реально встречаются в коде (имена глифов), в приближённой отрисовке. Эмодзи в рабочем UI запрещены.</p>
+  <div class="grid g4" id="icons-grid"></div>
+</div></section>
+
+<section id="buttons"><div class="wrap">
+  <h2>PrimaryButton</h2>
+  <p class="lead">Варианты: <code>primary</code>, <code>accent</code>, <code>secondary</code>, <code>outline</code>, <code>ghost</code>, <code>danger</code>, <code>dangerOutline</code>. Размеры <code>sm</code> (7/10, 12 px), <code>md</code> (10/14, 14 px), <code>lg</code> (12/18). Высота не меньше 44. Disabled: прозрачность .45. Pressed: прозрачность .85. Loading блокирует нажатие.</p>
+  <div class="panel"><h3>Варианты (md)</h3>
+    <div class="row">
+      <button class="btn" type="button">Принять этап</button>
+      <button class="btn accent" type="button">Оплатить</button>
+      <button class="btn secondary" type="button">Вторичная</button>
+      <button class="btn outline" type="button">Отмена</button>
+      <button class="btn ghost" type="button">Ссылка-кнопка</button>
+      <button class="btn danger" type="button">Удалить</button>
+      <button class="btn dangerOutline" type="button">Оспорить</button>
+    </div>
+  </div>
+  <div class="panel" style="margin-top:var(--sp-md)"><h3>Размеры</h3>
+    <div class="row"><button class="btn sm" type="button">sm</button><button class="btn" type="button">md</button><button class="btn lg" type="button">lg</button><button class="btn full" type="button" style="max-width:260px">fullWidth</button></div>
+    <p class="note">Все размеры держат <code>minHeight 44</code>; на широких экранах кнопки не растягиваются (maxWidth 360/440 в приложении).</p>
+  </div>
+  <div class="panel" style="margin-top:var(--sp-md)"><h3>Состояния (primary)</h3>
+    <div class="grid g3">
+      <div><div class="label">Обычное</div><button class="btn" type="button">Сохранить</button></div>
+      <div><div class="label">Наведение</div><button class="btn is-hover" type="button">Сохранить</button></div>
+      <div><div class="label">Нажатие</div><button class="btn is-pressed" type="button">Сохранить</button></div>
+      <div><div class="label">Фокус</div><button class="btn is-focus" type="button">Сохранить</button></div>
+      <div><div class="label">Недоступно</div><button class="btn" type="button" disabled>Сохранить</button></div>
+      <div><div class="label">Загрузка</div><button class="btn" type="button" disabled aria-busy="true"><span class="spin" aria-hidden="true"></span><span class="sr">Загрузка</span></button></div>
+    </div>
+  </div>
+  <div class="dont" style="margin-top:var(--sp-md)"><b>Нельзя:</b> два primary-CTA на экран; стрелки в тексте кнопки («→ Бюджет») вместо <code>TextLink</code> или <code>rightIcon</code>; кнопка меньше 44 px по высоте; <code>ghost</code> с серым текстом на <code>surfaceMuted</code>.</div>
+</div></section>
+
+<section id="forms"><div class="wrap">
+  <h2>Поля, чипы, переключатель</h2>
+  <div class="grid g2">
+    <div class="panel"><h3>Поле ввода</h3>
+      <label class="label" for="f1">Сумма счёта, ₽</label>
+      <input id="f1" class="field strong" inputmode="numeric" placeholder="25 000">
+      <div style="height:var(--sp-md)"></div>
+      <label class="label" for="f2">С ошибкой</label>
+      <input id="f2" class="field err strong" value="abc" aria-invalid="true" aria-describedby="e2">
+      <p id="e2" class="note" style="color:var(--danger-text)">Введите сумму цифрами</p>
+      <p class="note">Граница поля в ките <code>--x-border-strong</code> (предложение <code>borderStrong</code>, 3:1). В приложении сейчас <code>border</code> 1.23:1.</p>
+    </div>
+    <div class="panel"><h3>Чипы и переключатель</h3>
+      <div class="row"><button class="chip on" type="button" aria-pressed="true">Все</button><button class="chip" type="button" aria-pressed="false">Ожидают</button><button class="chip" type="button" aria-pressed="false">На проверке</button><button class="chip" type="button" aria-pressed="false">Оплачено</button></div>
+      <div style="height:var(--sp-md)"></div>
+      <label class="switch"><input type="checkbox" checked><span class="tr"></span><span>Приёмка и подпись по ссылке</span></label>
+      <label class="switch"><input type="checkbox"><span class="tr"></span><span>Оплата счетов по ссылке</span></label>
+      <p class="note">Активный чип: фон <code>infoBg</code>, граница <code>accent</code> (<code>chipActive</code> в <code>uiTokens.ts</code>).</p>
+    </div>
+  </div>
+</div></section>
+
+<section id="cards"><div class="wrap">
+  <h2>Card, StatusPill, SectionHeader</h2>
+  <div class="grid g2">
+    <div class="panel"><h3>Card (7 видов)</h3>
+      <div class="card"><b>base</b><div class="t-cap">padding 12, radius 12, border 1</div></div>
+      <div class="card action" tabindex="0" role="button"><b>action</b><div class="t-cap">минимум 64 по высоте, нажатие .88</div></div>
+      <div class="card info"><b>info</b></div>
+      <div class="card warning"><b>warning</b></div>
+      <div class="card danger"><b>danger</b></div>
+      <div class="card success"><b>success</b></div>
+      <div class="card metric"><div class="t-cap">metric</div><div class="t-metric">3 из 12</div></div>
+    </div>
+    <div>
+      <div class="panel"><h3>StatusPill</h3>
+        <div class="row"><span class="pill neutral">Запланирован</span><span class="pill info">В работе</span><span class="pill success">Принят</span><span class="pill warning">На проверке</span><span class="pill danger">Просрочен</span></div>
+        <p class="note">Всегда с текстом: цвет не единственный носитель. Высота не меньше 24, элемент не интерактивный.</p>
+      </div>
+      <div class="panel" style="margin-top:var(--sp-md)"><h3>SectionHeader и TextLink</h3>
+        <div class="sh"><div class="l"><div class="t">Ближайшие шаги</div><div class="s">3 действия ждут решения</div></div><button class="tl" type="button">Все →</button></div>
+        <p class="note">В приложении ссылка «Все →» это <code>TextLink</code>; стрелку лучше заменить иконкой <code>chevron-forward</code>.</p>
+      </div>
+    </div>
+  </div>
+</div></section>
+
+<section id="work"><div class="wrap">
+  <h2>Рабочие элементы продукта</h2>
+  <p class="lead">Элементы, ради которых существует приложение: смета, этап с прогрессом, бюджет и перерасход, FAB, нижняя навигация. Суммы вымышленные.</p>
+  <div class="grid g2">
+    <div class="panel"><h3>Строка сметы (комната «Спальня»)</h3>
+      <div class="est"><span class="n">Подготовка стен</span><span class="q">37,42 м² × 180 ₽</span><span class="sum">6 736 ₽</span></div>
+      <div class="est"><span class="n">Покраска стен, 2 слоя</span><span class="q">37,42 м² × 320 ₽</span><span class="sum">11 974 ₽</span></div>
+      <div class="est"><span class="n">Краска интерьерная</span><span class="q">9,82 л × 890 ₽</span><span class="sum">8 740 ₽</span></div>
+      <div class="est"><span class="n">Ламинат</span><span class="q">14,06 м² × 1 200 ₽</span><span class="sum">16 872 ₽</span></div>
+      <div class="est"><span class="n">Резерв 5 %</span><span class="q">на сумму строк</span><span class="sum">2 216 ₽</span></div>
+      <div class="est total"><span class="n">Итого по комнате</span><span class="q"><span class="pill neutral">Черновик</span></span><span class="sum">46 538 ₽</span></div>
+      <p class="note">Проверка: 6 736 + 11 974 + 8 740 + 16 872 = 44 322; 44 322 × 0,05 = 2 216; 44 322 + 2 216 = 46 538. Нормы: эталон <code>spalnya-4.2x3.1x2.7</code> (<code>reference-cases.json</code>).</p>
+    </div>
+    <div class="panel"><h3>Этап с прогрессом</h3>
+      <div class="card stage"><div class="hd"><span class="nm">Электрика</span><span class="pill info">В работе</span></div><div class="bar" role="progressbar" aria-valuenow="60" aria-valuemin="0" aria-valuemax="100" aria-label="Электрика, 60 процентов"><i style="width:60%"></i></div><div class="t-cap">60 % · срок до 12.11 · вес этапа 15 %</div></div>
+      <div class="card stage"><div class="hd"><span class="nm">Плитка санузла</span><span class="pill warning">На проверке</span></div><div class="bar warn" role="progressbar" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="Плитка санузла, 100 процентов"><i style="width:100%"></i></div><div class="t-cap">Ждёт решения заказчика</div><button class="btn full" type="button">Принять этап</button></div>
+      <div class="card stage"><div class="hd"><span class="nm">Демонтаж</span><span class="pill success">Принят</span></div><div class="bar ok" role="progressbar" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" aria-label="Демонтаж, 100 процентов"><i style="width:100%"></i></div></div>
+    </div>
+    <div class="panel"><h3>Бюджет и перерасход</h3>
+      <div class="kv"><span>План</span><b>1 200 000 ₽</b></div>
+      <div class="kv"><span>Факт (подтверждённые расходы)</span><b>1 340 000 ₽</b></div>
+      <div class="kv"><span>Отклонение</span><b style="color:var(--danger-text)">+140 000 ₽ (+11,7 %)</b></div>
+      <div style="height:var(--sp-md)"></div>
+      <div class="budget-line" role="img" aria-label="Факт 1 340 000 при плане 1 200 000; перерасход 140 000"><div class="plan"></div><div class="fact"></div><div class="over"></div></div>
+      <div class="row" style="margin-top:var(--sp-sm)"><span class="pill info">План</span><span class="pill neutral">Факт в плане</span><span class="pill danger">Перерасход</span></div>
+      <div class="card danger" style="margin-top:var(--sp-md);margin-bottom:0"><b>Перерасход по статье «Материалы»</b><div class="t-cap" style="color:var(--danger-text)">Факт выше плана на 140 000 ₽. Откройте статью и разберите отклонение.</div></div>
+      <p class="note">Расчёт: 1 340 000 − 1 200 000 = 140 000; 140 000 / 1 200 000 = 11,67 % → 11,7 %. Доля плана на полосе: 1 200 000 / 1 340 000 = 89,6 % полосы (на рисунке 89,6 %, масштаб соблюдён).</p>
+    </div>
+    <div class="panel"><h3>FAB и нижняя навигация</h3>
+      <div style="position:relative;border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;background:var(--background);height:220px">
+        <div style="padding:var(--sp-md)" class="t-cap">Содержимое экрана</div>
+        <button class="fab" type="button" aria-label="Быстрые действия" style="bottom:72px"><svg class="ico" style="width:28px;height:28px"><use href="#add"/></svg></button>
+        <div class="dock" style="position:absolute;left:0;right:0;bottom:0" role="navigation" aria-label="Основная навигация">
+          <button type="button" aria-current="page"><span class="ic"><svg class="ico"><use href="#home-outline"/></svg></span><span>Главная</span></button>
+          <button type="button"><span class="ic"><svg class="ico"><use href="#chatbubble-outline"/></svg><i class="badge">3</i></span><span>Сообщения</span></button>
+          <button type="button"><span class="ic"><svg class="ico"><use href="#grid-outline"/></svg></span><span>Объект</span></button>
+          <button type="button"><span class="ic"><svg class="ico"><use href="#hammer-outline"/></svg></span><span>Ремонт</span></button>
+          <button type="button"><span class="ic"><svg class="ico"><use href="#wallet-outline"/></svg></span><span>Деньги</span></button>
+        </div>
+      </div>
+      <p class="note">FAB в коде: «Расход» и «Сообщение»; у исполнителя ещё «Работа» и «В черновик». Канон <code>renova-design-system.mdc</code> перечисляет «Расход · Сообщение · Замечание · Фото» без «Черновик»: расхождение, решение за владельцем. Размер 44, непрозрачность .82, автоскрытие при прокрутке вниз. Подпись «Деньги» у заказчика, «Бюджет» у исполнителя. Подписи Dock в ките 12 px (в приложении 10 px).</p>
+    </div>
+  </div>
+</div></section>
+
+<section id="states"><div class="wrap">
+  <h2>Состояния данных</h2>
+  <p class="lead">У каждого списка и формы обязательны: загрузка, ошибка с «Повторить», пусто с действием, устарело, офлайн. Ошибка загрузки не маскируется под пустой список.</p>
+  <div class="grid g3">
+    <div class="panel"><h3>Загрузка</h3><div class="state"><span class="spin" aria-hidden="true" style="color:var(--primary);width:24px;height:24px"></span><p>Проверяем актуальные задачи…</p></div><div class="skel" style="width:90%"></div><div class="skel" style="width:70%"></div></div>
+    <div class="panel"><h3>Ошибка</h3><div class="state"><div class="ib d"><svg class="ico"><use href="#alert-circle-outline"/></svg></div><h3>Не удалось загрузить бюджет</h3><p>Данные на экране могут быть неполными. Проверьте сеть и повторите.</p><button class="btn outline" type="button"><svg class="ico" style="width:18px;height:18px"><use href="#refresh"/></svg>Повторить</button></div></div>
+    <div class="panel"><h3>Пусто</h3><div class="state"><div class="ib"><svg class="ico"><use href="#file-tray-outline"/></svg></div><h3>Расходов пока нет</h3><p>Отсканируйте чек или добавьте расход вручную, чтобы увидеть факт.</p><button class="btn outline" type="button">Добавить расход</button></div></div>
+    <div class="panel"><h3>Нет доступа</h3><div class="state"><div class="ib w"><svg class="ico"><use href="#lock-closed-outline"/></svg></div><h3>Только просмотр</h3><p>Решения по этому разделу принимает заказчик объекта.</p></div></div>
+    <div class="panel"><h3>Нет сети</h3><div class="banner warning" role="status"><svg class="ico" style="width:20px;height:20px"><use href="#cloud-offline-outline"/></svg><div><b>Нет сети: 2 изменения в очереди</b>Отправятся автоматически, когда связь появится. Конфликты откроются отдельным списком.</div></div></div>
+    <div class="panel"><h3>Устарело</h3><div class="banner info" role="status"><svg class="ico" style="width:20px;height:20px"><use href="#refresh"/></svg><div><b>Показаны сохранённые данные</b>Последнее обновление 14:20. Потяните вниз, чтобы обновить.</div></div></div>
+  </div>
+</div></section>
+
+<section id="screens"><div class="wrap">
+  <h2>Экраны в рамке телефона</h2>
+  <p class="lead">Пять типовых экранов: Главная заказчика, Смета исполнителя, Ремонт / Этапы, Деньги, Лист счёта. Ширина рамки до 375 px. В каждом экране один главный акцент.</p>
+  <div class="phones">
+
+    <div><div class="phone"><div class="screen">
+      <div class="status"><span>9:41</span><span>Заказчик</span></div>
+      <div class="appbar"><div class="pj"><b>Квартира, ул. Примерная, 1</b><span>Ремонт идёт · 38 %</span></div><svg class="ico" style="color:var(--x-text-muted-strong)"><use href="#chatbubble-outline"/></svg></div>
+      <div class="body">
+        <div class="card info"><div class="t-cap" style="color:var(--info-text)">Следующий шаг</div><div class="t-h3" style="margin:4px 0 var(--sp-sm)">Принять этап «Плитка санузла»</div><button class="btn full" type="button">Проверить и принять</button></div>
+        <div class="grid" style="grid-template-columns:repeat(3,1fr);gap:var(--sp-sm)">
+          <div class="card metric" style="margin:0"><div class="t-cap">План</div><div class="t-metric" style="font-size:16px">1,2 млн</div></div>
+          <div class="card metric" style="margin:0"><div class="t-cap">Факт</div><div class="t-metric" style="font-size:16px">0,9 млн</div></div>
+          <div class="card metric" style="margin:0"><div class="t-cap">Остаток</div><div class="t-metric" style="font-size:16px">0,3 млн</div></div>
+        </div>
+        <div style="height:var(--sp-lg)"></div>
+        <div class="sh"><div class="l"><div class="t">Ждёт вас</div></div><button class="tl" type="button">Входящие</button></div>
+        <div class="card action"><div class="row" style="justify-content:space-between;flex-wrap:nowrap"><span class="n" style="font-weight:600">Счёт за этап: 25 000 ₽</span><span class="pill warning">Оплатить</span></div></div>
+        <div class="card action"><div class="row" style="justify-content:space-between;flex-wrap:nowrap"><span style="font-weight:600">Допработа: розетки</span><span class="pill neutral">Решить</span></div></div>
+      </div>
+      <button class="fab" type="button" aria-label="Быстрые действия"><svg class="ico" style="width:28px;height:28px"><use href="#add"/></svg></button>
+      <div class="dock">
+        <button type="button" aria-current="page"><span class="ic"><svg class="ico"><use href="#home-outline"/></svg></span><span>Главная</span></button>
+        <button type="button"><span class="ic"><svg class="ico"><use href="#chatbubble-outline"/></svg><i class="badge">2</i></span><span>Сообщения</span></button>
+        <button type="button"><span class="ic"><svg class="ico"><use href="#grid-outline"/></svg></span><span>Объект</span></button>
+        <button type="button"><span class="ic"><svg class="ico"><use href="#hammer-outline"/></svg></span><span>Ремонт</span></button>
+        <button type="button"><span class="ic"><svg class="ico"><use href="#wallet-outline"/></svg></span><span>Деньги</span></button>
+      </div>
+    </div></div><div class="cap">1. Главная (заказчик)</div></div>
+
+    <div><div class="phone"><div class="screen">
+      <div class="status"><span>9:41</span><span>Исполнитель</span></div>
+      <div class="appbar"><div class="pj"><b>Объект → Смета</b><span>Спальня · 3 комнаты</span></div><span class="pill neutral">Черновик</span></div>
+      <div class="body">
+        <div class="hubtabs"><button class="chip" type="button">Комнаты</button><button class="chip on" type="button" aria-pressed="true">Смета</button><button class="chip" type="button">План</button></div>
+        <div class="est"><span class="n">Подготовка стен</span><span class="q">37,42 м² × 180 ₽</span><span class="sum">6 736 ₽</span></div>
+        <div class="est"><span class="n">Покраска стен, 2 слоя</span><span class="q">37,42 м² × 320 ₽</span><span class="sum">11 974 ₽</span></div>
+        <div class="est"><span class="n">Краска интерьерная</span><span class="q">9,82 л × 890 ₽</span><span class="sum">8 740 ₽</span></div>
+        <div class="est"><span class="n">Ламинат</span><span class="q">14,06 м² × 1 200 ₽</span><span class="sum">16 872 ₽</span></div>
+        <div class="est total"><span class="n">Итого с резервом 5 %</span><span class="q">&nbsp;</span><span class="sum">46 538 ₽</span></div>
+        <div class="row" style="margin-top:var(--sp-sm)"><button class="btn outline sm" type="button">+ Строка сметы</button><button class="btn outline sm" type="button">Импорт CSV</button></div>
+        <div style="height:var(--sp-md)"></div>
+        <button class="btn full" type="button">Отправить на согласование</button>
+      </div>
+      <div class="dock">
+        <button type="button"><span class="ic"><svg class="ico"><use href="#home-outline"/></svg></span><span>Главная</span></button>
+        <button type="button"><span class="ic"><svg class="ico"><use href="#chatbubble-outline"/></svg></span><span>Сообщения</span></button>
+        <button type="button" aria-current="page"><span class="ic"><svg class="ico"><use href="#grid-outline"/></svg></span><span>Объект</span></button>
+        <button type="button"><span class="ic"><svg class="ico"><use href="#hammer-outline"/></svg></span><span>Ремонт</span></button>
+        <button type="button"><span class="ic"><svg class="ico"><use href="#wallet-outline"/></svg></span><span>Бюджет</span></button>
+      </div>
+    </div></div><div class="cap">2. Смета (исполнитель)</div></div>
+
+    <div><div class="phone"><div class="screen">
+      <div class="status"><span>9:41</span><span>Заказчик</span></div>
+      <div class="appbar"><div class="pj"><b>Ремонт</b><span>Приёмка: 1 ждёт решения</span></div><svg class="ico" style="color:var(--x-text-muted-strong)"><use href="#calendar-outline"/></svg></div>
+      <div class="body">
+        <div class="hubtabs"><button class="chip on" type="button" aria-pressed="true">Этапы</button><button class="chip" type="button">Приёмка · 1</button><button class="chip" type="button">Материалы</button><button class="chip" type="button">Подбор</button></div>
+        <div class="card stage"><div class="hd"><span class="nm">Плитка санузла</span><span class="pill warning">На проверке</span></div><div class="bar warn"><i style="width:100%"></i></div><div class="t-cap">Сдан сегодня · 25 000 ₽ после приёмки</div></div>
+        <div class="card stage"><div class="hd"><span class="nm">Электрика</span><span class="pill info">В работе</span></div><div class="bar"><i style="width:60%"></i></div><div class="t-cap">60 % · срок до 12.11</div></div>
+        <div class="card stage"><div class="hd"><span class="nm">Стены: штукатурка</span><span class="pill neutral">Запланирован</span></div><div class="bar"><i style="width:0%"></i></div><div class="t-cap">Старт после электрики</div></div>
+        <div class="card stage"><div class="hd"><span class="nm">Демонтаж</span><span class="pill success">Принят</span></div><div class="bar ok"><i style="width:100%"></i></div></div>
+      </div>
+      <div class="dock">
+        <button type="button"><span class="ic"><svg class="ico"><use href="#home-outline"/></svg></span><span>Главная</span></button>
+        <button type="button"><span class="ic"><svg class="ico"><use href="#chatbubble-outline"/></svg></span><span>Сообщения</span></button>
+        <button type="button"><span class="ic"><svg class="ico"><use href="#grid-outline"/></svg></span><span>Объект</span></button>
+        <button type="button" aria-current="page"><span class="ic"><svg class="ico"><use href="#hammer-outline"/></svg></span><span>Ремонт</span></button>
+        <button type="button"><span class="ic"><svg class="ico"><use href="#wallet-outline"/></svg></span><span>Деньги</span></button>
+      </div>
+    </div></div><div class="cap">3. Ремонт / Этапы</div></div>
+
+    <div><div class="phone"><div class="screen">
+      <div class="status"><span>9:41</span><span>Заказчик</span></div>
+      <div class="appbar"><div class="pj"><b>Деньги</b><span>План-факт</span></div><span class="pill danger">Перерасход</span></div>
+      <div class="body">
+        <div class="hubtabs"><button class="chip on" type="button" aria-pressed="true">План-факт</button><button class="chip" type="button">Оплаты</button><button class="chip" type="button">Расходы</button></div>
+        <div class="card"><div class="t-cap">Факт · подтверждённые расходы</div><div class="t-metric">1 340 000 ₽</div><div class="budget-line" style="margin:var(--sp-sm) 0" role="img" aria-label="Перерасход 140 000"><div class="plan"></div><div class="fact"></div><div class="over"></div></div><div class="kv"><span>План</span><b>1 200 000 ₽</b></div><div class="kv" style="border-bottom:0"><span>Отклонение</span><b style="color:var(--danger-text)">+140 000 ₽</b></div></div>
+        <div class="card danger"><b>Материалы выше плана</b><div class="t-cap" style="color:var(--danger-text)">Разобрать отклонения</div></div>
+        <div class="card action"><div class="row" style="justify-content:space-between;flex-wrap:nowrap"><span style="font-weight:600">Счёт за этап: 25 000 ₽</span><span class="pill warning">Ожидает</span></div></div>
+        <button class="btn full" type="button">Оплатить 25 000 ₽</button>
+      </div>
+      <div class="dock">
+        <button type="button"><span class="ic"><svg class="ico"><use href="#home-outline"/></svg></span><span>Главная</span></button>
+        <button type="button"><span class="ic"><svg class="ico"><use href="#chatbubble-outline"/></svg></span><span>Сообщения</span></button>
+        <button type="button"><span class="ic"><svg class="ico"><use href="#grid-outline"/></svg></span><span>Объект</span></button>
+        <button type="button"><span class="ic"><svg class="ico"><use href="#hammer-outline"/></svg></span><span>Ремонт</span></button>
+        <button type="button" aria-current="page"><span class="ic"><svg class="ico"><use href="#wallet-outline"/></svg></span><span>Деньги</span></button>
+      </div>
+    </div></div><div class="cap">4. Деньги (план-факт)</div></div>
+
+    <div><div class="phone"><div class="screen">
+      <div class="status"><span>9:41</span><span>Заказчик</span></div>
+      <div class="appbar"><div class="pj"><b>Деньги</b><span>Оплаты</span></div></div>
+      <div class="body"><div class="card action"><div class="row" style="justify-content:space-between;flex-wrap:nowrap"><span style="font-weight:600">Счёт за этап: 25 000 ₽</span><span class="pill warning">Ожидает</span></div></div></div>
+      <div class="scrim"></div>
+      <div class="sheet" role="dialog" aria-label="Счёт за этап">
+        <div class="t-h3">Счёт за этап: 25 000 ₽</div>
+        <div class="t-cap" style="margin-bottom:var(--sp-sm)">Платформа деньги не держит: перевод вы делаете сами, здесь только подтверждение.</div>
+        <div class="kv"><span>Этап</span><b>Плитка санузла · принят</b></div>
+        <div class="kv"><span>Получатель</span><b>ИП (самозанятый)</b></div>
+        <div class="row" style="margin:var(--sp-sm) 0"><span class="pill success">Приёмка пройдена</span><span class="pill warning">Чек не приложен</span></div>
+        <button class="btn full" type="button">Я оплатил — подтвердить</button>
+        <div style="height:var(--sp-sm)"></div>
+        <div class="row"><button class="btn outline" type="button">Прикрепить чек</button><button class="btn dangerOutline" type="button">Оспорить</button></div>
+      </div>
+    </div></div><div class="cap">5. Лист счёта (шаг «Подтвердить»)</div></div>
+
+  </div>
+</div></section>
+
+<section id="theme"><div class="wrap">
+  <h2>Тема: светлая и рекомендация</h2>
+  <div class="panel">
+    <p class="t-body"><b>Факт.</b> В <code>Theme.ts</code> только светлая палитра. Но <code>app.json</code> задаёт <code>userInterfaceStyle: "automatic"</code>, а <code>Themed.tsx</code> читает остаточную палитру шаблона Expo (<code>Colors.dark</code>), и web-страница <code>+html.tsx</code> при тёмной системной схеме красит фон в локальный цвет. В итоге на устройстве с тёмной темой получится смесь светлых токенов и фрагментов из шаблона. В ките это не показывается: тёмных значений нет в источнике истины.</p>
+    <p class="t-body" style="margin-top:var(--sp-sm)"><b>Рекомендация (решение владельца, не код).</b></p>
+    <ol class="t-small" style="margin:var(--sp-xs) 0 0;padding-left:var(--sp-xl)">
+      <li>Сначала: зафиксировать светлую тему (<code>userInterfaceStyle: "light"</code>) и убрать тёмный фон из <code>+html.tsx</code>. Риск малый; проверка: запуск на устройстве в системной тёмной теме.</li>
+      <li>Когда понадобится тёмная: ввести палитру в <code>Theme.ts</code> парами «светлая/тёмная» для каждой роли токена, прогнать матрицу контраста обеих тем этим скриптом, только потом менять компоненты. Не вводить локальные тёмные цвета.</li>
+      <li>До этого не добавлять переключатель темы в интерфейс.</li>
+    </ol>
+  </div>
+  <p class="note">Режим уменьшения движения: анимации кита (спиннер, переходы) отключаются по <code>prefers-reduced-motion</code>; для приложения проверка Reduce Motion не подтверждена (см. пакет 03).</p>
+</div></section>
+</main>
+
+<footer><div class="wrap">Токены: <code>apps/mobile/constants/Theme.ts</code> · Дата: 2026-10-15 · Файл самодостаточный, без внешних зависимостей. Каталог иконок приближённый; оригиналы Ionicons берутся из <code>@expo/vector-icons</code>. Не публиковать в репозиторий приложения без решения владельца: <code>PRODUCT-COMPLETION-MANDATE.md</code> §1.5 ограничивает новые файлы в <code>docs/</code>.</div></footer>
+
+<script>
+(function(){
+  var root=getComputedStyle(document.documentElement);
+  function tok(n){return root.getPropertyValue(n).trim()}
+  function resolve(n){var v=tok(n);var m=v.match(/^var\((--[a-z0-9-]+)\)$/);return m?resolve(m[1]):v}
+  function lum(h){var c=[1,3,5].map(function(i){var v=parseInt(h.substr(i,2),16)/255;return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4)});return .2126*c[0]+.7152*c[1]+.0722*c[2]}
+  function ratio(a,b){var x=lum(a),y=lum(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05)}
+  var ROLES={
+    'primary':'главная кнопка','primary-pressed':'primary в нажатии','primary-muted':'ghost-кнопка, вторичные иконки','accent':'ссылки, активная вкладка, accent-кнопка','accent-muted':'фон иконки в пустом состоянии',
+    'background':'фон экрана','surface':'карточки, поля, Dock','surface-muted':'secondary-кнопка, трек прогресса','text':'основной текст','text-muted':'подписи (на surface и background)','text-subtle':'только необязательные подсказки',
+    'inverse-text':'текст на primary/accent/danger','border':'линии карточек','border-light':'разделители',
+    'success':'статус успеха','success-bg':'фон успеха','success-border':'граница успеха','success-text':'текст успеха',
+    'warning':'статус риска','warning-bg':'фон риска','warning-border':'граница риска','warning-text':'текст риска',
+    'danger':'ошибка, удаление, перерасход','danger-bg':'фон ошибки','danger-border':'граница ошибки','danger-text':'текст ошибки',
+    'info':'информация','info-bg':'активный chip, info-блок','info-border':'граница info','info-text':'текст info',
+    'neutral-bg':'нейтральный статус','neutral-border':'граница нейтрального','neutral-text':'нейтральный текст, вторичный текст на surface-muted',
+    'tab-active':'активная вкладка','tab-inactive':'неактивная вкладка (канон)'
+  };
+  function kebabToName(k){return k.replace(/-([a-z])/g,function(_,c){return c.toUpperCase()})}
+  function swatch(k,prop){
+    var h=resolve('--'+k);
+    var d=document.createElement('div');d.className='sw'+(prop?' prop':'');
+    d.innerHTML='<i style="background:'+h+'"></i><div><b>'+kebabToName(k)+'</b><span class="hex" style="font-variant-numeric:tabular-nums">'+h.toUpperCase()+'</span><br>'+(ROLES[k]||'')+'</div>';
+    return d;
+  }
+  var pg=document.getElementById('palette-grid');
+  Object.keys(ROLES).forEach(function(k){pg.appendChild(swatch(k,false))});
+  var pp=document.getElementById('palette-prop');
+  [['x-border-strong','граница поля ввода и переключателя (>=3:1)'],['x-text-muted-strong','= neutralText: вторичный текст на surface-muted и accent-muted'],['x-tab-inactive','= textMuted: неактивная вкладка вместо tabInactive']].forEach(function(p){
+    var h=resolve('--'+p[0]);var d=document.createElement('div');d.className='sw prop';
+    d.innerHTML='<i style="background:'+h+'"></i><div><b>'+p[0].replace('x-','')+'</b><span style="font-variant-numeric:tabular-nums">'+h.toUpperCase()+'</span><br>'+p[1]+'</div>';pp.appendChild(d);
+  });
+
+  /* ---------- таблица контраста ---------- */
+  var TEXT=4.5,UI=3;
+  var PASS=[ // [fg,bg,где,тип]
+    ['text','background','основной текст на экране','t'],['text','surface','текст в карточках и полях','t'],['text','surface-muted','текст secondary-кнопки','t'],['text','accent-muted','текст на accent-muted','t'],
+    ['text-muted','surface','подписи в карточках','t'],['text-muted','background','подписи на фоне экрана','t'],
+    ['inverse-text','primary','primary-кнопка','t'],['inverse-text','primary-pressed','primary в нажатии','t'],['inverse-text','accent','accent-кнопка','t'],['inverse-text','danger','danger-кнопка','t'],
+    ['accent','surface','ссылки, TextLink','t'],['accent','info-bg','ссылка на info-фоне','t'],
+    ['info-text','info-bg','StatusPill info, активный chip','t'],['success-text','success-bg','StatusPill success','t'],['warning-text','warning-bg','StatusPill warning','t'],['danger-text','danger-bg','StatusPill danger, перерасход','t'],
+    ['neutral-text','neutral-bg','StatusPill neutral','t'],['neutral-text','surface-muted','вторичный текст на surface-muted (замена text-muted)','t'],['neutral-text','accent-muted','вторичный текст на accent-muted (замена text-muted)','t'],
+    ['x-tab-inactive','surface','подписи и иконки Dock (замена tab-inactive)','t'],['tab-active','surface','активная вкладка Dock','t'],
+    ['primary','surface','иконки и контуры primary','u'],['x-border-strong','surface','граница поля ввода (предложение borderStrong)','u'],['x-border-strong','background','граница поля на фоне экрана','u'],['x-border-strong','surface-muted','граница поля на surface-muted','u'],
+    ['danger','surface','иконка/полоса перерасхода на surface','u'],['success','surface','полоса прогресса «принят»','u'],['warning','surface','полоса прогресса «на проверке»','u']
+  ];
+  var FAIL=[ // канон -> замена
+    ['text-muted','surface-muted','text-muted на surface-muted (мелкий текст)','neutral-text','surface-muted'],
+    ['text-muted','accent-muted','text-muted на accent-muted','neutral-text','accent-muted'],
+    ['text-subtle','surface','text-subtle как функциональный текст','text-muted','surface'],
+    ['tab-inactive','surface','tab-inactive: подписи Dock 10 px и иконки','x-tab-inactive','surface'],
+    ['border','surface','border как граница поля ввода (нужно 3:1)','x-border-strong','surface']
+  ];
+  var tb=document.querySelector('#ctab tbody');var okc=0,badc=0;
+  PASS.forEach(function(p){
+    var f=resolve('--'+p[0]),b=resolve('--'+p[1]);var r=ratio(f,b);var need=p[3]==='u'?UI:TEXT;var ok=r>=need;
+    if(ok)okc++;else badc++;
+    var tr=document.createElement('tr');
+    tr.innerHTML='<td><span class="swpair" style="background:'+b+';color:'+f+';border-color:var(--border)">'+kebabToName(p[0])+' на '+kebabToName(p[1])+'</span></td><td>'+p[2]+'</td><td class="'+(ok?'pass':'failtxt')+'" style="font-variant-numeric:tabular-nums">'+r.toFixed(2)+':1</td><td>'+(p[3]==='u'?'элемент 3:1':'текст 4.5:1')+(ok?'':' — НЕ ПРОХОДИТ')+'</td>';
+    if(ok)tb.appendChild(tr);else{console.warn('contrast fail',p);}
+  });
+  var fb=document.querySelector('#ftab tbody');
+  FAIL.forEach(function(p){
+    var r0=ratio(resolve('--'+p[0]),resolve('--'+p[1]));var r1=ratio(resolve('--'+p[3]),resolve('--'+p[4]));
+    var tr=document.createElement('tr');
+    tr.innerHTML='<td>'+p[2]+'</td><td class="failtxt" style="font-variant-numeric:tabular-nums">'+r0.toFixed(2)+':1</td><td>'+kebabToName(p[3])+' на '+kebabToName(p[4])+'</td><td class="'+(r1>=3?'pass':'failtxt')+'" style="font-variant-numeric:tabular-nums">'+r1.toFixed(2)+':1</td>';
+    fb.appendChild(tr);
+  });
+  document.getElementById('csummary').textContent='Проходит '+okc+' из '+PASS.length+' пар в таблице; пар, не прошедших порог, в таблице нет'+(badc?' (ВНИМАНИЕ: '+badc+' пар скрыты и логируются в консоль)':'')+'.';
+
+  /* ---------- отступы, радиусы ---------- */
+  var sp=document.getElementById('spaces');
+  [['xxs',2],['xs',4],['sm',8],['md',12],['lg',16],['xl',20],['xxl',24],['xxxl',32]].forEach(function(s){
+    var d=document.createElement('div');d.className='sp';d.innerHTML='<code style="min-width:52px">'+s[0]+'</code><i style="width:'+s[1]*3+'px"></i><span>'+s[1]+' px</span>';sp.appendChild(d)});
+  var rd=document.getElementById('radii');
+  [['xs',6],['sm',8],['md',10],['lg',12],['xl',16],['pill',999]].forEach(function(r){
+    var d=document.createElement('div');d.className='rad';d.style.borderRadius=r[1]+'px';d.textContent=r[0]+' '+(r[1]===999?'999':r[1]);rd.appendChild(d)});
+
+  /* ---------- иконки ---------- */
+  var ig=document.getElementById('icons-grid');
+  ['home-outline','grid-outline','hammer-outline','wallet-outline','chatbubble-outline','add','receipt-outline','camera-outline','calendar-outline','checkmark-circle-outline','alert-circle-outline','cloud-offline-outline','file-tray-outline','chevron-forward','list-outline','shield-checkmark-outline','lock-closed-outline','refresh'].forEach(function(n){
+    var c=document.createElement('div');c.className='icocell';c.innerHTML='<svg class="ico" aria-hidden="true"><use href="#'+n+'"/></svg><span>'+n+'</span>';ig.appendChild(c)});
+
+  /* ---------- проверка зон касания (информационно) ---------- */
+  var small=[].filter.call(document.querySelectorAll('.btn:not(.is-ghost),.chip,.tl,.dock button'),function(e){var r=e.getBoundingClientRect();return r.height&&r.height<43.5});
+  if(small.length)console.warn('Элементы ниже 44 px:',small);
+})();
+</script>
+</body>
+</html>
