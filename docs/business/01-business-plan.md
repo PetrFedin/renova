@@ -37,8 +37,8 @@
 | Стек | Expo 56 + React Native + expo-router; FastAPI + SQLAlchemy 2 + PostgreSQL; Redis; S3-совместимое хранилище; отдельный worker | `README.md`, `AGENTS.md` §2 |
 | Версия | mobile 0.3.7, iOS build 3, bundle `ru.renova.app`, Alembic head `x09selectionqty01` | `PRODUCTION-READINESS.md` §1 |
 | Роли | `customer`, `contractor` в `UserRole`; на уровне проекта участники, зрители, технадзор, admin/operator | `entities.py`, `models/project_participants.py`, `AGENTS.md` §7 |
-| Смета | Строки материал/работа, `план = Σ quantity × unit_price + Σ утверждённых change order`; округление `Decimal`, ROUND_HALF_UP | `docs/technical-spec/CALCULATION-REGISTRY.md` §2-4 |
-| Расчётный движок | Метрики комнаты, запасы материалов (плитка 1.10, обои 1.15, краска 1.05, прочее 1.08), шаблоны `cosmetic` и `bathroom`, резерв 5% по умолчанию; зеркало на Python | `packages/calc-engine/src/*.ts`, `backend/app/services/calc/estimate.py` |
+| Смета | Строки материал/работа, `план = Σ quantity × unit_price + Σ утверждённых change order`; деньги бюджета квантуются `Decimal` (ROUND_HALF_UP, `budget_service.money()`); строки шаблонов сметы считаются на float с `round(n, 2)` (уточнено в `04`/`08`) | `docs/technical-spec/CALCULATION-REGISTRY.md` §2-4 |
+| Расчётный движок | Метрики комнаты, запасы материалов (плитка 1.10, обои 1.15, краска 1.05, прочее 1.08), шаблоны `cosmetic`, `bathroom`, а также `kitchen` и `capital` (в мобильной копии и в Python они есть), резерв 5% по умолчанию; живой движок в мобильном приложении, зеркало на Python | `apps/mobile/lib/calc-engine/`, `backend/app/services/calc/estimate.py` (пакет `packages/calc-engine` в расчётах не подключён, служит источником эталонов `reference-cases.json`) |
 | Ставки работ | Таблица «рыночных ставок (Москва)» и региональные индексы для 7 регионов; источник ставок в репозитории не указан | `backend/app/data/work_market_rates.py`, `market_regions.py` |
 | Этапы | planned → active → review → done; явный старт этапа; график с зависимостями | `entities.py` `StageStatus`, `STAGE-START-AUTHORITY-CONTRACT.md` |
 | Приёмка | Атомарные сдача/доработка, технадзор, гарантия | `work_acceptances.py`, `accept_orchestrator.py`, `WARRANTY-ATOMICITY-CONTRACT.md` |
@@ -251,7 +251,7 @@
 
 ## Renova как модуль платформы недвижимости «Верно»
 
-Источник идеи: `/Users/petr/Documents/claude/realty-platform-blueprint.html`. Там Renova описана как «Ремонт (Renova): смета ремонта в “реальной стоимости”, этапы, поэтапная оплата, подрядчики; читает планировки, нормы, подрядчиков, платежи, ФНС»; в приоритетах прототипа смета ремонта указана первой («дёшево, есть наработки»); в разделе про ИЖС: «сравнение смет», «поэтапная оплата по актам и фото», кабинет подрядчика и технадзора. Сам документ оговаривает: интеграция описана по общему описанию репозитория и требует сверки с реальным состоянием. Эта сверка ниже.
+Источник идеи: `блок-схема платформы «Верно»`. Там Renova описана как «Ремонт (Renova): смета ремонта в “реальной стоимости”, этапы, поэтапная оплата, подрядчики; читает планировки, нормы, подрядчиков, платежи, ФНС»; в приоритетах прототипа смета ремонта указана первой («дёшево, есть наработки»); в разделе про ИЖС: «сравнение смет», «поэтапная оплата по актам и фото», кабинет подрядчика и технадзора. Сам документ оговаривает: интеграция описана по общему описанию репозитория и требует сверки с реальным состоянием. Эта сверка ниже.
 
 ### Как встраивается
 

@@ -20,7 +20,7 @@ Mobile (Expo/RN, expo-router)
 |---|---|---|
 | Backend | около 71 тыс. строк Python, 326 `.py` в `backend/app`; 80+ роутеров `api/v1`; модели в `entities.py` (1195 строк) и 20 модульных файлов | `backend/app` |
 | Мобильное | 1099 TS/TSX-файлов в `apps/mobile`; 383 `.tsx` в `app` и `components`; 153 файла `components/renova`, 8 в `components/ui` | `apps/mobile` |
-| Расчёты | `packages/calc-engine` (273 строки TS) + зеркало `backend/app/services/calc/estimate.py` | пакет |
+| Расчёты | `apps/mobile/lib/calc-engine/` (живой движок) + зеркало `backend/app/services/calc/estimate.py`; пакет `packages/calc-engine` не подключён и расходится по формуле краски | мобильное приложение |
 | Инфраструктура | Dockerfile с digest, compose для dev и staging (Postgres+Redis), Grafana-провижининг, OTEL-конфиг | `backend/Dockerfile`, `infra/` |
 | CI | 57 workflow в `.github/workflows` (по интегритетам: OTP, outbox, платежи, миграции, релиз) | `.github/workflows` |
 | Тесты | `backend/tests` (299 элементов), 322 JS/TS test-файла, 36 e2e-спеков Playwright; baseline из мандата: `1068 passed` на 2026-09-08 | `e2e/`, мандат §1.2 |
