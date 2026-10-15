@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+import json
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -353,6 +354,30 @@ async def transition_issue(
     validate_issue_transition(issue.status, target, actor_role, self_managed=self_managed)
     issue.status = target
     issue.closed_at = utc_now() if target == "closed" else None
+
+    if target == "fixed" and issue.stage_id:
+        stage = await db.get(Stage, issue.stage_id)
+        if stage is not None and stage.project_id == issue.project_id:
+            stage_checklist = []
+            try:
+                parsed = json.loads(stage.checklist_json or "[]")
+                if isinstance(parsed, list):
+                    stage_checklist = parsed
+            except Exception:
+                stage_checklist = []
+            linked_id = f"rework-issue-{issue.id}"
+            changed = False
+            for item in stage_checklist:
+                if item.get("id") == linked_id and not item.get("done"):
+                    item["done"] = True
+                    changed = True
+                    break
+            if changed:
+                from app.services.workflow_service import checklist_progress
+
+                stage.checklist_json = json.dumps(stage_checklist, ensure_ascii=False)
+                stage.percent_complete = float(checklist_progress(stage_checklist))
+
     if commit:
         await db.commit()
         await db.refresh(issue)

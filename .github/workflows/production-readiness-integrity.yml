@@ -30,7 +30,9 @@ permissions:
   issues: read
 
 concurrency:
-  group: production-readiness-${{ github.event.workflow_run.head_sha || github.event.pull_request.head.sha || github.ref }}
+  # A backend-image workflow_run on a PR SHA must not cancel that PR's globally
+  # required snapshot. They have different admission semantics and job guards.
+  group: production-readiness-${{ github.event_name }}-${{ github.event.workflow_run.head_sha || github.event.pull_request.head.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
