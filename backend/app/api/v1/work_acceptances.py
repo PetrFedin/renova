@@ -74,6 +74,16 @@ from app.services.accept_orchestrator import (  # noqa: E402,F401
 
 def _decision_error(error: ValueError) -> HTTPException:
     code = str(error)
+    if code == "rework_issue_verification_required":
+        return HTTPException(
+            409,
+            detail={
+                "code": code,
+                "message": "Исправление отмечено исполнителем, но связанное замечание ещё не подтверждено заказчиком или технадзором",
+                "issues": getattr(error, "issues", []),
+            },
+        )
+
     gate = getattr(error, "gate", None)
     if gate is not None:
         return HTTPException(
