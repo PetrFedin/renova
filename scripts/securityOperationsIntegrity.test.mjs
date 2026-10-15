@@ -145,7 +145,7 @@ test("Gitleaks allowlists are restricted to exact synthetic test keys and paths"
   assert.match(blocks[0], /test_esign_idempotency_key/);
   assert.match(blocks[0], /renova-durable-intent-123/);
   assert.match(blocks[1], /test_persistent_simulated_payment/);
-  assert.ok(blocks[1].includes(String.raw`gp5\\.payment-receipt-dispute`));
+  assert.ok(blocks[1].includes(String.raw`gp5\.payment-receipt-dispute`));
   assert.match(blocks[1], /gp5-refund-contract/);
   assert.match(blocks[1], /idempotency_key/);
   assert.equal(gitleaksConfig.includes("commits ="), false);
