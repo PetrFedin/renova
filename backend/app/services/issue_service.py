@@ -473,6 +473,62 @@ async def open_issues_gate(
     }
 
 
+def linked_rework_issue_ids(stage: Stage) -> set[str]:
+    """Return durable ProjectIssue ids explicitly linked from this stage checklist."""
+    try:
+        parsed = json.loads(stage.checklist_json or "[]")
+    except (TypeError, ValueError):
+        return set()
+    if not isinstance(parsed, list):
+        return set()
+
+    prefix = "rework-issue-"
+    linked: set[str] = set()
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        item_id = str(item.get("id") or "")
+        if item_id.startswith(prefix) and len(item_id) > len(prefix):
+            linked.add(item_id[len(prefix):])
+    return linked
+
+
+async def unverified_linked_rework_issues(
+    db: AsyncSession,
+    *,
+    project_id: str,
+    stage: Stage,
+) -> list[dict]:
+    """Linked rework issues require independent closure even when medium/low.
+
+    Generic medium/low issues remain warnings. This stricter rule applies only
+    to issues durably linked by the canonical rework checklist id.
+    """
+    linked_ids = linked_rework_issue_ids(stage)
+    if not linked_ids:
+        return []
+
+    query = (
+        select(ProjectIssue)
+        .where(
+            ProjectIssue.project_id == project_id,
+            ProjectIssue.stage_id == stage.id,
+            ProjectIssue.id.in_(linked_ids),
+            ProjectIssue.status != ISSUE_TERMINAL_STATUS,
+        )
+        .order_by(ProjectIssue.id)
+    )
+    return [_issue_brief(issue) for issue in (await db.execute(query)).scalars().all()]
+
+
+class ReworkIssueVerificationRequired(ValueError):
+    code = "rework_issue_verification_required"
+
+    def __init__(self, issues: list[dict]):
+        super().__init__(self.code)
+        self.issues = issues
+
+
 class OpenIssuesBlock(ValueError):
     """Приёмка этапа заблокирована открытыми критичными/высокими замечаниями."""
 
