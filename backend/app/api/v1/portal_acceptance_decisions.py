@@ -8,10 +8,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.work_acceptances import _decision_error, acceptance_dict
 from app.db.session import get_db
 from app.models.entities import Project, User, UserRole
+from app.services import portal_link_service as portal_links
 from app.services import portal_token_service as portal_tokens
 from app.services import work_acceptance_decision_service as decisions
 
 router = APIRouter(tags=["portal"])
+
+
+def _portal_decision_error(exc: ValueError) -> HTTPException:
+    code = str(exc)
+    if code in {"acceptance_already_decided", "acceptance_not_current"}:
+        return HTTPException(410, "portal_decision_already_used")
+    return _decision_error(exc)
 
 
 class PortalAcceptanceDecisionIn(BaseModel):
@@ -29,10 +37,25 @@ async def _portal_customer_context(
         claims = portal_tokens.verify_portal_token(token)
     except ValueError as exc:
         raise HTTPException(401, "invalid_portal_token") from exc
+    # Cross-project portal decisions are deliberately indistinguishable from a missing project.
     if claims.get("project_id") != project_id:
-        raise HTTPException(401, "token_mismatch")
+        raise HTTPException(404, "project_not_found")
     if "accept_stage" not in (claims.get("scopes") or []):
         raise HTTPException(403, "portal_read_only")
+
+    # Write-capable portal decisions must be registry-bound. Legacy jti-less tokens remain
+    # readable through the portal session for backward compatibility, but cannot mutate
+    # acceptance state because they cannot be revoked or scoped by the registry.
+    link = await portal_links.get_usable_link(db, claims.get("jti"))
+    if link is None:
+        raise HTTPException(410, "portal_link_inactive")
+    registered_scopes = {scope for scope in (link.scopes or "").split(",") if scope}
+    if (
+        link.project_id != project_id
+        or link.user_id != claims.get("user_id")
+        or "accept_stage" not in registered_scopes
+    ):
+        raise HTTPException(410, "portal_link_inactive")
 
     user = await db.get(User, claims.get("user_id"))
     if user is None:
@@ -72,9 +95,11 @@ async def portal_accept_work(
             source="portal",
         )
     except ValueError as exc:
-        raise _decision_error(exc) from exc
+        raise _portal_decision_error(exc) from exc
     if result is None:
         raise HTTPException(404, "acceptance_not_found")
+    if result.replayed:
+        raise HTTPException(410, "portal_decision_already_used")
 
     response = acceptance_dict(result.acceptance)
     response.update(
@@ -111,9 +136,12 @@ async def portal_return_work(
             create_issue=True,
         )
     except ValueError as exc:
-        raise _decision_error(exc) from exc
+        raise _portal_decision_error(exc) from exc
     if result is None:
         raise HTTPException(404, "acceptance_not_found")
+
+    if result.replayed:
+        raise HTTPException(410, "portal_decision_already_used")
 
     response = acceptance_dict(result.acceptance)
     response.update(
