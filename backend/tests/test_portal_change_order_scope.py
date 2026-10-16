@@ -106,6 +106,18 @@ async def test_reject_uses_project_scoped_service_and_actual_customer(monkeypatc
 
     monkeypatch.setattr(decisions.co_svc, "reject_with_effects", fake_reject_with_effects)
 
+    async def registered_admission(db, *, claims, project_id, scope):
+        assert isinstance(db, _CustomerDb)
+        assert claims["project_id"] == project_id == "project-1"
+        assert claims["user_id"] == "customer-1"
+        assert scope == "accept_stage"
+        captured["registry_checked"] = "yes"
+        return SimpleNamespace(id="registered-link")
+
+    # This is a service-delegation unit test: stub only the registry boundary.
+    # Real registered-link admission (including 410 denial) has separate tests.
+    monkeypatch.setattr(decisions.portal_links, "require_registered_write_scope", registered_admission)
+
     result = await decisions.portal_reject_change_order(
         "project-1",
         "change-order-1",
@@ -118,6 +130,7 @@ async def test_reject_uses_project_scoped_service_and_actual_customer(monkeypatc
         "project_id": "project-1",
         "order_id": "change-order-1",
         "rejected_by": "customer-1",
+        "registry_checked": "yes",
     }
 
 
