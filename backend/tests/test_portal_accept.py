@@ -6,6 +6,7 @@ from app.core import config as cfg
 from app.db.session import init_db, SessionLocal
 from app.main import app
 from app.models.entities import AcceptanceStatus, Project, Stage, StageStatus, User, UserRole, WorkAcceptance
+from app.services import portal_link_service as portal_links
 from app.services import portal_token_service as portal_tok
 from app.services.seed_articles import seed_articles
 from app.services.seed_demo import ensure_demo_users
@@ -62,6 +63,21 @@ async def _seed_acceptance(client: AsyncClient):
     return pid, cust["id"], created.json()["id"], stage["id"]
 
 
+async def _issue_accept_link(project_id: str, customer_id: str):
+    from app.db import session as sess
+
+    async with sess.SessionLocal() as db:
+        link, token = await portal_links.issue_link(
+            db,
+            project_id=project_id,
+            user_id=customer_id,
+            issued_by=customer_id,
+            scopes=["read", "accept_stage"],
+            ttl_hours=1,
+        )
+        return link.id, token
+
+
 async def test_portal_accept_stage_via_token():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -69,9 +85,7 @@ async def test_portal_accept_stage_via_token():
         # Portal accept has no checklist body — mark items done first (full → quick).
         cont = (await client.post("/api/v1/auth/demo", json={"role": "contractor"})).json()
         await complete_stage_checklist(client, pid, stage_id, {"X-User-Id": cont["id"]})
-        token = portal_tok.create_portal_token(
-            project_id=pid, user_id=cust_id, ttl_hours=1, scopes=["read", "accept_stage"]
-        )
+        _, token = await _issue_accept_link(pid, cust_id)
         r = await client.post(
             f"/api/v1/portal/projects/{pid}/work-acceptances/{acc_id}/accept",
             json={"token": token, "comment": "ок с портала"},
@@ -92,3 +106,67 @@ async def test_portal_accept_rejects_read_only_token():
             json={"token": token},
         )
         assert r.status_code == 403
+
+
+
+async def test_portal_accept_replay_is_gone_and_cross_project_is_hidden():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        pid, cust_id, acc_id, stage_id = await _seed_acceptance(client)
+        cont = (await client.post("/api/v1/auth/demo", json={"role": "contractor"})).json()
+        await complete_stage_checklist(client, pid, stage_id, {"X-User-Id": cont["id"]})
+        _, token = await _issue_accept_link(pid, cust_id)
+
+        hidden = await client.post(
+            f"/api/v1/portal/projects/not-{pid}/work-acceptances/{acc_id}/accept",
+            json={"token": token},
+        )
+        assert hidden.status_code == 404
+        assert hidden.json()["detail"] == "project_not_found"
+
+        first = await client.post(
+            f"/api/v1/portal/projects/{pid}/work-acceptances/{acc_id}/accept",
+            json={"token": token, "comment": "одно решение"},
+        )
+        assert first.status_code == 200, first.text
+
+        replay = await client.post(
+            f"/api/v1/portal/projects/{pid}/work-acceptances/{acc_id}/accept",
+            json={"token": token, "comment": "повтор"},
+        )
+        assert replay.status_code == 410
+        assert replay.json()["detail"] == "portal_decision_already_used"
+
+
+async def test_revoked_or_legacy_write_token_cannot_decide_acceptance():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        pid, cust_id, acc_id, _ = await _seed_acceptance(client)
+        link_id, token = await _issue_accept_link(pid, cust_id)
+
+        from app.db import session as sess
+
+        async with sess.SessionLocal() as db:
+            link = await db.get(__import__("app.models.entities", fromlist=["PortalLink"]).PortalLink, link_id)
+            assert link is not None
+            await portal_links.revoke_link(db, link)
+
+        revoked = await client.post(
+            f"/api/v1/portal/projects/{pid}/work-acceptances/{acc_id}/accept",
+            json={"token": token},
+        )
+        assert revoked.status_code == 410
+        assert revoked.json()["detail"] == "portal_link_inactive"
+
+        legacy = portal_tok.create_portal_token(
+            project_id=pid,
+            user_id=cust_id,
+            ttl_hours=1,
+            scopes=["read", "accept_stage"],
+        )
+        legacy_write = await client.post(
+            f"/api/v1/portal/projects/{pid}/work-acceptances/{acc_id}/accept",
+            json={"token": legacy},
+        )
+        assert legacy_write.status_code == 410
+        assert legacy_write.json()["detail"] == "portal_link_inactive"
