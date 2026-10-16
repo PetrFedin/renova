@@ -107,9 +107,17 @@ async def seed_acceptance_stage(
         payment_amount=25000,
         weight_coefficient=0.3,
     )
-    rows = [customer, contractor, outsider, project, room, stage, next_stage]
+    # PostgreSQL enforces FK constraints immediately. Seed independent users
+    # before the project, and the project before its room/stage/photo children.
+    # Do not rely on SQLite's less strict fixture insert ordering.
+    db.add_all([customer, contractor, outsider])
+    await db.flush()
+    db.add(project)
+    await db.flush()
+    db.add_all([room, stage, next_stage])
+    await db.flush()
     if with_result_photo:
-        rows.append(
+        db.add(
             StagePhoto(
                 id=f"acceptance-photo-{suffix}",
                 stage_id=stage.id,
@@ -118,7 +126,6 @@ async def seed_acceptance_stage(
                 image_url="https://example.com/result.jpg",
             )
         )
-    db.add_all(rows)
     await db.commit()
     return customer, contractor, outsider, project, room, stage, next_stage
 
