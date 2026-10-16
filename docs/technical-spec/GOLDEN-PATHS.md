@@ -78,6 +78,7 @@
 3. Повторная сдача → замечания закрыты, статус `on_review`.
 4. Приём через канонический `portal_acceptance_decisions.py`: write-токен должен иметь активную registry-bound PortalLink с `accept_stage`; отозванная/просроченная/legacy jti-less ссылка не допускается (410), попытка другого проекта маскируется (404), повтор решения по уже принятой/устаревшей приёмке возвращает 410. Кандидат #676 добавляет одноразовое `accept_stage` в транзакцию канонической приёмки; до PostgreSQL race/full CI право **не квалифицировано**. Право на `read/pay/sign_document` сохраняется. Повтор и параллельные решения должны получать терминальный 410 и не создавать вторичных событий. Подписание акта и warranty требуют отдельной полной GP4 квалификации (#734).
 5. Гарантийный claim (`WARRANTY-ATOMICITY-CONTRACT`) создаётся атомарно с уведомлением; закрытие — с evidence.
+   - GP4 API Golden candidate: real customer warranty create after acceptance → same-key replay and different-payload conflict → contractor accept/fixed → customer close (idempotent) → archived warranty document → customer reopen → draft document and one canonical issue. No time travel or device-UI claim; #734 remains open for complete acceptance.
 6. На дашборде `C`: прогресс вырос на вес этапа 1; `next action = оплатить этап`.
 
 **Negative:**
