@@ -107,6 +107,37 @@ def effective_portal_scopes(claims: dict, link: PortalLink | None) -> list[str]:
     ]
 
 
+async def require_registered_write_scope(
+    db: AsyncSession,
+    *,
+    claims: dict,
+    project_id: str,
+    scope: str,
+) -> PortalLink:
+    """Fail closed on every magic-link write, including revoked/legacy tokens.
+
+    Lock until the canonical writer commits or rolls back, so concurrent
+    revocation cannot complete between the authorization check and write.
+    This helper does not consume accept_stage for non-acceptance workflows.
+    """
+    from fastapi import HTTPException
+
+    if claims.get("project_id") != project_id:
+        raise HTTPException(404, "project_not_found")
+    if scope not in (claims.get("scopes") or []):
+        raise HTTPException(403, f"portal_{scope}_scope_required")
+    link = await get_usable_link(db, claims.get("jti"), for_decision=True)
+    if link is None:
+        raise HTTPException(410, "portal_link_inactive")
+    if link.project_id != project_id or link.user_id != claims.get("user_id"):
+        raise HTTPException(410, "portal_link_inactive")
+    if scope not in (link.scopes or "").split(","):
+        raise HTTPException(403, f"portal_{scope}_scope_required")
+    if scope == "accept_stage" and link.accept_stage_consumed_at is not None:
+        raise HTTPException(410, "portal_decision_already_used")
+    return link
+
+
 async def link_is_usable(db: AsyncSession, jti: str | None) -> bool:
     """Legacy read tokens without jti live to token exp; registered links must remain active."""
     if not jti:
