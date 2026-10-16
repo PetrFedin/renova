@@ -314,6 +314,15 @@ jobs:
           ALLOW_CREATE_ALL: "false"
           ALLOW_DEMO_SEED: "false"
         run: poetry run python -m alembic upgrade head
+      - name: Portal acceptance single-use PostgreSQL race
+        working-directory: backend
+        env:
+          ENVIRONMENT: test
+          PORTAL_ACCEPT_POSTGRES_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova
+          DATABASE_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova
+          ALLOW_CREATE_ALL: "false"
+          ALLOW_DEMO_SEED: "false"
+        run: poetry run pytest -q tests/test_portal_accept_postgres_concurrency.py
       - name: Schema drift ratchet (models vs alembic head)
         working-directory: backend
         env:
