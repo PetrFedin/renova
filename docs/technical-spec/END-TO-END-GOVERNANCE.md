@@ -97,3 +97,9 @@ For secret scanning:
 - actual provider/production credentials are never baseline exceptions and require revoke/rotate/incident handling.
 
 This security admission state is a prerequisite for advancing Renova's portable execution evidence into issuer/signature/revocation/external-verifier interoperability. It does not upgrade external launch controls such as branch protection, provider credential drills or penetration testing.
+
+## 10. 2026-10-16 GP4 portal decision scope integrity — candidate only
+
+Issue #676 on top of #736: the canonical registry-bound portal link now has `accept_stage_consumed_at`, `accept_stage_acceptance_id`, `accept_stage_decision` added by forward migration `x11portalacceptscope01` (parent `x10executionproof01`). Acceptance/return routes lock the PortalLink row with `FOR UPDATE` and re-read committed state; the canonical acceptance/return service invokes the capability mutation **before its own commit**. The on-row stamp and the acceptance/stage/payment/document/issue/outbox mutations must commit atomically. A rollback must preserve unused capacity. A successful mutation must leave the whole PortalLink live for `read/pay/sign_document`; `accept_stage` cannot be reused for another decision. A competing request must fail with 410 and must not create duplicate effects. Cross-project must remain 404; revoked/expired/legacy write tokens remain unavailable. The read/session scope list is not the write authority: the canonical mutation endpoint checks the consumed-at field.
+
+**Evidence:** source implementation only until exact-head CI, schema parity and real PostgreSQL race pass. SQLite serial tests cannot substitute for row-lock proof. The prior #735/#736 CI does not qualify this new branch. External staging and real providers remain unverified. No main or production merge.
