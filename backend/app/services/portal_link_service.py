@@ -42,16 +42,50 @@ async def issue_link(
     return link, token
 
 
-async def get_usable_link(db: AsyncSession, jti: str | None) -> PortalLink | None:
-    """Return an active registered portal link, including registry expiry checks."""
+async def get_usable_link(
+    db: AsyncSession,
+    jti: str | None,
+    *,
+    for_decision: bool = False,
+) -> PortalLink | None:
+    """Read active registry entry; decision writers lock its row until their commit.
+
+    populate_existing prevents an already-loaded ORM instance from hiding a
+    concurrent transaction's committed consumption state after FOR UPDATE waits.
+    """
     if not jti:
         return None
-    link = await db.get(PortalLink, jti)
+    if for_decision:
+        statement = (
+            select(PortalLink)
+            .where(PortalLink.id == jti)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        link = (await db.execute(statement)).scalar_one_or_none()
+    else:
+        link = await db.get(PortalLink, jti)
     if link is None or link.revoked_at is not None:
         return None
     if link.expires_at <= utc_now():
         return None
     return link
+
+
+def consume_accept_stage(
+    link: PortalLink,
+    *,
+    acceptance_id: str,
+    decision: str,
+) -> None:
+    """Called ONLY inside a successful locked acceptance transaction, pre-commit."""
+    if link.accept_stage_consumed_at is not None:
+        raise ValueError("portal_decision_already_used")
+    if decision not in {"accept", "return"}:
+        raise ValueError("portal_decision_invalid")
+    link.accept_stage_consumed_at = utc_now()
+    link.accept_stage_acceptance_id = acceptance_id
+    link.accept_stage_decision = decision
 
 
 async def link_is_usable(db: AsyncSession, jti: str | None) -> bool:
@@ -101,4 +135,13 @@ def link_dict(link: PortalLink) -> dict:
         "scopes": [s for s in (link.scopes or "").split(",") if s],
         "created_at": link.created_at.isoformat() if link.created_at else None,
         "expires_at": link.expires_at.isoformat() if link.expires_at else None,
+        "accept_stage_consumed_at": (link.accept_stage_consumed_at.isoformat() if link.accept_stage_consumed_at else None),
+        "accept_stage_acceptance_id": link.accept_stage_acceptance_id,
+        "accept_stage_decision": link.accept_stage_decision,
+        "accept_stage_available": (
+            "accept_stage" in (link.scopes or "").split(",")
+            and link.revoked_at is None
+            and link.expires_at > utc_now()
+            and link.accept_stage_consumed_at is None
+        ),
     }
