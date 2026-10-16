@@ -4,7 +4,7 @@
 **Язык:** русский
 **Дата текущей сверки:** 2026-09-08
 **Проверенный продуктовый срез:** `686eec67c925d73fd1367da4704bdac11becdd71`
-**Текущий schema head в этой редакции:** `x10executionproof01`
+**Текущий schema head в этой редакции:** `x11portalacceptscope01`
 **Текущий verification status:** `SOURCE AUDITED / BOUNDED CI EVIDENCE / FULL PRODUCT ACCEPTANCE INCOMPLETE`
 **Широкий production-запуск:** `BLOCKED_FOR_BROAD_PRODUCTION`
 
@@ -18,13 +18,15 @@
 
 Рабочий цикл: требование → источник и полный путь → обнаруженный разрыв → bounded implementation → синхронное ТЗ → тесты → точный SHA/run/artifact → сверка остаточных рисков. Нельзя объявлять READY по красивому экрану, enum, наличию API или одному зелёному CI.
 
+**2026-10-16 — кандидат #737 / GP4:** `PortalLink.accept_stage_consumed_at`, `accept_stage_acceptance_id`, `accept_stage_decision` с forward-migration `x11portalacceptscope01` и блокировкой `SELECT FOR UPDATE`. Изменение перед фиксацией канонического решения сохраняется в том же commit; права просмотра, оплаты и подписи остаются. PostgreSQL-конкурентное доказательство и full CI этого кандидата пока PENDING; `main`, staging и production не повышались в статусе. Детали и открытые критерии — `technical-spec/END-TO-END-GOVERNANCE.md` §10, #676 и #734.
+
 ## 0.1. Текущий source snapshot
 
 | Source | Blob SHA | Назначение |
 |---|---|---|
 | `AGENTS.md` | `767d38e76d04209e609bbe7173a2c448cfc5fa00` | Engineering policy |
 | `backend/app/api/v1/router.py` | `f0e0167d8f347a30cb73851e0b5491a118fe4e86` | Реальная composition маршрутов |
-| `backend/app/models/entities.py` | `67f8e6a557134690c5c2d3d7295b21808974d7fc` | Базовые entities/enums |
+| `backend/app/models/entities.py` | `a73f43a867a2e582f2295b6c3c342579ea8388e1` | Базовые entities/enums |
 | `backend/app/main.py` | `7f778fc54e7ff0a05b512791a8841615b24e33c1` | API lifespan + middleware chain |
 | `backend/app/services/seed_demo.py` | `c62ba920130a7ba7f6e2bd0a54e63feadce5c6cd` | Явный development seed |
 | `backend/scripts/verify_orm_schema_parity.py` | `ba08d0681df301f446b3adbf811ad9367eeb24b9` | Schema/ORM parity |
@@ -60,7 +62,7 @@ Renova — iPhone-first управление реальным ремонтом, 
 
 Канон `PetrFedin/renova`: main→короткая ветка→PR→применимые проверки→merge. Старые develop/task-ветки не интеграционная база. `CLAUDE.md` и bootstrap Cursor правила указывают на AGENTS.
 
-Навигация: routeRegistry + реальные Expo routes. API: итоговый router + конкретные services. Данные: ORM + линейный Alembic graph, PostgreSQL authoritative. Текущий head `w23participantpurgecascade01`; w16legacystatus01→w17chatmessageenum01→w18nativeenumparity01→w19paymentevidence01→w20materialsupply01→w21materialprice01→w22projectparticipants01→w23participantpurgecascade01 — продолжение уже потреблённой истории, не инструкция переписывать старые миграции.
+Навигация: routeRegistry + реальные Expo routes. API: итоговый router + конкретные services. Данные: ORM + линейный Alembic graph, PostgreSQL authoritative. Исторический срез схемы после PR #313/#314 заканчивался `w23participantpurgecascade01`; цепочка w16legacystatus01→w17chatmessageenum01→w18nativeenumparity01→w19paymentevidence01→w20materialsupply01→w21materialprice01→w22projectparticipants01→w23participantpurgecascade01 — продолжение уже потреблённой истории, не инструкция переписывать старые миграции.
 
 Readiness: корневой PRODUCTION-READINESS.md и docs/production-readiness-evidence.json. При конфликте подтверждённого кода с документом исправляется конфликт, а не повышается статус по документу.
 
