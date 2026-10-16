@@ -1,6 +1,7 @@
 """Atomic stage review submission and rework transitions."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, timedelta
 import json
@@ -329,6 +330,7 @@ async def reject_for_rework(
     quality_score: float | None = None,
     create_issue: bool = False,
     authorized_reviewer: bool = False,
+    before_commit: Callable[[], None] | None = None,
 ) -> StageReviewResult | None:
     """Return one reviewed stage to work with SLA, checklist task and durable evidence."""
     clean_reason = (reason or "").strip()
@@ -475,6 +477,9 @@ async def reject_for_rework(
                 body=f"{stage.name}: {clean_reason}",
                 return_to="/(customer)/(tabs)/repair?tab=control",
             )
+        # Reuse the canonical transaction for portal capability consumption.
+        if before_commit is not None:
+            before_commit()
         await db.commit()
     except BaseException:
         await db.rollback()

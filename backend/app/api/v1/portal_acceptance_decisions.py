@@ -17,7 +17,7 @@ router = APIRouter(tags=["portal"])
 
 def _portal_decision_error(exc: ValueError) -> HTTPException:
     code = str(exc)
-    if code in {"acceptance_already_decided", "acceptance_not_current"}:
+    if code in {"acceptance_already_decided", "acceptance_not_current", "portal_decision_already_used"}:
         return HTTPException(410, "portal_decision_already_used")
     return _decision_error(exc)
 
@@ -32,7 +32,7 @@ async def _portal_customer_context(
     *,
     token: str,
     project_id: str,
-) -> tuple[Project, User]:
+) -> tuple[Project, User, object]:
     try:
         claims = portal_tokens.verify_portal_token(token)
     except ValueError as exc:
@@ -46,9 +46,11 @@ async def _portal_customer_context(
     # Write-capable portal decisions must be registry-bound. Legacy jti-less tokens remain
     # readable through the portal session for backward compatibility, but cannot mutate
     # acceptance state because they cannot be revoked or scoped by the registry.
-    link = await portal_links.get_usable_link(db, claims.get("jti"))
+    link = await portal_links.get_usable_link(db, claims.get("jti"), for_decision=True)
     if link is None:
         raise HTTPException(410, "portal_link_inactive")
+    if link.accept_stage_consumed_at is not None:
+        raise HTTPException(410, "portal_decision_already_used")
     registered_scopes = {scope for scope in (link.scopes or "").split(",") if scope}
     if (
         link.project_id != project_id
@@ -65,7 +67,7 @@ async def _portal_customer_context(
         raise HTTPException(404, "project_not_found")
     if user.role != UserRole.customer or user.id != project.customer_id:
         raise HTTPException(403, "acceptance_decision_customer_only")
-    return project, user
+    return project, user, link
 
 
 @router.post("/portal/projects/{project_id}/work-acceptances/{acceptance_id}/accept")
@@ -76,7 +78,7 @@ async def portal_accept_work(
     db: AsyncSession = Depends(get_db),
 ):
     """Accept reviewed work through the same locked lifecycle as the authenticated API."""
-    project, user = await _portal_customer_context(
+    project, user, link = await _portal_customer_context(
         db,
         token=body.token,
         project_id=project_id,
@@ -93,6 +95,9 @@ async def portal_accept_work(
             checklist=None,
             source_mode="full",
             source="portal",
+            before_commit=lambda: portal_links.consume_accept_stage(
+                link, acceptance_id=acceptance_id, decision="accept"
+            ),
         )
     except ValueError as exc:
         raise _portal_decision_error(exc) from exc
@@ -120,7 +125,7 @@ async def portal_return_work(
     db: AsyncSession = Depends(get_db),
 ):
     """Return reviewed work with the canonical rework checklist, SLA and issue."""
-    project, user = await _portal_customer_context(
+    project, user, link = await _portal_customer_context(
         db,
         token=body.token,
         project_id=project_id,
@@ -134,6 +139,9 @@ async def portal_return_work(
             comment=body.comment or "",
             quality_score=None,
             create_issue=True,
+            before_commit=lambda: portal_links.consume_accept_stage(
+                link, acceptance_id=acceptance_id, decision="return"
+            ),
         )
     except ValueError as exc:
         raise _portal_decision_error(exc) from exc

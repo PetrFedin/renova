@@ -1,6 +1,7 @@
 """Canonical, locked request/accept/return lifecycle for work acceptance."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -144,6 +145,7 @@ async def accept_work(
     checklist: list[str] | None = None,
     source_mode: str = "full",
     source: str = "app",
+    before_commit: Callable[[], None] | None = None,
 ) -> AcceptanceDecisionResult | None:
     """Serialize one current acceptance and its complete financial/document cascade."""
     _require_customer(project, actor)
@@ -226,6 +228,10 @@ async def accept_work(
                 "source": decision_source,
             },
         )
+        # The portal capability and all acceptance/payment/document/outbox writes
+        # must be committed or rolled back as a single database transaction.
+        if before_commit is not None:
+            before_commit()
         await db.commit()
     except BaseException:
         await db.rollback()
@@ -252,6 +258,7 @@ async def return_work(
     comment: str,
     quality_score: float | None = None,
     create_issue: bool = False,
+    before_commit: Callable[[], None] | None = None,
 ) -> AcceptanceDecisionResult | None:
     """Bind return to the latest acceptance and reuse the canonical rework lifecycle."""
     _require_customer(project, actor)
@@ -273,6 +280,7 @@ async def return_work(
         expected_acceptance_id=acceptance_id,
         quality_score=quality_score,
         create_issue=create_issue,
+        before_commit=before_commit,
     )
     if result is None:
         return None

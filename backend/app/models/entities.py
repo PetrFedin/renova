@@ -304,6 +304,10 @@ class PortalLink(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     expires_at: Mapped[datetime] = mapped_column(DateTime)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # GP4/#676: only the acceptance-decision capability is consumed; read/pay/sign survive.
+    accept_stage_consumed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    accept_stage_acceptance_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    accept_stage_decision: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
 
 class RoomChangeStatus(str, enum.Enum):
