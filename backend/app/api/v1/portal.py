@@ -1,6 +1,6 @@
 from app.core.timeutil import utc_now
 """Web client portal — magic link + read-only snapshot (P2.1)."""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -47,8 +47,10 @@ async def portal_session(body: PortalSessionIn, db: AsyncSession = Depends(get_d
 
     from sqlalchemy import select
 
-    if not await portal_links.link_is_usable(db, claims.get("jti")):
+    link = await portal_links.get_usable_link(db, claims.get("jti")) if claims.get("jti") else None
+    if claims.get("jti") and link is None:
         raise HTTPException(401, "portal_link_revoked")
+    effective_scopes = portal_links.effective_portal_scopes(claims, link)
 
     user = await db.get(User, claims["user_id"])
     if not user or user.deleted_at is not None:
@@ -70,7 +72,7 @@ async def portal_session(body: PortalSessionIn, db: AsyncSession = Depends(get_d
             "role": user.role.value,
             "portal": True,
             "project_id": project.id,
-            "scopes": list(claims.get("scopes") or ["read"]),
+            "scopes": effective_scopes,
             **({"portal_link_id": claims["jti"]} if claims.get("jti") else {}),
         },
         expires_minutes=PORTAL_ACCESS_TTL_MINUTES,
@@ -82,7 +84,7 @@ async def portal_session(body: PortalSessionIn, db: AsyncSession = Depends(get_d
         "read_only": bool(claims.get("read_only", read_only)),
         "access_mode": mode,
         "role": user.role.value,
-        "scopes": claims.get("scopes", ["read"]),
+        "scopes": effective_scopes,
         "access_token": access_token,
         "token_type": "bearer",
     }
@@ -213,6 +215,7 @@ async def revoke_portal_link(
 @router.get("/portal/projects/{project_id}/snapshot")
 async def portal_snapshot(
     project_id: str,
+    request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -359,7 +362,24 @@ async def portal_snapshot(
         {"id": c.id, "title": c.title, "amount": c.amount, "description": c.description, "status": c.status.value}
         for c in co_rows[:10]
     ]
-    can_decide_co = user.id == p.customer_id and user.role == UserRole.customer and not read_only
+    # The token scope is authoritative for this portal session, not just role.
+    from app.core.security import decode_access_token
+    from app.api.deps import _bearer_token
+    bearer = request.headers.get("authorization")
+    token_scopes: set[str] | None = None
+    if bearer:
+        payload = decode_access_token(_bearer_token(bearer))
+        if payload.get("portal"):
+            # A bearer minted before consumption must also lose stale CTAs.
+            if payload.get("portal_link_id"):
+                live_link = await portal_links.get_usable_link(db, payload["portal_link_id"])
+                token_scopes = set(portal_links.effective_portal_scopes(payload, live_link))
+            else:
+                token_scopes = {"read"} & set(payload.get("scopes") or [])
+    can_decide_co = (
+        user.id == p.customer_id and user.role == UserRole.customer
+        and not read_only and (token_scopes is None or "accept_stage" in token_scopes)
+    )
 
     # Investor P1: portal не показывает Kontur CTA, если провайдер off
     try:
@@ -401,9 +421,12 @@ async def portal_snapshot(
         "estimate_summary": estimate_summary,
         "pending_change_orders": pending_change_orders,
         "can_decide_change_orders": can_decide_co,
-        "can_accept_stage": user.id == p.customer_id and user.role == UserRole.customer,
-        "can_confirm_schedule": user.id == p.customer_id and user.role == UserRole.customer and not read_only,
-        "can_sign_documents": user.id == p.customer_id and user.role == UserRole.customer,
+        "can_accept_stage": can_decide_co,
+        "can_confirm_schedule": can_decide_co,
+        "can_sign_documents": (
+            user.id == p.customer_id and user.role == UserRole.customer
+            and (token_scopes is None or "sign_document" in token_scopes)
+        ),
         "esign_mode": esign_mode,
         "kontur_mode": kontur_mode,
         "kontur_available": kontur_available,

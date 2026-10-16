@@ -88,6 +88,25 @@ def consume_accept_stage(
     link.accept_stage_decision = decision
 
 
+
+def effective_portal_scopes(claims: dict, link: PortalLink | None) -> list[str]:
+    """Client-facing capabilities: signed scope AND live registry scope.
+
+    Legacy jti-less magic links can view (if signed for read), never write.
+    A consumed acceptance right is omitted from the projection, while other
+    rights on the same live link remain available.
+    """
+    signed = list(dict.fromkeys(claims.get("scopes") or ["read"]))
+    if link is None:
+        return ["read"] if "read" in signed else []
+    registered = set((link.scopes or "").split(","))
+    return [
+        scope for scope in signed
+        if scope in registered
+        and (scope != "accept_stage" or link.accept_stage_consumed_at is None)
+    ]
+
+
 async def link_is_usable(db: AsyncSession, jti: str | None) -> bool:
     """Legacy read tokens without jti live to token exp; registered links must remain active."""
     if not jti:
