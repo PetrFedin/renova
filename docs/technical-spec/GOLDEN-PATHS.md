@@ -156,17 +156,22 @@
 
 ---
 
-## Статус (обновляется в каждом PR, меняющем GP)
+## Статус и границы доказательства (сверено 2026-10-16)
 
-| GP | API | mobile-web | Блокирует | Последний PR |
+**Точная проверенная версия:** PR #731, commit `a0669f2b64ba4e76f3446ae7fd8b399bbd813a04` (не `main`).
+[CI run 38763775007](https://github.com/PetrFedin/renova/actions/runs/38763775007): blocking `golden-paths` SUCCESS, API **12/12 passed**, mobile-web **8/8 passed**, тот же API container без рестартов. Полный backend: **1837 passed, 30 skipped**; Playwright API **7/7**, UI **67/67**, skipped/flaky **0**. Это квалификация именно указанных исполняемых тестов на указанном commit, **не** production/staging evidence и **не** автоматическое выполнение всех требований этого документа.
+
+| GP | API Golden на #731 | mobile-web Golden на #731 | Полный контракт выше | Следующее доказательство |
 |---|---|---|---|---|
-| GP1 | ❌ not written | ❌ | A1 | — |
-| GP2 | ❌ | ❌ | A1, B1–B5 | — |
-| GP3 | ❌ | ❌ | A1, B1 | — |
-| GP4 | ❌ | ❌ | A1, C5 | — |
-| GP5 | ❌ | ❌ | A1, A3–A5 | — |
-| GP6 | ❌ | ❌ | A1, A5 | — |
-| GP7 | ❌ | ❌ | A1, A6, C6 | — |
-| GP8 | ❌ | ❌ | A1, A6 | — |
+| GP1 | 🟢 2/2 | 🟢 1/1, UI smoke | ⚪ Не подтверждён полностью | Проверить полный OTP/refresh, calc-engine parity и ввод/утверждение через интерфейс |
+| GP2 | 🟢 2/2 | 🟢 1/1, UI smoke | ⚪ Не подтверждён полностью | UI сравнения/выбора, повтор конверсии, конкурентная гонка и удаление участника |
+| GP3 | 🟢 2/2 | 🟢 1/1, UI smoke | ⚪ Не подтверждён полностью | График с зависимостями и согласованием, MinIO/ACL, события и уведомления |
+| GP4 | 🟢 1/1, rework 409 → verify → accept | 🟢 1/1, UI smoke | ⚪ Не подтверждён полностью | Одноразовый portal-token/410, warranty claim и негативные сценарии |
+| GP5 | 🟢 2/2, manual payment evidence/dispute | 🟢 1/1, UI smoke | ⚪ Не подтверждён полностью | Checkout/provider webhook → worker/outbox → refund, mismatch и recovery |
+| GP6 | 🟢 1/1 | 🟢 1/1, UI smoke | ⚪ Не подтверждён полностью | Цена/provenance, calc parity, чек-dedup, change order и бюджетный drilldown |
+| GP7 | 🟢 1/1 | 🟢 1/1, UI smoke | ⚪ Не подтверждён полностью | Подпись обеих сторон через UI, архив с evidence, ACL и версия документа |
+| GP8 | 🟢 1/1 | 🟢 1/1, UI smoke | ⚪ Не подтверждён полностью | Push receipt/worker, read-truth, recovery, automation dedupe через UI/DB |
 
-Легенда: ❌ not written · 🔴 written, failing · 🟡 passing on SQLite/local only · 🟢 passing on PostgreSQL topology in CI.
+**Трактовка:** 🟢 означает, что перечисленные тесты прошли на exact commit; `UI smoke` означает загрузку role-scoped страниц и проверку текста, **не** нажатие критических action-кнопок и подтверждение durable result. ⚪ означает, что *полнота coverage относительно критериев выше* ещё не доказана; это не утверждение, что соответствующая функция отсутствует или не работает.
+
+**Обязательное продолжение:** [#734](https://github.com/PetrFedin/renova/issues/734) — contract-to-E2E coverage по всем 8 GP; [#730](https://github.com/PetrFedin/renova/issues/730) — общий интеграционный контур; [#685](https://github.com/PetrFedin/renova/issues/685) — независимое ревью; [#247](https://github.com/PetrFedin/renova/issues/247) — bypass policy. Запрещено повышать статус до полного `Golden Paths DONE`, `STAGING VERIFIED` или `PRODUCTION VERIFIED` до отдельных соответствующих доказательств. `main` и deployment этим доказательством не обновляются.
