@@ -7,7 +7,7 @@ from app.db.session import init_db
 from app.main import app
 from app.models.entities import User, UserRole
 from app.models.project_documents import DocumentStatus, DocumentType
-from app.services import portal_token_service as portal_tok
+from app.services import portal_link_service as portal_links
 from app.services import project_document_service as docs_svc
 from app.services.seed_articles import seed_articles
 from app.services.seed_demo import ensure_demo_users
@@ -38,8 +38,11 @@ async def test_portal_sign_draft_document():
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         cust = (await client.post("/api/v1/auth/demo", json={"role": "customer"})).json()
         pid = (await client.get("/api/v1/projects", headers={"X-User-Id": cust["id"]})).json()[0]["id"]
-        token = portal_tok.create_portal_token(project_id=pid, user_id=cust["id"], scopes=["read", "sign_document"])
         async with __import__("app.db.session", fromlist=["SessionLocal"]).SessionLocal() as db:
+            link, token = await portal_links.issue_link(
+                db, project_id=pid, user_id=cust["id"], issued_by=cust["id"],
+                scopes=["read", "sign_document"], ttl_hours=1,
+            )
             doc = await docs_svc.create_document(
                 db,
                 project_id=pid,
