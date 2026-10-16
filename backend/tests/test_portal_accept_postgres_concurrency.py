@@ -35,7 +35,7 @@ async def test_two_replicas_cannot_spend_same_portal_acceptance_capability(monke
     try:
         async with Session() as db:
             customer, contractor, _, project, _, stage, _ = (
-                await seed_acceptance_stage(db, "portal-atomic-race")
+                await seed_acceptance_stage(db, "p676r")
             )
             requested, error = await decisions.request_acceptance(
                 db, project=project, stage_id=stage.id, actor=contractor,
