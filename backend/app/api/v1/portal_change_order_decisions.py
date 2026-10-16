@@ -14,6 +14,7 @@ from app.api.v1.portal import _portal_claims, _require_portal_scope
 from app.db.session import get_db
 from app.models.entities import Project, User, UserRole
 from app.services import change_order_service as co_svc
+from app.services import portal_link_service as portal_links
 
 router = APIRouter(tags=["portal"])
 
@@ -51,6 +52,9 @@ async def portal_approve_change_order(
     """Approve a change order only with the explicit ``accept_stage`` scope."""
     claims = _portal_claims(body.token, project_id)
     _require_portal_scope(claims, "accept_stage")
+    await portal_links.require_registered_write_scope(
+        db, claims=claims, project_id=project_id, scope="accept_stage"
+    )
     user, _project = await _require_customer(db, claims=claims, project_id=project_id)
 
     try:
@@ -80,6 +84,9 @@ async def portal_reject_change_order(
     """Reject a project-scoped change order with durable side effects."""
     claims = _portal_claims(body.token, project_id)
     _require_portal_scope(claims, "accept_stage")
+    await portal_links.require_registered_write_scope(
+        db, claims=claims, project_id=project_id, scope="accept_stage"
+    )
     user, _project = await _require_customer(db, claims=claims, project_id=project_id)
 
     try:
