@@ -235,3 +235,45 @@ async def test_rejected_invalid_acceptance_does_not_consume_portal_capability():
         async with sess.SessionLocal() as db:
             link = await db.get(PortalLink, link_id)
             assert link is not None and link.accept_stage_consumed_at is None
+
+
+async def test_portal_session_scopes_and_snapshot_actions_match_consumed_acceptance():
+    """The UI must stop offering an already spent acceptance capability."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        pid, cust_id, acc_id, stage_id = await _seed_acceptance(client)
+        contractor = (await client.post("/api/v1/auth/demo", json={"role": "contractor"})).json()
+        await complete_stage_checklist(client, pid, stage_id, {"X-User-Id": contractor["id"]})
+        from app.db import session as sess
+        async with sess.SessionLocal() as db:
+            _, token = await portal_links.issue_link(
+                db, project_id=pid, user_id=cust_id, issued_by=cust_id,
+                scopes=["read", "accept_stage", "pay", "sign_document"], ttl_hours=1,
+            )
+        issued = await client.post("/api/v1/auth/portal/session", json={"token": token})
+        assert issued.status_code == 200
+        assert "accept_stage" in issued.json()["scopes"]
+        before = await client.get(
+            f"/api/v1/portal/projects/{pid}/snapshot",
+            headers={"Authorization": f"Bearer {issued.json()['access_token']}"},
+        )
+        assert before.status_code == 200, before.text
+        assert before.json()["can_accept_stage"] is True
+
+        accepted = await client.post(
+            f"/api/v1/portal/projects/{pid}/work-acceptances/{acc_id}/accept",
+            json={"token": token, "comment": "portal"},
+        )
+        assert accepted.status_code == 200, accepted.text
+        renewed = await client.post("/api/v1/auth/portal/session", json={"token": token})
+        assert renewed.status_code == 200, renewed.text
+        scopes = set(renewed.json()["scopes"])
+        assert "accept_stage" not in scopes
+        assert {"read", "pay", "sign_document"}.issubset(scopes)
+        snapshot = await client.get(
+            f"/api/v1/portal/projects/{pid}/snapshot",
+            headers={"Authorization": f"Bearer {renewed.json()['access_token']}"},
+        )
+        assert snapshot.status_code == 200, snapshot.text
+        assert snapshot.json()["can_accept_stage"] is False
+        assert snapshot.json()["can_decide_change_orders"] is False
+        assert snapshot.json()["can_sign_documents"] is True
