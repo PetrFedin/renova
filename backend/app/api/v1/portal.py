@@ -370,7 +370,12 @@ async def portal_snapshot(
     if bearer:
         payload = decode_access_token(_bearer_token(bearer))
         if payload.get("portal"):
-            token_scopes = set(payload.get("scopes") or [])
+            # A bearer minted before consumption must also lose stale CTAs.
+            if payload.get("portal_link_id"):
+                live_link = await portal_links.get_usable_link(db, payload["portal_link_id"])
+                token_scopes = set(portal_links.effective_portal_scopes(payload, live_link))
+            else:
+                token_scopes = {"read"} & set(payload.get("scopes") or [])
     can_decide_co = (
         user.id == p.customer_id and user.role == UserRole.customer
         and not read_only and (token_scopes is None or "accept_stage" in token_scopes)
