@@ -47,8 +47,10 @@ async def portal_session(body: PortalSessionIn, db: AsyncSession = Depends(get_d
 
     from sqlalchemy import select
 
-    if not await portal_links.link_is_usable(db, claims.get("jti")):
+    link = await portal_links.get_usable_link(db, claims.get("jti")) if claims.get("jti") else None
+    if claims.get("jti") and link is None:
         raise HTTPException(401, "portal_link_revoked")
+    effective_scopes = portal_links.effective_portal_scopes(claims, link)
 
     user = await db.get(User, claims["user_id"])
     if not user or user.deleted_at is not None:
@@ -70,7 +72,7 @@ async def portal_session(body: PortalSessionIn, db: AsyncSession = Depends(get_d
             "role": user.role.value,
             "portal": True,
             "project_id": project.id,
-            "scopes": list(claims.get("scopes") or ["read"]),
+            "scopes": effective_scopes,
             **({"portal_link_id": claims["jti"]} if claims.get("jti") else {}),
         },
         expires_minutes=PORTAL_ACCESS_TTL_MINUTES,
@@ -82,7 +84,7 @@ async def portal_session(body: PortalSessionIn, db: AsyncSession = Depends(get_d
         "read_only": bool(claims.get("read_only", read_only)),
         "access_mode": mode,
         "role": user.role.value,
-        "scopes": claims.get("scopes", ["read"]),
+        "scopes": effective_scopes,
         "access_token": access_token,
         "token_type": "bearer",
     }
