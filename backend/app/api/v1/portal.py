@@ -1,6 +1,6 @@
 from app.core.timeutil import utc_now
 """Web client portal — magic link + read-only snapshot (P2.1)."""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -215,6 +215,7 @@ async def revoke_portal_link(
 @router.get("/portal/projects/{project_id}/snapshot")
 async def portal_snapshot(
     project_id: str,
+    request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -361,7 +362,19 @@ async def portal_snapshot(
         {"id": c.id, "title": c.title, "amount": c.amount, "description": c.description, "status": c.status.value}
         for c in co_rows[:10]
     ]
-    can_decide_co = user.id == p.customer_id and user.role == UserRole.customer and not read_only
+    # The token scope is authoritative for this portal session, not just role.
+    from app.core.security import decode_access_token
+    from app.api.deps import _bearer_token
+    bearer = request.headers.get("authorization")
+    token_scopes: set[str] | None = None
+    if bearer:
+        payload = decode_access_token(_bearer_token(bearer))
+        if payload.get("portal"):
+            token_scopes = set(payload.get("scopes") or [])
+    can_decide_co = (
+        user.id == p.customer_id and user.role == UserRole.customer
+        and not read_only and (token_scopes is None or "accept_stage" in token_scopes)
+    )
 
     # Investor P1: portal не показывает Kontur CTA, если провайдер off
     try:
@@ -403,9 +416,12 @@ async def portal_snapshot(
         "estimate_summary": estimate_summary,
         "pending_change_orders": pending_change_orders,
         "can_decide_change_orders": can_decide_co,
-        "can_accept_stage": user.id == p.customer_id and user.role == UserRole.customer,
-        "can_confirm_schedule": user.id == p.customer_id and user.role == UserRole.customer and not read_only,
-        "can_sign_documents": user.id == p.customer_id and user.role == UserRole.customer,
+        "can_accept_stage": can_decide_co,
+        "can_confirm_schedule": can_decide_co,
+        "can_sign_documents": (
+            user.id == p.customer_id and user.role == UserRole.customer
+            and (token_scopes is None or "sign_document" in token_scopes)
+        ),
         "esign_mode": esign_mode,
         "kontur_mode": kontur_mode,
         "kontur_available": kontur_available,
