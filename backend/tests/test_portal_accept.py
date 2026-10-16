@@ -170,3 +170,68 @@ async def test_revoked_or_legacy_write_token_cannot_decide_acceptance():
         )
         assert legacy_write.status_code == 410
         assert legacy_write.json()["detail"] == "portal_link_inactive"
+
+
+async def test_accept_scope_consumed_but_other_portal_scopes_survive():
+    """A successful decision consumes only accept_stage, not the link itself."""
+    from app.db import session as sess
+    from app.models.entities import PortalLink
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        pid, cust_id, acc_id, stage_id = await _seed_acceptance(client)
+        contractor = (await client.post("/api/v1/auth/demo", json={"role": "contractor"})).json()
+        await complete_stage_checklist(client, pid, stage_id, {"X-User-Id": contractor["id"]})
+        async with sess.SessionLocal() as db:
+            link, token = await portal_links.issue_link(
+                db, project_id=pid, user_id=cust_id, issued_by=cust_id,
+                scopes=["read", "accept_stage", "pay", "sign_document"], ttl_hours=1,
+            )
+            link_id = link.id
+
+        accepted = await client.post(
+            f"/api/v1/portal/projects/{pid}/work-acceptances/{acc_id}/accept",
+            json={"token": token, "comment": "single-use"},
+        )
+        assert accepted.status_code == 200, accepted.text
+
+        async with sess.SessionLocal() as db:
+            saved = await db.get(PortalLink, link_id)
+            assert saved is not None
+            assert saved.revoked_at is None
+            assert saved.accept_stage_consumed_at is not None
+            assert saved.accept_stage_acceptance_id == acc_id
+            assert saved.accept_stage_decision == "accept"
+            assert set(saved.scopes.split(",")) == {
+                "read", "accept_stage", "pay", "sign_document",
+            }
+            assert await portal_links.link_is_usable(db, link_id)
+
+        exchanged = await client.post("/api/v1/auth/portal/session", json={"token": token})
+        assert exchanged.status_code == 200, exchanged.text
+        assert {"read", "pay", "sign_document"}.issubset(
+            set(exchanged.json()["scopes"])
+        )
+        duplicate = await client.post(
+            f"/api/v1/portal/projects/{pid}/work-acceptances/{acc_id}/return",
+            json={"token": token, "comment": "should fail before business mutation"},
+        )
+        assert duplicate.status_code == 410
+        assert duplicate.json()["detail"] == "portal_decision_already_used"
+
+
+async def test_rejected_invalid_acceptance_does_not_consume_portal_capability():
+    """An unknown acceptance is not a successful decision and must not burn the right."""
+    from app.db import session as sess
+    from app.models.entities import PortalLink
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        pid, cust_id, _, _ = await _seed_acceptance(client)
+        link_id, token = await _issue_accept_link(pid, cust_id)
+        result = await client.post(
+            f"/api/v1/portal/projects/{pid}/work-acceptances/not-found/accept",
+            json={"token": token},
+        )
+        assert result.status_code == 404, result.text
+        async with sess.SessionLocal() as db:
+            link = await db.get(PortalLink, link_id)
+            assert link is not None and link.accept_stage_consumed_at is None
