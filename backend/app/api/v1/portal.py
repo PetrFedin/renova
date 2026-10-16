@@ -693,6 +693,9 @@ async def portal_sign_document(
         raise HTTPException(401, "token_mismatch")
     if "sign_document" not in claims.get("scopes", []):
         raise HTTPException(403, "portal_read_only")
+    await portal_links.require_registered_write_scope(
+        db, claims=claims, project_id=project_id, scope="sign_document"
+    )
 
     from app.models.project_documents import DocumentStatus
     from app.services import project_document_service as docs_svc
@@ -780,6 +783,9 @@ async def portal_confirm_schedule(
     claims = _portal_claims(body.token, project_id)
     # Schedule confirm = согласие заказчика; тот же write-scope, что и приёмка
     _require_portal_scope(claims, "accept_stage")
+    await portal_links.require_registered_write_scope(
+        db, claims=claims, project_id=project_id, scope="accept_stage"
+    )
     user = await db.get(User, claims["user_id"])
     if not user:
         raise HTTPException(401, "invalid_token_user")
@@ -802,6 +808,9 @@ async def portal_reject_schedule(
     """W57/W60: отклонение графика — нужен accept_stage scope."""
     claims = _portal_claims(body.token, project_id)
     _require_portal_scope(claims, "accept_stage")
+    await portal_links.require_registered_write_scope(
+        db, claims=claims, project_id=project_id, scope="accept_stage"
+    )
     user = await db.get(User, claims["user_id"])
     if not user:
         raise HTTPException(401, "invalid_token_user")
@@ -829,6 +838,9 @@ async def portal_lock_estimate(
     """W105: зафиксировать смету по magic link (scope accept_stage, заказчик)."""
     claims = _portal_claims(body.token, project_id)
     _require_portal_scope(claims, "accept_stage")
+    await portal_links.require_registered_write_scope(
+        db, claims=claims, project_id=project_id, scope="accept_stage"
+    )
     user = await db.get(User, claims["user_id"])
     if not user:
         raise HTTPException(401, "invalid_token_user")
@@ -860,6 +872,9 @@ async def portal_reject_estimate(
     """W105: отклонить proposal сметы по magic link."""
     claims = _portal_claims(body.token, project_id)
     _require_portal_scope(claims, "accept_stage")
+    await portal_links.require_registered_write_scope(
+        db, claims=claims, project_id=project_id, scope="accept_stage"
+    )
     user = await db.get(User, claims["user_id"])
     if not user:
         raise HTTPException(401, "invalid_token_user")
