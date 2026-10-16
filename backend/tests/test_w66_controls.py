@@ -18,6 +18,7 @@ from app.models.entities import (
     UserRole,
 )
 from app.services import estimate_service as est
+from app.services import portal_link_service as portal_links
 from app.services import portal_token_service as portal_tok
 from app.services.seed_articles import seed_articles
 from app.services.seed_demo import ensure_demo_users
@@ -78,9 +79,16 @@ async def test_portal_return_stage_via_token():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         pid, cust_id, _, acc_id, _, _ = await _seed_acceptance(client)
-        token = portal_tok.create_portal_token(
-            project_id=pid, user_id=cust_id, ttl_hours=1, scopes=["read", "accept_stage"]
-        )
+        from app.db import session as sess
+        async with sess.SessionLocal() as db:
+            _, token = await portal_links.issue_link(
+                db,
+                project_id=pid,
+                user_id=cust_id,
+                issued_by=cust_id,
+                scopes=["read", "accept_stage"],
+                ttl_hours=1,
+            )
         r = await client.post(
             f"/api/v1/portal/projects/{pid}/work-acceptances/{acc_id}/return",
             json={"token": token, "comment": "переделать швы"},
