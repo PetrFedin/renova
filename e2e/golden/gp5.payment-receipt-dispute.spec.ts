@@ -79,8 +79,8 @@ test.describe('@golden @gp5 invoice → settlement evidence → expense → disp
       expect(response.ok()).toBeTruthy();
 
       // Read back the canonical payment after dispute response rather than
-      // trusting a 2xx HTTP response alone. Expense recognition is immutable
-      // in amount and cardinality across the dispute workflow.
+      // trusting a 2xx HTTP response alone. The linked expense changes to disputed but keeps
+      // its amount and cardinality across the dispute workflow.
       const finalPaymentsResponse = await request.get(
         `${API}/api/v1/projects/${s.projectId}/payments`, { headers: hC },
       );
@@ -99,11 +99,11 @@ test.describe('@golden @gp5 invoice → settlement evidence → expense → disp
       const finalExpenses = (await finalExpensesResponse.json()) as Array<{
         payment_id?: string; amount: number; status: string;
       }>;
-      const finalRecognized = finalExpenses.filter((expense) =>
-        expense.payment_id === paymentId && expense.status === 'confirmed'
+      const disputedExpenses = finalExpenses.filter((expense) =>
+        expense.payment_id === paymentId && expense.status === 'disputed'
       );
-      expect(finalRecognized, 'Dispute must not duplicate already recognized expense').toHaveLength(1);
-      expect(Number(finalRecognized[0].amount)).toBe(5000);
+      expect(disputedExpenses, 'Dispute must mark the same expense disputed without duplicating it').toHaveLength(1);
+      expect(Number(disputedExpenses[0].amount)).toBe(5000);
     } finally {
       await cleanupE2eGateProject(request, s.customer, s.projectId);
     }
