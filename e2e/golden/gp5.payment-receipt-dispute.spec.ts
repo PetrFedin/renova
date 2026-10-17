@@ -77,6 +77,33 @@ test.describe('@golden @gp5 invoice → settlement evidence → expense → disp
         { headers: hE, data: { response: 'contest', comment: 'Не согласен, объём подтверждён перепиской и актом' } },
       );
       expect(response.ok()).toBeTruthy();
+
+      // Read back the canonical payment after dispute response rather than
+      // trusting a 2xx HTTP response alone. The linked expense changes to disputed but keeps
+      // its amount and cardinality across the dispute workflow.
+      const finalPaymentsResponse = await request.get(
+        `${API}/api/v1/projects/${s.projectId}/payments`, { headers: hC },
+      );
+      expect(finalPaymentsResponse.ok()).toBeTruthy();
+      const finalPayments = (await finalPaymentsResponse.json()) as Array<{
+        id: string; status: string;
+      }>;
+      const finalPayment = finalPayments.find((payment) => payment.id === paymentId);
+      expect(finalPayment).toBeDefined();
+      expect(finalPayment?.status).toBe('disputed');
+
+      const finalExpensesResponse = await request.get(
+        `${API}/api/v1/projects/${s.projectId}/os/expenses`, { headers: hC },
+      );
+      expect(finalExpensesResponse.ok()).toBeTruthy();
+      const finalExpenses = (await finalExpensesResponse.json()) as Array<{
+        payment_id?: string; amount: number; status: string;
+      }>;
+      const disputedExpenses = finalExpenses.filter((expense) =>
+        expense.payment_id === paymentId && expense.status === 'disputed'
+      );
+      expect(disputedExpenses, 'Dispute must mark the same expense disputed without duplicating it').toHaveLength(1);
+      expect(Number(disputedExpenses[0].amount)).toBe(5000);
     } finally {
       await cleanupE2eGateProject(request, s.customer, s.projectId);
     }
