@@ -67,6 +67,23 @@ async def refund_totals_by_payment(
     }
 
 
+def payment_refund_projection(
+    gross_amount: float | Decimal,
+    refunded: Decimal | float,
+) -> dict[str, float]:
+    """One strict projection for all role/API payment response shapes."""
+    gross = invoice_money(gross_amount)
+    returned = Decimal(str(refunded))
+    if not returned.is_finite() or returned < ZERO or returned > gross:
+        raise ValueError("project_refund_ledger_inconsistent")
+    if returned != returned.quantize(CENT):
+        raise ValueError("project_refund_ledger_inconsistent")
+    return {
+        "refunded_amount": float(returned),
+        "net_amount": float(gross - returned),
+    }
+
+
 async def net_payment_amount(db: AsyncSession, payment_id: str, gross_amount: float) -> float:
     net = invoice_money(gross_amount) - await refunded_total(db, payment_id)
     if net < ZERO:
