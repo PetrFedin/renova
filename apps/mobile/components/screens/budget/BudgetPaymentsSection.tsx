@@ -1,5 +1,6 @@
 /** Вкладка «Бюджет → Оплаты» — создание, фильтры, история */
 import { paymentCheckLabel } from '@/lib/domain/paymentReceiptCheck';
+import { SETTLEMENT_HINTS } from '@/lib/domain/paymentSettlementCopy';
 import { READ_ONLY_PAYMENTS_HINT } from '@/lib/domain/readOnlyCopy';
 import { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
@@ -78,8 +79,8 @@ export function BudgetPaymentsSection({
         {readOnly
           ? READ_ONLY_PAYMENTS_HINT
           : role === 'contractor'
-          ? 'Счета — запрос оплаты за работы или материалы. Заказчик переводит деньги вне приложения и прикладывает чек; в подтверждённый расход сумма попадёт после того, как вы подтвердите получение. Ошибочный счёт можно отозвать, пока он не оплачен.'
-          : 'Счета — оплата работ или материалов исполнителю. После ручного перевода приложите чек на полную сумму или дождитесь подтверждения получения исполнителем: в подтверждённый расход сумма попадёт только после этого.'}
+          ? SETTLEMENT_HINTS.contractorOverview
+          : SETTLEMENT_HINTS.customerOverview}
       </Text>
 
       {canOperate ? (
@@ -168,11 +169,11 @@ export function BudgetPaymentsSection({
           && (payment.status === 'pending' || payment.status === 'paid_unverified');
         // Кому что делать дальше: без этого «оплачено без чека» и «в обработке» были тупиком.
         const actionHint = readOnly
-          ? (payment.status === 'paid_unverified' ? 'Перевод отмечен, ждёт подтверждения получения' : null)
+          ? (payment.status === 'paid_unverified' ? SETTLEMENT_HINTS.readOnlyPending : null)
           : role === 'contractor' && payment.status === 'paid_unverified'
-          ? 'Заказчик отметил перевод — подтвердите, что деньги пришли'
+          ? SETTLEMENT_HINTS.contractorPending
           : role === 'customer' && payment.status === 'paid_unverified'
-            ? 'Приложите чек на полную сумму или дождитесь подтверждения исполнителя'
+            ? SETTLEMENT_HINTS.customerPending
             : role === 'customer' && payment.status === 'processing'
               ? 'Оплата в обработке — продолжите или проверьте статус'
               : null;
