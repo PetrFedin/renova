@@ -17,11 +17,13 @@ from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.main import app
 from app.models.entities import (
+    Expense,
     Payment,
     PaymentEvent,
     PaymentStatus,
     PaymentType,
     Project,
+    Receipt,
     Stage,
     User,
     UserRole,
@@ -79,6 +81,68 @@ async def _invoice(db, project, stage, amount, status=PaymentStatus.pending, cre
 
 
 # --- MNY-002 / JRN-007: чек и сумма ------------------------------------
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["manual", "scan"])
+async def test_settlement_receipt_replays_after_payment_confirmation(db, kind):
+    customer, contractor, project, stage = await _seed(db)
+    pay = await _invoice(db, project, stage, 5000, status=PaymentStatus.paid_unverified)
+    pay_id = pay.id
+    url = f"/api/v1/projects/{PID}/receipts/{kind}"
+    payload = {"payment_id": pay_id, "client_request_id": f"settlement-retry-{kind}"}
+    if kind == "manual":
+        payload.update(amount=5000, description="Подтверждение перевода")
+    else:
+        payload["qr_raw"] = "t=20260927T1200&s=5000.00&fn=9999078900001234&i=1&fp=1&n=1"
+
+    first = await _call(db, customer, "POST", url, payload)
+    assert first.status_code == 200, first.text
+    receipt_id = first.json()["id"]
+    await db.refresh(pay)
+    assert pay.status == PaymentStatus.confirmed
+    await db.refresh(project)
+    initial_budget = project.budget_spent
+    initial_expenses = (await db.execute(select(Expense).where(Expense.payment_id == pay_id))).scalars().all()
+    assert len(initial_expenses) == 1
+    expense_id = initial_expenses[0].id
+
+    replay = await _call(db, customer, "POST", url, payload)
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["id"] == receipt_id
+    assert replay.json()["idempotent_replay"] is True
+
+    # A replay does not grant a fresh attachment or bypass payer/project ACL.
+    changed = dict(payload)
+    changed["amount" if kind == "manual" else "qr_raw"] = (
+        4999 if kind == "manual" else payload["qr_raw"].replace("5000.00", "4999.00")
+    )
+    conflict = await _call(db, customer, "POST", url, changed)
+    assert conflict.status_code == 409
+    assert conflict.json()["detail"]["code"] == "idempotency_conflict"
+    fresh = await _call(db, customer, "POST", url, {**payload, "client_request_id": f"new-settled-{kind}"})
+    assert fresh.status_code == 409
+    assert fresh.json()["detail"]["code"] == "payment_receipt_not_attachable"
+    forbidden = await _call(db, contractor, "POST", url, payload)
+    assert forbidden.status_code == 403
+    assert forbidden.json()["detail"]["code"] == "receipt_payment_customer_only"
+
+    other = Project(id="receipt-retry-other", name="Other", renovation_type="cosmetic", customer_id=customer.id)
+    db.add(other)
+    await db.commit()
+    foreign = await _call(db, customer, "POST", f"/api/v1/projects/{other.id}/receipts/{kind}", payload)
+    assert foreign.status_code == 404
+
+    receipts = (await db.execute(select(Receipt).where(Receipt.payment_id == pay_id))).scalars().all()
+    expenses = (await db.execute(select(Expense).where(Expense.payment_id == pay_id))).scalars().all()
+    assert [rec.id for rec in receipts] == [receipt_id]
+    assert [expense.id for expense in expenses] == [expense_id]
+    assert expenses[0].amount == 5000
+    assert expenses[0].status == "confirmed"
+    await db.refresh(project)
+    assert project.budget_spent == initial_budget == 5000
+    await db.refresh(pay)
+    assert pay.status == PaymentStatus.confirmed
+
 
 @pytest.mark.asyncio
 async def test_one_ruble_receipt_does_not_confirm_5000_invoice(db):

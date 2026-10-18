@@ -38,20 +38,28 @@ test.describe('@golden @gp5 invoice → settlement evidence → expense → disp
       );
       expect(contractorReceipt.status()).toBe(403);
 
+      const receiptPayload = {
+        payment_id: paymentId,
+        amount: 5000,
+        description: 'Golden settlement evidence',
+        expense_category: 'materials',
+        client_request_id: `gp5-rcpt-${Date.now()}`,
+      };
       const receipt = await request.post(
         `${API}/api/v1/projects/${s.projectId}/receipts/manual`,
         {
           headers: hC,
-          data: {
-            payment_id: paymentId,
-            amount: 5000,
-            description: 'Golden settlement evidence',
-            expense_category: 'materials',
-            client_request_id: `gp5-rcpt-${Date.now()}`,
-          },
+          data: receiptPayload,
         },
       );
       expect(receipt.ok()).toBeTruthy();
+      const receiptId = (await receipt.json()).id;
+      const receiptReplay = await request.post(
+        `${API}/api/v1/projects/${s.projectId}/receipts/manual`,
+        { headers: hC, data: receiptPayload },
+      );
+      expect(receiptReplay.ok(), 'Committed receipt must survive a response-loss retry after payment confirmation').toBeTruthy();
+      expect(await receiptReplay.json()).toMatchObject({ id: receiptId, idempotent_replay: true });
 
       const payments = (await (
         await request.get(`${API}/api/v1/projects/${s.projectId}/payments`, { headers: hC })
@@ -60,9 +68,10 @@ test.describe('@golden @gp5 invoice → settlement evidence → expense → disp
 
       const expenses = (await (
         await request.get(`${API}/api/v1/projects/${s.projectId}/os/expenses`, { headers: hC })
-      ).json()) as Array<{ payment_id?: string; amount: number; status: string }>;
-      const recognized = expenses.filter((e) => e.payment_id === paymentId && e.status === 'confirmed');
+      ).json()) as Array<{ id: string; payment_id?: string; amount: number; status: string }>;
+      const recognized = expenses.filter((e) => e.payment_id === paymentId);
       expect(recognized, 'One economic operation must create one recognized expense').toHaveLength(1);
+      expect(recognized[0].status).toBe('confirmed');
       expect(Number(recognized[0].amount)).toBe(5000);
 
       const dispute = await request.post(
@@ -97,12 +106,14 @@ test.describe('@golden @gp5 invoice → settlement evidence → expense → disp
       );
       expect(finalExpensesResponse.ok()).toBeTruthy();
       const finalExpenses = (await finalExpensesResponse.json()) as Array<{
-        payment_id?: string; amount: number; status: string;
+        id: string; payment_id?: string; amount: number; status: string;
       }>;
       const disputedExpenses = finalExpenses.filter((expense) =>
-        expense.payment_id === paymentId && expense.status === 'disputed'
+        expense.payment_id === paymentId
       );
       expect(disputedExpenses, 'Dispute must mark the same expense disputed without duplicating it').toHaveLength(1);
+      expect(disputedExpenses[0].id).toBe(recognized[0].id);
+      expect(disputedExpenses[0].status).toBe('disputed');
       expect(Number(disputedExpenses[0].amount)).toBe(5000);
     } finally {
       await cleanupE2eGateProject(request, s.customer, s.projectId);
