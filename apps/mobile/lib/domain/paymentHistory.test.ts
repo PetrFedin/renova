@@ -1,4 +1,5 @@
 import { buildPaymentHistory } from './paymentHistory';
+import { paymentRefundPresentation, formatPaymentMoney } from './paymentRefundPresentation';
 
 const base = {
   id: 'p1',
@@ -65,6 +66,30 @@ const fullRefund = buildPaymentHistory({
 });
 assert(fullRefund.some((e) => e.id === 'ref-f' && e.title === 'Возврат ЮKassa'),
   'full-refund event must not be confused with partial refund');
+
+const refund = paymentRefundPresentation({
+  amount: 5000,
+  status: 'confirmed',
+  refunded_amount: 1000.01,
+  net_amount: 3999.99,
+});
+assert(refund?.kind === 'partial', 'valid partial refund should be a partial state');
+assert(refund?.kind === 'partial' && refund.returned === formatPaymentMoney(1000.01),
+  'refund amount must preserve exact kopecks');
+assert(refund?.kind === 'partial' && refund.remaining === formatPaymentMoney(3999.99),
+  'remaining amount must preserve exact kopecks');
+assert(paymentRefundPresentation({
+  amount: 5000, status: 'refunded', refunded_amount: 5000, net_amount: 0,
+})?.kind === 'full', 'exact full refund state');
+assert(paymentRefundPresentation({
+  amount: 5000, status: 'confirmed', refunded_amount: 1000, net_amount: 5000,
+})?.kind === 'inconsistent', 'mismatched project ledger cannot be silently shown as paid');
+assert(paymentRefundPresentation({
+  amount: 5000, status: 'confirmed', refunded_amount: 1000, net_amount: null,
+})?.kind === 'inconsistent', 'missing server net must not be guessed');
+assert(paymentRefundPresentation({
+  amount: 5000, status: 'refunded', refunded_amount: 1000, net_amount: 4000,
+})?.kind === 'inconsistent', 'refunded terminal state cannot have remaining charge');
 
 if (!ok) process.exit(1);
 console.log('paymentHistory.test OK');
