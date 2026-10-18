@@ -620,3 +620,66 @@ async def test_partial_refund_during_dispute_restores_only_net_budget_on_resolut
     assert rows[0].status == "confirmed" and rows[0].amount == 3000
     assert (await reversal_db.get(Project, project_id)).budget_spent == 3000
     assert (await reversal_db.scalar(select(func.count()).select_from(ProjectPaymentRefund))) == 2
+
+
+@pytest.mark.asyncio
+async def test_simulated_refund_refuses_provider_move_when_local_expense_is_inconsistent(
+    reversal_db, monkeypatch,
+):
+    from decimal import Decimal
+    from fastapi import HTTPException
+    from app.api.v1 import dev_payment_provider
+    from app.core.config import settings
+    from app.services.providers import base, registry
+    from app.services.providers.simulated import payment as simulated
+
+    monkeypatch.setattr(settings, "environment", "test")
+    monkeypatch.setattr(settings, "redis_url", None)
+    monkeypatch.setattr(settings, "payment_provider_mode", "simulated")
+    registry.reset()
+    simulated.reset_store()
+    try:
+        _, contractor, project, stage = await seed_project(reversal_db, "425")
+        provider = registry.payment_provider()
+        checkout = await provider.create_payment(
+            base.PaymentCreateRequest(
+                money=base.Money(Decimal("5000.00")),
+                description="Out-of-sync expense",
+                return_url="renova://payment-return",
+                idempotency_key="gp5-drift-425",
+                metadata={
+                    "kind": "project_payment", "project_id": project.id,
+                    "payment_id": "pay-gp5-drift-425",
+                },
+            )
+        )
+        provider.transition(checkout.external_id, "succeed")
+        payment = await seed_payment(
+            reversal_db, payment_id="pay-gp5-drift-425",
+            project_id=project.id, stage_id=stage.id,
+            created_by=contractor.id, status=PaymentStatus.confirmed,
+            provider_id=checkout.external_id, accepted=True,
+        )
+        expense = (await reversal_db.execute(
+            select(Expense).where(Expense.payment_id == payment.id)
+        )).scalar_one()
+        expense.amount = 4000.0
+        await reversal_db.commit()
+
+        with pytest.raises(HTTPException) as error:
+            await dev_payment_provider.refund(
+                checkout.external_id,
+                dev_payment_provider.RefundIn(
+                    amount=Decimal("1000.00"), idempotency_key="drift-refund-425"
+                ),
+                reversal_db,
+            )
+        assert error.value.status_code == 409
+        assert error.value.detail["code"] == "project_payment_ledger_inconsistent"
+        assert (await provider.get_payment(checkout.external_id)).refunded is None
+        assert await reversal_db.scalar(
+            select(func.count()).select_from(ProjectPaymentRefund)
+        ) == 0
+    finally:
+        registry.reset()
+        simulated.reset_store()
