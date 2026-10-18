@@ -24,7 +24,11 @@ function cents(value: number): number | null {
 export function paymentRefundPresentation(
   payment: Pick<Payment, 'amount' | 'status' | 'refunded_amount' | 'net_amount'>,
 ): PaymentRefundPresentation | null {
-  if (payment.refunded_amount == null || payment.refunded_amount === 0) return null;
+  if (payment.refunded_amount == null || payment.refunded_amount === 0) {
+    return payment.status === 'refunded'
+      ? { kind: 'inconsistent', reason: 'Оплата отмечена возвращённой без финансовой записи о возврате. Нужна сверка.' }
+      : null;
+  }
 
   const gross = cents(payment.amount);
   const refunded = cents(payment.refunded_amount);
