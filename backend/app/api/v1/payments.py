@@ -12,6 +12,7 @@ from app.db.session import get_db
 from app.models.entities import PaymentType, Stage, User, UserRole
 from app.schemas.project import PaymentCreate, PaymentOut, YookassaCheckoutIn, YookassaCheckoutOut
 from app.services import payment_service as pay_svc
+from app.services.project_refund_ledger import payment_refund_projection, refunded_total
 from app.services.client_write_idempotency import (
     IdempotencyConflict,
     commit_client_write,
@@ -106,11 +107,14 @@ async def list_payments(
     unverified_ids = await pay_svc.receipts_without_fns_check(db, [item.id for item in items])
     for item in items:
         receipt_id = await pay_svc.receipt_id_for_payment(db, item.id)
-        out.append(PaymentOut(**pay_svc.payment_dict(
-            item,
-            receipt_id=receipt_id,
-            receipt_unverified=item.id in unverified_ids,
-        )))
+        out.append(PaymentOut(
+            **pay_svc.payment_dict(
+                item,
+                receipt_id=receipt_id,
+                receipt_unverified=item.id in unverified_ids,
+            ),
+            **payment_refund_projection(item.amount, await refunded_total(db, item.id)),
+        ))
     return out
 
 
@@ -290,7 +294,14 @@ async def create_payment(
     if not payment:
         raise HTTPException(500, detail={"code": "committed_payment_missing"})
     receipt_id = await pay_svc.receipt_id_for_payment(db, persisted_payment_id)
-    return PaymentOut(**pay_svc.payment_dict(payment, receipt_id=receipt_id, receipt_unverified=await pay_svc.receipt_unverified_for_payment(db, payment.id)))
+    return PaymentOut(
+        **pay_svc.payment_dict(
+            payment,
+            receipt_id=receipt_id,
+            receipt_unverified=await pay_svc.receipt_unverified_for_payment(db, payment.id),
+        ),
+        **payment_refund_projection(payment.amount, await refunded_total(db, payment.id)),
+    )
 
 
 class ConfirmPaymentIn(BaseModel):
@@ -424,7 +435,14 @@ async def confirm_payment(
     if not payment:
         raise HTTPException(500, detail={"code": "committed_payment_missing"})
     receipt_id = await pay_svc.receipt_id_for_payment(db, persisted_payment_id)
-    return PaymentOut(**pay_svc.payment_dict(payment, receipt_id=receipt_id, receipt_unverified=await pay_svc.receipt_unverified_for_payment(db, payment.id)))
+    return PaymentOut(
+        **pay_svc.payment_dict(
+            payment,
+            receipt_id=receipt_id,
+            receipt_unverified=await pay_svc.receipt_unverified_for_payment(db, payment.id),
+        ),
+        **payment_refund_projection(payment.amount, await refunded_total(db, payment.id)),
+    )
 
 
 class PaymentCancelIn(BaseModel):
@@ -444,7 +462,14 @@ class RecipientResponseIn(BaseModel):
 
 async def _payment_out(db: AsyncSession, payment) -> PaymentOut:
     receipt_id = await pay_svc.receipt_id_for_payment(db, payment.id)
-    return PaymentOut(**pay_svc.payment_dict(payment, receipt_id=receipt_id, receipt_unverified=await pay_svc.receipt_unverified_for_payment(db, payment.id)))
+    return PaymentOut(
+        **pay_svc.payment_dict(
+            payment,
+            receipt_id=receipt_id,
+            receipt_unverified=await pay_svc.receipt_unverified_for_payment(db, payment.id),
+        ),
+        **payment_refund_projection(payment.amount, await refunded_total(db, payment.id)),
+    )
 
 
 async def _contractor_side_may_manage(db: AsyncSession, user: User, project, payment) -> bool:
