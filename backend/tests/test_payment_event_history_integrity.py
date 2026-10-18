@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from decimal import Decimal
 
 import pytest
 import pytest_asyncio
@@ -23,6 +24,7 @@ import app.models.outbox_runtime  # noqa: F401
 import app.models.project_documents  # noqa: F401
 import app.models.work_schedule  # noqa: F401
 from app.services import payment_history_service as history
+from app.models.project_payment_refund import ProjectPaymentRefund
 
 
 @pytest_asyncio.fixture
@@ -168,6 +170,34 @@ async def test_canonical_payment_list_embeds_history_without_raw_evidence(histor
     assert by_id[payment.id].events[1].note == "Обнаружены существенные недостатки выполненных работ"
     assert by_id[payment.id].events[2].actor_label == "ЮKassa"
     assert by_id[untouched.id].events == []
+
+
+@pytest.mark.asyncio
+async def test_provider_refund_history_does_not_leak_another_payments_money(history_db):
+    """Provider refund ID alone is not ownership; the payment link must match."""
+    _, project, payment, untouched = await seed_history(history_db)
+    history_db.add(ProjectPaymentRefund(
+        id="history-refund-other-payment",
+        project_id=project.id,
+        payment_id=untouched.id,
+        provider_payment_id="yk-foreign",
+        provider_refund_id="raw-provider-refund-id",
+        amount=Decimal("111.23"),
+        currency="RUB",
+    ))
+    await history_db.commit()
+    result = await history.events_by_payment(history_db, [payment.id, untouched.id])
+    assert result[payment.id][-1]["refund_amount"] is None
+
+    # The same immutable refund row attached to the event's own Payment may
+    # expose its amount, without exposing raw provider IDs to either role.
+    row = await history_db.get(ProjectPaymentRefund, "history-refund-other-payment")
+    row.payment_id = payment.id
+    row.provider_payment_id = "yk-own"
+    await history_db.commit()
+    result = await history.events_by_payment(history_db, [payment.id, untouched.id])
+    assert result[payment.id][-1]["refund_amount"] == 111.23
+    assert "evidence_ref" not in result[payment.id][-1]
 
 
 def test_payment_history_route_is_single_and_canonical():
