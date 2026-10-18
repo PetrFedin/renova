@@ -23,6 +23,7 @@ import app.models.outbox_runtime  # noqa: F401
 import app.models.project_documents  # noqa: F401
 import app.models.work_schedule  # noqa: F401
 from app.services import budget_service, outbox_service, yookassa_service
+from app.models.project_payment_refund import ProjectPaymentRefund
 
 
 @pytest_asyncio.fixture
@@ -247,7 +248,7 @@ async def test_full_refund_reverses_expense_and_exact_budget_once(reversal_db):
 
 
 @pytest.mark.asyncio
-async def test_partial_refund_is_fail_closed_without_budget_corruption(reversal_db):
+async def test_cumulative_partial_refunds_change_one_expense_and_survive_budget_rehydration(reversal_db):
     _, contractor, project, stage = await seed_project(reversal_db, "401")
     payment = await seed_payment(
         reversal_db,
@@ -259,30 +260,90 @@ async def test_partial_refund_is_fail_closed_without_budget_corruption(reversal_
         provider_id="yk-partial-401",
         accepted=True,
     )
-    result = await yookassa_service.process_webhook(
-        {
+    pid, project_id = payment.id, project.id
+
+    def refund_body(refund_id: str, amount: str) -> dict:
+        return {
             "event": "refund.succeeded",
             "object": {
-                "id": "refund-partial-401",
+                "id": refund_id,
                 "status": "succeeded",
                 "payment_id": "yk-partial-401",
-                "amount": {"value": "1000.00", "currency": "RUB"},
+                "amount": {"value": amount, "currency": "RUB"},
             },
-        },
-        reversal_db,
+        }
+
+    first = await yookassa_service.process_webhook(
+        refund_body("refund-partial-401", "1000.00"), reversal_db,
     )
-    assert result["handled"] is False
-    assert result["reason"] == "partial_refund_unsupported"
-    stored = await reversal_db.get(Payment, payment.id)
-    assert stored.status == PaymentStatus.confirmed
-    expense = (
-        await reversal_db.execute(select(Expense).where(Expense.payment_id == payment.id))
-    ).scalar_one()
+    assert first["handled"] and first["changed"]
+    assert (await reversal_db.get(Payment, pid)).status == PaymentStatus.confirmed
+    expense = (await reversal_db.execute(
+        select(Expense).where(Expense.payment_id == pid)
+    )).scalar_one()
+    expense_id = expense.id
     assert expense.status == "confirmed"
-    stored_project = await reversal_db.get(Project, project.id)
-    assert stored_project.budget_spent == 5000
-    assert (await reversal_db.scalar(select(func.count()).select_from(PaymentEvent))) == 0
-    assert (await reversal_db.scalar(select(func.count()).select_from(DomainOutbox))) == 0
+    assert expense.amount == 4000
+    assert (await reversal_db.get(Project, project_id)).budget_spent == 4000
+    assert (await reversal_db.scalar(select(func.count()).select_from(ProjectPaymentRefund))) == 1
+    assert (await reversal_db.scalar(select(func.count()).select_from(PaymentEvent))) == 1
+    assert (await reversal_db.scalar(select(func.count()).select_from(DomainOutbox))) == 3
+
+    # All source hydration paths must preserve the cumulative NET amount.
+    await budget_service.refresh_budget_facts(reversal_db, project_id)
+    assert expense.amount == 4000
+    assert (await reversal_db.get(Project, project_id)).budget_spent == 4000
+
+    replay = await yookassa_service.process_webhook(
+        refund_body("refund-partial-401", "1000.00"), reversal_db,
+    )
+    assert replay["reason"] == "replay" and replay["changed"] is False
+    assert (await reversal_db.scalar(select(func.count()).select_from(ProjectPaymentRefund))) == 1
+    assert (await reversal_db.scalar(select(func.count()).select_from(DomainOutbox))) == 3
+
+    second = await yookassa_service.process_webhook(
+        refund_body("refund-partial-402", "1500.00"), reversal_db,
+    )
+    assert second["handled"] and second["changed"]
+    assert expense.amount == 2500
+    assert (await reversal_db.get(Project, project_id)).budget_spent == 2500
+
+    too_much = await yookassa_service.process_webhook(
+        refund_body("refund-overflow-403", "3000.00"), reversal_db,
+    )
+    assert not too_much["handled"] and too_much["reason"] == "refund_exceeds_payment"
+
+    drift = await yookassa_service.process_webhook(
+        refund_body("refund-partial-401", "2000.00"), reversal_db,
+    )
+    assert not drift["handled"] and drift["reason"] == "refund_idempotency_conflict"
+    assert expense.amount == 2500
+    assert (await reversal_db.get(Project, project_id)).budget_spent == 2500
+    assert (await reversal_db.scalar(select(func.count()).select_from(ProjectPaymentRefund))) == 2
+
+    final = await yookassa_service.process_webhook(
+        refund_body("refund-final-404", "2500.00"), reversal_db,
+    )
+    assert final["handled"] and final["changed"]
+    assert (await reversal_db.get(Payment, pid)).status == PaymentStatus.refunded
+    assert expense.id == expense_id
+    assert expense.status == "refund"
+    assert expense.amount == 0
+    assert (await reversal_db.get(Project, project_id)).budget_spent == 0
+    assert (await reversal_db.scalar(select(func.count()).select_from(ProjectPaymentRefund))) == 3
+    assert (await reversal_db.scalar(select(func.count()).select_from(PaymentEvent))) == 3
+    assert (await reversal_db.scalar(select(func.count()).select_from(DomainOutbox))) == 9
+
+    await budget_service.refresh_budget_facts(reversal_db, project_id)
+    assert expense.status == "refund" and expense.amount == 0
+    assert (await reversal_db.get(Project, project_id)).budget_spent == 0
+
+    last_replay = await yookassa_service.process_webhook(
+        refund_body("refund-final-404", "2500.00"), reversal_db,
+    )
+    assert last_replay["reason"] == "replay"
+    assert (await reversal_db.scalar(select(func.count()).select_from(ProjectPaymentRefund))) == 3
+    assert (await reversal_db.scalar(select(func.count()).select_from(DomainOutbox))) == 9
 
 
 @pytest.mark.asyncio
