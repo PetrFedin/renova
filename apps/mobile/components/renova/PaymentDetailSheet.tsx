@@ -1,5 +1,6 @@
 /** Детализация счёта — sheet по tap из «Бюджет → Оплаты» */
 import { paymentCheckLabel } from '@/lib/domain/paymentReceiptCheck';
+import { SETTLEMENT_HINTS, contractorSettlementDetail } from '@/lib/domain/paymentSettlementCopy';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
@@ -258,8 +259,8 @@ export function PaymentDetailSheet({
     showActionConfirm({
       title: 'Чек',
       message: canAttachReceiptLater
-        ? 'Чек должен покрывать всю сумму счёта. После сканирования счёт подтвердится автоматически.'
-        : 'После сканирования вернитесь к счёту и нажмите «Я оплатил — подтвердить». Чек должен покрывать всю сумму счёта.',
+        ? SETTLEMENT_HINTS.receiptAfterUnverified
+        : SETTLEMENT_HINTS.receiptBeforeTransferAck,
       primaryLabel: canAttachReceiptLater ? 'Понятно' : 'К подтверждению',
       onPrimary: () => { if (!canAttachReceiptLater) setStep('confirm'); },
       secondaryLabel: 'Позже',
@@ -909,10 +910,10 @@ export function PaymentDetailSheet({
           tone="warning"
           title="Оплачено без проверки"
           message={isContractor
-            ? `Заказчик отметил перевод на ${formatRub(payment.amount)}. Если деньги пришли, подтвердите — сумма войдёт в факт бюджета. Если нет — счёт вернётся заказчику.`
+            ? contractorSettlementDetail(formatRub(payment.amount))
             : readOnly
               ? 'Сумма пока не в подтверждённом факте: ждёт подтверждения получения исполнителем.'
-              : 'Сумма пока не в подтверждённом факте. Приложите чек на полную сумму счёта или дождитесь, пока исполнитель подтвердит получение денег.'}
+              : SETTLEMENT_HINTS.customerDetailPending}
         />
       ) : null}
 
