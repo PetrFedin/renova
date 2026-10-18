@@ -10,7 +10,7 @@ SOURCE VERIFIED означает прочитанную формулу, не п�
 
 ## 2. Денежная арифметика backend
 
-Source `backend/app/services/budget_service.py`, blob `cf952ea481d15060ad2287f2366a7906c9669822`.
+Source `backend/app/services/budget_service.py`, blob `2412198098f2391d3d1793dd74e4abf6de801d6a`.
 
 ```text
 money(x) = Decimal(str(x or 0)).quantize(0.01, ROUND_HALF_UP)
@@ -254,3 +254,20 @@ materials_fact = Σ quantity_actual × unit_price   (materials только)
 Сохраняется обязательный backlog: acceptance pending/age/SLA; home KPI; project phase/lifecycle; estimate layers/margin; category/floor/room analytics; procurement priority/readiness; notification/attention/unread counts; rework/quality SLA; contractor/manager portfolio metrics; schedule/version delay; warranty после уже merged #295; chat после уже merged #292; external observability/SLO #235/#283.
 
 Для каждой группы: перечень UI consumers→source function→input/status/as-of→independent expected value→edge cases→test ID→CI artifact. Формулы, подтверждённые чтением, не становятся полными бизнес-результатами автоматически. Refunded/disputed/partial/pending, duplicate evidence и недоступный источник обязательны там, где применимы. Текущий аудит не заменяет выполнение этих тестов и не закрывает #318.
+
+
+## GP5 — cumulatively refunded project payments (#748, candidate 2026-10-18)
+
+The immutable original invoice is `Payment.amount`. For each provider `refund.succeeded`, canonical `ProjectPaymentRefund.amount` is a separately identified `NUMERIC(14,2)` delta, constrained to positive money with no fractional cents, one unique provider refund ID, and cumulative value not exceeding the gross invoice.
+
+```text
+gross_payment = Payment.amount
+refunded_total = Σ(ProjectPaymentRefund.amount linked to Payment)
+remaining_net = gross_payment − refunded_total; 0 ≤ remaining_net ≤ gross_payment
+confirmed_expense_amount = remaining_net (if payment.status = confirmed)
+budget_spent = Σ(Expense.amount where Expense.status = confirmed)
+```
+
+Partial refunds leave Payment `confirmed` or `disputed` and update **the same** Expense to remaining net; full return moves Payment to `refunded`, Expense to `refund`, and recognized spend to zero. Disputed payments remain outside `budget_spent`, and dispute resolution restores net, not gross. The receipt is evidence linked to the same Payment/Expense and does not re-add gross during source hydration. Both customer and contractor UI must display precise two-decimal returned/net amounts or a visible reconciliation error on inconsistent server totals.
+
+**Evidence boundary:** model, service, and API/UX contract present in draft PR #752; strict PostgreSQL Alembic, concurrent refunds and full CI are required before promoting verified status. Real provider reconciliation, in-browser role tests and owner-governance are separate open gates. This section supplements the original budget arithmetic, not production qualification.
