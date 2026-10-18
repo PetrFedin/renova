@@ -206,7 +206,9 @@ export function PaymentDetailSheet({
   const canRespondDispute = canRespondToDispute({ role, teamRole, readOnly, status: payment.status });
   const disputeResponse = payment.status === 'disputed' ? latestDisputeResponse(payment.events) : null;
   const stageNeedsAcceptance = Boolean(stage && stage.status !== 'done');
-  const statusLabel = PAYMENT_STATUS_LABEL[payment.status] || payment.status;
+  const statusLabel = (payment.refunded_amount ?? 0) > 0 && payment.status === 'confirmed'
+    ? 'Оплачено · частичный возврат'
+    : PAYMENT_STATUS_LABEL[payment.status] || payment.status;
   const typeLabel = PAYMENT_TYPE_LABEL[payment.payment_type] || payment.payment_type;
   const history = buildPaymentHistory(payment);
   const busy = mutation !== null;
@@ -511,7 +513,7 @@ export function PaymentDetailSheet({
     }
     showActionConfirm({
       title: 'Оспорить оплату?',
-      message: `${formatRub(payment.amount)} будет исключено из подтверждённого факта бюджета до разрешения спора. Причина: ${reason}`,
+      message: `${formatRub(payment.net_amount ?? payment.amount)} будет исключено из подтверждённого факта бюджета до разрешения спора. Причина: ${reason}`,
       primaryLabel: 'Оспорить',
       primaryDestructive: true,
       onPrimary: () => {
@@ -564,7 +566,7 @@ export function PaymentDetailSheet({
     }
     showActionConfirm({
       title: 'Отозвать спор?',
-      message: `Сервер восстановит исходный статус оплаты из доказательной истории. Если оплата была подтверждена, ${formatRub(payment.amount)} снова войдёт в факт бюджета.`,
+      message: `Сервер восстановит исходный статус оплаты из доказательной истории. Если оплата была подтверждена, ${formatRub(payment.net_amount ?? payment.amount)} снова войдёт в факт бюджета.`,
       primaryLabel: 'Отозвать спор',
       onPrimary: () => {
         void (async () => {
@@ -922,6 +924,14 @@ export function PaymentDetailSheet({
           tone="info"
           title="Чек без проверки ФНС"
           message="Счёт подтверждён приложенным чеком, но налоговая его не проверяла (чек внесён вручную или проверка не выполнялась)."
+        />
+      ) : null}
+
+      {(payment.refunded_amount ?? 0) > 0 ? (
+        <InfoBanner
+          tone={payment.status === 'refunded' ? 'info' : 'warning'}
+          title={payment.status === 'refunded' ? 'Полный возврат оплаты' : 'Частичный возврат оплаты'}
+          message={`Возвращено ${formatRub(payment.refunded_amount ?? 0)} из ${formatRub(payment.amount)}. Остаток после возвратов — ${formatRub(payment.net_amount ?? Math.max(0, payment.amount - (payment.refunded_amount ?? 0)))}. ${payment.status === 'disputed' ? 'Остаток оспаривается и не входит в подтверждённый факт бюджета.' : 'В журнале сохранены суммы и подтверждения возвратов провайдера.'}`}
         />
       ) : null}
 
