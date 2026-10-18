@@ -384,3 +384,87 @@ async def test_cancellation_evidence_mismatch_is_blocked(reversal_db, amount, cu
     assert stored.status == PaymentStatus.processing
     assert (await reversal_db.scalar(select(func.count()).select_from(PaymentEvent))) == 0
     assert (await reversal_db.scalar(select(func.count()).select_from(DomainOutbox))) == 0
+
+
+@pytest.mark.asyncio
+async def test_simulated_dev_provider_partial_refund_routes_through_canonical_webhook(
+    reversal_db, monkeypatch,
+):
+    """No direct Payment/Expense mutation: provider -> webhook -> ledger -> net budget."""
+    from decimal import Decimal
+    from app.api.v1 import dev_payment_provider
+    from app.core.config import settings
+    from app.services.providers import base, registry
+    from app.services.providers.simulated import payment as simulated
+
+    monkeypatch.setattr(settings, "environment", "test")
+    monkeypatch.setattr(settings, "redis_url", None)
+    monkeypatch.setattr(settings, "payment_provider_mode", "simulated")
+    registry.reset()
+    simulated.reset_store()
+    try:
+        _, contractor, project, stage = await seed_project(reversal_db, "421")
+        provider = registry.payment_provider()
+        created = await provider.create_payment(
+            base.PaymentCreateRequest(
+                money=base.Money(Decimal("5000.00")),
+                description="GP5 project payment",
+                return_url="renova://payment-return",
+                idempotency_key="project-dev-gp5-421",
+                metadata={
+                    "kind": "project_payment",
+                    "project_id": project.id,
+                    "payment_id": "dev-refund-payment-421",
+                    "user_id": project.customer_id,
+                },
+            )
+        )
+        provider.transition(created.external_id, "succeed")
+        payment = await seed_payment(
+            reversal_db,
+            payment_id="dev-refund-payment-421",
+            project_id=project.id,
+            stage_id=stage.id,
+            created_by=contractor.id,
+            status=PaymentStatus.confirmed,
+            provider_id=created.external_id,
+            accepted=True,
+        )
+        pid, project_id = payment.id, project.id
+        first = await dev_payment_provider.refund(
+            created.external_id,
+            dev_payment_provider.RefundIn(
+                amount=Decimal("1000.00"), idempotency_key="refund-421-A",
+            ),
+            reversal_db,
+        )
+        assert first["ok"] is True and first["webhook"]["business_applied"] is True
+        assert (await reversal_db.get(Project, project_id)).budget_spent == 4000
+        assert (await provider.get_payment(created.external_id)).refunded == base.Money(Decimal("1000.00"))
+
+        replay = await dev_payment_provider.refund(
+            created.external_id,
+            dev_payment_provider.RefundIn(
+                amount=Decimal("1000.00"), idempotency_key="refund-421-A",
+            ),
+            reversal_db,
+        )
+        assert replay["webhook"]["business_applied"] is False
+        assert (await reversal_db.get(Project, project_id)).budget_spent == 4000
+        assert (await reversal_db.scalar(select(func.count()).select_from(ProjectPaymentRefund))) == 1
+
+        second = await dev_payment_provider.refund(
+            created.external_id,
+            dev_payment_provider.RefundIn(
+                amount=Decimal("4000.00"), idempotency_key="refund-421-B",
+            ),
+            reversal_db,
+        )
+        assert second["webhook"]["business_applied"] is True
+        assert (await reversal_db.get(Payment, pid)).status == PaymentStatus.refunded
+        assert (await reversal_db.get(Project, project_id)).budget_spent == 0
+        assert (await reversal_db.scalar(select(func.count()).select_from(ProjectPaymentRefund))) == 2
+        assert (await provider.get_payment(created.external_id)).refunded == base.Money(Decimal("5000.00"))
+    finally:
+        registry.reset()
+        simulated.reset_store()
