@@ -146,6 +146,25 @@ class TestPaymentProviderContract:
         assert r1.external_id == r1_again.external_id
         assert (await provider.get_payment(res.external_id)).refunded == base.Money(Decimal("500.00"))
 
+    async def test_refund_replay_cannot_change_amount_for_same_key(self, payment_impl):
+        provider, control = payment_impl
+        res = await provider.create_payment(_req("gp5-refund-key"))
+        control["succeed"](res.external_id)
+        first = await provider.refund(
+            base.RefundRequest(res.external_id, base.Money(Decimal("200.00")), "same-refund")
+        )
+        replay = await provider.refund(
+            base.RefundRequest(res.external_id, base.Money(Decimal("200.00")), "same-refund")
+        )
+        assert first.external_id == replay.external_id
+
+        with pytest.raises(ProviderRejected) as exc:
+            await provider.refund(
+                base.RefundRequest(res.external_id, base.Money(Decimal("300.00")), "same-refund")
+            )
+        assert exc.value.code == "refund_idempotency_conflict"
+        assert (await provider.get_payment(res.external_id)).refunded == base.Money(Decimal("200.00"))
+
     async def test_refund_cannot_exceed_captured(self, payment_impl):
         provider, control = payment_impl
         res = await provider.create_payment(_req("k8"))
