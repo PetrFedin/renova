@@ -14,6 +14,7 @@ from app.models.entities import (
     PaymentStatus,
     PaymentType,
     Project,
+    Receipt,
     Stage,
     User,
     UserRole,
@@ -424,6 +425,62 @@ async def test_refund_provider_money_must_be_cent_exact_and_currency_bound(
     assert (await reversal_db.scalar(select(func.count()).select_from(ProjectPaymentRefund))) == 0
     assert (await reversal_db.scalar(select(func.count()).select_from(PaymentEvent))) == 0
     assert (await reversal_db.scalar(select(func.count()).select_from(DomainOutbox))) == 0
+
+
+@pytest.mark.asyncio
+async def test_receipt_linked_payment_refund_survives_repeated_budget_source_hydration(reversal_db):
+    """A receipt is evidence: rehydration cannot restore invoice gross or double Expense."""
+    _, contractor, project, stage = await seed_project(reversal_db, "424")
+    payment = await seed_payment(
+        reversal_db, payment_id="gp5-receipt-refund-424",
+        project_id=project.id, stage_id=stage.id, created_by=contractor.id,
+        status=PaymentStatus.confirmed, provider_id="yk-receipt-refund-424",
+        accepted=True,
+    )
+    pid, project_id = payment.id, project.id
+    receipt = Receipt(
+        project_id=project_id, payment_id=pid, amount=5000,
+        qr_raw="Оплата материалов с ручным чеком", fn="MANUAL",
+        verification_status="manual_entry", fns_verified=False,
+        expense_category="materials",
+    )
+    reversal_db.add(receipt)
+    await reversal_db.commit()
+
+    await budget_service.refresh_budget_facts(reversal_db, project_id)
+    rows = (await reversal_db.execute(
+        select(Expense).where(Expense.payment_id == pid)
+    )).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].receipt_id == receipt.id
+    assert rows[0].amount == 5000
+    assert (await reversal_db.get(Project, project_id)).budget_spent == 5000
+
+    result = await yookassa_service.process_webhook(
+        {
+            "event": "refund.succeeded",
+            "object": {
+                "id": "gp5-precision-refund-424",
+                "payment_id": "yk-receipt-refund-424",
+                "status": "succeeded",
+                "amount": {"value": "1123.45", "currency": "RUB"},
+            },
+        }, reversal_db,
+    )
+    assert result["handled"] and result["changed"]
+
+    for _ in range(3):
+        await budget_service.refresh_budget_facts(reversal_db, project_id)
+        rows = (await reversal_db.execute(
+            select(Expense).where(Expense.payment_id == pid)
+        )).scalars().all()
+        assert len(rows) == 1
+        assert rows[0].receipt_id == receipt.id
+        assert rows[0].amount == 3876.55
+        assert rows[0].status == "confirmed"
+        assert (await reversal_db.get(Project, project_id)).budget_spent == 3876.55
+
+    assert (await reversal_db.scalar(select(func.count()).select_from(ProjectPaymentRefund))) == 1
 
 
 @pytest.mark.asyncio
