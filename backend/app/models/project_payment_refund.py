@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -30,6 +31,6 @@ class ProjectPaymentRefund(Base):
     provider_refund_id: Mapped[str] = mapped_column(
         String(128), nullable=False, unique=True
     )
-    amount: Mapped[object] = mapped_column(Numeric(14, 2), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="RUB")
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now)
