@@ -147,6 +147,7 @@ class PaymentEventOut(BaseModel):
     note: str | None = None
     actor_label: str
     created_at: str
+    refund_amount: float | None = None
 
 
 class PaymentOut(BaseModel):
@@ -163,6 +164,8 @@ class PaymentOut(BaseModel):
     # BUD-19: приложен чек, но ФНС его не проверяла (счёт он при этом подтверждает).
     receipt_unverified: bool = False
     events: list[PaymentEventOut] = Field(default_factory=list)
+    refunded_amount: float = 0.0
+    net_amount: float | None = None
 
 
 class StageCommentIn(BaseModel):

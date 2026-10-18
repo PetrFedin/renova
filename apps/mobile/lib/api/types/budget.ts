@@ -8,6 +8,7 @@ export type PaymentEvent = {
   note?: string | null;
   actor_label: string;
   created_at: string;
+  refund_amount?: number | null;
 };
 
 export type Payment = {
@@ -24,6 +25,9 @@ export type Payment = {
   receipt_id?: string | null;
   /** BUD-19: чек приложен, но ФНС его не проверяла (счёт он при этом подтверждает). */
   receipt_unverified?: boolean;
+  /** Provider-backed cumulative refunds and remaining settled amount (gross invoice is immutable). */
+  refunded_amount?: number;
+  net_amount?: number | null;
   /** Каноническая доказательная история PaymentEvent. */
   events?: PaymentEvent[];
 };

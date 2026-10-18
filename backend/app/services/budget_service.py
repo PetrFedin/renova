@@ -21,6 +21,7 @@ from app.models.entities import (
     PurchaseStatus,
     Receipt,
 )
+from app.services.project_refund_ledger import net_payment_amount
 from app.services import budget_service_legacy as _legacy
 from app.services.budget_service_legacy import *  # noqa: F401,F403
 
@@ -149,6 +150,18 @@ async def _receipt_expense_status(db: AsyncSession, rec: Receipt) -> str:
     return "pending_receipt"
 
 
+async def _receipt_financial_amount(db: AsyncSession, rec: Receipt) -> float:
+    """A receipt is evidence, not a second gross charge when it belongs to a payment."""
+    if not rec.payment_id:
+        return float(rec.amount)
+    payment = await db.get(Payment, rec.payment_id)
+    if not payment or payment.status not in {
+        PaymentStatus.confirmed, PaymentStatus.disputed, PaymentStatus.refunded,
+    }:
+        return float(rec.amount)
+    return await net_payment_amount(db, payment.id, payment.amount)
+
+
 async def expense_from_receipt(
     db: AsyncSession,
     rec: Receipt,
@@ -162,7 +175,7 @@ async def expense_from_receipt(
     if existing:
         if is_source_protected_expense(existing):
             return existing
-        existing.amount = rec.amount
+        existing.amount = await _receipt_financial_amount(db, rec)
         existing.category = rec.expense_category
         existing.room_id = rec.room_id
         existing.stage_id = rec.stage_id
@@ -179,7 +192,7 @@ async def expense_from_receipt(
         payment_id=getattr(rec, "payment_id", None),
         title=title or f"Чек {format_rub(rec.amount)}",
         category=rec.expense_category,
-        amount=rec.amount,
+        amount=await _receipt_financial_amount(db, rec),
         status=await _receipt_expense_status(db, rec),
         payment_method="card",
         expense_date=rec.created_at or _legacy.utc_now(),
@@ -192,16 +205,17 @@ async def expense_from_receipt(
 async def expense_from_payment(db: AsyncSession, pay: Payment) -> Expense | None:
     if pay.status != PaymentStatus.confirmed:
         return None
+    net_amount = await net_payment_amount(db, pay.id, pay.amount)
     existing = await _dedupe_linked_expenses(db, payment_id=pay.id)
     if existing:
         # Чек, приложенный к счёту, создаёт расход в `pending_receipt`; когда счёт
         # подтверждён, тот же расход становится подтверждённым фактом на сумму
         # счёта (один счёт — один расход), а не остаётся «зависшим» вне бюджета.
         if not is_source_protected_expense(existing) and (
-            existing.status != "confirmed" or existing.amount != pay.amount
+            existing.status != "confirmed" or existing.amount != net_amount
         ):
             existing.status = "confirmed"
-            existing.amount = pay.amount
+            existing.amount = net_amount
             existing.stage_id = pay.stage_id or existing.stage_id
             existing.expense_date = pay.confirmed_at or existing.expense_date
             await db.flush()
@@ -212,7 +226,7 @@ async def expense_from_payment(db: AsyncSession, pay: Payment) -> Expense | None
         payment_id=pay.id,
         title=pay.title,
         category="works" if pay.payment_type.value in ("stage", "advance", "final") else "materials",
-        amount=pay.amount,
+        amount=net_amount,
         status="confirmed",
         payment_method="transfer",
         expense_date=pay.confirmed_at or pay.created_at,

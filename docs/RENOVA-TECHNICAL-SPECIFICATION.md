@@ -4,7 +4,7 @@
 **Язык:** русский
 **Дата текущей сверки:** 2026-09-08
 **Проверенный продуктовый срез:** `686eec67c925d73fd1367da4704bdac11becdd71`
-**Текущий schema head в этой редакции:** `x11portalacceptscope01`
+**Текущий schema head в этой редакции:** `x12projectrefund01`
 **Текущий verification status:** `SOURCE AUDITED / BOUNDED CI EVIDENCE / FULL PRODUCT ACCEPTANCE INCOMPLETE`
 **Широкий production-запуск:** `BLOCKED_FOR_BROAD_PRODUCTION`
 

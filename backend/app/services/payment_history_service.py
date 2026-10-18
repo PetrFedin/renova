@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import PaymentEvent, Receipt, User, UserRole
+from app.models.project_payment_refund import ProjectPaymentRefund
 
 _SAFE_NOTE_EVIDENCE = {
     "customer_dispute",
@@ -37,7 +38,10 @@ def _actor_label(event: PaymentEvent, role_by_user: dict[str, str]) -> str:
     return "Система"
 
 
-def payment_event_dict(event: PaymentEvent, role_by_user: dict[str, str]) -> dict:
+def payment_event_dict(
+    event: PaymentEvent, role_by_user: dict[str, str],
+    refund_amounts: dict[tuple[str, str], float] | None = None,
+) -> dict:
     evidence_type = str(event.evidence_type or "") or None
     return {
         "id": event.id,
@@ -48,6 +52,10 @@ def payment_event_dict(event: PaymentEvent, role_by_user: dict[str, str]) -> dic
         "note": event.note if evidence_type in _SAFE_NOTE_EVIDENCE else None,
         "actor_label": _actor_label(event, role_by_user),
         "created_at": event.created_at.isoformat(),
+        "refund_amount": (
+            (refund_amounts or {}).get((event.payment_id, event.evidence_ref or ""))
+            if evidence_type in {"yookassa_refund_partial", "yookassa_refund"} else None
+        ),
     }
 
 
@@ -99,7 +107,34 @@ async def events_by_payment(
             for user_id, role in users
         }
 
+    refund_ids = {
+        event.evidence_ref for event in events
+        if event.evidence_type in {"yookassa_refund_partial", "yookassa_refund"}
+        and event.evidence_ref
+    }
+    refund_amounts: dict[tuple[str, str], float] = {}
+    if refund_ids:
+        rows = (
+            await db.execute(
+                select(
+                    ProjectPaymentRefund.payment_id,
+                    ProjectPaymentRefund.provider_refund_id,
+                    ProjectPaymentRefund.amount,
+                )
+                # A foreign PaymentEvent evidence_ref must never leak another
+                # project's money, even if the database contains a stale event.
+                .where(
+                    ProjectPaymentRefund.payment_id.in_(payment_ids),
+                    ProjectPaymentRefund.provider_refund_id.in_(refund_ids),
+                )
+            )
+        ).all()
+        refund_amounts = {
+            (payment_id, refund_id): float(amount)
+            for payment_id, refund_id, amount in rows
+        }
+
     grouped: dict[str, list[dict]] = defaultdict(list)
     for event in events:
-        grouped[event.payment_id].append(payment_event_dict(event, role_by_user))
+        grouped[event.payment_id].append(payment_event_dict(event, role_by_user, refund_amounts))
     return dict(grouped)

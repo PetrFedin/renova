@@ -113,4 +113,32 @@ must(contractorSettlementDetail('5 000 ₽').includes('5 000 ₽')
   && contractorSettlementDetail('5 000 ₽').includes('чек заказчика'),
   'contractor detail uses amount while retaining alternative settlement path');
 
+// GP5/#748: source-of-truth, API and role screens must carry cumulative refund data.
+const grossNetSchema = readFileSync(join(repo, 'backend/app/schemas/project.py'), 'utf8');
+const refundService = readFileSync(join(repo, 'backend/app/services/payment_reversal_service.py'), 'utf8');
+const refundModel = readFileSync(join(repo, 'backend/app/models/project_payment_refund.py'), 'utf8');
+const budgetSource = readFileSync(join(repo, 'backend/app/services/budget_service.py'), 'utf8');
+const historyApi = readFileSync(join(repo, 'backend/app/api/v1/payment_history.py'), 'utf8');
+const paymentTimeline = readFileSync(join(__dirname, 'domain/paymentHistory.ts'), 'utf8');
+must(refundModel.includes('provider_refund_id') && refundModel.includes('Numeric(14, 2)'),
+  'project refund has immutable provider identity and cent-precise amount');
+must(refundService.includes('refunded_total') && refundService.includes('refund_exceeds_payment')
+  && refundService.includes('ProjectPaymentRefund('),
+  'canonical refund writer guards cumulative money');
+must(budgetSource.includes('net_payment_amount') && budgetSource.includes('_receipt_financial_amount'),
+  'payment and receipt hydration must not reconstruct original gross spend');
+must(grossNetSchema.includes('refunded_amount: float') && grossNetSchema.includes('net_amount: float'),
+  'explicit refund API fields required');
+must(historyApi.includes('refund_totals_by_payment') && paymentTimeline.includes('yookassa_refund_partial'),
+  'API totals and timeline share provider refund truth');
+must(paymentsSection.includes('paymentRefundPresentation(payment)'),
+  'both role payment lists must use the shared exact-amount refund projection');
+must(sheet.includes('paymentRefundPresentation(payment)')
+  && sheet.includes('formatPaymentMoney(payment.amount)'),
+  'payment detail must use the same refund projection and exact gross amount');
+const refundView = readFileSync(join(__dirname, 'domain/paymentRefundPresentation.ts'), 'utf8');
+must(refundView.includes('gross - refunded !== net')
+  && refundView.includes('kind: \'inconsistent\'')
+  && refundView.includes('minimumFractionDigits: 2'),
+  'refund display must fail visibly on mismatched totals and retain kopecks');
 console.log('paymentUnverified.w143.test OK');

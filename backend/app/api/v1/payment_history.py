@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -7,6 +9,7 @@ from app.models.entities import User
 from app.schemas.project import PaymentOut
 from app.services import payment_history_service as history
 from app.services import payment_service as payments
+from app.services.project_refund_ledger import payment_refund_projection, refund_totals_by_payment
 
 router = APIRouter(prefix="/projects", tags=["payment-history"])
 
@@ -23,6 +26,13 @@ async def list_payments_with_history(
     receipt_map = await history.receipt_ids_by_payment(db, payment_ids)
     event_map = await history.events_by_payment(db, payment_ids)
     unverified_ids = await payments.receipts_without_fns_check(db, payment_ids)
+    refunds = await refund_totals_by_payment(db, payment_ids)
+
+    def money_projection(payment):
+        return payment_refund_projection(
+            payment.amount, refunds.get(payment.id, Decimal("0.00"))
+        )
+
     return [
         PaymentOut(
             **payments.payment_dict(
@@ -31,6 +41,7 @@ async def list_payments_with_history(
                 receipt_unverified=payment.id in unverified_ids,
             ),
             events=event_map.get(payment.id, []),
+            **money_projection(payment),
         )
         for payment in items
     ]

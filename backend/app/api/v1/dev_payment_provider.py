@@ -12,6 +12,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -115,22 +116,62 @@ async def refund(
 ):
     provider = _provider()
     try:
-        # A project Payment has no authoritative partial-refund ledger yet.
-        # Never move money in the simulated provider before rejecting a delta
-        # that the canonical project reversal would ignore (#748). Subscription
-        # refunds have their own amount-aware ledger and are not restricted here.
+        # Local/test only: validate that the provider's project identity is
+        # durably linked to the project before simulating irreversible money.
+        # The canonical webhook remains the only financial-ledger writer.
         state = await provider.get_payment(external_id)
-        if (
-            state.metadata.get("kind") == "project_payment"
-            and state.money.amount != body.amount
-        ):
-            raise HTTPException(
-                409,
-                detail={
-                    "code": "partial_refund_unsupported",
-                    "message": "Project payment partial refund needs ledger reconciliation",
-                },
+        if state.metadata.get("kind") == "project_payment":
+            from app.models.entities import Payment, PaymentStatus
+
+            payment = await db.scalar(
+                select(Payment).where(Payment.yookassa_payment_id == external_id)
+            ) if db is not None else None
+            if (
+                payment is None
+                or payment.id != state.metadata.get("payment_id")
+                or payment.project_id != state.metadata.get("project_id")
+            ):
+                raise HTTPException(
+                    409, detail={"code": "project_payment_identity_mismatch"}
+                )
+            if payment.status not in {
+                PaymentStatus.confirmed, PaymentStatus.disputed, PaymentStatus.refunded,
+            }:
+                raise HTTPException(
+                    409, detail={"code": "refund_source_not_confirmed"}
+                )
+
+            # Simulated external funds move before the webhook callback. Refuse
+            # the movement if the local provider is already out of step with
+            # the project's authoritative ledger / linked Expense.
+            from app.models.entities import Expense
+            from app.services.project_refund_ledger import invoice_money, refunded_total
+
+            booked = await refunded_total(db, payment.id)
+            provider_refunded = state.refunded.amount if state.refunded else Decimal("0.00")
+            expected_net = invoice_money(payment.amount) - booked
+            expected_status = (
+                "refund" if payment.status == PaymentStatus.refunded
+                else "disputed" if payment.status == PaymentStatus.disputed
+                else "confirmed"
             )
+            linked = list((await db.execute(
+                select(Expense).where(
+                    Expense.project_id == payment.project_id,
+                    Expense.payment_id == payment.id,
+                    Expense.status != "deleted",
+                )
+            )).scalars().all())
+            if (
+                booked != provider_refunded
+                or expected_net < 0
+                or len(linked) != 1
+                or linked[0].status != expected_status
+                or Decimal(str(linked[0].amount)).quantize(Decimal("0.01")) != expected_net
+            ):
+                raise HTTPException(
+                    409, detail={"code": "project_payment_ledger_inconsistent"}
+                )
         result = await provider.refund(
             base.RefundRequest(
                 payment_external_id=external_id,

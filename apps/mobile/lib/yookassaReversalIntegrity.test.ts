@@ -25,7 +25,12 @@ must(reversal.includes('query = query.with_for_update()'), 'reversal locks payme
 must(reversal.includes('Payment.project_id == project_id'), 'cancellation is project scoped');
 must(reversal.includes('Payment.yookassa_payment_id == yookassa_payment_id'), 'refund resolves canonical provider payment');
 must(reversal.includes('currency != "RUB"'), 'provider currency is verified');
-must(reversal.includes('partial_refund_unsupported'), 'partial refunds fail closed without full reversal');
+must(reversal.includes('ProjectPaymentRefund(') && reversal.includes('refunded_total'),
+  'project partial refunds are durably recorded with cumulative provider refund identity');
+must(reversal.includes('refund_exceeds_payment') && reversal.includes('refund_idempotency_conflict'),
+  'cumulative refunds refuse overpayment and changed provider event identity');
+must(reversal.includes('expense.amount = float(new_net)') && reversal.includes('is_full'),
+  'partial refund preserves net expense while full refund marks terminal reversal');
 must(reversal.includes('refund_source_not_confirmed'), 'out-of-order refund remains retryable until payment confirmation');
 must(reversal.includes('terminal_state_conflict'), 'terminal refund conflicts are monotonic and do not retry forever');
 must(reversal.includes('evidence_type="yookassa_cancellation"'), 'cancellation evidence is recorded');

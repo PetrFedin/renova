@@ -1,5 +1,6 @@
 /** Вкладка «Бюджет → Оплаты» — создание, фильтры, история */
 import { paymentCheckLabel } from '@/lib/domain/paymentReceiptCheck';
+import { paymentRefundPresentation } from '@/lib/domain/paymentRefundPresentation';
 import { SETTLEMENT_HINTS } from '@/lib/domain/paymentSettlementCopy';
 import { READ_ONLY_PAYMENTS_HINT } from '@/lib/domain/readOnlyCopy';
 import { useState } from 'react';
@@ -153,6 +154,7 @@ export function BudgetPaymentsSection({
 
       {filteredPayments.map((payment) => {
         const confirmedDate = formatConfirmedDate(payment.confirmed_at);
+        const refundInfo = paymentRefundPresentation(payment);
         const statusColor = payment.status === 'pending' || payment.status === 'paid_unverified' || payment.status === 'processing'
           ? RenovaTheme.colors.warning
           : payment.status === 'confirmed'
@@ -195,11 +197,21 @@ export function BudgetPaymentsSection({
                   {PAYMENT_TYPE_LABEL[payment.payment_type] || payment.payment_type} · {formatRub(payment.amount)}
                   {confirmedDate ? ` · ${confirmedDate}` : ''}
                 </Text>
+                {refundInfo ? (
+                  <Text style={[s.rowMeta, { color: RenovaTheme.colors.warningText }]}>
+                    {refundInfo.kind === 'inconsistent'
+                      ? refundInfo.reason
+                      : `${refundInfo.kind === 'full' ? 'Полный' : 'Частичный'} возврат · возвращено ${refundInfo.returned} · остаток ${refundInfo.remaining}`}
+                  </Text>
+                ) : null}
                 {paymentCheckLabel(payment) ? <Text style={[s.rowMeta, { color: RenovaTheme.colors.warningText }]}>Чек {paymentCheckLabel(payment)}</Text> : null}
                 {actionHint ? <Text style={[s.rowMeta, { color: RenovaTheme.colors.warningText }]}>{actionHint}</Text> : null}
               </View>
               <Text style={[s.status, { color: statusColor }]}>
-                {PAYMENT_STATUS_LABEL[payment.status] || payment.status}
+                {refundInfo?.kind === 'inconsistent' ? 'Нужна сверка'
+                  : refundInfo?.kind === 'partial' && payment.status === 'confirmed'
+                  ? 'Частично возвращено'
+                  : PAYMENT_STATUS_LABEL[payment.status] || payment.status}
               </Text>
             </Pressable>
             {canAttachEvidence ? (
