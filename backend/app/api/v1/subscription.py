@@ -143,6 +143,11 @@ async def yookassa_webhook(request: Request, db: AsyncSession = Depends(get_db))
 
     try:
         result = await process_webhook(body, db)
+        # Provider-reported refunds move external money. A failed project
+        # refund reconciliation is never an ignorable successful delivery.
+        # Keep the durable event retryable/poison-visible for operator recovery.
+        if event_kind == "refund.succeeded" and not result.get("handled"):
+            result["retryable"] = True
         reason = str(result.get("reason") or "")
         if reason in _RETRYABLE_PROVIDER_REASONS:
             result["retryable"] = True
