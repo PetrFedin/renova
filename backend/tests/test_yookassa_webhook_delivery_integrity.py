@@ -234,10 +234,12 @@ async def test_unsupported_project_partial_refund_stays_unacknowledged_for_recon
 
 
 @pytest.mark.asyncio
-async def test_real_project_partial_refund_webhook_preserves_ledger_and_remains_deferred(webhook_db):
-    """Exercise the actual reversal service through the canonical webhook, not a mock."""
+async def test_real_project_partial_refund_webhook_commits_net_once(webhook_db):
+    """Canonical HTTP webhook + real reversal service + DB, including replay."""
     from tests.test_yookassa_reversal_integrity import seed_payment, seed_project
     from app.models.entities import DomainOutbox, Expense, Payment, PaymentEvent, PaymentStatus, Project
+    from app.models.project_payment_refund import ProjectPaymentRefund
+    from app.services import budget_service
 
     _, contractor, project, stage = await seed_project(webhook_db, "748")
     payment = await seed_payment(
@@ -250,10 +252,7 @@ async def test_real_project_partial_refund_webhook_preserves_ledger_and_remains_
         provider_id="provider-gp5-partial-748",
         accepted=True,
     )
-    # The canonical handler rolls the session back on a deferred provider event.
-    # Keep immutable IDs outside ORM objects before that rollback expires them.
-    payment_id = payment.id
-    project_id = project.id
+    pid, project_id = payment.id, project.id
     body = {
         "event": "refund.succeeded",
         "object": {
@@ -263,43 +262,41 @@ async def test_real_project_partial_refund_webhook_preserves_ledger_and_remains_
             "amount": {"value": "1000.00", "currency": "RUB"},
         },
     }
-    with pytest.raises(HTTPException) as exc:
-        await subscription_integrity.yookassa_webhook(FakeRequest(body), webhook_db)
-    assert exc.value.status_code == 503
-    assert exc.value.detail["code"] == "webhook_processing_deferred"
-    assert exc.value.detail["reason"] == "partial_refund_unsupported"
+    applied = await subscription_integrity.yookassa_webhook(FakeRequest(body), webhook_db)
+    assert applied["accepted"] is True
+    assert applied["business_applied"] is True
+    assert applied["changed"] is True
 
-    stored_payment = await webhook_db.get(Payment, payment_id)
+    stored_payment = await webhook_db.get(Payment, pid)
     stored_project = await webhook_db.get(Project, project_id)
-    expense_rows = (await webhook_db.execute(
-        select(Expense).where(Expense.payment_id == payment_id)
+    rows = (await webhook_db.execute(
+        select(Expense).where(Expense.payment_id == pid)
     )).scalars().all()
     assert stored_payment.status == PaymentStatus.confirmed
-    assert stored_project.budget_spent == 5000
-    assert len(expense_rows) == 1
-    assert expense_rows[0].status == "confirmed"
-    assert expense_rows[0].amount == 5000
-    assert await webhook_db.scalar(select(func.count()).select_from(PaymentEvent)) == 0
-    assert await webhook_db.scalar(select(func.count()).select_from(DomainOutbox)) == 0
-    assert await webhook_db.scalar(select(func.count()).select_from(PaymentWebhookEvent)) == 0
+    assert stored_project.budget_spent == 4000
+    assert len(rows) == 1
+    assert rows[0].status == "confirmed"
+    assert rows[0].amount == 4000
+    assert await webhook_db.scalar(select(func.count()).select_from(ProjectPaymentRefund)) == 1
+    assert await webhook_db.scalar(select(func.count()).select_from(PaymentEvent)) == 1
+    assert await webhook_db.scalar(select(func.count()).select_from(DomainOutbox)) == 3
+    assert await webhook_db.scalar(select(func.count()).select_from(PaymentWebhookEvent)) == 1
 
     event_id = "refund.succeeded:provider-refund-partial-748"
     delivery = await webhook_db.get(PaymentWebhookDelivery, event_id)
     assert delivery is not None
-    assert delivery.attempts == 1
-    assert delivery.completed_at is None
-    assert delivery.locked_by is None
-    assert "partial_refund_unsupported" in (delivery.last_error or "")
+    assert delivery.completed_at is not None
+    assert delivery.outcome == "handled"
 
-    # An immediate redelivery must not turn an unresolved money movement into 2xx.
-    with pytest.raises(HTTPException) as retry:
-        await subscription_integrity.yookassa_webhook(FakeRequest(body), webhook_db)
-    assert retry.value.status_code == 503
-    assert retry.value.detail["code"] in {
-        "webhook_delivery_busy", "webhook_processing_deferred",
-    }
-    assert await webhook_db.scalar(select(func.count()).select_from(PaymentWebhookEvent)) == 0
-
+    replay = await subscription_integrity.yookassa_webhook(FakeRequest(body), webhook_db)
+    assert replay["accepted"] is True
+    assert replay["duplicate"] is True
+    assert replay["business_applied"] is False
+    await budget_service.refresh_budget_facts(webhook_db, project_id)
+    assert (await webhook_db.get(Project, project_id)).budget_spent == 4000
+    assert rows[0].amount == 4000
+    assert await webhook_db.scalar(select(func.count()).select_from(ProjectPaymentRefund)) == 1
+    assert await webhook_db.scalar(select(func.count()).select_from(DomainOutbox)) == 3
 
 @pytest.mark.asyncio
 async def test_real_project_full_refund_webhook_commits_once_and_replay_is_noop(webhook_db):
