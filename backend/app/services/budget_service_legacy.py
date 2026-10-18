@@ -711,6 +711,7 @@ async def budget_hub(db: AsyncSession, project_id: str, *, threshold_pct: float 
     from sqlalchemy import select
     from app.models.entities import MaterialPick, Project, Room, EstimateLine, Receipt
     from app.services import payment_service as pay_svc
+    from app.services.project_refund_ledger import payment_refund_projection, refunded_total
 
     summary = await budget_summary(db, project_id)
     expenses = await expense_dicts_with_authors(db, project_id, await list_expenses(db, project_id))
@@ -719,7 +720,13 @@ async def budget_hub(db: AsyncSession, project_id: str, *, threshold_pct: float 
     unverified_ids = await pay_svc.receipts_without_fns_check(db, [item.id for item in payment_items])
     for item in payment_items:
         receipt_id = await pay_svc.receipt_id_for_payment(db, item.id)
-        payments.append(pay_svc.payment_dict(item, receipt_id=receipt_id, receipt_unverified=item.id in unverified_ids))
+        payment_data = pay_svc.payment_dict(
+            item, receipt_id=receipt_id, receipt_unverified=item.id in unverified_ids
+        )
+        payment_data.update(
+            payment_refund_projection(item.amount, await refunded_total(db, item.id))
+        )
+        payments.append(payment_data)
     from app.services.fns.receipt_verify import receipt_meta
 
     receipt_rows = (await db.execute(select(Receipt).where(Receipt.project_id == project_id))).scalars().all()
