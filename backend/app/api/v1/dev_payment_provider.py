@@ -140,6 +140,38 @@ async def refund(
                 raise HTTPException(
                     409, detail={"code": "refund_source_not_confirmed"}
                 )
+
+            # Simulated external funds move before the webhook callback. Refuse
+            # the movement if the local provider is already out of step with
+            # the project's authoritative ledger / linked Expense.
+            from app.models.entities import Expense
+            from app.services.project_refund_ledger import invoice_money, refunded_total
+
+            booked = await refunded_total(db, payment.id)
+            provider_refunded = state.refunded.amount if state.refunded else Decimal("0.00")
+            expected_net = invoice_money(payment.amount) - booked
+            expected_status = (
+                "refund" if payment.status == PaymentStatus.refunded
+                else "disputed" if payment.status == PaymentStatus.disputed
+                else "confirmed"
+            )
+            linked = list((await db.execute(
+                select(Expense).where(
+                    Expense.project_id == payment.project_id,
+                    Expense.payment_id == payment.id,
+                    Expense.status != "deleted",
+                )
+            )).scalars().all())
+            if (
+                booked != provider_refunded
+                or expected_net < 0
+                or len(linked) != 1
+                or linked[0].status != expected_status
+                or Decimal(str(linked[0].amount)).quantize(Decimal("0.01")) != expected_net
+            ):
+                raise HTTPException(
+                    409, detail={"code": "project_payment_ledger_inconsistent"}
+                )
         result = await provider.refund(
             base.RefundRequest(
                 payment_external_id=external_id,
