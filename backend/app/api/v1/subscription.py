@@ -27,6 +27,9 @@ _RETRYABLE_PROVIDER_REASONS = {
     "payment_not_found",
     "project_not_found",
     "refund_source_not_confirmed",
+    # Never acknowledge an externally settled partial project refund when our
+    # project ledger cannot yet represent its monetary delta (#748).
+    "partial_refund_unsupported",
 }
 
 
