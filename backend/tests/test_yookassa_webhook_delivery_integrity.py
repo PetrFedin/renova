@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api.v1 import subscription
+from app.api.v1 import subscription_integrity
 from app.db.base import Base
 from app.models.entities import PaymentWebhookEvent
 import app.models.client_write_request  # noqa: F401
@@ -189,3 +190,44 @@ async def test_success_and_cancellation_for_same_provider_object_are_independent
         "payment.succeeded:yk-shared-object",
         "payment.canceled:yk-shared-object",
     }
+
+
+@pytest.mark.asyncio
+async def test_unsupported_project_partial_refund_stays_unacknowledged_for_reconciliation(
+    webhook_db, monkeypatch,
+):
+    """Canonical webhook must not mark a money-moving partial refund as ignored/completed."""
+    body = {
+        "event": "refund.succeeded",
+        "object": {
+            "id": "refund-partial-748",
+            "status": "succeeded",
+            "payment_id": "provider-project-748",
+            "amount": {"value": "1000.00", "currency": "RUB"},
+        },
+    }
+
+    async def not_a_subscription(_body, _db):
+        return None
+
+    async def unsupported_project_refund(_body, _db):
+        return {"ok": True, "handled": False, "reason": "partial_refund_unsupported"}
+
+    monkeypatch.setattr(subscription_integrity, "_process_subscription_event", not_a_subscription)
+    monkeypatch.setattr(subscription_integrity.yk, "process_webhook", unsupported_project_refund)
+
+    with pytest.raises(HTTPException) as exc:
+        await subscription_integrity.yookassa_webhook(FakeRequest(body), webhook_db)
+
+    assert exc.value.status_code == 503
+    assert exc.value.detail["code"] == "webhook_processing_deferred"
+    assert exc.value.detail["reason"] == "partial_refund_unsupported"
+    assert (await webhook_db.scalar(select(func.count()).select_from(PaymentWebhookEvent))) == 0
+
+    event_id = "refund.succeeded:refund-partial-748"
+    delivery = await webhook_db.get(PaymentWebhookDelivery, event_id)
+    assert delivery is not None
+    assert delivery.attempts == 1
+    assert delivery.completed_at is None
+    assert delivery.locked_by is None
+    assert "partial_refund_unsupported" in (delivery.last_error or "")

@@ -77,3 +77,44 @@ async def test_dev_refund_route_exists_and_unknown_payment_is_conflict(monkeypat
         assert exc.value.detail["code"] == "payment_not_found"
     finally:
         registry.reset()
+
+
+@pytest.mark.asyncio
+async def test_dev_project_partial_refund_rejected_before_provider_money_moves(monkeypatch):
+    """No phantom refund in provider when project ledger cannot book it (#748)."""
+    monkeypatch.setattr(settings, "environment", "test")
+    monkeypatch.setattr(settings, "redis_url", None)
+    monkeypatch.setattr(settings, "payment_provider_mode", "simulated")
+    registry.reset()
+    sim_payment.reset_store()
+    try:
+        provider = registry.payment_provider()
+        checkout = await provider.create_payment(
+            base.PaymentCreateRequest(
+                money=base.Money(Decimal("5000.00")),
+                description="Project payment",
+                return_url="renova://payment-return",
+                idempotency_key="gp5-project-full-only",
+                metadata={"kind": "project_payment", "payment_id": "p1", "project_id": "pj1"},
+            )
+        )
+        provider.transition(checkout.external_id, "succeed")
+        before = await provider.get_payment(checkout.external_id)
+        assert before.refunded is None
+
+        with pytest.raises(HTTPException) as exc:
+            await dev_payment_provider.refund(
+                checkout.external_id,
+                dev_payment_provider.RefundIn(
+                    amount=Decimal("1000.00"), idempotency_key="partial-p1",
+                ),
+                db=None,  # guard fires before the canonical webhook boundary
+            )
+        assert exc.value.status_code == 409
+        assert exc.value.detail["code"] == "partial_refund_unsupported"
+        after = await provider.get_payment(checkout.external_id)
+        assert after.status is base.PaymentStatus.SUCCEEDED
+        assert after.refunded is None
+    finally:
+        registry.reset()
+        sim_payment.reset_store()

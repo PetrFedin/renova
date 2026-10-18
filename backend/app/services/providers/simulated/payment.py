@@ -229,7 +229,14 @@ class SimulatedPaymentProvider:
     async def refund(self, request: base.RefundRequest) -> base.RefundResult:
         rec = self._require(request.payment_external_id)
         if request.idempotency_key in rec.refunds:
-            return rec.refunds[request.idempotency_key]
+            prior = rec.refunds[request.idempotency_key]
+            if prior.money != request.money:
+                raise ProviderRejected(
+                    "refund idempotency key reused with different amount",
+                    provider=self.name,
+                    code="refund_idempotency_conflict",
+                )
+            return prior
         if rec.status is not base.PaymentStatus.SUCCEEDED:
             raise ProviderRejected("refund requires succeeded payment", provider=self.name, code="payment_not_succeeded")
         if rec.refunded + request.money.amount > rec.money.amount:

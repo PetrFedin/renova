@@ -115,6 +115,22 @@ async def refund(
 ):
     provider = _provider()
     try:
+        # A project Payment has no authoritative partial-refund ledger yet.
+        # Never move money in the simulated provider before rejecting a delta
+        # that the canonical project reversal would ignore (#748). Subscription
+        # refunds have their own amount-aware ledger and are not restricted here.
+        state = await provider.get_payment(external_id)
+        if (
+            state.metadata.get("kind") == "project_payment"
+            and state.money.amount != body.amount
+        ):
+            raise HTTPException(
+                409,
+                detail={
+                    "code": "partial_refund_unsupported",
+                    "message": "Project payment partial refund needs ledger reconciliation",
+                },
+            )
         result = await provider.refund(
             base.RefundRequest(
                 payment_external_id=external_id,
