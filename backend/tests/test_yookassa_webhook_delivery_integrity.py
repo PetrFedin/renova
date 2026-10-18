@@ -231,3 +231,122 @@ async def test_unsupported_project_partial_refund_stays_unacknowledged_for_recon
     assert delivery.completed_at is None
     assert delivery.locked_by is None
     assert "partial_refund_unsupported" in (delivery.last_error or "")
+
+
+@pytest.mark.asyncio
+async def test_real_project_partial_refund_webhook_preserves_ledger_and_remains_deferred(webhook_db):
+    """Exercise the actual reversal service through the canonical webhook, not a mock."""
+    from tests.test_yookassa_reversal_integrity import seed_payment, seed_project
+    from app.models.entities import DomainOutbox, Expense, Payment, PaymentEvent, PaymentStatus, Project
+
+    _, contractor, project, stage = await seed_project(webhook_db, "748")
+    payment = await seed_payment(
+        webhook_db,
+        payment_id="gp5-partial-748",
+        project_id=project.id,
+        stage_id=stage.id,
+        created_by=contractor.id,
+        status=PaymentStatus.confirmed,
+        provider_id="provider-gp5-partial-748",
+        accepted=True,
+    )
+    # The canonical handler rolls the session back on a deferred provider event.
+    # Keep immutable IDs outside ORM objects before that rollback expires them.
+    payment_id = payment.id
+    project_id = project.id
+    body = {
+        "event": "refund.succeeded",
+        "object": {
+            "id": "provider-refund-partial-748",
+            "status": "succeeded",
+            "payment_id": "provider-gp5-partial-748",
+            "amount": {"value": "1000.00", "currency": "RUB"},
+        },
+    }
+    with pytest.raises(HTTPException) as exc:
+        await subscription_integrity.yookassa_webhook(FakeRequest(body), webhook_db)
+    assert exc.value.status_code == 503
+    assert exc.value.detail["code"] == "webhook_processing_deferred"
+    assert exc.value.detail["reason"] == "partial_refund_unsupported"
+
+    stored_payment = await webhook_db.get(Payment, payment_id)
+    stored_project = await webhook_db.get(Project, project_id)
+    expense_rows = (await webhook_db.execute(
+        select(Expense).where(Expense.payment_id == payment_id)
+    )).scalars().all()
+    assert stored_payment.status == PaymentStatus.confirmed
+    assert stored_project.budget_spent == 5000
+    assert len(expense_rows) == 1
+    assert expense_rows[0].status == "confirmed"
+    assert expense_rows[0].amount == 5000
+    assert await webhook_db.scalar(select(func.count()).select_from(PaymentEvent)) == 0
+    assert await webhook_db.scalar(select(func.count()).select_from(DomainOutbox)) == 0
+    assert await webhook_db.scalar(select(func.count()).select_from(PaymentWebhookEvent)) == 0
+
+    event_id = "refund.succeeded:provider-refund-partial-748"
+    delivery = await webhook_db.get(PaymentWebhookDelivery, event_id)
+    assert delivery is not None
+    assert delivery.attempts == 1
+    assert delivery.completed_at is None
+    assert delivery.locked_by is None
+    assert "partial_refund_unsupported" in (delivery.last_error or "")
+
+    # An immediate redelivery must not turn an unresolved money movement into 2xx.
+    with pytest.raises(HTTPException) as retry:
+        await subscription_integrity.yookassa_webhook(FakeRequest(body), webhook_db)
+    assert retry.value.status_code == 503
+    assert retry.value.detail["code"] in {
+        "webhook_delivery_busy", "webhook_processing_deferred",
+    }
+    assert await webhook_db.scalar(select(func.count()).select_from(PaymentWebhookEvent)) == 0
+
+
+@pytest.mark.asyncio
+async def test_real_project_full_refund_webhook_commits_once_and_replay_is_noop(webhook_db):
+    """Negative partial guard must not break supported full reversal effects."""
+    from tests.test_yookassa_reversal_integrity import seed_payment, seed_project
+    from app.models.entities import DomainOutbox, Expense, Payment, PaymentEvent, PaymentStatus, Project
+
+    _, contractor, project, stage = await seed_project(webhook_db, "749")
+    payment = await seed_payment(
+        webhook_db,
+        payment_id="gp5-full-749",
+        project_id=project.id,
+        stage_id=stage.id,
+        created_by=contractor.id,
+        status=PaymentStatus.confirmed,
+        provider_id="provider-gp5-full-749",
+        accepted=True,
+    )
+    body = {
+        "event": "refund.succeeded",
+        "object": {
+            "id": "provider-refund-full-749",
+            "status": "succeeded",
+            "payment_id": "provider-gp5-full-749",
+            "amount": {"value": "5000.00", "currency": "RUB"},
+        },
+    }
+    applied = await subscription_integrity.yookassa_webhook(FakeRequest(body), webhook_db)
+    assert applied["accepted"] is True
+    assert applied["business_applied"] is True
+    assert await webhook_db.get(Payment, payment.id) is not None
+    assert (await webhook_db.get(Payment, payment.id)).status == PaymentStatus.refunded
+    assert (await webhook_db.get(Project, project.id)).budget_spent == 0
+    expense_rows = (await webhook_db.execute(
+        select(Expense).where(Expense.payment_id == payment.id)
+    )).scalars().all()
+    assert len(expense_rows) == 1
+    assert expense_rows[0].status == "refund"
+    assert await webhook_db.scalar(select(func.count()).select_from(PaymentEvent)) == 1
+    outbox_count = await webhook_db.scalar(select(func.count()).select_from(DomainOutbox))
+    assert outbox_count == 3
+    assert await webhook_db.scalar(select(func.count()).select_from(PaymentWebhookEvent)) == 1
+    delivery = await webhook_db.get(PaymentWebhookDelivery, "refund.succeeded:provider-refund-full-749")
+    assert delivery.completed_at is not None
+
+    again = await subscription_integrity.yookassa_webhook(FakeRequest(body), webhook_db)
+    assert again["duplicate"] is True
+    assert again["business_applied"] is False
+    assert await webhook_db.scalar(select(func.count()).select_from(PaymentEvent)) == 1
+    assert await webhook_db.scalar(select(func.count()).select_from(DomainOutbox)) == outbox_count
