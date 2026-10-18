@@ -195,11 +195,19 @@ export function BudgetPaymentsSection({
                   {PAYMENT_TYPE_LABEL[payment.payment_type] || payment.payment_type} · {formatRub(payment.amount)}
                   {confirmedDate ? ` · ${confirmedDate}` : ''}
                 </Text>
+                {(payment.refunded_amount ?? 0) > 0 ? (
+                  <Text style={[s.rowMeta, { color: RenovaTheme.colors.warningText }]}>
+                    {payment.status === 'refunded' ? 'Полный возврат' : 'Частичный возврат'}
+                    {` · возвращено ${formatRub(payment.refunded_amount ?? 0)} · остаток ${formatRub(payment.net_amount ?? Math.max(0, payment.amount - (payment.refunded_amount ?? 0)))}`}
+                  </Text>
+                ) : null}
                 {paymentCheckLabel(payment) ? <Text style={[s.rowMeta, { color: RenovaTheme.colors.warningText }]}>Чек {paymentCheckLabel(payment)}</Text> : null}
                 {actionHint ? <Text style={[s.rowMeta, { color: RenovaTheme.colors.warningText }]}>{actionHint}</Text> : null}
               </View>
               <Text style={[s.status, { color: statusColor }]}>
-                {PAYMENT_STATUS_LABEL[payment.status] || payment.status}
+                {(payment.refunded_amount ?? 0) > 0 && payment.status === 'confirmed'
+                  ? 'Частично возвращено'
+                  : PAYMENT_STATUS_LABEL[payment.status] || payment.status}
               </Text>
             </Pressable>
             {canAttachEvidence ? (
