@@ -1,6 +1,7 @@
 /** W143: paid_unverified stays non-financial until reviewed PaymentEvidence + mobile recovery truth */
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { SETTLEMENT_HINTS, contractorSettlementDetail } from './domain/paymentSettlementCopy';
 
 const repo = join(__dirname, '../../..');
 const svc = readFileSync(join(repo, 'backend/app/services/payment_service.py'), 'utf8');
@@ -82,5 +83,34 @@ must(disputeMutation >= 0 && disputeReconcile > disputeMutation, 'dispute mutati
 const resolveMutation = sheet.indexOf('result = await api.resolvePaymentDispute');
 const resolveReconcile = sheet.indexOf("await reconcileCommittedPayment('resolve_dispute')", resolveMutation);
 must(resolveMutation >= 0 && resolveReconcile > resolveMutation, 'dispute resolution truth must precede reconciliation');
+
+// C4/#746: visual/payment copy must agree with authoritative settlement paths.
+must(paymentsSection.includes('SETTLEMENT_HINTS.contractorOverview')
+  && paymentsSection.includes('SETTLEMENT_HINTS.customerOverview')
+  && paymentsSection.includes('SETTLEMENT_HINTS.contractorPending')
+  && paymentsSection.includes('SETTLEMENT_HINTS.customerPending')
+  && paymentsSection.includes('SETTLEMENT_HINTS.readOnlyPending'),
+  'both role summaries and pending status hints use one domain copy source');
+must(sheet.includes('SETTLEMENT_HINTS.receiptAfterUnverified')
+  && sheet.includes('SETTLEMENT_HINTS.receiptBeforeTransferAck')
+  && sheet.includes('contractorSettlementDetail(formatRub(payment.amount))')
+  && sheet.includes('SETTLEMENT_HINTS.customerDetailPending'),
+  'payment detail sheet uses the same settlement authority copy');
+must(!paymentsSection.includes('после того, как вы подтвердите получение'),
+  'recipient confirmation must not be presented as the only way to confirm a payment');
+must(!sheet.includes('счёт подтвердится автоматически'),
+  'receipt scanning must not be presented as guaranteed settlement');
+must(SETTLEMENT_HINTS.contractorOverview.includes('подходящего чека')
+  && SETTLEMENT_HINTS.contractorOverview.includes('подтверждения получения'),
+  'contractor is told both canonical settlement routes');
+must(SETTLEMENT_HINTS.customerOverview.includes('Недостаточный или отклонённый чек')
+  && SETTLEMENT_HINTS.customerOverview.includes('не считается проверенным ФНС'),
+  'customer is told coverage, rejection and manual FNS boundaries');
+must(SETTLEMENT_HINTS.receiptAfterUnverified.includes('может подтвердить')
+  && !SETTLEMENT_HINTS.receiptAfterUnverified.includes('автоматически'),
+  'receipt does not guarantee payment confirmation without server validation');
+must(contractorSettlementDetail('5 000 ₽').includes('5 000 ₽')
+  && contractorSettlementDetail('5 000 ₽').includes('чек заказчика'),
+  'contractor detail uses amount while retaining alternative settlement path');
 
 console.log('paymentUnverified.w143.test OK');
