@@ -3,6 +3,7 @@ import type { Payment, PaymentEvent } from '@/lib/api';
 import { PAYMENT_STATUS_LABEL, PAYMENT_TYPE_LABEL } from '@/constants/labels';
 import { DISPUTE_RESPONSE_TITLE, disputeResponseKindOf } from '@/lib/domain/paymentDisputeResponse';
 import { parseServerInstant } from '@/lib/formatScheduleDate';
+import { formatRub } from '@/constants/Theme';
 
 export type PaymentHistoryEvent = {
   id: string;
@@ -36,6 +37,8 @@ const EVIDENCE_LABEL: Record<string, string> = {
 };
 
 function canonicalTitle(event: PaymentEvent): string {
+  if (event.evidence_type === 'yookassa_refund_partial') return 'Частичный возврат ЮKassa';
+  if (event.evidence_type === 'yookassa_refund') return 'Возврат ЮKassa';
   const responseKind = disputeResponseKindOf(event.evidence_type);
   if (responseKind) return DISPUTE_RESPONSE_TITLE[responseKind];
   if (event.evidence_type === 'customer_dispute_resolution') {
@@ -62,6 +65,9 @@ function canonicalSubtitle(event: PaymentEvent): string | undefined {
   if (event.actor_label) parts.push(event.actor_label);
   if (event.evidence_type && EVIDENCE_LABEL[event.evidence_type]) {
     parts.push(EVIDENCE_LABEL[event.evidence_type]);
+  }
+  if (event.refund_amount != null && event.refund_amount > 0) {
+    parts.push(`Возвращено ${formatRub(event.refund_amount)}`);
   }
   if (event.note) parts.push(event.note);
   return parts.length ? parts.join(' · ') : undefined;
