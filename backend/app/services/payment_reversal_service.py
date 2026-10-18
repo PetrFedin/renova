@@ -350,7 +350,18 @@ async def process_provider_reversal(
         provider_payment_id = str(obj.get("payment_id") or "")
         if not provider_payment_id:
             return ReversalResult(handled=False, reason="missing_payment_id")
-        amount, currency = _money(obj)
+        # Provider refund deltas are financial evidence: never silently round
+        # an invalid sub-cent amount or assume RUB when currency is absent.
+        raw_amount = obj.get("amount")
+        if not isinstance(raw_amount, dict):
+            return ReversalResult(handled=False, reason="refund_amount_invalid")
+        currency = str(raw_amount.get("currency") or "").strip().upper()
+        if currency != "RUB":
+            return ReversalResult(handled=False, reason="currency_mismatch")
+        try:
+            amount = money(raw_amount.get("value"))
+        except ValueError as exc:
+            return ReversalResult(handled=False, reason=str(exc))
         return await apply_provider_refund(
             db,
             yookassa_payment_id=provider_payment_id,
