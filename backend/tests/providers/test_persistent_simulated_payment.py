@@ -80,7 +80,7 @@ async def test_dev_refund_route_exists_and_unknown_payment_is_conflict(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_dev_project_partial_refund_rejected_before_provider_money_moves(monkeypatch):
+async def test_dev_project_refund_without_matching_payment_rejected_before_provider_money_moves(monkeypatch):
     """No phantom refund in provider when project ledger cannot book it (#748)."""
     monkeypatch.setattr(settings, "environment", "test")
     monkeypatch.setattr(settings, "redis_url", None)
@@ -111,7 +111,7 @@ async def test_dev_project_partial_refund_rejected_before_provider_money_moves(m
                 db=None,  # guard fires before the canonical webhook boundary
             )
         assert exc.value.status_code == 409
-        assert exc.value.detail["code"] == "partial_refund_unsupported"
+        assert exc.value.detail["code"] == "project_payment_identity_mismatch"
         after = await provider.get_payment(checkout.external_id)
         assert after.status is base.PaymentStatus.SUCCEEDED
         assert after.refunded is None
