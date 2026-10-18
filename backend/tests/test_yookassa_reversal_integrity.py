@@ -468,3 +468,58 @@ async def test_simulated_dev_provider_partial_refund_routes_through_canonical_we
     finally:
         registry.reset()
         simulated.reset_store()
+
+
+@pytest.mark.asyncio
+async def test_partial_refund_during_dispute_restores_only_net_budget_on_resolution(reversal_db):
+    from app.services import payment_dispute_service
+
+    customer, contractor, project, stage = await seed_project(reversal_db, "422")
+    payment = await seed_payment(
+        reversal_db, payment_id="refund-disputed-422",
+        project_id=project.id, stage_id=stage.id, created_by=contractor.id,
+        status=PaymentStatus.confirmed, provider_id="yk-disputed-422",
+        accepted=True,
+    )
+    pid, project_id, actor_id = payment.id, project.id, customer.id
+
+    def refund(ref_id: str, amount: str):
+        return {
+            "event": "refund.succeeded",
+            "object": {
+                "id": ref_id, "status": "succeeded",
+                "payment_id": "yk-disputed-422",
+                "amount": {"value": amount, "currency": "RUB"},
+            },
+        }
+
+    first = await yookassa_service.process_webhook(refund("ref-422-A", "1000.00"), reversal_db)
+    assert first["changed"] is True
+    assert (await reversal_db.get(Project, project_id)).budget_spent == 4000
+
+    disputed = await payment_dispute_service.dispute_payment(
+        reversal_db, project_id=project_id, payment_id=pid,
+        actor_user_id=actor_id,
+        reason="Работа по счёту выполнена не полностью",
+    )
+    assert disputed.payment.status == PaymentStatus.disputed
+    assert (await reversal_db.get(Project, project_id)).budget_spent == 0
+
+    second = await yookassa_service.process_webhook(refund("ref-422-B", "1000.00"), reversal_db)
+    assert second["handled"] and second["changed"]
+    rows = (await reversal_db.execute(
+        select(Expense).where(Expense.payment_id == pid)
+    )).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].status == "disputed" and rows[0].amount == 3000
+    assert (await reversal_db.get(Project, project_id)).budget_spent == 0
+
+    restored = await payment_dispute_service.resolve_payment_dispute(
+        reversal_db, project_id=project_id, payment_id=pid,
+        actor_user_id=actor_id,
+        note="Стороны согласовали удержание суммы возврата",
+    )
+    assert restored.payment.status == PaymentStatus.confirmed
+    assert rows[0].status == "confirmed" and rows[0].amount == 3000
+    assert (await reversal_db.get(Project, project_id)).budget_spent == 3000
+    assert (await reversal_db.scalar(select(func.count()).select_from(ProjectPaymentRefund))) == 2
