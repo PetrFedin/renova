@@ -250,6 +250,10 @@ async def test_real_project_partial_refund_webhook_preserves_ledger_and_remains_
         provider_id="provider-gp5-partial-748",
         accepted=True,
     )
+    # The canonical handler rolls the session back on a deferred provider event.
+    # Keep immutable IDs outside ORM objects before that rollback expires them.
+    payment_id = payment.id
+    project_id = project.id
     body = {
         "event": "refund.succeeded",
         "object": {
@@ -265,10 +269,10 @@ async def test_real_project_partial_refund_webhook_preserves_ledger_and_remains_
     assert exc.value.detail["code"] == "webhook_processing_deferred"
     assert exc.value.detail["reason"] == "partial_refund_unsupported"
 
-    stored_payment = await webhook_db.get(Payment, payment.id)
-    stored_project = await webhook_db.get(Project, project.id)
+    stored_payment = await webhook_db.get(Payment, payment_id)
+    stored_project = await webhook_db.get(Project, project_id)
     expense_rows = (await webhook_db.execute(
-        select(Expense).where(Expense.payment_id == payment.id)
+        select(Expense).where(Expense.payment_id == payment_id)
     )).scalars().all()
     assert stored_payment.status == PaymentStatus.confirmed
     assert stored_project.budget_spent == 5000
