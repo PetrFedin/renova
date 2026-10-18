@@ -3,7 +3,7 @@ import type { Payment, PaymentEvent } from '@/lib/api';
 import { PAYMENT_STATUS_LABEL, PAYMENT_TYPE_LABEL } from '@/constants/labels';
 import { DISPUTE_RESPONSE_TITLE, disputeResponseKindOf } from '@/lib/domain/paymentDisputeResponse';
 import { parseServerInstant } from '@/lib/formatScheduleDate';
-import { formatRub } from '@/constants/Theme';
+import { formatPaymentMoney } from '@/lib/domain/paymentRefundPresentation';
 
 export type PaymentHistoryEvent = {
   id: string;
@@ -67,7 +67,7 @@ function canonicalSubtitle(event: PaymentEvent): string | undefined {
     parts.push(EVIDENCE_LABEL[event.evidence_type]);
   }
   if (event.refund_amount != null && event.refund_amount > 0) {
-    parts.push(`Возвращено ${formatRub(event.refund_amount)}`);
+    parts.push(`Возвращено ${formatPaymentMoney(event.refund_amount)}`);
   }
   if (event.note) parts.push(event.note);
   return parts.length ? parts.join(' · ') : undefined;
