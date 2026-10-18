@@ -387,6 +387,46 @@ async def test_cancellation_evidence_mismatch_is_blocked(reversal_db, amount, cu
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("raw_value", "currency", "expected_reason"),
+    [
+        ("1000.005", "RUB", "refund_amount_invalid"),
+        ("0.00", "RUB", "refund_amount_invalid"),
+        ("1000.00", "", "currency_mismatch"),
+        ("1000.00", "USD", "currency_mismatch"),
+    ],
+)
+async def test_refund_provider_money_must_be_cent_exact_and_currency_bound(
+    reversal_db, raw_value, currency, expected_reason,
+):
+    _, contractor, project, stage = await seed_project(reversal_db, "423")
+    payment = await seed_payment(
+        reversal_db,
+        payment_id="gp5-money-exact-423",
+        project_id=project.id, stage_id=stage.id, created_by=contractor.id,
+        status=PaymentStatus.confirmed,
+        provider_id="yk-gp5-money-exact-423", accepted=True,
+    )
+    result = await yookassa_service.process_webhook(
+        {
+            "event": "refund.succeeded",
+            "object": {
+                "id": "gp5-bad-money-423", "status": "succeeded",
+                "payment_id": "yk-gp5-money-exact-423",
+                "amount": {"value": raw_value, "currency": currency},
+            },
+        },
+        reversal_db,
+    )
+    assert result["handled"] is False
+    assert result["reason"] == expected_reason
+    assert (await reversal_db.get(Project, project.id)).budget_spent == 5000
+    assert (await reversal_db.scalar(select(func.count()).select_from(ProjectPaymentRefund))) == 0
+    assert (await reversal_db.scalar(select(func.count()).select_from(PaymentEvent))) == 0
+    assert (await reversal_db.scalar(select(func.count()).select_from(DomainOutbox))) == 0
+
+
+@pytest.mark.asyncio
 async def test_simulated_dev_provider_partial_refund_routes_through_canonical_webhook(
     reversal_db, monkeypatch,
 ):
