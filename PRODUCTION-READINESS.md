@@ -12,7 +12,7 @@
 
 | Fact | Current value |
 |---|---|
-| Alembic head | `x11portalacceptscope01` |
+| Alembic head | `x12projectrefund01` |
 | Mobile source version | `0.3.7` |
 | iOS buildNumber / Android versionCode | `3` / `3` |
 | Bundle id (iOS) | `ru.renova.app` |
