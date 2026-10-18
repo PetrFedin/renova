@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Numeric, String
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.timeutil import utc_now
@@ -17,6 +17,7 @@ class ProjectPaymentRefund(Base):
 
     __tablename__ = "project_payment_refunds"
     __table_args__ = (
+        UniqueConstraint("provider_refund_id", name="uq_project_payment_refunds_provider_refund_id"),
         CheckConstraint("amount > 0", name="ck_project_payment_refund_positive"),
     )
 
@@ -29,7 +30,7 @@ class ProjectPaymentRefund(Base):
     )
     provider_payment_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     provider_refund_id: Mapped[str] = mapped_column(
-        String(128), nullable=False, unique=True
+        String(128), nullable=False
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="RUB")
