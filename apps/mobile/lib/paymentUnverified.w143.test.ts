@@ -131,8 +131,14 @@ must(grossNetSchema.includes('refunded_amount: float') && grossNetSchema.include
   'explicit refund API fields required');
 must(historyApi.includes('refund_totals_by_payment') && paymentTimeline.includes('yookassa_refund_partial'),
   'API totals and timeline share provider refund truth');
-must(paymentsSection.includes('payment.refunded_amount') && paymentsSection.includes('payment.net_amount'),
-  'both role payment lists surface returned and remaining money');
-must(sheet.includes('payment.refunded_amount') && sheet.includes('payment.net_amount'),
-  'payment detail must display actual net amount');
+must(paymentsSection.includes('paymentRefundPresentation(payment)'),
+  'both role payment lists must use the shared exact-amount refund projection');
+must(sheet.includes('paymentRefundPresentation(payment)')
+  && sheet.includes('formatPaymentMoney(payment.amount)'),
+  'payment detail must use the same refund projection and exact gross amount');
+const refundView = readFileSync(join(__dirname, 'domain/paymentRefundPresentation.ts'), 'utf8');
+must(refundView.includes('gross - refunded !== net')
+  && refundView.includes('kind: \'inconsistent\'')
+  && refundView.includes('minimumFractionDigits: 2'),
+  'refund display must fail visibly on mismatched totals and retain kopecks');
 console.log('paymentUnverified.w143.test OK');
