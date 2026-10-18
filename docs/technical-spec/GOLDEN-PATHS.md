@@ -183,3 +183,13 @@
 ### GP5 — dispute expense truth / 2026-10-17 кандидат
 
 После подтверждённого ручного платежа расход имеет `status=confirmed`. Подача спора переводит *тот же* расход в `status=disputed`, сохраняя сумму и ссылку на payment; ответ подрядчика `contest` не означает разрешения спора и не должен молча возвращать `confirmed`. Golden GP5 дополнен API readback по платежам и расходам после ответа подрядчика, с проверкой одной записи и неизменной суммы. Это проверка статусов и связей, **не** GP5 webhook/refund-provider E2E. До exact-head CI статус кандидата PENDING; полный финансовый сценарий остаётся OPEN.
+
+### GP5 — settlement receipt retry / 2026-10-18 кандидат, #744
+
+Предыдущий кандидат #743 (`e5b53fac00be996614aafb3f838a94da445f65bb`) получил CI SUCCESS: run `39043170983`, включая backend-complete, golden-paths и playwright-api-and-ui. Это доказательство только указанного кандидата, не интеграции в main или production.
+
+Обнаружен и воспроизведён дефект обеих receipt routes: первая отправка покрывающего чека переводит `paid_unverified` в `confirmed`, после чего прежняя проверка допустимости прикрепления блокирует даже идентичный повтор с тем же `client_request_id`. Исправление сохраняет актуальный project/payment/customer ACL **до** чтения idempotency ledger; только после отсутствия committed replay проверяет допустимость новой записи. Изменённый payload возвращает `409 idempotency_conflict`, новый ключ на подтверждённом платеже — `409 payment_receipt_not_attachable`. Повтор не является новой оплатой или новой фискальной проверкой.
+
+`test_payment_lifecycle_wave1.py::test_settlement_receipt_replays_after_payment_confirmation[manual|scan]`: до исправления 2 failed (ожидаемый 200, фактический 409); после — в составе 35 passed focused receipt/payment regression. Доказаны прежний receipt ID, один прежний expense ID, сумма 5000 и неизменный budget_spent, отказ получателю и cross-project 404. Локальная проверка использует locked dependencies и SQLite; это не PostgreSQL concurrency proof. Docker отсутствует, canonical local runtime и full runtime здесь не запускались. Новый exact-head CI обязателен.
+
+API Golden GP5 дополнен повтором receipt после подтверждения и сравнением expense ID до/после спора. Количество считается по всем расходам этого payment, без фильтра по статусу, чтобы дубликат с другим статусом не скрывался. Checkout → webhook → outbox → partial refund, конкурентные возвраты, браузерные действия обеих ролей и внешний provider proof остаются OPEN (#734/#730/#238). Полная визуальная оценка шрифтов, отступов и экранов требует исполняемой сборки; этот финансовый ремонт не квалифицирует визуальный слой.

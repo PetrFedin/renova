@@ -66,6 +66,8 @@ async def _resolve_payment_id(
     project_id: str,
     payment_id: str | None,
     user: User | None = None,
+    *,
+    require_attachable: bool = True,
 ) -> str | None:
     """Чек к счёту прикладывает только заказчик-плательщик.
 
@@ -97,7 +99,7 @@ async def _resolve_payment_id(
                     "Расход исполнителя добавляется без привязки к счёту.",
                 },
             )
-    if payment.status not in (PaymentStatus.pending, PaymentStatus.paid_unverified):
+    if require_attachable and payment.status not in (PaymentStatus.pending, PaymentStatus.paid_unverified):
         raise HTTPException(
             409,
             detail={
@@ -230,7 +232,9 @@ async def scan_receipt(
 ):
     await require_project(db, project_id, user, write=True)
     category = body.expense_category if body.expense_category in VALID_CATEGORIES else "materials"
-    payment_id = await _resolve_payment_id(db, project_id, body.payment_id, user)
+    # Check current project/payer authority before looking up a committed retry.
+    # The original write may itself have promoted the payment to confirmed.
+    payment_id = await _resolve_payment_id(db, project_id, body.payment_id, user, require_attachable=False)
     room_id, stage_id = await _resolve_receipt_links(
         db,
         project_id=project_id,
@@ -262,6 +266,7 @@ async def scan_receipt(
             raise HTTPException(409, detail={"code": "idempotency_target_missing"})
         return _scan_response(existing, message="Чек уже сохранён", idempotent_replay=True)
 
+    await _resolve_payment_id(db, project_id, payment_id, user)
     parsed = parse_receipt_qr(body.qr_raw)
     check = await verify_receipt(parsed)
     verified = bool(check.get("verified"))
@@ -332,7 +337,7 @@ async def manual_receipt(
 ):
     await require_project(db, project_id, user, write=True)
     category = body.expense_category if body.expense_category in VALID_CATEGORIES else "materials"
-    payment_id = await _resolve_payment_id(db, project_id, body.payment_id, user)
+    payment_id = await _resolve_payment_id(db, project_id, body.payment_id, user, require_attachable=False)
     room_id, stage_id = await _resolve_receipt_links(
         db,
         project_id=project_id,
@@ -365,6 +370,7 @@ async def manual_receipt(
             raise HTTPException(409, detail={"code": "idempotency_target_missing"})
         return _manual_response(existing, idempotent_replay=True)
 
+    await _resolve_payment_id(db, project_id, payment_id, user)
     rec = Receipt(
         project_id=project_id,
         amount=round(body.amount, 2),
