@@ -10,6 +10,12 @@ must prove ledger/aggregate convergence before broader financial qualification.
 Capture filenames use `.capture.ts` so generic `e2e/playwright.config.ts` discovery
 does not accidentally run presentation cases without their capture environment.
 
+Independent source review found that generic shell text could admit a loading or
+error screen. Capture readiness therefore requires exact loaded estimate totals,
+the budget summary hero, and an API-derived stage name on its scoped stage filter;
+seeded estimate lines and an unfinished stage must exist. Explicit loading/error
+states and dependency-check failures reject a scene before its manifest is written.
+
 After the existing API and mobile-web Golden gates pass, the same canonical local
 runtime stays alive for `e2e/presentation/product-tour.capture.ts`. The capture uses
 existing in-memory demo auth fixtures, customer/contractor roles, 390×844 and
