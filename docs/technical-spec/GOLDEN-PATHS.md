@@ -2,8 +2,16 @@
 
 ### C8 / #753 — versioned presentation capture (2026-10-19 candidate)
 
+Follow-up source audit records #755: the existing PostgreSQL refund race covers
+one payment, while shared-project budget totals across different concurrently
+refunded payments require a deterministic PostgreSQL reproduction. This is a
+source risk, not a confirmed production incident. Finance/backend engineering
+must prove ledger/aggregate convergence before broader financial qualification.
+Capture filenames use `.capture.ts` so generic `e2e/playwright.config.ts` discovery
+does not accidentally run presentation cases without their capture environment.
+
 After the existing API and mobile-web Golden gates pass, the same canonical local
-runtime stays alive for `e2e/presentation/product-tour.spec.ts`. The capture uses
+runtime stays alive for `e2e/presentation/product-tour.capture.ts`. The capture uses
 existing in-memory demo auth fixtures, customer/contractor roles, 390×844 and
 1440×900 viewports, and actual estimate, budget and execution routes. It produces
 12 PNGs and four 25-second H.264 MP4 clips when all four cases succeed. Each case

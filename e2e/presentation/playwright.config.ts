@@ -2,7 +2,8 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: '.',
-  testMatch: 'product-tour.spec.ts',
+  testMatch: 'product-tour.capture.ts',
+  forbidOnly: Boolean(process.env.CI),
   outputDir: '../../test-results/presentation-raw',
   timeout: 120_000,
   expect: { timeout: 15_000 },
