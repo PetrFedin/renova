@@ -1,5 +1,31 @@
 # Renova — Golden Paths (сквозные сценарии готовности продукта)
 
+### C8 / #753 — versioned presentation capture (2026-10-19 candidate)
+
+After the existing API and mobile-web Golden gates pass, the same canonical local
+runtime stays alive for `e2e/presentation/product-tour.spec.ts`. The capture uses
+existing in-memory demo auth fixtures, customer/contractor roles, 390×844 and
+1440×900 viewports, and actual estimate, budget and execution routes. It produces
+12 PNGs and four 25-second H.264 MP4 clips when all four cases succeed. Each case
+writes a SHA/run/role/viewport/asset-hash manifest only after render, crash and
+duration checks pass. Encoding keeps real frames without looping or padding.
+
+The existing CI Golden job retains `presentation-media/` for 90 days, including
+partial output on failure for diagnosis. Raw recordings, auth storage state and
+traces are excluded. A folder without its manifest is incomplete. A passing
+manifest still has `visualReview=PENDING`: inspect every PNG/MP4 before selecting
+landing-page assets. This is a seeded local screen tour, not a proof of every
+click, real payment/provider delivery, staging or production. Golden assertions
+and release gates remain mandatory and unchanged. Full GP5 action acceptance
+remains #734. Fresh exact-head CI and visual review must qualify this candidate.
+
+Baseline #752 at `15cc78b1506d66ad055fe27b72f5418511264848`: CI 39162130378
+completed successfully; backend log reports 1864 passed / 32 skipped; PostgreSQL
+partial-refund concurrency 1 passed, schema drift 2 passed. These results qualify
+that parent only. This session lacks the canonical Docker/Poetry/Node20 runtime;
+local doctor/check/test-full and capture are not executed. New capture runtime
+evidence remains pending until its own CI artifacts exist and are viewed.
+
 **Правило:** продукт считается функционально завершённым, когда каждый GP ниже зелёный в двух формах — API-уровень (`e2e/golden/gp<N>.*.spec.ts`) и mobile-web (`apps/mobile/e2e/golden/gp<N>.*.spec.ts`) — на canonical local runtime (PostgreSQL + Redis + MinIO + API + Worker) с провайдерами в режиме `simulated`.
 
 **Роли:** `C` — заказчик, `E1`/`E2` — исполнители, `A` — admin/operator.

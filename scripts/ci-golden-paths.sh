@@ -148,3 +148,13 @@ printf "\nGolden Paths result: API=%s mobile-web=%s\n" "$api_status" "$mobile_st
 if [ "$api_status" -ne 0 ] || [ "$mobile_status" -ne 0 ]; then
   exit 1
 fi
+
+# Capture only after both existing release gates succeed and while this exact
+# canonical runtime is still alive. No seeded state or credentials are exported.
+export RENOVA_CAPTURE_SHA="$(git rev-parse HEAD)"
+if [ -n "${GITHUB_RUN_ID:-}" ]; then
+  export RENOVA_CAPTURE_RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+fi
+npx playwright test -c e2e/presentation/playwright.config.ts --reporter=line
+assert_api_identity "after presentation capture"
+

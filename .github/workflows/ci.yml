@@ -454,8 +454,21 @@ jobs:
         run: |
           bash -n scripts/ci-golden-paths.sh
           node scripts/assert-golden-release-gate.mjs
+          node --test scripts/presentation-media.test.mjs
+      - name: Install presentation encoder
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y ffmpeg
       - name: Run eight API and eight mobile-web human journeys
         run: bash scripts/ci-golden-paths.sh
+      - name: Retain exact-build product presentation media
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: renova-presentation-${{ github.sha }}
+          path: presentation-media/
+          if-no-files-found: error
+          retention-days: 90
       - name: Publish Golden Paths inventory
         if: always()
         run: |
@@ -463,6 +476,7 @@ jobs:
             echo "## Golden Paths release gate"
             echo
             echo "Required contour: API and mobile-web human journeys must both pass."
+            echo "Presentation media is seeded local-runtime evidence; visual review is required before publication."
             echo
             echo "### API"
             find e2e/golden -maxdepth 1 -name 'gp*.spec.ts' -print | sort
@@ -470,4 +484,5 @@ jobs:
             echo "### Mobile web"
             find apps/mobile/e2e/golden -maxdepth 1 -name 'gp*.spec.ts' -print | sort
           } >> "$GITHUB_STEP_SUMMARY"
+
 
