@@ -202,6 +202,13 @@ async def apply_provider_refund(
     except ValueError as exc:
         return ReversalResult(handled=False, payment_id=payment.id, reason=str(exc))
 
+    # Payment is already row-locked. A shared Project lock must precede all
+    # Expense/BudgetLine reads and writes, including the idempotent replay.
+    from app.services.project_budget_lock import lock_project_budget_projection
+
+    if not await lock_project_budget_projection(db, payment.project_id):
+        return ReversalResult(handled=False, payment_id=payment.id, reason="project_not_found")
+
     # Check identity BEFORE rejecting terminal status: a genuine completed retry
     # returns the prior result, but a reused ID with changed payload is a conflict.
     prior = await db.scalar(
