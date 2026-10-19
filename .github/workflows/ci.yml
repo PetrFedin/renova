@@ -331,7 +331,7 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://renova:renova@127.0.0.1:5433/renova
           ALLOW_CREATE_ALL: "false"
           ALLOW_DEMO_SEED: "false"
-        run: poetry run pytest -q tests/test_project_refund_postgres_concurrency.py
+        run: poetry run pytest -q tests/test_project_refund_postgres_concurrency.py tests/test_project_budget_cross_payment_postgres.py
       - name: Schema drift ratchet (models vs alembic head)
         working-directory: backend
         env:
