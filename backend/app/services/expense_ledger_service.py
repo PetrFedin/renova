@@ -10,7 +10,10 @@ from app.models.entities import BudgetLine, Expense, Project
 async def recalculate_existing_expense_facts(db: AsyncSession, project_id: str) -> None:
     """Preserve dispute/refund statuses while recomputing BudgetLine and Project facts."""
     from app.services import budget_service as budget
+    from app.services.project_budget_lock import lock_project_budget_projection
 
+    if not await lock_project_budget_projection(db, project_id):
+        raise ValueError("project_not_found")
     await budget.sync_budget_lines_from_estimate(db, project_id)
     expenses = list(
         (
