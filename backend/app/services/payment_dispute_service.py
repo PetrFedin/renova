@@ -217,6 +217,10 @@ async def dispute_payment(
     )
     if not payment:
         return None
+    from app.services.project_budget_lock import lock_project_budget_projection
+
+    if not await lock_project_budget_projection(db, project_id):
+        return None
 
     if payment.status == PaymentStatus.disputed:
         existing_event = await _latest_dispute_event(db, payment.id)
@@ -288,6 +292,10 @@ async def resolve_payment_dispute(
         payment_id=payment_id,
     )
     if not payment:
+        return None
+    from app.services.project_budget_lock import lock_project_budget_projection
+
+    if not await lock_project_budget_projection(db, project_id):
         return None
 
     project = await db.get(Project, project_id)
