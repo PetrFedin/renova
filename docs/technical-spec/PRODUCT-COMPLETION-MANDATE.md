@@ -244,3 +244,8 @@ PR по мандату считается готовым, когда:
 | — | — | — | — |
 
 Агент, обнаруживший противоречие между этим документом, `AGENTS.md` и кодом, добавляет строку сюда в том же PR и не принимает решение самостоятельно, если оно меняет продуктовое поведение.
+
+
+### A1 / #755 — Shared project budget concurrency, candidate 2026-10-20
+
+The financial ledger is payment-keyed but project budget facts are project-keyed. This candidate adds a PostgreSQL project transaction fence on refund/dispute and source-hydration paths plus a two-payment race regression in the existing dedicated CI gate. It remains an unmerged change with PostgreSQL CI and independent review outstanding; it does **not** qualify all concurrent dispute/refresh schedules, complete Golden GP5, real provider settlement or production readiness. [Issue #755](https://github.com/PetrFedin/renova/issues/755).
