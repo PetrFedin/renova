@@ -443,3 +443,48 @@ async def test_pending_work_scope_price_change_notifies_customer_with_audit(work
     assert changes["budget_planned"] == {"before": 0, "after": 4500}
     assert changes["planned_end"] == {"before": None, "after": "2026-11-10"}
     assert json.loads(notice.payload_json)["user_id"] == customer.id
+
+
+@pytest.mark.asyncio
+async def test_customer_approval_requires_exact_visible_scope_revision(work_order_db):
+    from datetime import datetime
+
+    customer, contractor, project = await seed_hybrid_project(work_order_db)
+    project_id, customer_id = project.id, customer.id
+    row = await add_work_order(
+        work_order_db, project_id=project_id,
+        work_order_id="approval-version-bound", created_by=contractor.id,
+    )
+    row_id, reviewed_at = row.id, row.updated_at
+    assert reviewed_at is not None
+
+    for reviewed_version, expected_error in (
+        (None, "work_order_approval_version_required"),
+        (datetime(2020, 1, 1), "work_order_stale"),
+    ):
+        current = await work_order_db.get(WorkOrder, row_id)
+        current_project = await work_order_db.get(Project, project_id)
+        with pytest.raises(ValueError, match=expected_error):
+            await work_order_service.transition(
+                work_order_db, current, WorkOrderStatus.approved.value,
+                customer_id, UserRole.customer, project=current_project,
+                expected_updated_at=reviewed_version,
+            )
+        await work_order_db.rollback()
+        assert await work_order_db.scalar(
+            select(WorkOrder.status).where(WorkOrder.id == row_id)
+        ) == WorkOrderStatus.published
+
+    # No third-party role or stale/offline state may turn approval into a
+    # last-write-wins mutation. The exact current token is admissible.
+    current = await work_order_db.get(WorkOrder, row_id)
+    current_project = await work_order_db.get(Project, project_id)
+    approved = await work_order_service.transition(
+        work_order_db, current, WorkOrderStatus.approved.value,
+        customer_id, UserRole.customer, project=current_project,
+        expected_updated_at=reviewed_at,
+    )
+    assert approved.status == WorkOrderStatus.approved
+    assert await work_order_db.scalar(
+        select(WorkOrder.status).where(WorkOrder.id == row_id)
+    ) == WorkOrderStatus.approved
