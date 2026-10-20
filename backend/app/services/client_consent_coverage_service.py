@@ -226,6 +226,14 @@ async def consent_coverage_snapshot(db: AsyncSession, project: Project) -> dict:
             missing.append("scope_location")
         if work.budget_planned is None:
             missing.append("priced_scope")
+        # Current WorkOrder has no canonical structured quantity/unit, exclusion
+        # list or payment-milestone consent. Notes cannot stand in for a signed
+        # itemized version, so these remain universally unverified.
+        missing.extend((
+            "structured_quantity_unit",
+            "explicit_inclusions_exclusions",
+            "payment_milestone",
+        ))
         evidence = "partial" if state in _COMMITTED_WORK_STATUSES else "missing"
         entries.append(_entry(
             "work_order", work, status=state, evidence=evidence,
