@@ -4,7 +4,7 @@
 **Язык:** русский
 **Дата текущей сверки:** 2026-10-20 (bounded consent candidate; other sections retain earlier evidence dates)
 **Проверенный продуктовый срез:** `686eec67c925d73fd1367da4704bdac11becdd71`
-**Текущий schema head в этой Draft-ветке:** `x13clientscopecons01` (main remains on prior migration lineage; no deployment)
+**Текущий schema head в этой редакции:** `x13clientscopecons01` (Draft-кандидат, main не обновлён)
 **Текущий verification status:** `SOURCE AUDITED / BOUNDED CI EVIDENCE / FULL PRODUCT ACCEPTANCE INCOMPLETE`
 **Широкий production-запуск:** `BLOCKED_FOR_BROAD_PRODUCTION`
 
