@@ -714,11 +714,18 @@ async def transition(
     actor_role: UserRole | str | None = None,
     *,
     project: Project | None = None,
+    expected_updated_at: datetime | None = None,
 ) -> WorkOrder:
-    # Lightweight unit tests may pass a structural fake. Real ORM mutations always
-    # refresh under a row lock so a stale prefetched status cannot win by last write.
+    # The customer's approval authorizes the *specific reviewed proposal
+    # version*, never whatever contractor data happens to exist at submit time.
+    # A row lock plus timestamp comparison blocks edits between GET and approval.
     if isinstance(work_order, WorkOrder):
         work_order = await _lock_current_work_order(db, work_order)
+        if new_status == WorkOrderStatus.approved.value:
+            if expected_updated_at is None:
+                raise ValueError("work_order_approval_version_required")
+            if _normalize_expected_updated_at(work_order.updated_at) != _normalize_expected_updated_at(expected_updated_at):
+                raise ValueError("work_order_stale")
 
     project_row = project or await db.get(Project, work_order.project_id)
     if not project_row:
