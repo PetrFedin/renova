@@ -43,7 +43,7 @@
 | `apps/mobile/components/screens/OsBudgetHubScreen.tsx` | `789631cf5d74f657a318baed176b98aada208c26` | Budget hub |
 | `apps/mobile/constants/budgetTabs.ts` | `d02c05560176535e130d76960c2b67691bcbb3b7` | Budget tab canon |
 | `.cursor/rules/renova-design-system.mdc` | `2f48e46f5b348b8cbc3a370615a5a5e93d93421f` | UI rules |
-| `package.json` | `0ef7fd6a6afce7670b16896898c127c1f5401ba7` | Root commands/test entrypoints (sessionFence and actor-aware Action Queue tests in mobile:test) |
+| `package.json` | `f9788024553c2f964b953e3432edde1f5b36d72d` | Root commands/test entrypoints (including customer consent evidence/fail-honest mobile:test contract, sessionFence and actor-aware Action Queue tests) |
 | `.github/workflows/local-runtime-integrity.yml` | `63831ec7622794843ca724319178e2de18cdb971` | Local runtime proof |
 | `backend/alembic/versions/w16legacystatus01_legacy_status_enum_parity.py` | `d2137f2b87c1ac6f679093331bd034aff17c8188` | Legacy status repair |
 | `backend/alembic/versions/w17chatmessageenum01_chat_message_enum_parity.py` | `0537268c85e26b7a607d36f967a3402b8bba53c4` | Chat enum repair |
