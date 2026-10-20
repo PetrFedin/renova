@@ -69,6 +69,18 @@ _STATUS_LABELS = {
 _ASSIGNMENT_MANAGER_TEAM_ROLES = {"owner", "foreman"}
 _EXECUTOR_TEAM_ROLES = {"owner", "foreman", "member"}
 _LIFECYCLE_PATCH_FIELDS = {"actual_start", "actual_end"}
+# These fields form the customer-approved scope. Post-approval amendments must
+# create a fresh proposal/decision rather than edit the accepted WorkOrder row.
+_CUSTOMER_APPROVAL_BOUND_FIELDS = frozenset({
+    "title", "work_type", "room_id", "stage_id", "planned_start",
+    "planned_end", "notes", "assignee_id", "budget_planned",
+})
+_EDITABLE_WORK_SCOPE_STATES = frozenset({
+    WorkOrderStatus.draft.value,
+    WorkOrderStatus.published.value,
+    WorkOrderStatus.negotiating.value,
+})
+
 
 
 def wo_dict(w: WorkOrder) -> dict:
@@ -454,6 +466,13 @@ async def update_work_order(
             raise ValueError("work_order_project_missing")
         if _LIFECYCLE_PATCH_FIELDS.intersection(patch):
             raise ValueError("work_order_lifecycle_field_forbidden")
+        # Even the customer cannot silently rewrite an already accepted version.
+        # This also blocks status=cancelled, done and paid amendments.
+        if (
+            _work_order_status(current) not in _EDITABLE_WORK_SCOPE_STATES
+            and _CUSTOMER_APPROVAL_BOUND_FIELDS.intersection(patch)
+        ):
+            raise ValueError("work_order_approved_scope_locked")
 
         if "title" in patch:
             title = patch["title"]
@@ -492,6 +511,13 @@ async def update_work_order(
                 assignee_id=patch["assignee_id"],
             )
 
+        # Keep the historical accepted values identifiable in an append-only
+        # project activity event. This is a proposal edit, not customer approval.
+        changed_fields = {
+            key: (getattr(current, key), patch[key])
+            for key in _CUSTOMER_APPROVAL_BOUND_FIELDS.intersection(patch)
+            if getattr(current, key) != patch[key]
+        }
         for key in ("title", "work_type", "room_id", "stage_id", "notes", "assignee_id", "budget_planned"):
             if key in patch:
                 setattr(current, key, patch[key])
@@ -499,6 +525,56 @@ async def update_work_order(
             if key in patch:
                 setattr(current, key, patch[key])
         current.updated_at = _next_updated_at(current.updated_at)
+        if changed_fields and _work_order_status(current) in {
+            WorkOrderStatus.published.value, WorkOrderStatus.negotiating.value,
+        }:
+            import json
+
+            audit_diff = {
+                key: {
+                    "before": value[0].isoformat() if isinstance(value[0], date) else value[0],
+                    "after": value[1].isoformat() if isinstance(value[1], date) else value[1],
+                }
+                for key, value in sorted(changed_fields.items())
+            }
+            await outbox.enqueue(
+                db,
+                aggregate_type="work_order",
+                aggregate_id=current.id,
+                event_type=outbox.ACTIVITY_EVENT,
+                payload={
+                    "project_id": current.project_id,
+                    "user_id": actor_id,
+                    "kind": "WorkScopeProposalChanged",
+                    "title": f"Условия работы обновлены до согласования: {current.title}",
+                    "body": json.dumps(audit_diff, ensure_ascii=False, sort_keys=True),
+                    "room_id": current.room_id,
+                    "stage_id": current.stage_id,
+                    "link_path": f"/work-order/{current.id}",
+                },
+            )
+            # Neither side can change the price/deadline/performer of the
+            # pending proposal without the counterparty getting a durable alert.
+            other_party = (
+                project.customer_id if actor_id != project.customer_id
+                else project.contractor_id
+            )
+            if other_party:
+                await outbox.enqueue(
+                    db,
+                    aggregate_type="work_order",
+                    aggregate_id=current.id,
+                    event_type=outbox.NOTIFICATION_EVENT,
+                    payload={
+                        "user_id": other_party,
+                        "project_id": current.project_id,
+                        "notification_type": "other",
+                        "title": "Изменены условия работы до согласования",
+                        "body": f"Проверьте новую стоимость, сроки и исполнителя: {current.title}",
+                        "link_path": f"/work-order/{current.id}",
+                        "return_to": None,
+                    },
+                )
         await db.commit()
     except BaseException:
         await db.rollback()
