@@ -15,7 +15,7 @@ from app.models.entities import (
     PaymentType, Project, User, UserRole,
 )
 from app.models.project_payment_refund import ProjectPaymentRefund
-from app.services import payment_reversal_service
+from app.services import budget_service, payment_dispute_service, payment_reversal_service
 from app.services.project_budget_lock import lock_project_budget_projection
 
 
@@ -116,6 +116,90 @@ async def test_different_payments_refund_project_spend_is_serialized():
                 select(BudgetLine).where(BudgetLine.project_id == project_id)
             )).scalars().all())
             assert round(sum(float(l.actual_amount or 0) for l in lines), 2) == 6000
+
+        # Force a shared-project race across THREE distinct operations:
+        # another refund on Payment #1, a dispute on Payment #0, and a
+        # canonical source refresh. The end state must represent all changes,
+        # irrespective of who acquired the project transaction fence first.
+        async def partial_second_payment():
+            async with Session() as db:
+                return await payment_reversal_service.apply_provider_refund(
+                    db, yookassa_payment_id=provider_ids[1],
+                    refund_id=f"prj-extra-refund-{tag}", amount=500,
+                    currency="RUB", commit=True,
+                )
+
+        async def dispute_first_payment():
+            async with Session() as db:
+                return await payment_dispute_service.dispute_payment(
+                    db, project_id=project_id, payment_id=payment_ids[0],
+                    actor_user_id=customer_id,
+                    reason="Сумма этапа оспорена заказчиком до приёмки",
+                )
+
+        async def source_refresh():
+            async with Session() as db:
+                await budget_service.refresh_budget_facts(db, project_id)
+                await db.commit()
+                return True
+
+        hold2_ready, release2 = asyncio.Event(), asyncio.Event()
+
+        async def hold_shared_fence():
+            async with Session() as db:
+                assert await lock_project_budget_projection(db, project_id)
+                hold2_ready.set()
+                await asyncio.wait_for(release2.wait(), 20)
+                await db.commit()
+
+        hold2 = asyncio.create_task(hold_shared_fence())
+        try:
+            await asyncio.wait_for(hold2_ready.wait(), 15)
+            triple = asyncio.gather(
+                partial_second_payment(), dispute_first_payment(), source_refresh(),
+            )
+            await asyncio.sleep(0.25)
+        finally:
+            release2.set()
+            await asyncio.wait_for(hold2, 20)
+        money_result, dispute_result, refreshed = await asyncio.wait_for(triple, 35)
+        assert money_result.handled and money_result.changed
+        assert dispute_result is not None and dispute_result.changed
+        assert refreshed is True
+
+        async with Session() as db:
+            expenses = list((await db.execute(select(Expense).where(
+                Expense.project_id == project_id
+            ))).scalars().all())
+            by_payment = {row.payment_id: row for row in expenses}
+            assert by_payment[payment_ids[0]].status == "disputed"
+            assert by_payment[payment_ids[0]].amount == 3500
+            assert by_payment[payment_ids[1]].status == "confirmed"
+            assert by_payment[payment_ids[1]].amount == 2000
+            assert (await db.get(Project, project_id)).budget_spent == 2000
+            rows = list((await db.execute(select(BudgetLine).where(
+                BudgetLine.project_id == project_id
+            ))).scalars().all())
+            assert round(sum(float(row.actual_amount or 0) for row in rows), 2) == 2000
+            assert await db.scalar(select(func.count()).select_from(ProjectPaymentRefund).where(
+                ProjectPaymentRefund.project_id == project_id
+            )) == 3
+
+        # Closing the dispute restores precisely the net of the original
+        # invoice, not its gross 5000 and not a second linked Expense.
+        async with Session() as db:
+            resolved = await payment_dispute_service.resolve_payment_dispute(
+                db, project_id=project_id, payment_id=payment_ids[0],
+                actor_user_id=customer_id,
+                note="Решение после повторной проверки подтверждено",
+            )
+            assert resolved is not None and resolved.changed
+        async with Session() as db:
+            assert (await db.get(Project, project_id)).budget_spent == 5500
+            lines = list((await db.execute(select(BudgetLine).where(
+                BudgetLine.project_id == project_id
+            ))).scalars().all())
+            assert round(sum(float(x.actual_amount or 0) for x in lines), 2) == 5500
     finally:
         async with Session() as db:
             await db.execute(delete(DomainOutbox).where(

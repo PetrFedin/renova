@@ -39,7 +39,9 @@ must(reversal.includes('expense.status = "refund"'), 'full refund reverses canon
 must(reversal.includes('recalculate_existing_expense_facts'), 'refund uses status-preserving exact budget recalculation');
 must(!reversal.includes('budget.refresh_budget_facts'), 'refund must not re-hydrate source facts');
 must(reversal.includes('outbox.enqueue('), 'reversal effects are durable');
-must(ledger.includes('Expense.status.in_(("confirmed", "pending_receipt"))'), 'ledger excludes disputed/refund expenses from budget fact');
+must(ledger.includes('await budget._reconcile_budget_line_actuals(db, project_id)'), 'refund uses the canonical one-expense-one-line projection');
+must(budget.includes('Expense.status.in_(tuple(ACTIVE_BUDGET_EXPENSE_STATUSES))'), 'projection excludes disputed and refunded expenses');
+must(budget.includes('fallback_totals') && budget.includes('_system_actual_marker'), 'valid unallocated refund net stays visible in the budget drilldown');
 must(!ledger.includes('expense_from_receipt') && !ledger.includes('expense_from_payment'), 'ledger cannot resurrect reversed source facts');
 must(budgetLegacy.includes('Expense.status.in_(("confirmed", "pending_receipt"))'), 'preserved canonical aggregation excludes refund expenses');
 must(budget.includes('_legacy.refresh_budget_facts = refresh_budget_facts'), 'canonical wrapper routes all refresh callers through protected hydration');
