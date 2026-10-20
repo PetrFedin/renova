@@ -4,6 +4,40 @@ import { isQueueableWriteError } from './queueableError';
 import type { ActivityItem, OsBudgetSummary, OsExpense, OsInsight, OsReport, OsRisk, User } from './types';
 import type { MaterialPick, Payment, ReceiptItem } from './types';
 
+export type CustomerConsentCoverageEntry = {
+  kind: 'payment' | 'expense' | 'purchase' | 'work_order' | 'change_order';
+  id: string;
+  title: string;
+  status: string;
+  amount_rub: string | null;
+  consent_status: 'not_verifiable';
+  evidence_level: 'broken' | 'missing' | 'partial' | 'unknown';
+  risk: 'critical' | 'high' | 'medium' | 'low';
+  reason_code: string;
+  references: Record<string, unknown>;
+};
+
+export type CustomerConsentCoverage = {
+  project_id: string;
+  as_of_utc: string;
+  coverage: 'advisory_not_a_payment_authorization';
+  read_consistency: string;
+  complete_customer_consent_proven: false;
+  scan_truncated: boolean;
+  total_scanned: number;
+  counts: Record<'payments' | 'expenses' | 'purchases' | 'work_orders' | 'change_orders', number>;
+  source_integrity_issues: number;
+  items_requiring_evidence: number;
+  recognized_expense_fact_rub: string | null;
+  project_cached_budget_spent_rub: string;
+  budget_comparison: 'unverifiable' | 'provisional_match' | 'provisional_mismatch';
+  budget_drift_rub: string | null;
+  financial_totals_are_not_additive: true;
+  amounts_are_not_proof_of_customer_consent: true;
+  items: CustomerConsentCoverageEntry[];
+  items_limited: boolean;
+};
+
 export type BudgetHubResponse = {
   summary: OsBudgetSummary;
   expenses: OsExpense[];
@@ -23,6 +57,9 @@ function newWarrantyClientRequestId(): string {
 }
 
 export const osApi = {
+  /** Advisory read only; an incomplete report must never be shown as approved. */
+  customerConsentCoverage: (userId: string, projectId: string) =>
+    req<CustomerConsentCoverage>(`/api/v1/projects/${projectId}/consent-coverage`, {}, userId),
   osBudget: (userId: string, projectId: string) => req<OsBudgetSummary>(`/api/v1/projects/${projectId}/os/budget`, {}, userId),
   budgetSummaryHub: async (userId: string, projectId: string) => {
     const { getBudgetThreshold } = await import('@/lib/budgetThreshold');
