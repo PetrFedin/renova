@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
-import { RenovaTheme, formatRub } from '@/constants/Theme';
+import { RenovaTheme } from '@/constants/Theme';
 import { api, ApiError, type WorkOrder } from '@/lib/api';
 import type {
   ClientScopeProposalInput, ClientScopeVersion,
@@ -24,6 +24,12 @@ type Props = {
   canWrite: boolean;
   onChanged: () => void | Promise<void>;
 };
+
+function formatScopeRub(amount: number): string {
+  return new Intl.NumberFormat('ru-RU', {
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  }).format(amount) + ' ₽';
+}
 
 function lines(value: string): string[] {
   return value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
@@ -303,7 +309,7 @@ export function WorkOrderScopeConsentPanel({
                 Специалист, стоимость и даты берутся из текущей карточки работы.
                 Измените их в предложении работы до его согласования, если они неверны.
               </Text>
-              <DetailLine title="Лимит по карточке" value={formatRub(workOrder.budget_planned)} />
+              <DetailLine title="Лимит по карточке" value={formatScopeRub(workOrder.budget_planned)} />
               <DetailLine title="Назначенный специалист" value={workOrder.assignee_id || 'не назначен'} />
               <DetailLine title="Дата начала — завершения" value={
                 (workOrder.planned_start || '—') + ' — ' + (workOrder.planned_end || '—')
