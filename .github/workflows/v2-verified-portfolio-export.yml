@@ -1,0 +1,82 @@
+name: V2 verified product media export
+on:
+  push:
+    branches: [portfolio/verified-v2-media-20261020]
+permissions:
+  contents: write
+  actions: read
+jobs:
+  review-export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Authenticate source capture and verify media provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl -fLsS --retry 3 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "https://api.github.com/repos/PetrFedin/renova/actions/artifacts/12226974888/zip" -o /tmp/v2-capture.zip
+          unzip -t /tmp/v2-capture.zip >/dev/null
+          python3 - <<'PY'
+          import hashlib,json,pathlib,zipfile
+          kind="renova"
+          schema="renova"
+          source_sha="a968fe71c6f287b072a275b2e72087a2a844e79c"
+          mapping=[["estimate.png","customer-estimate.png"],["budget.png","customer-budget.png"],["execution.png","customer-execution.png"],["product-tour-25s.mp4","customer-product-tour-25s.mp4"]]
+          dst=pathlib.Path("public/portfolio-v2/20261020")
+          dst.mkdir(parents=True,exist_ok=True)
+          with zipfile.ZipFile("/tmp/v2-capture.zip") as z:
+            names=z.namelist()
+            if schema=="syntha":
+              path=next(k for k in names if k.endswith("/manifest.json") and "/app-ui-media/" in k)
+              root=path[:-len("manifest.json")]
+              receipt=json.loads(z.read(path))
+              assert receipt["sourceGitSha"]==source_sha
+              assert receipt["actualProduction"] is False and receipt["testOnly"] is True
+              assert not receipt["credentialsCaptured"] and not receipt["consoleErrors"]
+              lookup={v["name"]:v for v in receipt["files"]}
+              locator=lambda key:root+key
+            elif schema=="renova":
+              path=next(k for k in names if k.endswith("/customer-desktop/manifest.json"))
+              root=path[:-len("manifest.json")]
+              receipt=json.loads(z.read(path))
+              assert receipt["sourceSha"]==source_sha
+              assert receipt["publication"]=="NOT_PUBLISHED" and receipt["data"]=="seeded-demo"
+              lookup={v["name"]:v for v in receipt["assets"]}
+              locator=lambda key:root+key
+            else:
+              receipt=json.loads(z.read("capture-receipt.json"))
+              assert receipt["checkedOutSha"]==source_sha and receipt["production"] is False
+              assert receipt["server"]["persistence"]=="MEMORY_FALLBACK"
+              lookup={pathlib.PurePosixPath(v["file"]).as_posix():v for v in receipt["screenshots"]+receipt["videos"]}
+              locator=lambda key:key
+            entries=[]
+            for src,name in mapping:
+              assert src in lookup,src
+              raw=z.read(locator(src))
+              if schema!="antiqua":
+                assert len(raw)==lookup[src]["bytes"]
+                assert hashlib.sha256(raw).hexdigest()==lookup[src]["sha256"]
+              else:
+                assert len(raw)==lookup[src]["bytes"]
+              assert 2000<len(raw)<5000000
+              if name.endswith(".png"):
+                assert raw.startswith(bytes.fromhex("89504e470d0a1a0a"))
+              else:
+                assert raw[4:8]==b"ftyp"
+              (dst/name).write_bytes(raw)
+              entries.append({"name":name,"sha256":hashlib.sha256(raw).hexdigest(),"bytes":len(raw)})
+            catalog={"project":kind,"source_sha":source_sha,"source_action_artifact":12226974888,"source_kind":"isolated-demonstration","production_admitted":False,"captured_date":"20261019","evidence_source":"GitHub Actions authenticated artifact; all individual file hashes cross-checked or computed against source receipt","files":entries}
+            (dst/"capture-manifest.json").write_text(json.dumps(catalog,ensure_ascii=False,indent=2)+"\n")
+            print("Source-verified",kind,len(entries),"media files; no customer production claim")
+          PY
+      - name: Preserve captures on review branch only
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/portfolio-v2/20261020
+          if git diff --cached --quiet; then echo "No new media"; exit 0; fi
+          git commit -m "media(review): preserve verified renova browser-demo source snapshots"
+          git push origin HEAD:portfolio/verified-v2-media-20261020
