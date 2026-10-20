@@ -170,3 +170,27 @@ async def test_audit_checks_all_source_links_not_only_first(db):
     assert expense["evidence_level"] == "broken"
     assert expense["references"]["source_type"] == "broken_receipt"
     assert snapshot["source_integrity_issues"] == 1
+
+
+@pytest.mark.asyncio
+async def test_non_rub_expense_is_not_reported_or_summed_as_rub(db):
+    _, _, _, project, _ = await _seed(db, "foreign-currency")
+    db.add(Expense(
+        id="consent-fx-expense", project_id=project.id,
+        title="Currency requires reconciliation", category="materials",
+        status="confirmed", amount=15.5, currency="USD",
+    ))
+    await db.commit()
+
+    snapshot = await consent_coverage_snapshot(db, project)
+    expense = next(item for item in snapshot["items"] if item["kind"] == "expense")
+    assert expense["evidence_level"] == "broken"
+    assert expense["risk"] == "critical"
+    assert expense["reason_code"] == "expense_currency_requires_reconciliation"
+    assert expense["amount_rub"] is None
+    assert expense["references"]["original_currency"] == "USD"
+    assert expense["references"]["original_amount"] == "15.50"
+    assert snapshot["recognized_expense_fact_rub"] is None
+    assert snapshot["budget_comparison"] == "unverifiable"
+    assert snapshot["budget_drift_rub"] is None
+    assert snapshot["source_integrity_issues"] == 1
