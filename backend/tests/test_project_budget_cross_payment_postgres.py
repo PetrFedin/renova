@@ -55,6 +55,10 @@ async def test_different_payments_refund_project_spend_is_serialized():
                     title="Shared budget invoice", amount=5000, created_by=contractor_id,
                     yookassa_payment_id=provider_id, payment_method="yookassa",
                 ))
+            # Persist both payment parents before creating their Expense children.
+            # Scalar FK IDs without ORM relationships do not guarantee flush order.
+            await db.flush()
+            for payment_id in payment_ids:
                 db.add(Expense(
                     project_id=project_id, payment_id=payment_id, title="Shared invoice",
                     category="works", amount=5000, status="confirmed",
