@@ -111,6 +111,7 @@ async def test_audit_separates_payment_from_consent_and_detects_foreign_links(db
         "change_orders":1,
     }
     assert snapshot["source_integrity_issues"] == 1
+    assert snapshot["items_requiring_evidence"] == snapshot["total_scanned"]
     by_id = {item["id"]:item for item in snapshot["items"]}
     assert by_id["consent-payment-mixed"]["evidence_level"] == "partial"
     assert by_id["consent-payment-mixed"]["consent_status"] == "not_verifiable"
