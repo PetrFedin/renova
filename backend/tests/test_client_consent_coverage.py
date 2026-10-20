@@ -122,6 +122,8 @@ async def test_audit_separates_payment_from_consent_and_detects_foreign_links(db
     assert by_id["consent-exp-manual"]["evidence_level"] == "missing"
     assert by_id["consent-work-mixed"]["references"]["missing_details"] == [
         "named_specialist", "dates", "scope_location",
+        "structured_quantity_unit", "explicit_inclusions_exclusions",
+        "payment_milestone",
     ]
     assert by_id["consent-purchase-mixed"]["evidence_level"] == "partial"
     assert await db.scalar(select(func.count()).select_from(DomainOutbox)) == outbox_before
