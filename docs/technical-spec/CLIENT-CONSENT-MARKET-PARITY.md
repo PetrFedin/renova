@@ -171,3 +171,14 @@ The following are **published vendor workflows** and not independently tested co
 **Evidence:** integration tests for customer/contractor/outsider ACL, source cross-project integrity, compound source IDs and outbox read-only behavior; source-level mobile UI contract in existing `mobile:test`. Exact new SHA CI/Pytest and real browser actions required before the feature is qualified. This candidate does **not** yet block any new customer-payable Payment/Purchase/Expense transaction; immutable WorkScopeVersion, CustomerConsent, FinancialAuthorization allocations, live bank/provider reconciliation remain P0 #757.
 
 **Main, staging and production:** HOLD. No cost-bearing services or DB migrations for this advisory slice.
+
+## 12. Adjacent Russian enterprise patterns (verified official descriptions, not direct B2C equivalents)
+
+| Reference system | Verified source feature | RENOVA capability to plan, with customer-first safeguard |
+| --- | --- | --- |
+| [1С:ERP Управление строительной организацией](https://solutions.1c.ru/catalog/uso2/features) | Estimate-based work schedules, labor/material/equipment resources, baseline and alternative Gantt scenarios, work-package accounting and plan-fact analysis. | P1 contract baseline vs actual scenario, named subcontractors and resource quantities for each work package, impact preview *before* customer-approved dates or caps change; optional import/export, no attempt to silently replace customers' accounting software. |
+| [ГРАНД-Смета 2026](https://grandsmeta.ru/product-grand-smeta) | Normative construction estimate calculations and performed-work accounting, with 2026.2 product revisions. | P2 selectable cost-estimation methodology with provenance/version, only for relevant contract types; do **not** present a normative price as a negotiated fixed contract price or claim legal equivalence without engineering review. |
+| [nanoCAD BIM Строительство](https://nanocad.ru/products/bim/stroitelstvo/) | Model geometry, updated specifications, areas/lengths/volumes and dynamic drawings. | P2 IFC/BIM element GUID → room/work-order measurement → estimate quantity, hash/version the measurement origin and request renewed customer consent when altered quantities change contracted price. |
+| [Битрикс24 invoice business process](https://helpdesk.bitrix24.ru/open/2215233/) | Multi-stage internal invoice approval followed by accounting payment and collection of supporting documents. | P1 internal validation (foreman → purchasing → finance) and overdue decisions **in addition to** mandatory separate authenticated project-customer approval; accounting post-payment documents never retroactively manufacture customer consent. |
+
+All integrations require explicit API/data-export contracts, license review and provenance classification. No claim of current RENOVA deployment or license to reproduce external implementation.
