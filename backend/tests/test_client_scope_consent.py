@@ -198,16 +198,23 @@ async def test_superseded_version_bad_digest_and_rejected_decision_fail_closed(d
                   risks=["Проверить поверхность до покраски"]),
     )
     assert second["version"] == 2
+    customer_id, project_id = customer.id, project.id
     with pytest.raises(ValueError, match="scope_version_superseded"):
         await scopes.decide_scope(
             db, project=project, scope_version_id=first["id"],
             actor=customer, digest=first["digest"], decision="approved",
         )
+    await db.rollback()
+    customer = await db.get(User, customer_id)
+    project = await db.get(Project, project_id)
     with pytest.raises(ValueError, match="scope_digest_mismatch"):
         await scopes.decide_scope(
             db, project=project, scope_version_id=second["id"],
             actor=customer, digest="f" * 64, decision="approved",
         )
+    await db.rollback()
+    customer = await db.get(User, customer_id)
+    project = await db.get(Project, project_id)
     rejected = await scopes.decide_scope(
         db, project=project, scope_version_id=second["id"],
         actor=customer, digest=second["digest"], decision="rejected",
@@ -231,9 +238,10 @@ async def test_stale_work_budget_and_changed_scope_do_not_create_consent(db):
             db, project=project, work_order_id=work.id, actor=contractor,
             **_fields(work, unit_price="2700.00", amount_cap="5400.00"),
         )
+    work_id, project_id = work.id, project.id
     await db.rollback()
-    work = await db.get(WorkOrder, work.id)
-    project = await db.get(Project, project.id)
+    work = await db.get(WorkOrder, work_id)
+    project = await db.get(Project, project_id)
     first = await scopes.propose_scope(
         db, project=project, work_order_id=work.id,
         actor=contractor, **_fields(work),
@@ -245,11 +253,13 @@ async def test_stale_work_budget_and_changed_scope_do_not_create_consent(db):
         project=project,
     )
     assert changed.updated_at.isoformat() != first["snapshot"]["work_order"]["updated_at"]
+    customer_id = customer.id
     with pytest.raises(ValueError, match="scope_stale_work_order"):
         await scopes.decide_scope(
             db, project=project, scope_version_id=first["id"],
             actor=customer, digest=first["digest"], decision="approved",
         )
+    await db.rollback()
     assert await db.scalar(select(func.count()).select_from(ClientScopeDecision)) == 0
     snapshot = await db.get(ClientScopeVersion, first["id"])
     assert snapshot.snapshot_sha256 == previous_hash
@@ -284,6 +294,7 @@ async def test_outbox_failure_rolls_back_proposal_and_decision(db, monkeypatch):
     async def fail(*_args, **_kwargs):
         raise RuntimeError("synthetic_outbox_failure")
 
+    project_id, work_id, contractor_id, customer_id = project.id, work.id, contractor.id, customer.id
     original = service.outbox.enqueue
     monkeypatch.setattr(service.outbox, "enqueue", fail)
     with pytest.raises(RuntimeError, match="synthetic_outbox_failure"):
@@ -292,6 +303,8 @@ async def test_outbox_failure_rolls_back_proposal_and_decision(db, monkeypatch):
             actor=contractor, **_fields(work),
         )
     assert await db.scalar(select(func.count()).select_from(ClientScopeVersion)) == 0
+    await db.rollback()
+    project, work, contractor, customer = await db.get(Project, project_id), await db.get(WorkOrder, work_id), await db.get(User, contractor_id), await db.get(User, customer_id)
     monkeypatch.setattr(service.outbox, "enqueue", original)
     proposed = await scopes.propose_scope(
         db, project=project, work_order_id=work.id,
@@ -334,26 +347,31 @@ async def test_canonical_work_order_transition_cannot_bypass_submitted_scope(db)
         db, project=project, work_order_id=work.id,
         actor=contractor, **_fields(work),
     )
+    work_id, project_id, customer_id = work.id, project.id, customer.id
     # An ordinary WorkOrder customer role approval is not an informed
     # approval of the newly submitted itemized scope.
+    work_id = work.id
     with pytest.raises(ValueError, match="work_order_detailed_scope_not_approved"):
         await work_order_service.transition(
             db, work, WorkOrderStatus.approved.value,
             customer.id, UserRole.customer, project=project,
             expected_updated_at=work.updated_at,
         )
+    await db.rollback()
     assert await db.scalar(select(WorkOrder.status).where(
-        WorkOrder.id == work.id
+        WorkOrder.id == work_id
     )) == WorkOrderStatus.published
     assert await db.scalar(select(func.count()).select_from(ClientFinancialAuthorization)) == 0
 
+    project = await db.get(Project, project_id)
+    customer = await db.get(User, customer_id)
     reviewed = await scopes.decide_scope(
         db, project=project, scope_version_id=proposed["id"],
         actor=customer, digest=proposed["digest"], decision="approved",
     )
     assert reviewed["authorization_id"]
-    current_work = await db.get(WorkOrder, work.id)
-    current_project = await db.get(Project, project.id)
+    current_work = await db.get(WorkOrder, work_id)
+    current_project = await db.get(Project, project_id)
     approved = await work_order_service.transition(
         db, current_work, WorkOrderStatus.approved.value,
         customer.id, UserRole.customer, project=current_project,
@@ -381,5 +399,6 @@ async def test_rejected_scope_blocks_legacy_status_approval_until_new_version(db
             customer.id, UserRole.customer, project=project,
             expected_updated_at=work.updated_at,
         )
-    assert await db.scalar(select(WorkOrder.status).where(WorkOrder.id == work.id)) == WorkOrderStatus.published
+    await db.rollback()
+    assert await db.scalar(select(WorkOrder.status).where(WorkOrder.id == work_id)) == WorkOrderStatus.published
     assert await db.scalar(select(func.count()).select_from(ClientFinancialAuthorization)) == 0
