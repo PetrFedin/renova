@@ -1,7 +1,6 @@
 """Customer-only evidence coverage: no false financial consent, no hidden orphan links."""
 from __future__ import annotations
 
-from datetime import datetime
 
 import pytest
 from fastapi import HTTPException
@@ -11,7 +10,7 @@ from app.api.v1 import approvals as approvals_api
 from app.models.entities import (
     ChangeOrder, ChangeOrderStatus, DomainOutbox, Expense, MaterialPick,
     MaterialPickStatus, Payment, PaymentStatus, PaymentType, Project,
-    Purchase, PurchaseItem, User, UserRole, WorkOrder, WorkOrderStatus,
+    Purchase, PurchaseItem, Receipt, User, UserRole, WorkOrder, WorkOrderStatus,
 )
 from app.services.client_consent_coverage_service import consent_coverage_snapshot
 
@@ -148,7 +147,7 @@ async def test_audit_checks_all_source_links_not_only_first(db):
         payment_type=PaymentType.advance, status=PaymentStatus.confirmed,
         title="Законный счёт", amount=50, created_by=contractor.id,
     )
-    foreign_receipt = __import__("app.models.entities", fromlist=["Receipt"]).Receipt(
+    foreign_receipt = Receipt(
         id="consent-sources-receipt", project_id=foreign.id, amount=50,
     )
     db.add_all([payment, foreign_receipt])
