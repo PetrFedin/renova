@@ -1,0 +1,31 @@
+{
+  "project": "renova",
+  "source_sha": "a968fe71c6f287b072a275b2e72087a2a844e79c",
+  "source_action_artifact": 12226974888,
+  "source_kind": "isolated-demonstration",
+  "production_admitted": false,
+  "captured_date": "20261019",
+  "evidence_source": "GitHub Actions authenticated artifact; all individual file hashes cross-checked or computed against source receipt",
+  "files": [
+    {
+      "name": "customer-estimate.png",
+      "sha256": "43750d8bc95d46433f3d8edce4b7d3b1fa268915e1a2c10e4b633c85e3450790",
+      "bytes": 72778
+    },
+    {
+      "name": "customer-budget.png",
+      "sha256": "2580bcc2ae4a11d44cee5c395a06d6904b54f90c5360d296ff08362cd6779a68",
+      "bytes": 64635
+    },
+    {
+      "name": "customer-execution.png",
+      "sha256": "aba44c0433740a42d5ad59c121535f50ad05d33075922c94acb4b17f9b7cb9d5",
+      "bytes": 45779
+    },
+    {
+      "name": "customer-product-tour-25s.mp4",
+      "sha256": "10432433f59e25e39f740776a4e44caa6cc81d8f327b1e47d8f935b31a19740a",
+      "bytes": 322071
+    }
+  ]
+}
