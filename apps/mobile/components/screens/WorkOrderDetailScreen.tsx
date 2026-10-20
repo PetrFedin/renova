@@ -74,7 +74,7 @@ export function WorkOrderDetailScreen() {
     mutationRef.current = true;
     setMutation(next);
     try {
-      const updated = await api.transitionWorkOrder(user.id, activeProject.id, workOrder.id, next);
+      const updated = await api.transitionWorkOrder(user.id, activeProject.id, workOrder.id, next, workOrder.updated_at);
       setWorkOrder(updated);
       await syncProjectSideEffects({ user, project: activeProject, role });
       alertWorkOrderAdvanced(role, next);
