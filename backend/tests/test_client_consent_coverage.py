@@ -104,6 +104,8 @@ async def test_audit_separates_payment_from_consent_and_detects_foreign_links(db
     assert snapshot["financial_totals_are_not_additive"] is True
     assert snapshot["read_consistency"] == "best_effort_not_an_atomic_snapshot"
     assert snapshot["recognized_expense_fact_rub"] == "136.90"
+    assert snapshot["budget_comparison"] == "provisional_match"
+    assert snapshot["budget_drift_rub"] == "0.00"
     assert snapshot["counts"] == {
         "payments":1, "expenses":4, "purchases":1, "work_orders":1,
         "change_orders":1,
@@ -132,6 +134,10 @@ async def test_customer_coverage_route_denies_contractor_and_cross_project_user(
     assert response["project_id"] == project.id
     assert response["counts"]["payments"] == 0
     assert response["complete_customer_consent_proven"] is False
+    # Diagnostic must highlight cached financial totals without matching sources,
+    # not mutate them to produce a seemingly clean financial result.
+    assert response["budget_comparison"] == "provisional_mismatch"
+    assert response["budget_drift_rub"] == "-136.90"
     for actor in (contractor, outsider):
         with pytest.raises(HTTPException) as caught:
             await approvals_api.customer_consent_coverage(project.id, user=actor, db=db)
