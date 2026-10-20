@@ -182,3 +182,7 @@ The following are **published vendor workflows** and not independently tested co
 | [Битрикс24 invoice business process](https://helpdesk.bitrix24.ru/open/2215233/) | Multi-stage internal invoice approval followed by accounting payment and collection of supporting documents. | P1 internal validation (foreman → purchasing → finance) and overdue decisions **in addition to** mandatory separate authenticated project-customer approval; accounting post-payment documents never retroactively manufacture customer consent. |
 
 All integrations require explicit API/data-export contracts, license review and provenance classification. No claim of current RENOVA deployment or license to reproduce external implementation.
+
+## 13. Non-RUB source and financial reconciliation truth (#759)
+
+The advisory consent coverage must never label a foreign-currency Expense as RUB or sum it without a verified FX conversion event. A `confirmed` Expense with `currency != RUB` remains visible at the original amount/currency, is flagged `expense_currency_requires_reconciliation` and renders `recognized_expense_fact_rub=null`, `budget_comparison=unverifiable`; it never silently changes `Project.budget_spent`. The canonical product still has no universal FX authorization for customer-payable spending; real bank facts must be preserved, not normalized by guessing. A negative backend regression guards this exact behavior. Full legal/FX integration and migration remain out of scope and require a separate PostgreSQL-backed implementation.
