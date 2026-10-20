@@ -180,9 +180,23 @@ export function WorkOrderDetailScreen() {
       done: 'Принять результат?',
       in_progress: role === 'customer' ? 'Вернуть на доработку?' : 'Вернуть в работу?',
     };
+    const approvalSummary = action.next === 'approved'
+      ? [
+          `Работа: ${workOrder.title || 'Не указана'}`,
+          `Зона: ${room?.name || 'Общая зона'}`,
+          `Тип: ${workOrder.work_type}`,
+          `Плановая стоимость: ${formatRub(workOrder.budget_planned)}`,
+          `Начало: ${workOrder.planned_start || 'не указано'}, окончание: ${workOrder.planned_end || 'не указано'}`,
+          workOrder.assignee_id
+            ? 'Ответственный назначен; уточните его ФИО перед утверждением.'
+            : 'Внимание: конкретный ответственный пока не назначен.',
+          `Условия: ${workOrder.notes?.trim() || 'Подробные условия не указаны.'}`,
+          'После согласования стоимость, сроки и описание нельзя менять без отдельного решения заказчика.',
+        ].join('\n')
+      : `«${workOrder.title || 'Работа'}» → ${WORK_STATUS_LABEL[action.next]}`;
     showActionConfirm({
       title: titles[action.next] || `${action.label}?`,
-      message: `«${workOrder.title || 'Работа'}» → ${WORK_STATUS_LABEL[action.next]}`,
+      message: approvalSummary,
       primaryLabel: action.label,
       primaryDestructive: action.intent === 'destructive',
       onPrimary: () => { void execute(); },
