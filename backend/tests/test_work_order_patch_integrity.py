@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.db.base import Base
 from app.models.client_write_request import ClientWriteRequest  # noqa: F401
 from app.models.entities import (
+    DomainOutbox,
     Project,
     ProjectViewer,
     Room,
@@ -57,7 +58,8 @@ async def add_work_order(db, *, project_id: str, work_order_id: str, created_by:
         project_id=project_id,
         title=f"Task {work_order_id}",
         work_type="painting",
-        status=WorkOrderStatus.approved,
+        # Mutable draft/proposal fixture: accepted WorkOrders are immutable.
+        status=WorkOrderStatus.published,
         created_by=created_by,
     )
     db.add(work_order)
@@ -346,3 +348,92 @@ async def test_patch_rejects_lifecycle_dates_invalid_schedule_and_budget(work_or
     assert current.planned_start is None
     assert current.planned_end is None
     assert current.budget_planned == 0
+
+
+@pytest.mark.asyncio
+async def test_customer_approved_work_scope_is_immutable_even_for_customer(work_order_db):
+    customer, contractor, project = await seed_hybrid_project(work_order_db)
+    row = await add_work_order(
+        work_order_db,
+        project_id=project.id,
+        work_order_id="approved-scope-immutable",
+        created_by=contractor.id,
+    )
+    row.status = WorkOrderStatus.approved
+    row.budget_planned = 18000
+    row.notes = "Согласованная работа с включёнными расходами"
+    row.planned_end = date(2026, 11, 20)
+    await work_order_db.commit()
+    await work_order_db.refresh(row)
+    first_version = row.updated_at
+
+    for role_id, patch in (
+        (contractor.id, {"budget_planned": 25000}),
+        (customer.id, {"planned_end": date(2026, 12, 1)}),
+        (contractor.id, {"work_type": "extra_painting"}),
+        (contractor.id, {"assignee_id": contractor.id}),
+        (customer.id, {"notes": "Тихая замена исключений"}),
+        (contractor.id, {"title": "Иные обязательства"}),
+        (customer.id, {"room_id": None}),
+        (contractor.id, {"stage_id": None}),
+    ):
+        current = await work_order_db.get(WorkOrder, row.id)
+        with pytest.raises(ValueError, match="work_order_approved_scope_locked"):
+            await work_order_service.update_work_order(
+                work_order_db, current, patch,
+                expected_updated_at=current.updated_at,
+                actor_id=role_id, project=project,
+            )
+
+    current = await work_order_db.get(WorkOrder, row.id)
+    assert current.status == WorkOrderStatus.approved
+    assert current.budget_planned == 18000
+    assert current.planned_end == date(2026, 11, 20)
+    assert current.notes == "Согласованная работа с включёнными расходами"
+    assert current.updated_at == first_version
+    assert await work_order_db.scalar(
+        select(DomainOutbox.id).where(
+            DomainOutbox.aggregate_type == "work_order",
+            DomainOutbox.aggregate_id == row.id,
+        ).limit(1)
+    ) is None
+
+
+@pytest.mark.asyncio
+async def test_pending_work_scope_price_change_notifies_customer_with_audit(work_order_db):
+    import json
+
+    customer, contractor, project = await seed_hybrid_project(work_order_db)
+    row = await add_work_order(
+        work_order_db,
+        project_id=project.id,
+        work_order_id="published-price-diff",
+        created_by=contractor.id,
+    )
+    updated = await work_order_service.update_work_order(
+        work_order_db,
+        row,
+        {"budget_planned": 4500, "planned_end": date(2026, 11, 10)},
+        expected_updated_at=row.updated_at,
+        actor_id=contractor.id,
+        project=project,
+    )
+    assert updated.budget_planned == 4500
+    outbox_rows = list(
+        (await work_order_db.execute(
+            select(DomainOutbox).where(
+                DomainOutbox.aggregate_type == "work_order",
+                DomainOutbox.aggregate_id == row.id,
+            )
+        )).scalars().all()
+    )
+    assert sorted(item.event_type for item in outbox_rows) == [
+        "activity.created", "notification.created",
+    ]
+    activity = next(row for row in outbox_rows if row.event_type == "activity.created")
+    notice = next(row for row in outbox_rows if row.event_type == "notification.created")
+    content = json.loads(activity.payload_json)
+    changes = json.loads(content["body"])
+    assert changes["budget_planned"] == {"before": 0, "after": 4500}
+    assert changes["planned_end"] == {"before": None, "after": "2026-11-10"}
+    assert json.loads(notice.payload_json)["user_id"] == customer.id
