@@ -117,6 +117,8 @@ async def test_audit_separates_payment_from_consent_and_detects_foreign_links(db
     assert by_id["consent-payment-mixed"]["consent_status"] == "not_verifiable"
     assert by_id["consent-exp-foreign"]["evidence_level"] == "broken"
     assert by_id["consent-exp-foreign"]["risk"] == "critical"
+    assert by_id["consent-exp-foreign"]["references"]["payment_id"] is None
+    assert "payment" in by_id["consent-exp-foreign"]["references"]["foreign_or_missing_source_types"]
     assert by_id["consent-exp-manual"]["evidence_level"] == "missing"
     assert by_id["consent-work-mixed"]["references"]["missing_details"] == [
         "named_specialist", "dates", "scope_location",
@@ -170,6 +172,9 @@ async def test_audit_checks_all_source_links_not_only_first(db):
     expense = next(item for item in snapshot["items"] if item["kind"] == "expense")
     assert expense["evidence_level"] == "broken"
     assert expense["references"]["source_type"] == "broken_receipt"
+    assert expense["references"]["payment_id"] == payment.id
+    assert expense["references"]["receipt_id"] is None
+    assert expense["references"]["foreign_or_missing_source_types"] == ["receipt"]
     assert snapshot["source_integrity_issues"] == 1
 
 
