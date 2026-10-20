@@ -51,14 +51,15 @@ async def _project_rows(db: AsyncSession, model, project_id: str):
 
 def _entry(kind: str, row, *, status: str, evidence: str,
            risk: str, reason: str, amount: object | None = None,
-           references: dict | None = None) -> dict:
+           currency: str = "RUB", references: dict | None = None) -> dict:
     return {
         "kind": kind,
         "id": row.id,
         "title": (getattr(row, "title", None) or getattr(row, "name", None)
                   or getattr(row, "supplier_name", None) or kind),
         "status": status,
-        "amount_rub": _money(amount) if amount is not None else None,
+        # Never relabel a non-RUB amount as RUB or silently sum FX balances.
+        "amount_rub": _money(amount) if amount is not None and currency == "RUB" else None,
         "consent_status": "not_verifiable",
         "evidence_level": evidence,
         "risk": risk,
@@ -157,19 +158,29 @@ async def consent_coverage_snapshot(db: AsyncSession, project: Project) -> dict:
         else:
             source = "manual_unlinked"
             evidence, risk, reason = "missing", "high", "customer_consent_and_source_not_attested"
+        currency = str(expense.currency or "").strip().upper()
+        currency_conflict = currency != "RUB"
+        if currency_conflict:
+            # Retain the evidence and native amount, but never present it as RUB.
+            if evidence != "broken":
+                source_integrity_issues += 1
+            evidence, risk, reason = "broken", "critical", "expense_currency_requires_reconciliation"
         status = _state(expense.status)
         if status == "confirmed":
             money = _money(expense.amount)
-            if money == "invalid":
+            if money == "invalid" or currency_conflict:
                 actual_expense_fact_valid = False
-                source_integrity_issues += 1
+                if money == "invalid" and not currency_conflict and evidence != "broken":
+                    source_integrity_issues += 1
             else:
                 actual_expense_fact += Decimal(money)
         entries.append(_entry(
             "expense", expense, status=status, evidence=evidence,
-            risk=risk, reason=reason, amount=expense.amount,
+            risk=risk, reason=reason, amount=expense.amount, currency=currency,
             references={"source_type":source, "payment_id":expense.payment_id,
-                        "receipt_id":expense.receipt_id, "purchase_id":expense.purchase_id},
+                        "receipt_id":expense.receipt_id, "purchase_id":expense.purchase_id,
+                        "original_currency":currency,
+                        "original_amount":_money(expense.amount)},
         ))
 
     for purchase in purchases:
