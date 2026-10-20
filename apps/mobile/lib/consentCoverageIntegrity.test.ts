@@ -38,6 +38,9 @@ assert.match(panel, /complete_customer_consent_proven|Полное индиви�
 assert.match(panel, /Проверка недоступна\. Это не означает/);
 assert.match(panel, /report\.scan_truncated \|\| report\.items_limited/);
 assert.match(panel, /useProjectDataReload\(reload\)/);
+assert.match(panel, /requestGeneration\.current/, 'Out-of-order requests must not replace current financial facts');
+assert.match(panel, /report\?\.project_id === projectId/, 'Never leak another project snapshot while switching');
+assert.match(panel, /consent_coverage_project_mismatch/, 'Server response must match requested project');
 
 assert.match(tests, /test_audit_separates_payment_from_consent_and_detects_foreign_links/);
 assert.match(tests, /test_customer_coverage_route_denies_contractor_and_cross_project_user/);
