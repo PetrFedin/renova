@@ -30,6 +30,8 @@ export type CustomerConsentCoverage = {
   items_requiring_evidence: number;
   recognized_expense_fact_rub: string | null;
   project_cached_budget_spent_rub: string;
+  budget_comparison: 'unverifiable' | 'provisional_match' | 'provisional_mismatch';
+  budget_drift_rub: string | null;
   financial_totals_are_not_additive: true;
   amounts_are_not_proof_of_customer_consent: true;
   items: CustomerConsentCoverageEntry[];
