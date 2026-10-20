@@ -60,6 +60,8 @@ class WorkOrderPatch(BaseModel):
 
 class WorkOrderTransition(BaseModel):
     status: str
+    # Required for an approval decision: the exact reviewed WorkOrder version.
+    expected_updated_at: datetime | None = None
 
 
 @router.get("/{project_id}/work-orders")
@@ -158,8 +160,10 @@ async def transition_work_order(project_id: str, work_order_id: str, body: WorkO
             user.id,
             user.role,
             project=project,
+            expected_updated_at=body.expected_updated_at,
         )
     except ValueError as error:
+        await db.rollback()
         code = str(error)
         if code in (
             "only_customer_can_accept_work_order",
@@ -172,6 +176,7 @@ async def transition_work_order(project_id: str, work_order_id: str, body: WorkO
             "work_order_project_missing",
             "work_order_stale",
             "work_order_missing",
+            "work_order_approval_version_required",
         ):
             raise HTTPException(409, code) from error
         raise HTTPException(400, code) from error
