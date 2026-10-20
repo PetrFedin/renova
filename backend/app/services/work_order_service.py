@@ -6,7 +6,7 @@ extracted core module remains private; callers must import this module.
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -142,6 +142,7 @@ async def transition(
     actor_role: UserRole | str | None = None,
     *,
     project: Project | None = None,
+    expected_updated_at: datetime | None = None,
 ) -> WorkOrder:
     """Transition a WorkOrder after row-locking and object-level authorization.
 
@@ -159,6 +160,20 @@ async def transition(
 
     current = _work_order_status(work_order)
     try:
+        if new_status in {WorkOrderStatus.approved.value, WorkOrderStatus.done.value}:
+            # A generic customer role or shared viewer must not authorize the
+            # named customer's work or quality decision on another project.
+            if user_id != project_row.customer_id:
+                raise ValueError("work_order_customer_owner_required")
+        if new_status == WorkOrderStatus.approved.value and isinstance(work_order, WorkOrder):
+            if expected_updated_at is None:
+                raise ValueError("work_order_approval_version_required")
+            if (
+                work_order.updated_at is None
+                or _normalize_expected_updated_at(work_order.updated_at)
+                != _normalize_expected_updated_at(expected_updated_at)
+            ):
+                raise ValueError("work_order_stale")
         effective_role = await _resolve_transition_actor_role(
             db,
             project=project_row,
