@@ -1,5 +1,5 @@
 /** Панель детализации работы — заметки, связи, подсказки по процессу */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
 import { notifyAlert, notifyError } from '@/lib/notify';
 import { RenovaTheme } from '@/constants/Theme';
@@ -46,8 +46,22 @@ export function WorkOrderDetailPanel({
   const [notes, setNotes] = useState(wo.notes || '');
   const [saving, setSaving] = useState(false);
   const status = (wo.status in WORK_STATUS_LABEL ? wo.status : 'draft') as WorkOrderStatus;
+  const scopeEditable = ['draft', 'published', 'negotiating'].includes(status);
+
+  useEffect(() => {
+    // A new server revision supersedes the local draft: do not present stale
+    // cached notes as the customer's current approved conditions.
+    setNotes(wo.notes || '');
+  }, [wo.id, wo.updated_at, wo.notes]);
 
   async function saveNotes() {
+    if (!scopeEditable) {
+      notifyAlert(
+        'Описание защищено',
+        'Условия уже согласованы заказчиком. Уточнения и дополнительные работы оформляются новым запросом на согласование.',
+      );
+      return;
+    }
     const expectedUpdatedAt = wo.updated_at;
     if (!expectedUpdatedAt) {
       onUpdated();
@@ -70,6 +84,14 @@ export function WorkOrderDetailPanel({
       if (isOfflineQueued(e)) {
         notifyOfflineQueued('Описание работы');
         onUpdated();
+        return;
+      }
+      if (e instanceof ApiError && e.status === 409 && e.code === 'work_order_approved_scope_locked') {
+        onUpdated();
+        notifyAlert(
+          'Описание защищено',
+          'Работа уже согласована. Нельзя менять условия без нового согласования заказчика.',
+        );
         return;
       }
       if (e instanceof ApiError && e.status === 409 && e.code === 'work_order_stale') {
@@ -123,25 +145,40 @@ export function WorkOrderDetailPanel({
       <View style={s.card}>
         <Text style={s.blockTitle}>Описание работы</Text>
         <Text style={s.hint}>
-          {role === 'customer'
-            ? 'Опишите пожелания, ограничения, что проверить. Исполнитель увидит здесь и в чате.'
-            : 'Детали для заказчика: объём, нюансы, что нужно согласовать до старта.'}
+          {scopeEditable
+            ? role === 'customer'
+              ? 'Опишите пожелания, ограничения и критерии проверки до согласования. Исполнитель увидит их в работе и чате.'
+              : 'Укажите объём, исключения и нюансы до согласования заказчиком.'
+            : 'Согласованное описание сохранено без права незаметного изменения. Дополнения требуют нового решения заказчика.'}
         </Text>
-        <TextInput
-          style={s.notesInput}
-          value={notes}
-          onChangeText={setNotes}
-          placeholder="Например: заменить розетки, фото до начала, согласовать цвет..."
-          multiline
-          editable={canWrite}
-        />
-        {canWrite && (
-          <PrimaryButton
-            title={saving ? 'Сохранение…' : 'Сохранить описание'}
-            variant="outline"
-            disabled={saving || notes.trim() === (wo.notes || '').trim()}
-            onPress={saveNotes}
-          />
+        {scopeEditable ? (
+          <>
+            <TextInput
+              style={s.notesInput}
+              value={notes}
+              onChangeText={setNotes}
+              placeholder="Объём, исключения, условия, критерии приёмки..."
+              multiline
+              editable={canWrite}
+            />
+            {canWrite ? (
+              <PrimaryButton
+                title={saving ? 'Сохранение…' : 'Сохранить описание предложения'}
+                variant="outline"
+                disabled={saving || notes.trim() === (wo.notes || '').trim()}
+                onPress={saveNotes}
+              />
+            ) : null}
+          </>
+        ) : (
+          <>
+            <Text style={s.row}>{wo.notes?.trim() || 'Дополнительное описание не было указано.'}</Text>
+            <PrimaryButton
+              title="Обсудить дополнительные работы"
+              variant="outline"
+              onPress={() => openLink('approvals')}
+            />
+          </>
         )}
       </View>
 

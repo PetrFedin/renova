@@ -60,6 +60,8 @@ class WorkOrderPatch(BaseModel):
 
 class WorkOrderTransition(BaseModel):
     status: str
+    # Required for an approval decision: the exact reviewed WorkOrder version.
+    expected_updated_at: datetime | None = None
 
 
 @router.get("/{project_id}/work-orders")
@@ -128,6 +130,14 @@ async def patch_work_order(project_id: str, work_order_id: str, body: WorkOrderP
         code = str(error)
         if code == "work_order_missing":
             raise HTTPException(404, code) from error
+        if code == "work_order_approved_scope_locked":
+            raise HTTPException(
+                409,
+                detail={
+                    "code": code,
+                    "message": "Согласованные стоимость, сроки, исполнитель и объём неизменяемы. Для изменений необходимо новое согласование заказчика.",
+                },
+            ) from error
         if code in ("work_order_stale", "work_order_project_missing"):
             raise HTTPException(409, code) from error
         if code == "work_order_assignee_forbidden":
@@ -150,11 +160,17 @@ async def transition_work_order(project_id: str, work_order_id: str, body: WorkO
             user.id,
             user.role,
             project=project,
+            expected_updated_at=body.expected_updated_at,
         )
     except ValueError as error:
+        # The facade owns transaction rollback on domain denials. Retain API
+        # rollback only for an actual session (unit role-policy fakes are not DBs).
+        if isinstance(db, AsyncSession):
+            await db.rollback()
         code = str(error)
         if code in (
             "only_customer_can_accept_work_order",
+            "work_order_customer_owner_required",
             "work_order_role_forbidden",
             wo_svc.WORK_ORDER_FORBIDDEN,
         ):
@@ -164,6 +180,7 @@ async def transition_work_order(project_id: str, work_order_id: str, body: WorkO
             "work_order_project_missing",
             "work_order_stale",
             "work_order_missing",
+            "work_order_approval_version_required",
         ):
             raise HTTPException(409, code) from error
         raise HTTPException(400, code) from error

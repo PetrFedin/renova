@@ -36,6 +36,12 @@ function transitionErrorMessage(error: unknown): string {
     : (error.detail as { message?: string; detail?: string } | undefined)?.message
       || (error.detail as { detail?: string } | undefined)?.detail;
   if (error.status === 403) return 'Этот переход недоступен для вашей роли.';
+  if (error.status === 409 && error.code === 'work_order_approval_version_required') {
+    return 'Текущая версия условий недоступна. Обновите карточку и проверьте состав, стоимость, сроки и исполнителя перед согласованием.';
+  }
+  if (error.status === 409 && error.code === 'work_order_stale') {
+    return 'Условия работы изменились после просмотра. Проверьте новую версию, прежде чем её согласовать.';
+  }
   if (error.status === 409 && detail === 'payment_transition_required') {
     return 'Статус оплаты подтверждается только через счёт, чек или банковскую выписку.';
   }
@@ -71,10 +77,18 @@ export function WorkOrderDetailScreen() {
 
   const transition = async (next: WorkOrderStatus): Promise<boolean> => {
     if (!user || !activeProject || !workOrder || mutationRef.current) return false;
+    if (next === 'approved' && !workOrder.updated_at) {
+      showActionConfirm({
+        title: 'Проверьте условия перед согласованием',
+        message: 'Не удалось определить точную версию работы. Обновляем состав, стоимость, сроки и исполнителя.',
+      });
+      await reload();
+      return false;
+    }
     mutationRef.current = true;
     setMutation(next);
     try {
-      const updated = await api.transitionWorkOrder(user.id, activeProject.id, workOrder.id, next);
+      const updated = await api.transitionWorkOrder(user.id, activeProject.id, workOrder.id, next, workOrder.updated_at);
       setWorkOrder(updated);
       await syncProjectSideEffects({ user, project: activeProject, role });
       alertWorkOrderAdvanced(role, next);
@@ -166,9 +180,23 @@ export function WorkOrderDetailScreen() {
       done: 'Принять результат?',
       in_progress: role === 'customer' ? 'Вернуть на доработку?' : 'Вернуть в работу?',
     };
+    const approvalSummary = action.next === 'approved'
+      ? [
+          `Работа: ${workOrder.title || 'Не указана'}`,
+          `Зона: ${room?.name || 'Общая зона'}`,
+          `Тип: ${workOrder.work_type}`,
+          `Плановая стоимость: ${formatRub(workOrder.budget_planned)}`,
+          `Начало: ${workOrder.planned_start || 'не указано'}, окончание: ${workOrder.planned_end || 'не указано'}`,
+          workOrder.assignee_id
+            ? 'Ответственный назначен; уточните его ФИО перед утверждением.'
+            : 'Внимание: конкретный ответственный пока не назначен.',
+          `Условия: ${workOrder.notes?.trim() || 'Подробные условия не указаны.'}`,
+          'После согласования стоимость, сроки и описание нельзя менять без отдельного решения заказчика.',
+        ].join('\n')
+      : `«${workOrder.title || 'Работа'}» → ${WORK_STATUS_LABEL[action.next]}`;
     showActionConfirm({
       title: titles[action.next] || `${action.label}?`,
-      message: `«${workOrder.title || 'Работа'}» → ${WORK_STATUS_LABEL[action.next]}`,
+      message: approvalSummary,
       primaryLabel: action.label,
       primaryDestructive: action.intent === 'destructive',
       onPrimary: () => { void execute(); },

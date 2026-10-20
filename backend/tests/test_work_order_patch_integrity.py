@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.db.base import Base
 from app.models.client_write_request import ClientWriteRequest  # noqa: F401
 from app.models.entities import (
+    DomainOutbox,
     Project,
     ProjectViewer,
     Room,
@@ -57,7 +58,8 @@ async def add_work_order(db, *, project_id: str, work_order_id: str, created_by:
         project_id=project_id,
         title=f"Task {work_order_id}",
         work_type="painting",
-        status=WorkOrderStatus.approved,
+        # Mutable draft/proposal fixture: accepted WorkOrders are immutable.
+        status=WorkOrderStatus.published,
         created_by=created_by,
     )
     db.add(work_order)
@@ -346,3 +348,161 @@ async def test_patch_rejects_lifecycle_dates_invalid_schedule_and_budget(work_or
     assert current.planned_start is None
     assert current.planned_end is None
     assert current.budget_planned == 0
+
+
+@pytest.mark.asyncio
+async def test_customer_approved_work_scope_is_immutable_even_for_customer(work_order_db):
+    customer, contractor, project = await seed_hybrid_project(work_order_db)
+    row = await add_work_order(
+        work_order_db,
+        project_id=project.id,
+        work_order_id="approved-scope-immutable",
+        created_by=contractor.id,
+    )
+    row.status = WorkOrderStatus.approved
+    row.budget_planned = 18000
+    row.notes = "Согласованная работа с включёнными расходами"
+    row.planned_end = date(2026, 11, 20)
+    await work_order_db.commit()
+    await work_order_db.refresh(row)
+    first_version = row.updated_at
+    row_id, project_id = row.id, project.id
+    customer_id, contractor_id = customer.id, contractor.id
+
+    for role_id, patch in (
+        (contractor_id, {"budget_planned": 25000}),
+        (customer_id, {"planned_end": date(2026, 12, 1)}),
+        (contractor_id, {"work_type": "extra_painting"}),
+        (contractor_id, {"assignee_id": contractor_id}),
+        (customer_id, {"notes": "Тихая замена исключений"}),
+        (contractor_id, {"title": "Иные обязательства"}),
+        (customer_id, {"room_id": None}),
+        (contractor_id, {"stage_id": None}),
+    ):
+        # The refused mutation rolls back and expires the ORM identity map.
+        # Re-hydrate both objects before the next request simulation.
+        current = await work_order_db.get(WorkOrder, row_id)
+        current_project = await work_order_db.get(Project, project_id)
+        assert current is not None and current_project is not None
+        with pytest.raises(ValueError, match="work_order_approved_scope_locked"):
+            await work_order_service.update_work_order(
+                work_order_db, current, patch,
+                expected_updated_at=current.updated_at,
+                actor_id=role_id, project=current_project,
+            )
+
+    current = await work_order_db.get(WorkOrder, row_id)
+    assert current.status == WorkOrderStatus.approved
+    assert current.budget_planned == 18000
+    assert current.planned_end == date(2026, 11, 20)
+    assert current.notes == "Согласованная работа с включёнными расходами"
+    assert current.updated_at == first_version
+    assert await work_order_db.scalar(
+        select(DomainOutbox.id).where(
+            DomainOutbox.aggregate_type == "work_order",
+            DomainOutbox.aggregate_id == row_id,
+        ).limit(1)
+    ) is None
+
+
+@pytest.mark.asyncio
+async def test_pending_work_scope_price_change_notifies_customer_with_audit(work_order_db):
+    import json
+
+    customer, contractor, project = await seed_hybrid_project(work_order_db)
+    row = await add_work_order(
+        work_order_db,
+        project_id=project.id,
+        work_order_id="published-price-diff",
+        created_by=contractor.id,
+    )
+    updated = await work_order_service.update_work_order(
+        work_order_db,
+        row,
+        {"budget_planned": 4500, "planned_end": date(2026, 11, 10)},
+        expected_updated_at=row.updated_at,
+        actor_id=contractor.id,
+        project=project,
+    )
+    assert updated.budget_planned == 4500
+    outbox_rows = list(
+        (await work_order_db.execute(
+            select(DomainOutbox).where(
+                DomainOutbox.aggregate_type == "work_order",
+                DomainOutbox.aggregate_id == row.id,
+            )
+        )).scalars().all()
+    )
+    assert sorted(item.event_type for item in outbox_rows) == [
+        "activity.created", "notification.created",
+    ]
+    activity = next(row for row in outbox_rows if row.event_type == "activity.created")
+    notice = next(row for row in outbox_rows if row.event_type == "notification.created")
+    content = json.loads(activity.payload_json)
+    changes = json.loads(content["body"])
+    assert changes["budget_planned"] == {"before": 0, "after": 4500}
+    assert changes["planned_end"] == {"before": None, "after": "2026-11-10"}
+    assert json.loads(notice.payload_json)["user_id"] == customer.id
+
+
+@pytest.mark.asyncio
+async def test_customer_approval_requires_exact_visible_scope_revision(work_order_db):
+    from datetime import datetime
+
+    customer, contractor, project = await seed_hybrid_project(work_order_db)
+    project_id, customer_id = project.id, customer.id
+    row = await add_work_order(
+        work_order_db, project_id=project_id,
+        work_order_id="approval-version-bound", created_by=contractor.id,
+    )
+    row_id, reviewed_at = row.id, row.updated_at
+    assert reviewed_at is not None
+
+    for reviewed_version, expected_error in (
+        (None, "work_order_approval_version_required"),
+        (datetime(2020, 1, 1), "work_order_stale"),
+    ):
+        current = await work_order_db.get(WorkOrder, row_id)
+        current_project = await work_order_db.get(Project, project_id)
+        with pytest.raises(ValueError, match=expected_error):
+            await work_order_service.transition(
+                work_order_db, current, WorkOrderStatus.approved.value,
+                customer_id, UserRole.customer, project=current_project,
+                expected_updated_at=reviewed_version,
+            )
+        await work_order_db.rollback()
+        assert await work_order_db.scalar(
+            select(WorkOrder.status).where(WorkOrder.id == row_id)
+        ) == WorkOrderStatus.published
+
+    # A globally customer-typed user is not necessarily this project's
+    # customer. Even with a valid revision token, the other actor is denied.
+    outsider = User(
+        id="approval-foreign-customer", phone="+79990000419", role=UserRole.customer,
+    )
+    work_order_db.add(outsider)
+    await work_order_db.commit()
+    outsider_id = outsider.id
+    current = await work_order_db.get(WorkOrder, row_id)
+    current_project = await work_order_db.get(Project, project_id)
+    with pytest.raises(ValueError, match="work_order_customer_owner_required"):
+        await work_order_service.transition(
+            work_order_db, current, WorkOrderStatus.approved.value,
+            outsider_id, UserRole.customer, project=current_project,
+            expected_updated_at=reviewed_at,
+        )
+    await work_order_db.rollback()
+
+    # No third-party role or stale/offline state may turn approval into a
+    # last-write-wins mutation. The exact current token is admissible.
+    current = await work_order_db.get(WorkOrder, row_id)
+    current_project = await work_order_db.get(Project, project_id)
+    approved = await work_order_service.transition(
+        work_order_db, current, WorkOrderStatus.approved.value,
+        customer_id, UserRole.customer, project=current_project,
+        expected_updated_at=reviewed_at,
+    )
+    assert approved.status == WorkOrderStatus.approved
+    assert await work_order_db.scalar(
+        select(WorkOrder.status).where(WorkOrder.id == row_id)
+    ) == WorkOrderStatus.approved

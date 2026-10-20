@@ -83,11 +83,23 @@ export const workOrdersApi = {
       throw new Error('offline_queued');
     }
   },
-  transitionWorkOrder: async (userId: string, projectId: string, workOrderId: string, status: string) => {
+  transitionWorkOrder: async (
+    userId: string,
+    projectId: string,
+    workOrderId: string,
+    status: string,
+    expectedUpdatedAt?: string | null,
+  ) => {
+    if (status === 'approved' && !expectedUpdatedAt) {
+      throw new Error('work_order_approval_version_required');
+    }
+    const transitionBody = status === 'approved'
+      ? { status, expected_updated_at: expectedUpdatedAt }
+      : { status };
     try {
       const updated = await req<WorkOrder>(
         `/api/v1/projects/${projectId}/work-orders/${workOrderId}/transition`,
-        { method: 'POST', body: JSON.stringify({ status }) },
+        { method: 'POST', body: JSON.stringify(transitionBody) },
         userId,
       );
       await invalidateCachedGet(`/api/v1/projects/${projectId}/work-orders`, userId);
@@ -98,7 +110,7 @@ export const workOrdersApi = {
       await enqueue({
         path: `/api/v1/projects/${projectId}/work-orders/${workOrderId}/transition`,
         method: 'POST',
-        body: JSON.stringify({ status }),
+        body: JSON.stringify(transitionBody),
         userId,
       });
       throw new Error('offline_queued');
