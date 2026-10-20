@@ -170,6 +170,14 @@ async def transition(
             # A generic customer role or shared viewer must not authorize the
             # named customer's work or quality decision on another project.
             if user_id != project_row.customer_id:
+                # Preserve the historic contractor acceptance denial while
+                # distinguishing a customer of some *other* project. Neither
+                # actor is allowed to accept this object's outcome.
+                if (
+                    new_status == WorkOrderStatus.done.value
+                    and role_value(actor_role) != UserRole.customer.value
+                ):
+                    raise ValueError("only_customer_can_accept_work_order")
                 raise ValueError("work_order_customer_owner_required")
         if new_status == WorkOrderStatus.approved.value and isinstance(work_order, WorkOrder):
             if expected_updated_at is None:
