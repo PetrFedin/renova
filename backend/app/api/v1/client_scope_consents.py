@@ -85,7 +85,11 @@ async def list_scope_versions(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_project(db, project_id, user, write=False)
+    project = await require_project(db, project_id, user, write=False)
+    # Generic project readers, team members and portal viewers must not learn
+    # price/exclusions or customer-decision evidence without financial rights.
+    if user.id not in {project.customer_id, project.contractor_id}:
+        raise HTTPException(403, detail={"code":"scope_evidence_party_only"})
     return {
         "items": await scopes.list_scope_versions(
             db, project_id=project_id, work_order_id=work_order_id,
