@@ -52,6 +52,7 @@ assert.match(routes, /"financial_allocations_enforced": False/);
 assert.match(api, /listScopeVersions:/);
 assert.match(api, /proposeScopeVersion:/);
 assert.match(api, /decideScopeVersion:/);
+assert.match(api, /status === 'approved' \|\| !isQueueableWriteError\(e\)/, 'Legacy customer approval must not be queued offline');
 const consentOnly = api.slice(api.indexOf('listScopeVersions:'), api.indexOf('listWorkOrders:'));
 assert.doesNotMatch(consentOnly, /enqueue\(|offlineQueue|isQueueableWriteError/, 'Scope consent must never queue a speculative signature offline');
 assert.match(panel, /disclosuresChecked/);
