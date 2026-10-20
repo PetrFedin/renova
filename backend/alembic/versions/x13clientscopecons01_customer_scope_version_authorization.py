@@ -48,7 +48,7 @@ def upgrade() -> None:
         sa.Column("project_id", sa.String(36), sa.ForeignKey("projects.id", ondelete="CASCADE"), nullable=False),
         sa.Column("scope_version_id", sa.String(36), sa.ForeignKey("client_scope_versions.id", ondelete="CASCADE"), nullable=False),
         sa.Column("customer_id", sa.String(36), sa.ForeignKey("users.id"), nullable=False),
-        sa.Column("approved_digest", sa.String(64), nullable=False),
+        sa.Column("reviewed_digest", sa.String(64), nullable=False),
         sa.Column("decision", sa.String(16), nullable=False),
         sa.Column("reason", sa.String(1000), nullable=True),
         sa.Column("decided_at", sa.DateTime(), nullable=False),
