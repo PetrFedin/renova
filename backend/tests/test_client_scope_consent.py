@@ -316,3 +316,61 @@ async def test_db_enforces_authorization_limits_beyond_service(db):
     await db.rollback()
     auth = await db.get(ClientFinancialAuthorization, approved["authorization_id"])
     assert auth.committed_amount == Decimal("0.00")
+
+
+@pytest.mark.asyncio
+async def test_canonical_work_order_transition_cannot_bypass_submitted_scope(db):
+    customer, contractor, _, project, work = await _seed(db, "transition")
+    proposed = await scopes.propose_scope(
+        db, project=project, work_order_id=work.id,
+        actor=contractor, **_fields(work),
+    )
+    # An ordinary WorkOrder customer role approval is not an informed
+    # approval of the newly submitted itemized scope.
+    with pytest.raises(ValueError, match="work_order_detailed_scope_not_approved"):
+        await work_order_service.transition(
+            db, work, WorkOrderStatus.approved.value,
+            customer.id, UserRole.customer, project=project,
+            expected_updated_at=work.updated_at,
+        )
+    assert await db.scalar(select(WorkOrder.status).where(
+        WorkOrder.id == work.id
+    )) == WorkOrderStatus.published
+    assert await db.scalar(select(func.count()).select_from(ClientFinancialAuthorization)) == 0
+
+    reviewed = await scopes.decide_scope(
+        db, project=project, scope_version_id=proposed["id"],
+        actor=customer, digest=proposed["digest"], decision="approved",
+    )
+    assert reviewed["authorization_id"]
+    current_work = await db.get(WorkOrder, work.id)
+    current_project = await db.get(Project, project.id)
+    approved = await work_order_service.transition(
+        db, current_work, WorkOrderStatus.approved.value,
+        customer.id, UserRole.customer, project=current_project,
+        expected_updated_at=current_work.updated_at,
+    )
+    assert approved.status == WorkOrderStatus.approved
+    assert await db.scalar(select(func.count()).select_from(ClientFinancialAuthorization)) == 1
+
+
+@pytest.mark.asyncio
+async def test_rejected_scope_blocks_legacy_status_approval_until_new_version(db):
+    customer, contractor, _, project, work = await _seed(db, "rejected")
+    first = await scopes.propose_scope(
+        db, project=project, work_order_id=work.id,
+        actor=contractor, **_fields(work),
+    )
+    await scopes.decide_scope(
+        db, project=project, scope_version_id=first["id"],
+        actor=customer, digest=first["digest"], decision="rejected",
+        reason="Неверная спецификация",
+    )
+    with pytest.raises(ValueError, match="work_order_detailed_scope_not_approved"):
+        await work_order_service.transition(
+            db, work, WorkOrderStatus.approved.value,
+            customer.id, UserRole.customer, project=project,
+            expected_updated_at=work.updated_at,
+        )
+    assert await db.scalar(select(WorkOrder.status).where(WorkOrder.id == work.id)) == WorkOrderStatus.published
+    assert await db.scalar(select(func.count()).select_from(ClientFinancialAuthorization)) == 0
