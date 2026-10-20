@@ -185,7 +185,9 @@ async def propose_scope(
         )).scalar_one_or_none()
         if existing:
             original = json.loads(existing.snapshot_json)
-            if existing.work_order_id != work.id or original.get("terms") != form:
+            stored = dict(original.get("terms") or {})
+            stored.pop("specialist_name", None)  # derived from stored identity
+            if existing.work_order_id != work.id or stored != form:
                 raise ValueError("scope_request_conflict")
             return _proposal_result(existing, replayed=True)
 
@@ -205,6 +207,9 @@ async def propose_scope(
             db, project=project, user_id=specialist_id,
         ):
             raise ValueError("scope_specialist_not_project_member")
+        specialist = await db.get(User, specialist_id)
+        if not specialist or specialist.deleted_at or not (specialist.full_name or "").strip():
+            raise ValueError("scope_specialist_identity_incomplete")
         if Decimal(form["amount_cap_rub"]) != Decimal(str(work.budget_planned)):
             raise ValueError("scope_work_budget_mismatch")
 
@@ -227,7 +232,7 @@ async def propose_scope(
             "schema": "renova.customer_scope.v1",
             "version": version,
             "work_order": _work_snapshot(work),
-            "terms": form,
+            "terms": {**form, "specialist_name": specialist.full_name.strip()},
             "created_by": actor.id,
         }
         serialized = _json(snapshot)
