@@ -19,6 +19,7 @@ import type { OsRole } from '@/constants/osSections';
 import { resolveBudgetFigures } from '@/lib/useOsBudgetFigures';
 import type { Payment } from '@/lib/api';
 import { BudgetSummarySection } from '@/components/screens/budget/BudgetSummarySection';
+import { CustomerConsentCoveragePanel } from '@/components/renova/CustomerConsentCoveragePanel';
 import { BudgetExpensesSection } from '@/components/screens/budget/BudgetExpensesSection';
 import { BudgetPaymentsSection } from '@/components/screens/budget/BudgetPaymentsSection';
 import { BudgetDeviationsSection } from '@/components/screens/budget/BudgetDeviationsSection';
@@ -148,6 +149,9 @@ export function OsBudgetScreen({ role, tab = 'summary' }: { role: OsRole; tab?: 
           <Text style={{ color: RenovaTheme.colors.warningText, marginBottom: 10 }}>
             Указанный счёт недоступен в этом проекте. Проверьте актуальность действия и обновите данные.
           </Text>
+        ) : null}
+        {resolvedTab === 'summary' && role === 'customer' ? (
+          <CustomerConsentCoveragePanel userId={user.id} projectId={activeProject.id} />
         ) : null}
         {resolvedTab === 'summary' && (
           <BudgetSummarySection
