@@ -91,7 +91,7 @@ class ClientScopeDecision(Base):
     customer_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=False,
     )
-    approved_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    reviewed_digest: Mapped[str] = mapped_column(String(64), nullable=False)
     decision: Mapped[str] = mapped_column(String(16), nullable=False)
     reason: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     decided_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
