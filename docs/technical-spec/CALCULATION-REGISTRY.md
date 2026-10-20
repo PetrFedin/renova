@@ -10,7 +10,7 @@ SOURCE VERIFIED означает прочитанную формулу, не п�
 
 ## 2. Денежная арифметика backend
 
-Source `backend/app/services/budget_service.py`, blob `2412198098f2391d3d1793dd74e4abf6de801d6a`.
+Source `backend/app/services/budget_service.py`, blob `c56120efbe8773ed4a027370930ad650a445eb4f`.
 
 ```text
 money(x) = Decimal(str(x or 0)).quantize(0.01, ROUND_HALF_UP)

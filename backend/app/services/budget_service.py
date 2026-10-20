@@ -604,6 +604,10 @@ async def _reconcile_budget_line_actuals(db: AsyncSession, project_id: str) -> N
 
 async def refresh_budget_facts(db: AsyncSession, project_id: str) -> None:
     """Run source hydration, then replace ambiguous legacy actuals with a one-expense-one-line projection."""
+    from app.services.project_budget_lock import lock_project_budget_projection
+
+    if not await lock_project_budget_projection(db, project_id):
+        raise ValueError("project_not_found")
     await _ORIGINAL_REFRESH_BUDGET_FACTS(db, project_id)
     await _reconcile_budget_line_actuals(db, project_id)
 
