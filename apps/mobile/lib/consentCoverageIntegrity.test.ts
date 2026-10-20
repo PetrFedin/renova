@@ -36,7 +36,7 @@ assert.match(screen, /role === 'customer'/);
 assert.match(screen, /CustomerConsentCoveragePanel userId=\{user\.id\} projectId=\{activeProject\.id\}/);
 assert.match(panel, /complete_customer_consent_proven|Полное индивидуальное согласие/);
 assert.match(panel, /Проверка недоступна\. Это не означает/);
-assert.match(panel, /report\.scan_truncated \|\| report\.items_limited/);
+assert.match(panel, /current\.scan_truncated \|\| current\.items_limited/);
 assert.match(panel, /useProjectDataReload\(reload\)/);
 assert.match(panel, /requestGeneration\.current/, 'Out-of-order requests must not replace current financial facts');
 assert.match(panel, /report\?\.project_id === projectId/, 'Never leak another project snapshot while switching');
