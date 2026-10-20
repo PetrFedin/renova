@@ -179,10 +179,17 @@ async def consent_coverage_snapshot(db: AsyncSession, project: Project) -> dict:
         entries.append(_entry(
             "expense", expense, status=status, evidence=evidence,
             risk=risk, reason=reason, amount=expense.amount, currency=currency,
-            references={"source_type":source, "payment_id":expense.payment_id,
-                        "receipt_id":expense.receipt_id, "purchase_id":expense.purchase_id,
-                        "original_currency":currency,
-                        "original_amount":_money(expense.amount)},
+            references={
+                "source_type": source,
+                # Never disclose an out-of-project source identifier even when
+                # a broken FK scalar appears on a customer-visible Expense.
+                "payment_id": expense.payment_id if expense.payment_id in payment_by_id else None,
+                "receipt_id": expense.receipt_id if expense.receipt_id in receipt_by_id else None,
+                "purchase_id": expense.purchase_id if expense.purchase_id in purchase_by_id else None,
+                "foreign_or_missing_source_types": invalid,
+                "original_currency": currency,
+                "original_amount": _money(expense.amount),
+            },
         ))
 
     for purchase in purchases:
