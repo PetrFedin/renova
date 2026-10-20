@@ -234,6 +234,11 @@ async def consent_coverage_snapshot(db: AsyncSession, project: Project) -> dict:
     truncated = any((p_cut, e_cut, u_cut, w_cut, c_cut, s_cut, m_cut, r_cut, items_truncated))
     severity = {"critical":0, "high":1, "medium":2, "low":3}
     entries.sort(key=lambda entry:(severity[entry["risk"]],entry["kind"],entry["id"]))
+    # An advisory drift signal is useful, but never treat this READ COMMITTED
+    # scan as the authoritative PostgreSQL transaction boundary.
+    cached_spend = _money(project.budget_spent)
+    compare_safe = actual_expense_fact_valid and not e_cut and cached_spend != "invalid"
+    budget_gap = (actual_expense_fact - Decimal(cached_spend)).quantize(_CENT) if compare_safe else None
     return {
         "project_id": project_id,
         "as_of_utc": datetime.now(timezone.utc).isoformat(),
@@ -249,7 +254,12 @@ async def consent_coverage_snapshot(db: AsyncSession, project: Project) -> dict:
             str(actual_expense_fact.quantize(_CENT))
             if actual_expense_fact_valid and not e_cut else None
         ),
-        "project_cached_budget_spent_rub": _money(project.budget_spent),
+        "project_cached_budget_spent_rub": cached_spend,
+        "budget_comparison": (
+            "unverifiable" if budget_gap is None else
+            "provisional_match" if budget_gap == 0 else "provisional_mismatch"
+        ),
+        "budget_drift_rub": str(budget_gap) if budget_gap is not None else None,
         "financial_totals_are_not_additive": True,
         "amounts_are_not_proof_of_customer_consent": True,
         "items": entries[:LIST_LIMIT],
