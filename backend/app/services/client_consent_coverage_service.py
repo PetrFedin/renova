@@ -134,25 +134,29 @@ async def consent_coverage_snapshot(db: AsyncSession, project: Project) -> dict:
             source_integrity_issues += 1
 
     for expense in expenses:
-        if expense.payment_id:
-            source = "payment" if expense.payment_id in payment_by_id else "broken_payment"
-        elif expense.receipt_id:
-            source = "receipt" if expense.receipt_id in receipt_by_id else "broken_receipt"
-        elif expense.purchase_id:
-            source = "purchase" if expense.purchase_id in purchase_by_id else "broken_purchase"
-        elif expense.material_pick_id:
-            source = "material_pick" if expense.material_pick_id in pick_by_id else "broken_material_pick"
-        elif (expense.comment or "").startswith("bank_statement:v1:"):
-            source = "external_bank_statement"
-        else:
-            source = "manual_unlinked"
-        if source.startswith("broken_"):
+        # Check *every* populated source field. Otherwise a valid payment link
+        # could conceal an additional foreign-project receipt/purchase binding.
+        source_refs = (
+            ("payment", expense.payment_id, payment_by_id),
+            ("receipt", expense.receipt_id, receipt_by_id),
+            ("purchase", expense.purchase_id, purchase_by_id),
+            ("material_pick", expense.material_pick_id, pick_by_id),
+        )
+        present = [kind for kind, key, _ in source_refs if key]
+        invalid = [kind for kind, key, known in source_refs if key and key not in known]
+        if invalid:
+            source = "broken_" + ",".join(invalid)
             evidence, risk, reason = "broken", "critical", "financial_source_cross_project_or_missing"
             source_integrity_issues += 1
-        elif source in {"manual_unlinked", "external_bank_statement"}:
+        elif present:
+            source = "+".join(present)
+            evidence, risk, reason = "partial", "medium", "source_link_not_customer_consent"
+        elif (expense.comment or "").startswith("bank_statement:v1:"):
+            source = "external_bank_statement"
             evidence, risk, reason = "missing", "high", "customer_consent_and_source_not_attested"
         else:
-            evidence, risk, reason = "partial", "medium", "source_link_not_customer_consent"
+            source = "manual_unlinked"
+            evidence, risk, reason = "missing", "high", "customer_consent_and_source_not_attested"
         status = _state(expense.status)
         if status == "confirmed":
             money = _money(expense.amount)
@@ -234,6 +238,7 @@ async def consent_coverage_snapshot(db: AsyncSession, project: Project) -> dict:
         "project_id": project_id,
         "as_of_utc": datetime.now(timezone.utc).isoformat(),
         "coverage": "advisory_not_a_payment_authorization",
+        "read_consistency": "best_effort_not_an_atomic_snapshot",
         "complete_customer_consent_proven": False,
         "scan_truncated": truncated,
         "total_scanned": sum(counts.values()),
@@ -246,6 +251,7 @@ async def consent_coverage_snapshot(db: AsyncSession, project: Project) -> dict:
         ),
         "project_cached_budget_spent_rub": _money(project.budget_spent),
         "financial_totals_are_not_additive": True,
+        "amounts_are_not_proof_of_customer_consent": True,
         "items": entries[:LIST_LIMIT],
         "items_limited": len(entries) > LIST_LIMIT,
     }
