@@ -167,6 +167,7 @@ async def transition_work_order(project_id: str, work_order_id: str, body: WorkO
         code = str(error)
         if code in (
             "only_customer_can_accept_work_order",
+            "work_order_customer_owner_required",
             "work_order_role_forbidden",
             wo_svc.WORK_ORDER_FORBIDDEN,
         ):
