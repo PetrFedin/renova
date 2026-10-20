@@ -170,8 +170,10 @@ async def consent_coverage_snapshot(db: AsyncSession, project: Project) -> dict:
             money = _money(expense.amount)
             if money == "invalid" or currency_conflict:
                 actual_expense_fact_valid = False
-                if money == "invalid" and not currency_conflict and evidence != "broken":
-                    source_integrity_issues += 1
+                if money == "invalid" and not currency_conflict:
+                    if evidence != "broken":
+                        source_integrity_issues += 1
+                    evidence, risk, reason = "broken", "critical", "financial_amount_invalid"
             else:
                 actual_expense_fact += Decimal(money)
         entries.append(_entry(
