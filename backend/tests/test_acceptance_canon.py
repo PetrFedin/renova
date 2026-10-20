@@ -349,18 +349,20 @@ async def test_contractor_cannot_transition_work_order_to_done():
         r = await client.post(
             f"/api/v1/projects/{pid}/work-orders/{wo_id}/transition",
             headers=h_cust,
-            json={"status": "approved"},
+            json={"status": "approved", "expected_updated_at": wo["updated_at"]},
         )
         if r.status_code >= 400:
-            await client.post(
+            discussing = await client.post(
                 f"/api/v1/projects/{pid}/work-orders/{wo_id}/transition",
                 headers=h_cont,
                 json={"status": "negotiating"},
             )
+            assert discussing.status_code < 400, discussing.text
+            # Customer approves the *new* observed version, not a stale pre-negotiation snapshot.
             r = await client.post(
                 f"/api/v1/projects/{pid}/work-orders/{wo_id}/transition",
                 headers=h_cust,
-                json={"status": "approved"},
+                json={"status": "approved", "expected_updated_at": discussing.json()["updated_at"]},
             )
         assert r.status_code < 400, r.text
 
