@@ -143,6 +143,14 @@ export function ScheduleDayDetail({
 
   const transitionWork = async (wo: WorkOrder, next: WorkOrderStatus) => {
     if (!userId || !projectId || readOnly) return;
+    if (next === 'approved' && !wo.updated_at) {
+      onChanged?.();
+      notifyAlert(
+        'Нужно проверить новую версию работы',
+        'Перед согласованием откройте актуальную карточку и проверьте объём, стоимость, срок и ответственного.',
+      );
+      return;
+    }
     try {
       await api.transitionWorkOrder(userId, projectId, wo.id, next, wo.updated_at);
       await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any), role });
@@ -152,6 +160,13 @@ export function ScheduleDayDetail({
     } catch (e: unknown) {
       if (isOfflineQueued(e)) {
         notifyOfflineQueued('Смена статуса');
+      } else if (e instanceof ApiError && e.status === 409
+        && (e.code === 'work_order_stale' || e.code === 'work_order_approval_version_required')) {
+        onChanged?.();
+        notifyAlert(
+          'Условия изменились',
+          'Согласование не выполнено. Проверьте актуальный состав работы, сроки, стоимость и исполнителя перед повторным решением.',
+        );
       } else {
         notifyError('Ошибка', e, 'Не удалось обновить статус');
       }
