@@ -2,9 +2,9 @@
 
 **Статус документа:** ACTIVE / LIVING SPECIFICATION
 **Язык:** русский
-**Дата текущей сверки:** 2026-09-08
+**Дата текущей сверки:** 2026-10-20 (bounded consent candidate; other sections retain earlier evidence dates)
 **Проверенный продуктовый срез:** `686eec67c925d73fd1367da4704bdac11becdd71`
-**Текущий schema head в этой редакции:** `x12projectrefund01`
+**Текущий schema head в этой редакции:** `x13clientscopecons01`
 **Текущий verification status:** `SOURCE AUDITED / BOUNDED CI EVIDENCE / FULL PRODUCT ACCEPTANCE INCOMPLETE`
 **Широкий production-запуск:** `BLOCKED_FOR_BROAD_PRODUCTION`
 
@@ -20,12 +20,12 @@
 
 **2026-10-16 — кандидат #737 / GP4:** `PortalLink.accept_stage_consumed_at`, `accept_stage_acceptance_id`, `accept_stage_decision` с forward-migration `x11portalacceptscope01` и блокировкой `SELECT FOR UPDATE`. Изменение перед фиксацией канонического решения сохраняется в том же commit; права просмотра, оплаты и подписи остаются. PostgreSQL-конкурентное доказательство и full CI этого кандидата пока PENDING; `main`, staging и production не повышались в статусе. Детали и открытые критерии — `technical-spec/END-TO-END-GOVERNANCE.md` §10, #676 и #734.
 
-## 0.1. Текущий source snapshot
+**2026-10-20 — Draft P0 customer consent / GP3→GP5:** новая миграция x13clientscopecons01 добавляет версионированные условия работ, hash-снимок, отдельное решение действительного заказчика и рублёвый ограниченный финансовый лимит. Подготовлено два ролевых API пути и рабочая панель в карточке WorkOrder. Привязка к финансовым операциям Payment/Expense/Purchase ещё НЕ внедрена; это не утверждение всеобщего контроля расходов. Без точных CI, PostgreSQL concurrency, independent review и e2e нельзя сливать в main. Подробности в technical-spec/CLIENT-CONSENT-MARKET-PARITY.md §15.\n\n## 0.1. Текущий source snapshot
 
 | Source | Blob SHA | Назначение |
 |---|---|---|
 | `AGENTS.md` | `767d38e76d04209e609bbe7173a2c448cfc5fa00` | Engineering policy |
-| `backend/app/api/v1/router.py` | `f0e0167d8f347a30cb73851e0b5491a118fe4e86` | Реальная composition маршрутов |
+| `backend/app/api/v1/router.py` | `5d346b407e0ba9ef2a1fa3396d2d4f9e595975d6` | Реальная composition маршрутов |
 | `backend/app/models/entities.py` | `a73f43a867a2e582f2295b6c3c342579ea8388e1` | Базовые entities/enums |
 | `backend/app/main.py` | `7f778fc54e7ff0a05b512791a8841615b24e33c1` | API lifespan + middleware chain |
 | `backend/app/services/seed_demo.py` | `c62ba920130a7ba7f6e2bd0a54e63feadce5c6cd` | Явный development seed |
@@ -43,7 +43,7 @@
 | `apps/mobile/components/screens/OsBudgetHubScreen.tsx` | `789631cf5d74f657a318baed176b98aada208c26` | Budget hub |
 | `apps/mobile/constants/budgetTabs.ts` | `d02c05560176535e130d76960c2b67691bcbb3b7` | Budget tab canon |
 | `.cursor/rules/renova-design-system.mdc` | `2f48e46f5b348b8cbc3a370615a5a5e93d93421f` | UI rules |
-| `package.json` | `f9788024553c2f964b953e3432edde1f5b36d72d` | Root commands/test entrypoints (including customer consent evidence/fail-honest mobile:test contract, sessionFence and actor-aware Action Queue tests) |
+| `package.json` | `98c81f456d51fd7690a5c18a7a42334c36c98866` | Root commands/test entrypoints (including customer consent evidence/fail-honest mobile:test contract, sessionFence and actor-aware Action Queue tests) |
 | `.github/workflows/local-runtime-integrity.yml` | `63831ec7622794843ca724319178e2de18cdb971` | Local runtime proof |
 | `backend/alembic/versions/w16legacystatus01_legacy_status_enum_parity.py` | `d2137f2b87c1ac6f679093331bd034aff17c8188` | Legacy status repair |
 | `backend/alembic/versions/w17chatmessageenum01_chat_message_enum_parity.py` | `0537268c85e26b7a607d36f967a3402b8bba53c4` | Chat enum repair |

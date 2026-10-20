@@ -5,6 +5,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { BackHeader } from '@/components/renova/BackHeader';
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { WorkOrderDetailPanel } from '@/components/renova/WorkOrderDetailPanel';
+import { WorkOrderScopeConsentPanel } from '@/components/renova/WorkOrderScopeConsentPanel';
 import { useRenova } from '@/lib/context/RenovaContext';
 import { isOfflineQueued, notifyOfflineQueued } from '@/lib/offlineUi';
 import { syncProjectSideEffects } from '@/lib/projectDataBus';
@@ -38,6 +39,12 @@ function transitionErrorMessage(error: unknown): string {
   if (error.status === 403) return 'Этот переход недоступен для вашей роли.';
   if (error.status === 409 && error.code === 'work_order_approval_version_required') {
     return 'Текущая версия условий недоступна. Обновите карточку и проверьте состав, стоимость, сроки и исполнителя перед согласованием.';
+  }
+  if (error.status === 409 && error.code === 'work_order_detailed_scope_not_approved') {
+    return 'Сначала согласуйте последнюю подробную версию объёма, цены, срока оплаты и специалиста в блоке ниже. Старую версию подтвердить нельзя.';
+  }
+  if (error.status === 409 && error.code === 'scope_snapshot_integrity_failed') {
+    return 'Контрольная сумма условий не совпадает: согласование заблокировано. Требуется повторная проверка.';
   }
   if (error.status === 409 && error.code === 'work_order_stale') {
     return 'Условия работы изменились после просмотра. Проверьте новую версию, прежде чем её согласовать.';
@@ -221,6 +228,17 @@ export function WorkOrderDetailScreen() {
           userId={user.id}
           projectId={activeProject.id}
           onUpdated={reload}
+        />
+
+        <WorkOrderScopeConsentPanel
+          key={workOrder.id}
+          userId={user.id}
+          projectId={activeProject.id}
+          contractorId={activeProject.contractor_id || null}
+          role={role}
+          workOrder={workOrder}
+          canWrite={canWrite && !busy}
+          onChanged={reload}
         />
 
         {(workOrder.budget_planned > 0 || workOrder.budget_spent > 0) ? (

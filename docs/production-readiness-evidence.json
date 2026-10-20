@@ -9,7 +9,7 @@
     "findings_are_production_incidents": false
   },
   "expected_repo_facts": {
-    "alembic_head": "x12projectrefund01",
+    "alembic_head": "x13clientscopecons01",
     "mobile_version": "0.3.7",
     "ios_build_number": "3",
     "android_version_code": 3

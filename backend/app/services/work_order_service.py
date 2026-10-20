@@ -7,11 +7,17 @@ extracted core module remains private; callers must import this module.
 from __future__ import annotations
 
 from datetime import date, datetime
+import hashlib
 import logging
+
+from sqlalchemy import select
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import Project, UserRole, WorkOrder, WorkOrderStatus
+from app.models.client_scope_consent import (
+    ClientFinancialAuthorization, ClientScopeDecision, ClientScopeVersion,
+)
 from app.services import _work_order_service_core as _core
 from app.services.team_service import project_team_membership
 
@@ -164,6 +170,14 @@ async def transition(
             # A generic customer role or shared viewer must not authorize the
             # named customer's work or quality decision on another project.
             if user_id != project_row.customer_id:
+                # Preserve the historic contractor acceptance denial while
+                # distinguishing a customer of some *other* project. Neither
+                # actor is allowed to accept this object's outcome.
+                if (
+                    new_status == WorkOrderStatus.done.value
+                    and role_value(actor_role) != UserRole.customer.value
+                ):
+                    raise ValueError("only_customer_can_accept_work_order")
                 raise ValueError("work_order_customer_owner_required")
         if new_status == WorkOrderStatus.approved.value and isinstance(work_order, WorkOrder):
             if expected_updated_at is None:
@@ -174,6 +188,49 @@ async def transition(
                 != _normalize_expected_updated_at(expected_updated_at)
             ):
                 raise ValueError("work_order_stale")
+        if new_status == WorkOrderStatus.approved.value and isinstance(work_order, WorkOrder):
+            # Once a contractor has submitted structured consent evidence for
+            # this WorkOrder, the legacy one-click approval cannot bypass it.
+            # Existing historic WorkOrders without scope versions retain their
+            # current behavior until the migration/admission gate is qualified.
+            newest = (await db.execute(
+                select(ClientScopeVersion).where(
+                    ClientScopeVersion.project_id == project_row.id,
+                    ClientScopeVersion.work_order_id == work_order.id,
+                ).order_by(ClientScopeVersion.version.desc()).limit(1)
+            )).scalar_one_or_none()
+            if newest is not None:
+                if hashlib.sha256(newest.snapshot_json.encode("utf-8")).hexdigest() != newest.snapshot_sha256:
+                    raise ValueError("scope_snapshot_integrity_failed")
+                if (
+                    work_order.updated_at is None
+                    or _normalize_expected_updated_at(work_order.updated_at)
+                    != _normalize_expected_updated_at(newest.work_order_updated_at)
+                ):
+                    raise ValueError("work_order_stale")
+                consent = (await db.execute(
+                    select(ClientScopeDecision).where(
+                        ClientScopeDecision.scope_version_id == newest.id,
+                        ClientScopeDecision.project_id == project_row.id,
+                        ClientScopeDecision.customer_id == user_id,
+                        ClientScopeDecision.decision == "approved",
+                        ClientScopeDecision.reviewed_digest == newest.snapshot_sha256,
+                    )
+                )).scalar_one_or_none()
+                authorized = (
+                    await db.scalar(
+                        select(ClientFinancialAuthorization.id).where(
+                            ClientFinancialAuthorization.project_id == project_row.id,
+                            ClientFinancialAuthorization.scope_version_id == newest.id,
+                            ClientFinancialAuthorization.decision_id == consent.id,
+                            ClientFinancialAuthorization.customer_id == user_id,
+                            ClientFinancialAuthorization.amount_cap == newest.amount_cap,
+                        )
+                    ) if consent else None
+                )
+                if not authorized:
+                    raise ValueError("work_order_detailed_scope_not_approved")
+
         effective_role = await _resolve_transition_actor_role(
             db,
             project=project_row,

@@ -186,3 +186,59 @@ All integrations require explicit API/data-export contracts, license review and 
 ## 13. Non-RUB source and financial reconciliation truth (#759)
 
 The advisory consent coverage must never label a foreign-currency Expense as RUB or sum it without a verified FX conversion event. A `confirmed` Expense with `currency != RUB` remains visible at the original amount/currency, is flagged `expense_currency_requires_reconciliation` and renders `recognized_expense_fact_rub=null`, `budget_comparison=unverifiable`; it never silently changes `Project.budget_spent`. The canonical product still has no universal FX authorization for customer-payable spending; real bank facts must be preserved, not normalized by guessing. A negative backend regression guards this exact behavior. Full legal/FX integration and migration remain out of scope and require a separate PostgreSQL-backed implementation.
+
+
+## 14. International competitor expansion / 2026-10-20
+
+**Source quality:** official product manuals and manufacturer help centers; no paid-console penetration testing or complete competitor coverage claim. An unlisted feature is not automatically absent.
+
+| Product / published capability | RENOVA adoption with stronger customer protection | Evidence |
+| --- | --- | --- |
+| **Buildertrend** — deadline, client approval/disclaimer, itemized change orders, optional auto-invoice, permissioned cost breakdown | Authenticated client review of named worker, quantity/unit/price, inclusions/exclusions, date, payment condition, immutable revision and cap; manager approval must not be misrepresented as client-authored | https://buildertrend.com/help-article/change-order-overview/ ; https://buildertrend.com/help-article/financial-management-settings/ |
+| **ConstructionOnline / ClientLink** — configurable client approval and rejection of change orders, estimate-subcategory links, budget overview and material selections | Exact customer approval before new contract obligation, with price/time/material deltas and evidence; never hide customer liability behind contractor visibility flags | https://help.constructiononline.com/en/understanding-clientlink/teamlink-permissions-1 ; https://help.constructiononline.com/en/link-a-change-order-to-an-estimate-subcategory-1 ; https://help.constructiononline.com/en/guide-to-getting-started-with-clientlink |
+| **Autodesk Forma Build / ACC Cost Management** — potential change orders connected to RFIs, budgets, commitments and contracts | Drawing/measurement origin to RFQ, scope revision, cost delta, owner consent, purchasing, proof and settlement, avoiding duplicate financial counting | https://construction.autodesk.com/tools/change-order-tracking/ ; https://construction.autodesk.com/resources/cost-management-quickstart-guide/ |
+| **Houzz Pro** — client estimates, change orders, selection and billing surfaces | Line-by-line cost, room, professional, alternative material, warranty and schedule before/after versions | https://www.houzz.com/pro-learn |
+| **JobTread** — job budgets, client portal, selections and change order flows | Identity-bound customer decision and original evidence when internal staff report off-platform agreement; no proxy decision relabeled as direct authenticated customer consent | https://www.jobtread.com/ |
+| **Procore** — construction financial management, commitments, change events, RFIs and budget change | Separate legal obligation, procurement commitment, provider settlement, recognized expense, defect retention and accepted value | https://www.procore.com/products/financial-management |
+| **PlanRadar** — field defects, inspection and handover evidence | Drawing-linked proof, independent acceptance and customer-visible withheld amount until defect resolved | https://www.planradar.com/ru/harakteristiki/upravlenie-stroitelstvom/ |
+
+ConstructionOnline documents that only approved change-order line items affect an estimate project total: https://help.constructiononline.com/en/link-an-estimate-subcategory-to-a-change-order. RENOVA should preserve separate proposal, approved, committed, paid and accepted dimensions.
+
+### Five dimensions for a competitive feature to count as qualified
+
+1. **Functional:** real customer/contractor interaction, field checks, clear errors, accessible mobile, navigable links and retry semantics.
+2. **Contractual:** correct parties, stated price contract model, exact scope, quantities, specialist, inclusions/exclusions, signature identity, changes and rights.
+3. **Financial:** proposal is not customer authorization; authorization is not cash; cash is not expense; expense is not acceptance. Bound money to a separate exact RUB cap in PostgreSQL.
+4. **Evidence:** actor, date, immutable source snapshot digest, original files, notifications and review.
+5. **Assurance:** unit, concurrency, schema parity, role-specific browser actions, recovery, security and source export.
+
+A capability is READY only after all applicable axes pass on the same SHA; a code file and a passed isolated unit test are not sufficient.
+
+## 15. Exact customer consent architecture candidate: x13clientscopecons01
+
+**Data:** ClientScopeVersion holds versioned WorkOrder conditions, exact quantity/unit price/cap, dated location and identified specialist, inclusions, exclusions, payment milestone, deliverables, risks and a SHA-256 canonical snapshot. ClientScopeDecision holds the one final customer decision on the exact digest. ClientFinancialAuthorization holds the approved NUMERIC RUB limit starting with zero commitments and consumed funds. No historical backfill or fabricated consent.
+
+**Write/decision flow:** The named project contractor submits for a published/negotiating WorkOrder after verifying customer contract budget, date, location, specialist name and exact non-rounded quantity × price. An authenticated actual project customer reviews the latest unchanged proposal digest and explicitly approves or rejects with reason. Changed WorkOrder, foreign customer, altered hash, replay with changed terms and superseded revision are blocked. Proposal/decision/outbox events commit atomically; duplicate identical requests are replay-safe.
+
+**Existing WorkOrder protection:** If a detailed proposal exists, a legacy one-click WorkOrder approval cannot bypass the latest customer-approved digest and matching limit. A historic WorkOrder without a new proposal retains prior transition until migration/admission rules are independently qualified.
+
+**UI:** Contractor proposal form and customer approval readback integrated with WorkOrder detail, including name, quantity, price, exclusions, scope dates, evidence digest and milestone. A failed network connection cannot be counted as consent or queued as an approval.
+
+**Boundary:** No canonical Payment, Expense, Purchase, Receipt, bank import or provider settlement route yet reserves against ClientFinancialAuthorization; zero committed/consumed is truthful. This is not a universal financial guard, legally qualified electronic signature or verified external settlement. Future P0 must add authorization allocations, strict transactional caps, external unmatched-money preservation, refund/release and disputes, legal signature/evidence and historical classification.
+
+**Tests required:** exact submission, incorrect cap, stale version, other-project actor, changed scope/identity, duplicate proposal/decision, rejected/superseded version, DB CHECK, outbox rollback, status bypass, migrated PostgreSQL double-decision race, mobile compile, end-to-end real customer/contractor and schema parity. No main/staging/production merge until independent review and all qualified gates.
+
+## 14. International competitive reference update — 2026-10-20
+
+The following claims are restricted to current **published official product/help pages** (not credentialed functional execution, full plan entitlements or penetration tests). Treat vendor workflows as *capability references*, not copyable UI/source.
+
+| Product | Verified behavior | RENOVA differentiator / actionable next slice | Source |
+| --- | --- | --- | --- |
+| Houzz Pro | Client dashboard exposes shared financial documents, budget/online payment records, selection boards with client approvals, order tracking, drawings, punchlists, schedules and daily logs; per-line approvals and e-sign are documented. | Customer must see the total amount **actually owed**, the version digest, inclusion/exclusion list and source proof even if contractor-internal costs are confidential. One immutable decision flows downstream to cap-bound procurement and payments. | https://pro.houzz.com/pro-help/r/how-to-use-your-project-dashboard-for-clients ; https://pro.houzz.com/pro-learn/blog/perfect-your-construction-workflow-with-houzz-pro |
+| Procore | Change events link field issues and RFIs to rough-order-of-magnitude estimates, additional scope and budget implications. | A defect or site change must generate a *proposed*, not automatically chargeable, scope amendment with customer notification and precise budget/schedule delta. | https://www.procore.com/project-financials/change-events |
+| Autodesk Construction Cloud / Cost Management | Cost control connects budget, contract/PO, schedule, field evidence, change orders and forecasts. Required fields and approval workflows are configurable, including requests for quotes. | Block advancement when specialist/quantity/price/schedule/document evidence is missing; require independent customer decision even where internal operator may create an already-approved business document. Make forecasts explainable, not synonymous with authorised price. | https://getconstructioncloud.autodesk.com/cost-management ; https://help.autodesk.com/cloudhelp/ENU/Build-Cost/files/setup-cost/manage-settings/Cost_Change_Order_Setup.html |
+| Autodesk 2026 release | Supports additional downstream approval reviewers and upload of supporting documents. | Dual-channel review (independent engineer + customer) without transfer of customer signature authority to supplier/admin; immutable before/after evidence for all edits. | https://www.autodesk.com/blogs/construction/january-2026-autodesk-construction-cloud-releases-built-for-whats-next/ |
+
+**Cross-market gaps to implement after #760 GREEN:** 1) typed project-customer financial authorization consumption at all payable writer paths; 2) supplier quote -> client choice -> purchase order -> receiving -> invoice -> payment with cap-aware diff and dispute; 3) named specialist, qualifications, substitutions and acceptance evidence; 4) immutable contract/schedule/material change scenario comparison and customer decision; 5) all exceptions classified (emergency / imported external settlement / legacy history), never backfilled as implied consent; 6) mobile/desktop user-path video evidence pinned to exact SHA. Every enhancement needs RBAC, negative/postgres concurrency/replay, mobile/client and rollback tests. No claim of complete feature parity without executing comparable provider accounts.
+
+**Current P0 source evidence:** #760 scope snapshot and consent authorization exist but canonical money writers are *not yet* universally bound to the cap. Earlier full backend job 39353981722 failed six tests (five AsyncSession expired-object lazy-loads in test journeys, one contractor acceptance error-code regression); the subsequent isolated corrections must re-qualify at their exact new SHA. No release until entire CI + migration + object ACL + independent reviewer and live evidence converge.

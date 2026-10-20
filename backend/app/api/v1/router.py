@@ -9,6 +9,7 @@ from app.api.v1 import bank_statements
 from app.api.v1 import expense_mutations
 from app.api.v1 import material_price_sync
 from app.api.v1 import payment_disputes
+from app.api.v1 import client_scope_consents
 from app.api.v1 import payment_history
 from app.api.v1 import payment_checkout_integrity
 from app.api.v1 import payment_evidence
@@ -64,6 +65,7 @@ api_router.include_router(material_price_sync.router)
 api_router.include_router(materials.router)
 api_router.include_router(selections.router)
 api_router.include_router(approvals.router)
+api_router.include_router(client_scope_consents.router)
 api_router.include_router(waste_orders.router)
 api_router.include_router(floor_plans.router)
 api_router.include_router(work_types.router)
