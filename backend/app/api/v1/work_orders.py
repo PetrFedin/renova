@@ -163,7 +163,10 @@ async def transition_work_order(project_id: str, work_order_id: str, body: WorkO
             expected_updated_at=body.expected_updated_at,
         )
     except ValueError as error:
-        await db.rollback()
+        # The facade owns transaction rollback on domain denials. Retain API
+        # rollback only for an actual session (unit role-policy fakes are not DBs).
+        if isinstance(db, AsyncSession):
+            await db.rollback()
         code = str(error)
         if code in (
             "only_customer_can_accept_work_order",
