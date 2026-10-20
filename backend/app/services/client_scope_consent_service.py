@@ -347,7 +347,7 @@ async def decide_scope(
             raise ValueError("scope_version_superseded")
         evidence = ClientScopeDecision(
             project_id=project.id, scope_version_id=scope.id,
-            customer_id=actor.id, approved_digest=digest,
+            customer_id=actor.id, reviewed_digest=digest,
             decision=decision, reason=reason.strip() if reason else None,
         )
         db.add(evidence)
