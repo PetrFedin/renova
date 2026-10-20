@@ -366,26 +366,32 @@ async def test_customer_approved_work_scope_is_immutable_even_for_customer(work_
     await work_order_db.commit()
     await work_order_db.refresh(row)
     first_version = row.updated_at
+    row_id, project_id = row.id, project.id
+    customer_id, contractor_id = customer.id, contractor.id
 
     for role_id, patch in (
-        (contractor.id, {"budget_planned": 25000}),
-        (customer.id, {"planned_end": date(2026, 12, 1)}),
-        (contractor.id, {"work_type": "extra_painting"}),
-        (contractor.id, {"assignee_id": contractor.id}),
-        (customer.id, {"notes": "Тихая замена исключений"}),
-        (contractor.id, {"title": "Иные обязательства"}),
-        (customer.id, {"room_id": None}),
-        (contractor.id, {"stage_id": None}),
+        (contractor_id, {"budget_planned": 25000}),
+        (customer_id, {"planned_end": date(2026, 12, 1)}),
+        (contractor_id, {"work_type": "extra_painting"}),
+        (contractor_id, {"assignee_id": contractor_id}),
+        (customer_id, {"notes": "Тихая замена исключений"}),
+        (contractor_id, {"title": "Иные обязательства"}),
+        (customer_id, {"room_id": None}),
+        (contractor_id, {"stage_id": None}),
     ):
-        current = await work_order_db.get(WorkOrder, row.id)
+        # The refused mutation rolls back and expires the ORM identity map.
+        # Re-hydrate both objects before the next request simulation.
+        current = await work_order_db.get(WorkOrder, row_id)
+        current_project = await work_order_db.get(Project, project_id)
+        assert current is not None and current_project is not None
         with pytest.raises(ValueError, match="work_order_approved_scope_locked"):
             await work_order_service.update_work_order(
                 work_order_db, current, patch,
                 expected_updated_at=current.updated_at,
-                actor_id=role_id, project=project,
+                actor_id=role_id, project=current_project,
             )
 
-    current = await work_order_db.get(WorkOrder, row.id)
+    current = await work_order_db.get(WorkOrder, row_id)
     assert current.status == WorkOrderStatus.approved
     assert current.budget_planned == 18000
     assert current.planned_end == date(2026, 11, 20)
@@ -394,7 +400,7 @@ async def test_customer_approved_work_scope_is_immutable_even_for_customer(work_
     assert await work_order_db.scalar(
         select(DomainOutbox.id).where(
             DomainOutbox.aggregate_type == "work_order",
-            DomainOutbox.aggregate_id == row.id,
+            DomainOutbox.aggregate_id == row_id,
         ).limit(1)
     ) is None
 
