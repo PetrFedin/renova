@@ -1,5 +1,5 @@
 /** Customer-only advisory evidence review: never equate a known payment with consent. */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { RenovaTheme } from '@/constants/Theme';
@@ -45,33 +45,42 @@ export function CustomerConsentCoveragePanel({
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
+  const requestGeneration = useRef(0);
 
   const reload = useCallback(async () => {
+    const generation = ++requestGeneration.current;
     setLoading(true);
     try {
       const result = await api.customerConsentCoverage(userId, projectId);
+      if (generation !== requestGeneration.current) return;
+      if (result.project_id !== projectId) throw new Error('consent_coverage_project_mismatch');
       setReport(result);
       setFailed(false);
     } catch (error: unknown) {
-      // Never render a previous project's snapshot as current after an API error.
+      if (generation !== requestGeneration.current) return;
+      // A failed read cannot silently retain a previous project's financial facts.
       setReport(null);
       setFailed(true);
       reportError('components.renova.CustomerConsentCoveragePanel', error);
     } finally {
-      setLoading(false);
+      if (generation === requestGeneration.current) setLoading(false);
     }
   }, [userId, projectId]);
 
   useEffect(() => {
+    requestGeneration.current += 1;
     setReport(null);
     setExpanded(false);
     void reload();
+    return () => { requestGeneration.current += 1; };
   }, [reload]);
   useProjectDataReload(reload);
 
-  const issueCount = report?.items_requiring_evidence ?? 0;
-  const severeCount = report?.items.filter((row) => row.risk === 'critical' || row.risk === 'high').length ?? 0;
-  const visible = report?.items.slice(0, expanded ? 25 : 5) ?? [];
+  // Project changes can render before effects execute. Never show old project money.
+  const current = report?.project_id === projectId ? report : null;
+  const issueCount = current?.items_requiring_evidence ?? 0;
+  const severeCount = current?.items.filter((row) => row.risk === 'critical' || row.risk === 'high').length ?? 0;
+  const visible = current?.items.slice(0, expanded ? 25 : 5) ?? [];
 
   return (
     <View style={s.card} accessibilityLabel="Проверка подтверждений заказчика">
@@ -94,9 +103,9 @@ export function CustomerConsentCoveragePanel({
         Сама по себе оплата, приёмка или статус «согласовано» не доказывают,
         что заказчик утвердил конкретную сумму и объём работ.
       </Text>
-      {loading && !report ? (
+      {loading && !current ? (
         <Text style={s.status}>Проверяем документы и финансовые связи…</Text>
-      ) : failed || !report ? (
+      ) : failed || !current ? (
         <View style={s.warningBox}>
           <Text style={s.warningText}>
             Проверка недоступна. Это не означает, что все расходы согласованы.
@@ -107,7 +116,7 @@ export function CustomerConsentCoveragePanel({
         <>
           <View style={s.metrics}>
             <View style={s.metric}>
-              <Text style={s.value}>{report.total_scanned}</Text>
+              <Text style={s.value}>{current.total_scanned}</Text>
               <Text style={s.metricLabel}>Записей изучено</Text>
             </View>
             <View style={s.metric}>
@@ -127,9 +136,9 @@ export function CustomerConsentCoveragePanel({
               Это диагностический отчёт, а не разрешение на оплату.
             </Text>
           </View>
-          {report.source_integrity_issues > 0 ? (
+          {current.source_integrity_issues > 0 ? (
             <Text style={s.dangerText}>
-              Нарушений связей финансовых источников: {report.source_integrity_issues}.
+              Нарушений связей финансовых источников: {current.source_integrity_issues}.
               Необходимо проверить до утверждения расчётов.
             </Text>
           ) : null}
@@ -154,7 +163,7 @@ export function CustomerConsentCoveragePanel({
               ) : null}
             </View>
           ))}
-          {report.items.length > 5 ? (
+          {current.items.length > 5 ? (
             <Pressable
               accessibilityRole="button"
               onPress={() => setExpanded((value) => !value)}
@@ -163,15 +172,18 @@ export function CustomerConsentCoveragePanel({
               <Text style={s.refreshText}>{expanded ? 'Свернуть список' : 'Показать больше записей'}</Text>
             </Pressable>
           ) : null}
-          {report.items.length === 0 ? (
+          {current.items.length === 0 ? (
             <Text style={s.status}>По текущему объекту финансовые записи не найдены. Это не является подтверждением договорных условий.</Text>
           ) : null}
-          {report.scan_truncated || report.items_limited ? (
+          {current.scan_truncated || current.items_limited ? (
             <Text style={s.truncated}>
               Проверка неполная: превышен лимит сканирования или отображения.
               Нужна постраничная сверка полного реестра.
             </Text>
           ) : null}
+          <Text style={s.disclaimer}>
+            Проверено: {current.as_of_utc ? new Date(current.as_of_utc).toLocaleString('ru-RU') : 'дата неизвестна'}.
+          </Text>
           <Text style={s.disclaimer}>
             Вывод основан на доступных связях базы данных, без проверки юридической
             действительности подписей. Данные могут измениться после формирования отчёта.
