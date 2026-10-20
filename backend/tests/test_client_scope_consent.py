@@ -238,10 +238,11 @@ async def test_stale_work_budget_and_changed_scope_do_not_create_consent(db):
             db, project=project, work_order_id=work.id, actor=contractor,
             **_fields(work, unit_price="2700.00", amount_cap="5400.00"),
         )
-    work_id, project_id = work.id, project.id
+    work_id, project_id, contractor_id = work.id, project.id, contractor.id
     await db.rollback()
     work = await db.get(WorkOrder, work_id)
     project = await db.get(Project, project_id)
+    contractor = await db.get(User, contractor_id)
     first = await scopes.propose_scope(
         db, project=project, work_order_id=work.id,
         actor=contractor, **_fields(work),
@@ -253,7 +254,7 @@ async def test_stale_work_budget_and_changed_scope_do_not_create_consent(db):
         project=project,
     )
     assert changed.updated_at.isoformat() != first["snapshot"]["work_order"]["updated_at"]
-    customer_id = customer.id
+    customer = await db.get(User, customer_id)
     with pytest.raises(ValueError, match="scope_stale_work_order"):
         await scopes.decide_scope(
             db, project=project, scope_version_id=first["id"],
@@ -350,7 +351,6 @@ async def test_canonical_work_order_transition_cannot_bypass_submitted_scope(db)
     work_id, project_id, customer_id = work.id, project.id, customer.id
     # An ordinary WorkOrder customer role approval is not an informed
     # approval of the newly submitted itemized scope.
-    work_id = work.id
     with pytest.raises(ValueError, match="work_order_detailed_scope_not_approved"):
         await work_order_service.transition(
             db, work, WorkOrderStatus.approved.value,
@@ -393,6 +393,7 @@ async def test_rejected_scope_blocks_legacy_status_approval_until_new_version(db
         actor=customer, digest=first["digest"], decision="rejected",
         reason="Неверная спецификация",
     )
+    work_id = work.id
     with pytest.raises(ValueError, match="work_order_detailed_scope_not_approved"):
         await work_order_service.transition(
             db, work, WorkOrderStatus.approved.value,
