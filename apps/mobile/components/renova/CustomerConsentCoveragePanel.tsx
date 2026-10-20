@@ -34,6 +34,16 @@ const REASONS: Record<string, string> = {
   change_order_lacks_quantity_specialist_and_scope_digest: 'Нужны объём, специалист, сроки и точная версия согласованных допработ',
 };
 
+const MISSING_WORK_DETAILS: Record<string, string> = {
+  named_specialist: 'имя ответственного специалиста',
+  dates: 'срок начала и окончания',
+  scope_location: 'комната или этап',
+  priced_scope: 'согласованная стоимость',
+  structured_quantity_unit: 'количество и единица измерения',
+  explicit_inclusions_exclusions: 'что включено и что исключено из цены',
+  payment_milestone: 'основание, размер и срок платежа',
+};
+
 const ALERT_COLORS = RenovaTheme.colors;
 
 export function CustomerConsentCoveragePanel({
@@ -180,7 +190,7 @@ export function CustomerConsentCoveragePanel({
               {item.kind === 'work_order' && Array.isArray(item.references.missing_details)
                 && item.references.missing_details.length > 0 ? (
                 <Text style={s.rowReason}>
-                  Нет данных: {item.references.missing_details.map(String).join(', ')}
+                  Нет данных: {item.references.missing_details.map((detail) => MISSING_WORK_DETAILS[String(detail)] || String(detail)).join(', ')}
                 </Text>
               ) : null}
             </View>
