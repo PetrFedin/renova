@@ -23,8 +23,8 @@ from app.services import work_order_service
 
 
 async def _seed(db, tag: str):
-    customer = User(id=f"cs-c-{tag}", phone="+79013123401", role=UserRole.customer)
-    contractor = User(id=f"cs-e-{tag}", phone="+79013123402", role=UserRole.contractor)
+    customer = User(id=f"cs-c-{tag}", phone="+79013123401", role=UserRole.customer, full_name="Заказчик Иванов")
+    contractor = User(id=f"cs-e-{tag}", phone="+79013123402", role=UserRole.contractor, full_name="Мастер Петров")
     outsider = User(id=f"cs-o-{tag}", phone="+79013123403", role=UserRole.customer)
     project = Project(
         id=f"cs-project-{tag}", customer_id=customer.id,
@@ -89,6 +89,7 @@ async def test_customer_approves_exact_digest_and_receives_unspent_cap_not_payme
     assert proposed["version"] == 1
     assert proposed["snapshot"]["work_order"]["budget_planned_rub"] == "5000.00"
     assert proposed["snapshot"]["terms"]["inclusions"] == ["Покраска 2 м²", "Грунтование"]
+    assert proposed["snapshot"]["terms"]["specialist_name"] == "Мастер Петров"
     assert len(proposed["digest"]) == 64
 
     granted = await scopes.decide_scope(
@@ -234,7 +235,7 @@ async def test_stale_work_budget_and_changed_scope_do_not_create_consent(db):
         expected_updated_at=work.updated_at, actor_id=contractor.id,
         project=project,
     )
-    assert changed.updated_at != first["snapshot"]["work_order"]["updated_at"]
+    assert changed.updated_at.isoformat() != first["snapshot"]["work_order"]["updated_at"]
     with pytest.raises(ValueError, match="scope_stale_work_order"):
         await scopes.decide_scope(
             db, project=project, scope_version_id=first["id"],
