@@ -144,7 +144,7 @@ export function ScheduleDayDetail({
   const transitionWork = async (wo: WorkOrder, next: WorkOrderStatus) => {
     if (!userId || !projectId || readOnly) return;
     try {
-      await api.transitionWorkOrder(userId, projectId, wo.id, next);
+      await api.transitionWorkOrder(userId, projectId, wo.id, next, wo.updated_at);
       await syncProjectSideEffects({ user: user ?? ({ id: userId } as any), project: activeProject ?? ({ id: projectId } as any), role });
       onChanged?.();
       // W133: день календаря → те же CTA, что WO detail
