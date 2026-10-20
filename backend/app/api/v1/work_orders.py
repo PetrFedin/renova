@@ -128,6 +128,14 @@ async def patch_work_order(project_id: str, work_order_id: str, body: WorkOrderP
         code = str(error)
         if code == "work_order_missing":
             raise HTTPException(404, code) from error
+        if code == "work_order_approved_scope_locked":
+            raise HTTPException(
+                409,
+                detail={
+                    "code": code,
+                    "message": "Согласованные стоимость, сроки, исполнитель и объём неизменяемы. Для изменений необходимо новое согласование заказчика.",
+                },
+            ) from error
         if code in ("work_order_stale", "work_order_project_missing"):
             raise HTTPException(409, code) from error
         if code == "work_order_assignee_forbidden":
