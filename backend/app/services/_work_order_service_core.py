@@ -730,6 +730,12 @@ async def transition(
     project_row = project or await db.get(Project, work_order.project_id)
     if not project_row:
         raise ValueError("work_order_project_missing")
+    if new_status in {
+        WorkOrderStatus.approved.value, WorkOrderStatus.done.value,
+    } and user_id != project_row.customer_id:
+        # A user with the generic "customer" role (e.g. another project's
+        # customer) cannot approve another customer's contract by role alone.
+        raise ValueError("work_order_customer_owner_required")
     effective_role = actor_role or infer_actor_role(project_row, user_id)
 
     current = _work_order_status(work_order)
