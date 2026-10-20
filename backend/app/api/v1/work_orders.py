@@ -181,7 +181,16 @@ async def transition_work_order(project_id: str, work_order_id: str, body: WorkO
             "work_order_stale",
             "work_order_missing",
             "work_order_approval_version_required",
+            "work_order_detailed_scope_not_approved",
+            "scope_snapshot_integrity_failed",
         ):
-            raise HTTPException(409, code) from error
+            raise HTTPException(409, detail={
+                "code": code,
+                "message": (
+                    "Подробные условия работ ещё не утверждены заказчиком в последней версии. "
+                    "Откройте блок состава работ, цены, сроков и специалиста."
+                ) if code == "work_order_detailed_scope_not_approved" else
+                "Версия условий устарела или её целостность не подтверждена.",
+            }) from error
         raise HTTPException(400, code) from error
     return wo_svc.wo_dict(work_order)
