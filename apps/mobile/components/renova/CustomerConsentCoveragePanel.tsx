@@ -23,6 +23,8 @@ const REASONS: Record<string, string> = {
   change_order_outside_project: 'Счёт связан с допработой вне объекта или запись отсутствует',
   stage_outside_project: 'Счёт связан с этапом вне объекта или запись отсутствует',
   source_link_not_customer_consent: 'Есть финансовый источник, но его согласование заказчиком не доказано',
+  expense_currency_requires_reconciliation: 'Сумма указана не в рублях: требуется проверка курса, основания и учётной классификации',
+  financial_amount_invalid: 'Сумма расхода некорректна и не может участвовать в рублёвой сверке',
   financial_source_cross_project_or_missing: 'Нарушена связь с финансовым источником: запись отсутствует или относится к другому объекту',
   customer_consent_and_source_not_attested: 'Нужна проверка основания, чека или банковского подтверждения',
   approved_material_selection_not_purchase_consent: 'Материалы выбраны, но отдельный лимит закупки не доказан',
@@ -167,6 +169,12 @@ export function CustomerConsentCoveragePanel({
               <Text style={s.rowTitle} numberOfLines={2}>{item.title}</Text>
               {item.amount_rub !== null ? (
                 <Text style={s.rowAmount}>{item.amount_rub === 'invalid' ? 'Некорректная сумма' : item.amount_rub + ' ₽'}</Text>
+              ) : null}
+              {item.kind === 'expense' && item.references.original_currency !== 'RUB' ? (
+                <Text style={s.rowAmount}>
+                  {String(item.references.original_amount ?? '—')}{' '}
+                  {String(item.references.original_currency ?? 'валюта неизвестна')} — не пересчитано в ₽
+                </Text>
               ) : null}
               <Text style={s.rowReason}>{REASONS[item.reason_code] || 'Нужна дополнительная проверка документов и согласия'}</Text>
               {item.kind === 'work_order' && Array.isArray(item.references.missing_details)
