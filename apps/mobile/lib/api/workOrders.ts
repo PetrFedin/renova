@@ -3,6 +3,75 @@ import { req, cachedGet, invalidateCachedGet, ApiError } from './client';
 import { isQueueableWriteError } from './queueableError';
 import type { WorkOrder } from './types';
 
+export type ClientScopeTerms = {
+  expected_updated_at: string;
+  specialist_id: string;
+  specialist_name: string;
+  quantity: string;
+  unit: string;
+  unit_price_rub: string;
+  amount_cap_rub: string;
+  currency: 'RUB';
+  inclusions: string[];
+  exclusions: string[];
+  deliverables: string[];
+  payment_milestone: string;
+  risks: string[];
+};
+
+export type ClientScopeProposalInput = {
+  expected_updated_at: string;
+  client_request_id: string;
+  specialist_id: string;
+  quantity: string;
+  unit: string;
+  unit_price: string;
+  amount_cap: string;
+  inclusions: string[];
+  exclusions: string[];
+  deliverables: string[];
+  payment_milestone: string;
+  risks: string[];
+};
+
+export type ClientScopeVersion = {
+  id: string;
+  project_id: string;
+  work_order_id: string;
+  version: number;
+  digest: string;
+  amount_cap_rub: string;
+  decision?: 'pending' | 'approved' | 'rejected';
+  decided_at?: string | null;
+  replayed?: boolean;
+  snapshot: {
+    schema: 'renova.customer_scope.v1';
+    version: number;
+    work_order: {
+      id: string; project_id: string; title: string; work_type: string;
+      room_id: string | null; stage_id: string | null;
+      planned_start: string | null; planned_end: string | null;
+      assignee_id: string | null; budget_planned_rub: string;
+      notes: string | null; updated_at: string;
+    };
+    terms: ClientScopeTerms;
+    created_by: string;
+  };
+  authorization?: {
+    id: string; cap_rub: string; committed_rub: string;
+    consumed_rub: string; currency: 'RUB';
+    linked_payments_qualified: false;
+  } | null;
+};
+
+export type ClientScopeDecisionResult = {
+  scope_version_id: string;
+  decision: 'approved' | 'rejected';
+  digest: string;
+  authorization_id: string | null;
+  replayed: boolean;
+};
+
 export type WorkOrderPatchBody = {
   expected_updated_at: string;
   [key: string]: unknown;
@@ -16,6 +85,29 @@ function newWorkOrderClientRequestId(): string {
 }
 
 export const workOrdersApi = {
+  /** No offline queue for consent: stale or unauthenticated decisions must fail closed. */
+  listScopeVersions: (userId: string, projectId: string, workOrderId: string) =>
+    req<{ items: ClientScopeVersion[]; financial_allocations_enforced: false; legal_signature_verified: false }>(
+      `/api/v1/projects/${projectId}/scope-versions?work_order_id=${encodeURIComponent(workOrderId)}`,
+      { cacheFallback: false }, userId,
+    ),
+  proposeScopeVersion: (userId: string, projectId: string, workOrderId: string, body: ClientScopeProposalInput) =>
+    req<ClientScopeVersion>(
+      `/api/v1/projects/${projectId}/work-orders/${workOrderId}/scope-versions`,
+      { method: 'POST', body: JSON.stringify(body), cacheFallback: false }, userId,
+    ),
+  decideScopeVersion: (
+    userId: string, projectId: string, scopeId: string,
+    decision: 'approved' | 'rejected', digest: string, reason?: string,
+  ) => req<ClientScopeDecisionResult>(
+    `/api/v1/projects/${projectId}/scope-versions/${scopeId}/decision`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ decision, digest, reason: reason || null }),
+      cacheFallback: false,
+    },
+    userId,
+  ),
   /** Общий TTL-кэш: несколько виджетов опрашивают список независимо (#432). Явно свежий вариант — listWorkOrdersFresh. */
   listWorkOrders: (userId: string, projectId: string) =>
     cachedGet<WorkOrder[]>(`/api/v1/projects/${projectId}/work-orders`, userId),
