@@ -475,6 +475,24 @@ async def test_customer_approval_requires_exact_visible_scope_revision(work_orde
             select(WorkOrder.status).where(WorkOrder.id == row_id)
         ) == WorkOrderStatus.published
 
+    # A globally customer-typed user is not necessarily this project's
+    # customer. Even with a valid revision token, the other actor is denied.
+    outsider = User(
+        id="approval-foreign-customer", phone="+79990000419", role=UserRole.customer,
+    )
+    work_order_db.add(outsider)
+    await work_order_db.commit()
+    outsider_id = outsider.id
+    current = await work_order_db.get(WorkOrder, row_id)
+    current_project = await work_order_db.get(Project, project_id)
+    with pytest.raises(ValueError, match="work_order_customer_owner_required"):
+        await work_order_service.transition(
+            work_order_db, current, WorkOrderStatus.approved.value,
+            outsider_id, UserRole.customer, project=current_project,
+            expected_updated_at=reviewed_at,
+        )
+    await work_order_db.rollback()
+
     # No third-party role or stale/offline state may turn approval into a
     # last-write-wins mutation. The exact current token is admissible.
     current = await work_order_db.get(WorkOrder, row_id)
