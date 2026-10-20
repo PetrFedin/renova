@@ -136,6 +136,20 @@ export function CustomerConsentCoveragePanel({
               Это диагностический отчёт, а не разрешение на оплату.
             </Text>
           </View>
+          {current.budget_comparison === 'provisional_mismatch' ? (
+            <View style={s.warningBox}>
+              <Text style={s.warningText}>
+                Возможное расхождение бюджета и подтверждённых расходов:
+                {' '}{current.budget_drift_rub} ₽. Необходимо сверить источник
+                и транзакционный пересчёт; это не окончательная бухгалтерская сверка.
+              </Text>
+            </View>
+          ) : null}
+          {current.budget_comparison === 'unverifiable' ? (
+            <Text style={s.truncated}>
+              Сверить общий бюджет нельзя: недостаточно данных или превышен лимит проверки.
+            </Text>
+          ) : null}
           {current.source_integrity_issues > 0 ? (
             <Text style={s.dangerText}>
               Нарушений связей финансовых источников: {current.source_integrity_issues}.
