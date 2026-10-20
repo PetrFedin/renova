@@ -15,7 +15,7 @@ from app.models.client_scope_consent import (
     ClientFinancialAuthorization, ClientScopeDecision, ClientScopeVersion,
 )
 from app.models.entities import (
-    DomainOutbox, Expense, Payment, Project, Room, User, UserRole,
+    DomainOutbox, Expense, Payment, Project, ProjectViewer, Room, User, UserRole,
     WorkOrder, WorkOrderStatus,
 )
 from app.services import client_scope_consent_service as scopes
@@ -152,6 +152,15 @@ async def test_foreign_customer_or_contractor_cannot_manufacture_approval(db):
             ), user=outsider, db=db,
         )
     assert denied.value.status_code in (403, 404)
+
+    # Project read access is not authority to inspect contract price/consent.
+    db.add(ProjectViewer(project_id=project.id, user_id=outsider.id))
+    await db.commit()
+    with pytest.raises(HTTPException) as scoped:
+        await scope_api.list_scope_versions(
+            project.id, work_order_id=work.id, user=outsider, db=db,
+        )
+    assert scoped.value.status_code == 403
 
 
 @pytest.mark.asyncio
