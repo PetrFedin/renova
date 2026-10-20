@@ -36,6 +36,12 @@ function transitionErrorMessage(error: unknown): string {
     : (error.detail as { message?: string; detail?: string } | undefined)?.message
       || (error.detail as { detail?: string } | undefined)?.detail;
   if (error.status === 403) return 'Этот переход недоступен для вашей роли.';
+  if (error.status === 409 && error.code === 'work_order_approval_version_required') {
+    return 'Текущая версия условий недоступна. Обновите карточку и проверьте состав, стоимость, сроки и исполнителя перед согласованием.';
+  }
+  if (error.status === 409 && error.code === 'work_order_stale') {
+    return 'Условия работы изменились после просмотра. Проверьте новую версию, прежде чем её согласовать.';
+  }
   if (error.status === 409 && detail === 'payment_transition_required') {
     return 'Статус оплаты подтверждается только через счёт, чек или банковскую выписку.';
   }
@@ -71,6 +77,14 @@ export function WorkOrderDetailScreen() {
 
   const transition = async (next: WorkOrderStatus): Promise<boolean> => {
     if (!user || !activeProject || !workOrder || mutationRef.current) return false;
+    if (next === 'approved' && !workOrder.updated_at) {
+      showActionConfirm({
+        title: 'Проверьте условия перед согласованием',
+        message: 'Не удалось определить точную версию работы. Обновляем состав, стоимость, сроки и исполнителя.',
+      });
+      await reload();
+      return false;
+    }
     mutationRef.current = true;
     setMutation(next);
     try {
