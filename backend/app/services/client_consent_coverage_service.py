@@ -262,7 +262,9 @@ async def consent_coverage_snapshot(db: AsyncSession, project: Project) -> dict:
         "total_scanned": sum(counts.values()),
         "counts": counts,
         "source_integrity_issues": source_integrity_issues,
-        "items_requiring_evidence": sum(1 for e in entries if e["evidence_level"] in ("missing","broken")),
+        # "Partial" provenance still cannot prove this customer's authorization.
+        # Count every scanned record until a versioned consent ledger is present.
+        "items_requiring_evidence": len(entries),
         "recognized_expense_fact_rub": (
             str(actual_expense_fact.quantize(_CENT))
             if actual_expense_fact_valid and not e_cut else None
