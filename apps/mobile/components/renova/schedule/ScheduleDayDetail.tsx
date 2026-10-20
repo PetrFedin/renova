@@ -84,6 +84,13 @@ export function ScheduleDayDetail({
 
   const extendWork = async (wo: WorkOrder, days: number, note: string) => {
     if (!userId || !projectId || readOnly) return;
+    if (!['draft', 'published', 'negotiating'].includes(wo.status)) {
+      notifyAlert(
+        'Условия уже согласованы',
+        'Срок, стоимость и исполнитель утверждённой работы защищены. Обсудите изменение в карточке работы — оно требует отдельного согласования заказчика.',
+      );
+      return;
+    }
     const expectedUpdatedAt = wo.updated_at;
     if (!expectedUpdatedAt) {
       onChanged?.();
@@ -116,6 +123,12 @@ export function ScheduleDayDetail({
     } catch (e: unknown) {
       if (isOfflineQueued(e)) {
         notifyOfflineQueued('Продление срока');
+      } else if (e instanceof ApiError && e.status === 409 && e.code === 'work_order_approved_scope_locked') {
+        onChanged?.();
+        notifyAlert(
+          'Условия защищены',
+          'Работа уже согласована. Изменение срока возможно только после отдельного согласования новой версии с заказчиком.',
+        );
       } else if (e instanceof ApiError && e.status === 409 && e.code === 'work_order_stale') {
         onChanged?.();
         notifyAlert(
@@ -150,6 +163,7 @@ export function ScheduleDayDetail({
     const wo = woById.get(e.work_order_id);
     if (!wo || isWorkArchived(wo.status)) return null;
     const status = wo.status as WorkOrderStatus;
+    const scopeEditable = ['draft', 'published', 'negotiating'].includes(status);
     const actions = workActions(status, role === 'contractor' ? 'contractor' : 'customer');
     // P0: не подставлять done исполнителю; приоритет сдачи/приёмки по роли
     const primary =
@@ -166,19 +180,28 @@ export function ScheduleDayDetail({
               <Text style={s.actionBtnT}>{primary.label}</Text>
             </Pressable>
           ) : null}
-          {role === 'customer' ? (
-            <Pressable style={s.actionBtnOutline} onPress={() => extendWork(wo, 3, 'Продление срока заказчиком')}>
-              <Text style={s.actionBtnOutlineT}>Продлить +3 дня</Text>
-            </Pressable>
+          {scopeEditable ? (
+            role === 'customer' ? (
+              <Pressable style={s.actionBtnOutline} onPress={() => extendWork(wo, 3, 'Продление срока заказчиком')}>
+                <Text style={s.actionBtnOutlineT}>Предложить +3 дня</Text>
+              </Pressable>
+            ) : (
+              <Pressable style={s.actionBtnOutline} onPress={() => extendWork(wo, 7, 'Запрос продления от исполнителя')}>
+                <Text style={s.actionBtnOutlineT}>Предложить +7 дней</Text>
+              </Pressable>
+            )
           ) : (
             <Pressable
               style={s.actionBtnOutline}
-              onPress={() => extendWork(wo, 7, 'Запрос продления от исполнителя')}
+              onPress={() => pushOsNav({ pathname: '/work-order/[id]', params: { id: wo.id } }, undefined, role)}
             >
-              <Text style={s.actionBtnOutlineT}>Запросить +7 дней</Text>
+              <Text style={s.actionBtnOutlineT}>Карточка согласованной работы</Text>
             </Pressable>
           )}
         </View>
+        {!scopeEditable ? (
+          <Text style={s.hint}>Утверждённые сроки, бюджет и исполнитель не меняются без нового согласования заказчика.</Text>
+        ) : null}
         {role === 'contractor' && status === 'review' ? (
           <Text style={s.hint}>Приёмка этапа — только у заказчика в «Ремонт → Приёмка»</Text>
         ) : null}
