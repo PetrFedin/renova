@@ -89,6 +89,22 @@ def _decision_error(error: ValueError) -> HTTPException:
     return HTTPException(409, detail={"code": code})
 
 
+@router.get("/{project_id}/consent-coverage")
+async def customer_consent_coverage(
+    project_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Read-only gap report: workflow approval never masquerades as financial consent."""
+    project = await require_project(db, project_id, user, write=False)
+    if project.customer_id != user.id:
+        raise HTTPException(403, detail={"code": "consent_coverage_customer_required"})
+
+    from app.services.client_consent_coverage_service import consent_coverage_snapshot
+
+    return await consent_coverage_snapshot(db, project)
+
+
 @router.get("/{project_id}/approvals")
 async def approval_hub(
     project_id: str,
