@@ -197,7 +197,9 @@ export const workOrdersApi = {
       await invalidateCachedGet(`/api/v1/projects/${projectId}/work-orders`, userId);
       return updated;
     } catch (e) {
-      if (!isQueueableWriteError(e)) throw e;
+      // Explicit client approval must never be queued to execute later
+      // without a fresh online check of the reviewed WorkOrder revision.
+      if (status === 'approved' || !isQueueableWriteError(e)) throw e;
       const { enqueue } = await import('@/lib/offlineQueue');
       await enqueue({
         path: `/api/v1/projects/${projectId}/work-orders/${workOrderId}/transition`,
