@@ -4,7 +4,7 @@ import { View, Text, Pressable } from 'react-native';
 import { notifyError } from '@/lib/notify';
 import { router, usePathname } from 'expo-router';
 import { formatRub, RenovaTheme } from '@/constants/Theme';
-import { formatDeviationLabel, formatDeviationValue } from '@/lib/domain/budgetDeviationLabel';
+
 import { PrimaryButton } from '@/components/renova/PrimaryButton';
 import { BudgetFactStatus } from '@/components/renova/budget/BudgetFactStatus';
 import { StageExpenseLinksPanel } from '@/components/renova/StageExpenseLinksPanel';
@@ -103,14 +103,11 @@ export function BudgetSummarySection(props: Props) {
   const rubExact = (amount: number) => new Intl.NumberFormat('ru-RU', {
     style: 'currency', currency: 'RUB', minimumFractionDigits: 2, maximumFractionDigits: 2,
   }).format(amount);
-  // The label already carries the direction, so the value must not carry it a
-  // second time. It used to, and «Экономия −185 938 ₽» reads as a saving of
-  // minus the whole budget — shown in green under «В пределах плана» on a
-  // project where nothing had been spent yet, which is when the figure is at
-  // its largest. Only the neutral label keeps a signed value.
-  // UI-001: при факте 0 «Экономия = весь план / −100 % / маржа = план» — не экономия, а отсутствие данных.
-  const deviationLabel = view.factKnown ? formatDeviationLabel(view.deviation) : 'Отклонение';
-  const deviationValue = view.factKnown ? formatDeviationValue(view.deviation) : '—';
+  // Spending below the budget is NOT realized savings or contractor profit.
+  // Until the customer accepts the final scope, it only means below-plan spend.
+  const deviationLabel = !view.factKnown ? 'Отклонение'
+    : view.deviation > 0 ? 'Перерасход' : view.deviation < 0 ? 'Ниже плана' : 'Отклонение';
+  const deviationValue = view.factKnown ? rubExact(Math.abs(view.deviation)) : '—';
 
   // Pending requests are not proof of customer-authorized payable obligations.
   const unverifiedPayments = payments.filter((payment) => payment.status === 'paid_unverified');
@@ -182,11 +179,11 @@ export function BudgetSummarySection(props: Props) {
             {view.forecast != null && view.factKnown ? (
               <View style={s.summaryMetaCell}>
                 <Text style={s.summaryLabel}>Прогноз</Text>
-                <Text style={s.summaryMetaValue}>{formatRub(view.forecast)}</Text>
+                <Text style={s.summaryMetaValue}>{rubExact(view.forecast)}</Text>
               </View>
             ) : null}
             <View style={s.summaryMetaCell}>
-              <Text style={s.summaryLabel}>Остаток</Text>
+              <Text style={s.summaryLabel}>Остаток плана</Text>
               <Text style={s.summaryMetaValue}>{view.figuresValid ? rubExact(view.remaining) : '—'}</Text>
             </View>
             {pendingPayments.length > 0 ? (
@@ -220,7 +217,7 @@ export function BudgetSummarySection(props: Props) {
                 : 'Данные расчёта противоречат опубликованным суммам или содержат некорректный платёж. Проверьте счета и первичные документы.'}
             />
           ) : null}
-          {summary && (() => {
+          {summary && view.figuresValid && (() => {
             const label = formatForecastOverLabel(summary.forecast_over, view.planned);
             return label ? <Text style={[s.risk, { color: riskColor }]}>{label}</Text> : null;
           })()}
