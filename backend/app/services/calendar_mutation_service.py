@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entities import CalendarItem, Project, Stage, User
+from app.db.locking import lock_rows
 
 _HEX_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
@@ -63,19 +64,13 @@ def _is_canonical_stage_projection(item: CalendarItem) -> bool:
 
 async def _locked_item(db: AsyncSession, item_id: str) -> CalendarItem | None:
     query = select(CalendarItem).where(CalendarItem.id == item_id)
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     return (await db.execute(query)).scalar_one_or_none()
 
 
 async def _locked_project(db: AsyncSession, project_id: str) -> Project | None:
     query = select(Project).where(Project.id == project_id)
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     return (await db.execute(query)).scalar_one_or_none()
 
 

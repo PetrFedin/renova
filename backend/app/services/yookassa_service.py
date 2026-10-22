@@ -9,6 +9,7 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.db.locking import lock_rows
 
 _seen_keys: set[str] = set()
 YOOKASSA_IPS = {
@@ -260,10 +261,7 @@ async def process_webhook(body: dict[str, Any], db: AsyncSession) -> dict[str, A
             return {"ok": True, "handled": False, "reason": "missing_metadata"}
 
         q = select(Payment).where(Payment.id == payment_id)
-        try:
-            q = q.with_for_update()
-        except Exception:
-            pass
+        q = lock_rows(q, db)
         existing = (await db.execute(q)).scalar_one_or_none()
         if not existing or existing.project_id != project_id:
             return {"ok": True, "handled": False, "reason": "payment_not_found"}

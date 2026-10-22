@@ -22,6 +22,7 @@ from app.models.entities import (
 )
 from app.services import material_supply_service
 from app.services.client_write_side_effects import PreparedSideEffect, activate_client_write_side_effects
+from app.db.locking import lock_rows
 
 
 def _uuid() -> str:
@@ -332,10 +333,7 @@ async def transition_status(
         .where(Purchase.id == purchase_id, Purchase.project_id == project_id)
         .options(selectinload(Purchase.items))
     )
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     purchase = (await db.execute(query)).scalar_one_or_none()
     if not purchase:
         return None, False

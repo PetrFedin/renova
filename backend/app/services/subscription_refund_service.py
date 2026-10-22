@@ -13,6 +13,7 @@ from app.core.timeutil import utc_now
 from app.models.entities import Payment, SubscriptionStatus
 from app.models.subscription_checkout import SubscriptionCheckout, SubscriptionRefund
 from app.services.subscription_service import get_sub
+from app.db.locking import lock_rows
 
 
 class SubscriptionRefundIntegrityError(ValueError):
@@ -52,10 +53,7 @@ async def _locked_checkout_by_provider(
     query = select(SubscriptionCheckout).where(
         SubscriptionCheckout.provider_payment_id == provider_payment_id
     )
-    try:
-        query = query.with_for_update()
-    except Exception:
-        pass
+    query = lock_rows(query, db)
     return (await db.execute(query.limit(1))).scalar_one_or_none()
 
 
