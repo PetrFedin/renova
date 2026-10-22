@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { RenovaTheme } from '@/constants/Theme';
+import { Card, InfoBanner, StatusPill } from '@/components/ui';
 import { api } from '@/lib/api';
 import type { CustomerConsentCoverage, CustomerConsentCoverageEntry } from '@/lib/api/os';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
@@ -57,16 +58,21 @@ export function CustomerConsentCoveragePanel({
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
+  const [visibleLimit, setVisibleLimit] = useState(10);
+  const [reportIdentity, setReportIdentity] = useState<string | null>(null);
   const requestGeneration = useRef(0);
 
   const reload = useCallback(async () => {
     const generation = ++requestGeneration.current;
+    setReport(null);
+    setReportIdentity(null);
     setLoading(true);
     try {
       const result = await api.customerConsentCoverage(userId, projectId);
       if (generation !== requestGeneration.current) return;
       if (result.project_id !== projectId) throw new Error('consent_coverage_project_mismatch');
       setReport(result);
+      setReportIdentity(userId + ':' + projectId);
       setFailed(false);
     } catch (error: unknown) {
       if (generation !== requestGeneration.current) return;
@@ -83,24 +89,28 @@ export function CustomerConsentCoveragePanel({
     requestGeneration.current += 1;
     setReport(null);
     setExpanded(false);
+    setVisibleLimit(10);
     void reload();
     return () => { requestGeneration.current += 1; };
   }, [reload]);
   useProjectDataReload(reload);
 
   // Project changes can render before effects execute. Never show old project money.
-  const current = report?.project_id === projectId ? report : null;
+  const current = report?.project_id === projectId && reportIdentity === userId + ':' + projectId ? report : null;
   const issueCount = current?.items_requiring_evidence ?? 0;
-  const severeCount = current?.items.filter((row) => row.risk === 'critical' || row.risk === 'high').length ?? 0;
-  const visible = current?.items.slice(0, expanded ? 25 : 5) ?? [];
+  const visible = expanded ? current?.items.slice(0, visibleLimit) ?? [] : [];
 
   return (
-    <View style={s.card} accessibilityLabel="Проверка подтверждений заказчика">
+    <Card variant="base">
       <View style={s.header}>
         <View style={s.headerText}>
-          <Text style={s.kicker}>ФИНАНСОВЫЙ КОНТРОЛЬ</Text>
-          <Text style={s.title}>Доказательства согласований</Text>
+          <Text style={s.title}>Согласования и расходы</Text>
+          <Text style={s.status}>Проверка документов по объекту</Text>
         </View>
+        <StatusPill
+          tone={failed || (current?.source_integrity_issues ?? 0) > 0 ? 'danger' : 'warning'}
+          label={loading ? 'Проверка' : failed ? 'Нет данных' : 'Нужно подтверждение'}
+        />
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Обновить проверку согласований"
@@ -111,43 +121,25 @@ export function CustomerConsentCoveragePanel({
         </Pressable>
       </View>
       <Text style={s.explainer}>
-        Проверка выявляет пробелы в связях платежей, закупок, расходов и работ.
-        Сама по себе оплата, приёмка или статус «согласовано» не доказывают,
-        что заказчик утвердил конкретную сумму и объём работ.
+        Связи платежей с документами не заменяют согласие заказчика
+        на конкретные объём и стоимость работ.
       </Text>
       {loading && !current ? (
         <Text style={s.status}>Проверяем документы и финансовые связи…</Text>
       ) : failed || !current ? (
-        <View style={s.warningBox}>
-          <Text style={s.warningText}>
-            Проверка недоступна. Это не означает, что все расходы согласованы.
-            Обновите данные перед финансовым решением.
-          </Text>
-        </View>
+        <InfoBanner
+          tone="warning"
+          message="Проверка недоступна. Это не означает, что все расходы согласованы. Обновите данные перед финансовым решением."
+        />
       ) : (
         <>
-          <View style={s.metrics}>
-            <View style={s.metric}>
-              <Text style={s.value}>{current.total_scanned}</Text>
-              <Text style={s.metricLabel}>Записей изучено</Text>
-            </View>
-            <View style={s.metric}>
-              <Text style={s.value}>{issueCount}</Text>
-              <Text style={s.metricLabel}>Требуют доказательств</Text>
-            </View>
-            <View style={s.metric}>
-              <Text style={[s.value, severeCount > 0 ? s.dangerText : null]}>
-                {severeCount}
-              </Text>
-              <Text style={s.metricLabel}>Высокий риск в выборке</Text>
-            </View>
-          </View>
-          <View style={s.warningBox}>
-            <Text style={s.warningText}>
-              Полное индивидуальное согласие на каждую операцию пока не подтверждено.
-              Это диагностический отчёт, а не разрешение на оплату.
-            </Text>
-          </View>
+          <Text style={s.explainer}>
+            Проверено: {current.total_scanned}. Требуют подтверждения: {issueCount}.
+          </Text>
+          <Text style={s.disclaimer}>
+            Полное индивидуальное согласие на каждую операцию пока не подтверждено.
+            Диагностика не является разрешением на оплату.
+          </Text>
           {current.budget_comparison === 'provisional_mismatch' ? (
             <View style={s.warningBox}>
               <Text style={s.warningText}>
@@ -222,7 +214,7 @@ export function CustomerConsentCoveragePanel({
           </Text>
         </>
       )}
-    </View>
+    </Card>
   );
 }
 
