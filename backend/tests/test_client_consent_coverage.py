@@ -244,8 +244,10 @@ async def test_scope_decision_evidence_links_to_work_but_never_auto_authorizes_p
             "budget_planned_rub": "5000.00", "notes": "Грунт включён",
         },
         "terms": {
+            "specialist_id": contractor.id,
             "quantity": "2.000", "unit": "м²",
             "unit_price_rub": "2500.00", "amount_cap_rub": "5000.00",
+            "currency": "RUB",
             "inclusions": ["Грунт"], "exclusions": ["Вывоз мусора"],
             "deliverables": ["Покрашенная стена"],
             "payment_milestone": "После приёмки",
