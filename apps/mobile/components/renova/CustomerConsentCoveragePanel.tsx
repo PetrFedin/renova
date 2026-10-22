@@ -113,10 +113,6 @@ export function CustomerConsentCoveragePanel({
           <Text style={s.title}>Согласования и расходы</Text>
           <Text style={s.status}>Проверка документов по объекту</Text>
         </View>
-        <StatusPill
-          tone={failed || (current?.source_integrity_issues ?? 0) > 0 ? 'danger' : 'warning'}
-          label={loading ? 'Проверка' : failed ? 'Нет данных' : 'Нужно подтверждение'}
-        />
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Обновить проверку согласований"
@@ -126,6 +122,10 @@ export function CustomerConsentCoveragePanel({
           <Text style={s.refreshText}>Обновить</Text>
         </Pressable>
       </View>
+      <StatusPill
+        tone={failed || (current?.source_integrity_issues ?? 0) > 0 ? 'danger' : 'warning'}
+        label={loading ? 'Проверка' : failed ? 'Нет данных' : 'Нужно подтверждение'}
+      />
       <Text style={s.explainer}>
         Связи платежей с документами не заменяют согласие заказчика
         на конкретные объём и стоимость работ.
