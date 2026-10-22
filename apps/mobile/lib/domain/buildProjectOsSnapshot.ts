@@ -178,12 +178,12 @@ export function buildProjectOsSnapshot(
     if (unpaid > 0) {
       nextAction = role === 'customer'
         ? {
-          title: `Оплатить ${invoiceCountLabel(unpaid)}`,
+          title: `Проверить ${invoiceCountLabel(unpaid)}`,
           subtitle: pendingPaymentTotal > 0
-            ? `${formatRub(pendingPaymentTotal)} к оплате`
+            ? `${formatRub(pendingPaymentTotal)} выставлено`
             : invoiceCountLabel(unpaid),
-          button: 'Оплатить',
-          href: budgetTabRoute(role, 'payments', { openPayment: '1' }),
+          button: 'Проверить',
+          href: budgetTabRoute(role, 'payments'),
           kind: 'payment',
         }
         : {
@@ -254,12 +254,12 @@ export function buildProjectOsSnapshot(
     };
   } else if (unpaid > 0 && role === 'customer') {
     nextAction = {
-      title: `Оплатить ${invoiceCountLabel(unpaid)}`,
+      title: `Проверить ${invoiceCountLabel(unpaid)}`,
       subtitle: pendingPaymentTotal > 0
-        ? `${formatRub(pendingPaymentTotal)} к оплате`
+        ? `${formatRub(pendingPaymentTotal)} выставлено`
         : 'Счёт после приёмки',
-      button: 'Оплатить',
-      href: budgetTabRoute(role, 'payments', { openPayment: '1' }),
+      button: 'Проверить',
+      href: budgetTabRoute(role, 'payments'),
       kind: 'payment',
     };
   } else if (offlineBlocked > 0) {
@@ -416,14 +416,18 @@ export function buildProjectOsSnapshot(
   } else if (dashTitle && !dashSaysComplete) {
     const deadline = osSchedule?.planned_end || project.planned_end_date;
     nextAction = {
-      title: dashTitle,
+      title: dash.next_action_type === 'payment' && role === 'customer'
+        ? `Проверить ${invoiceCountLabel(Math.max(1, unpaid))}`
+        : dashTitle,
       subtitle: dash.next_action_type === 'payment' && pendingPaymentTotal > 0
-        ? `${formatRub(pendingPaymentTotal)} к оплате`
+        ? `${formatRub(pendingPaymentTotal)} выставлено`
         : deadline
           ? `до ${deadline}`
           : 'Рекомендация по проекту',
-      button: dash.next_action_type === 'payment' ? 'Оплатить' : 'Открыть',
-      href: dash.next_action_type === 'payment' ? budgetTabRoute(role, 'payments', role === 'customer' ? { openPayment: '1' } : undefined) : repairTabRoute(role, 'works'),
+      button: dash.next_action_type === 'payment'
+        ? (role === 'customer' ? 'Проверить' : 'Счета') : 'Открыть',
+      href: dash.next_action_type === 'payment'
+        ? budgetTabRoute(role, 'payments') : repairTabRoute(role, 'works'),
       kind: dash.next_action_type === 'payment' ? 'payment' : 'work',
     };
   } else {
