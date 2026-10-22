@@ -354,7 +354,15 @@ async def test_delete_reverses_fact_but_confirmed_payment_receipt_is_locked(rece
     )
     assert result is not None and result.amount == 2100
     assert await receipt_db.get(Receipt, deletable_id) is None
-    assert (await receipt_db.scalar(select(func.count()).select_from(Expense))) == 0
+    # Строка расхода остаётся в истории, но снята с учёта: физическое
+    # удаление переписывало историю без следа и без отмены (см.
+    # test_receipt_delete_keeps_the_ledger).
+    assert (await receipt_db.scalar(select(func.count()).select_from(Expense))) == 1
+    assert (
+        await receipt_db.scalar(
+            select(func.count()).select_from(Expense).where(Expense.status == "deleted")
+        )
+    ) == 1
     stored_project = await receipt_db.get(Project, project_id)
     assert stored_project.budget_spent == 0
     assert (await receipt_db.scalar(select(func.count()).select_from(DomainOutbox))) == 1

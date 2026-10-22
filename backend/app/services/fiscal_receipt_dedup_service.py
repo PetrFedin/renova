@@ -87,7 +87,9 @@ async def collapse_duplicate_scan_candidate(
 
     from app.services import budget_service as budget
 
-    await budget.delete_receipt_expenses(db, candidate.id, rec=candidate)
+    # Здесь схлопывается технический дубль чека, а не удаляется история:
+    # снятый с учёта двойник рядом с каждым чеком никому не нужен.
+    await budget.delete_receipt_expenses(db, candidate.id, rec=candidate, collapsing_duplicate=True)
     await db.delete(candidate)
     await budget.refresh_budget_facts(db, project_id)
     await db.flush()
