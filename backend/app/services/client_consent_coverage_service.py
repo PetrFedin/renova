@@ -290,8 +290,27 @@ async def consent_coverage_snapshot(db: AsyncSession, project: Project) -> dict:
             try:
                 data = json.loads(scope.snapshot_json)
                 detail = data["work_order"]
+                terms = data["terms"]
+                structured_terms_valid = (
+                    terms["specialist_id"] == scope.specialist_id
+                    and Decimal(str(terms["quantity"])) == scope.quantity
+                    and isinstance(terms["unit"], str)
+                    and terms["unit"].strip() == scope.unit
+                    and _money(terms["unit_price_rub"]) == _money(scope.unit_price)
+                    and _money(terms["amount_cap_rub"]) == _money(scope.amount_cap)
+                    and terms["currency"] == scope.currency == "RUB"
+                    and isinstance(terms["inclusions"], list)
+                    and len(terms["inclusions"]) > 0
+                    and isinstance(terms["exclusions"], list)
+                    and isinstance(terms["deliverables"], list)
+                    and len(terms["deliverables"]) > 0
+                    and isinstance(terms["payment_milestone"], str)
+                    and bool(terms["payment_milestone"].strip())
+                    and scope.quantity * scope.unit_price == scope.amount_cap
+                )
                 snapshot_matches = (
-                    detail["id"] == work.id
+                    structured_terms_valid
+                    and detail["id"] == work.id
                     and detail["project_id"] == project_id
                     and detail["title"] == work.title
                     and detail["work_type"] == work.work_type
@@ -313,7 +332,7 @@ async def consent_coverage_snapshot(db: AsyncSession, project: Project) -> dict:
                     == scope.snapshot_sha256
                 )
                 valid_scope = digest_valid and snapshot_matches
-            except (ValueError, KeyError, TypeError, AttributeError, json.JSONDecodeError):
+            except (ValueError, KeyError, TypeError, AttributeError, InvalidOperation, json.JSONDecodeError):
                 valid_scope = False
 
             if not valid_scope:
