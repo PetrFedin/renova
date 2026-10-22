@@ -1,14 +1,21 @@
 """Customer-only evidence coverage: no false financial consent, no hidden orphan links."""
 from __future__ import annotations
 
+from datetime import date, datetime
+from decimal import Decimal
+import hashlib
+import json
 
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import func, select
 
 from app.api.v1 import approvals as approvals_api
+from app.models.client_scope_consent import (
+    ClientScopeDecision, ClientScopeVersion, ClientFinancialAuthorization,
+)
 from app.models.entities import (
-    ChangeOrder, ChangeOrderStatus, DomainOutbox, Expense, MaterialPick,
+    Room, ChangeOrder, ChangeOrderStatus, DomainOutbox, Expense, MaterialPick,
     MaterialPickStatus, Payment, PaymentStatus, PaymentType, Project,
     Purchase, PurchaseItem, Receipt, User, UserRole, WorkOrder, WorkOrderStatus,
 )
@@ -202,3 +209,97 @@ async def test_non_rub_expense_is_not_reported_or_summed_as_rub(db):
     assert snapshot["budget_comparison"] == "unverifiable"
     assert snapshot["budget_drift_rub"] is None
     assert snapshot["source_integrity_issues"] == 1
+
+
+@pytest.mark.asyncio
+async def test_scope_decision_evidence_links_to_work_but_never_auto_authorizes_payments(db):
+    customer, contractor, _, project, _ = await _seed(db, "version-link")
+    room = Room(
+        id="consent-room-version-link", project_id=project.id,
+        name="Спальня", room_type="living", length_m=4, width_m=4,
+        height_m=2.7, openings_sq_m=0, outlets_count=0,
+        switches_count=0, plumbing_points=0,
+    )
+    db.add(room)
+    await db.flush()
+    work = WorkOrder(
+        id="consent-work-version-link", project_id=project.id,
+        title="Покраска 2 м²", work_type="painting",
+        room_id=room.id, status=WorkOrderStatus.approved,
+        budget_planned=5000, assignee_id=contractor.id,
+        created_by=contractor.id, notes="Грунт включён",
+        planned_start=date(2026, 11, 1),
+        planned_end=date(2026, 11, 4),
+    )
+    db.add(work)
+    await db.flush()
+    snapshot = {
+        "schema": "renova.customer_scope.v1", "version": 1,
+        "work_order": {
+            "id": work.id, "project_id": project.id,
+            "title": work.title, "work_type": work.work_type,
+            "room_id": work.room_id, "stage_id": work.stage_id,
+            "planned_start": "2026-11-01", "planned_end": "2026-11-04",
+            "assignee_id": contractor.id,
+            "budget_planned_rub": "5000.00", "notes": "Грунт включён",
+        },
+        "terms": {
+            "quantity": "2.000", "unit": "м²",
+            "unit_price_rub": "2500.00", "amount_cap_rub": "5000.00",
+            "inclusions": ["Грунт"], "exclusions": ["Вывоз мусора"],
+            "deliverables": ["Покрашенная стена"],
+            "payment_milestone": "После приёмки",
+        },
+    }
+    encoded = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    digest = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+    version = ClientScopeVersion(
+        project_id=project.id, work_order_id=work.id, version=1,
+        created_by=contractor.id, client_request_id="scope-version-link-001",
+        work_order_updated_at=work.updated_at or datetime(2026, 10, 23),
+        snapshot_json=encoded, snapshot_sha256=digest,
+        specialist_id=contractor.id, quantity=Decimal("2.000"),
+        unit="м²", unit_price=Decimal("2500.00"),
+        amount_cap=Decimal("5000.00"), currency="RUB",
+    )
+    db.add(version)
+    await db.flush()
+    decision = ClientScopeDecision(
+        project_id=project.id, scope_version_id=version.id,
+        customer_id=customer.id, reviewed_digest=digest, decision="approved",
+    )
+    db.add(decision)
+    await db.flush()
+    grant = ClientFinancialAuthorization(
+        project_id=project.id, scope_version_id=version.id,
+        decision_id=decision.id, customer_id=customer.id,
+        amount_cap=Decimal("5000.00"),
+        committed_amount=Decimal("0.00"),
+        consumed_amount=Decimal("0.00"), currency="RUB",
+    )
+    db.add(grant)
+    await db.commit()
+
+    result = await consent_coverage_snapshot(db, project)
+    work_entry = next(item for item in result["items"] if item["kind"] == "work_order")
+    assert work_entry["reason_code"] == "scope_approved_payments_not_allocated"
+    assert work_entry["evidence_level"] == "partial"
+    assert work_entry["consent_status"] == "not_verifiable"
+    assert work_entry["references"]["scope_version"] == 1
+    assert work_entry["references"]["scope_approved"] is True
+    assert work_entry["references"]["financial_allocations_enforced"] is False
+    assert work_entry["references"]["scope_cap_rub"] == "5000.00"
+    assert work_entry["references"]["missing_details"] == []
+    assert result["complete_customer_consent_proven"] is False
+    assert result["items_requiring_evidence"] == 1
+
+    # A changed snapshot must revoke diagnostic confidence even if a historic
+    # decision and cap still exist. The audit does not mutate or repair it.
+    version.snapshot_json = encoded + " "
+    await db.commit()
+    drift = await consent_coverage_snapshot(db, project)
+    broken = next(item for item in drift["items"] if item["kind"] == "work_order")
+    assert broken["evidence_level"] == "broken"
+    assert broken["reason_code"] == "scope_snapshot_integrity_failed"
+    assert drift["source_integrity_issues"] == 1
+    assert drift["complete_customer_consent_proven"] is False
