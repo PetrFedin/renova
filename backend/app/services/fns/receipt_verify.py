@@ -239,6 +239,8 @@ async def verify_receipt(parsed: dict) -> dict:
     amount = float(parsed.get("amount") or 0)
     if not (fn and fd and fp and amount > 0):
         return _result(INVALID, "Неполный или некорректный QR-код")
+    if _simulated_provider_active():
+        return await _verify_via_simulated_provider(parsed, str(fn), str(fd), str(fp), amount)
     if not receipt_auth_configured():
         return _result(
             VERIFICATION_PENDING,
@@ -308,6 +310,45 @@ async def verify_receipt(parsed: dict) -> dict:
         VERIFICATION_FAILED,
         f"Проверка ФНС завершилась с HTTP {response.status_code}",
     )
+
+
+def _simulated_provider_active() -> bool:
+    """PRODUCT-COMPLETION-MANDATE A5: route through the provider port only when
+    explicitly configured as `simulated`; `off`/`real` keep the legacy path intact."""
+    return str(getattr(settings, "fiscal_receipt_provider_mode", "off") or "off").strip().lower() == "simulated"
+
+
+async def _verify_via_simulated_provider(parsed: dict, fn: str, fd: str, fp: str, amount: float) -> dict:
+    from datetime import datetime, timezone
+
+    from app.services.providers import base as provider_base
+    from app.services.providers import registry as provider_registry
+
+    provider = provider_registry.fiscal_receipt_provider()
+    issued_raw = parsed.get("t") or parsed.get("issued_at")
+    try:
+        issued_at = datetime.fromisoformat(str(issued_raw)) if issued_raw else datetime.now(timezone.utc)
+    except ValueError:
+        issued_at = datetime.now(timezone.utc)
+    if issued_at.tzinfo is None:
+        issued_at = issued_at.replace(tzinfo=timezone.utc)
+    query = provider_base.ReceiptQuery(
+        fn=fn,
+        fd=fd,
+        fp=fp,
+        money=provider_base.Money(Decimal(str(amount)).quantize(Decimal("0.01"))),
+        issued_at=issued_at,
+        raw_qr=parsed.get("raw"),
+    )
+    verification = await provider.verify(query)
+    payload = {**verification.raw, "provider": provider.name, "verdict": verification.verdict.value}
+    if verification.verdict is provider_base.ReceiptVerdict.VALID:
+        return _result(VERIFIED_LIVE, f"{provider.name}: чек подтверждён (симулятор)", provider_payload=payload)
+    if verification.verdict is provider_base.ReceiptVerdict.AMOUNT_MISMATCH:
+        return _result(INVALID, "Сумма чека не совпадает с данными ФНС (симулятор)", provider_payload=payload)
+    if verification.verdict is provider_base.ReceiptVerdict.NOT_FOUND:
+        return _result(INVALID, "ФНС не подтвердила чек (симулятор)", provider_payload=payload)
+    return _result(VERIFICATION_PENDING, "ФНС временно недоступна (симулятор). Проверка будет повторена", provider_payload=payload)
 
 
 def verify_receipt_stub(parsed: dict) -> dict:
