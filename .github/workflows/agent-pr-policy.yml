@@ -88,6 +88,15 @@ jobs:
           cred=$(git diff "$BASE...$HEAD" | grep -E '^\+.*(YOOKASSA_SECRET|TWILIO_TOKEN|KONTUR_API_KEY|ANTHROPIC_API_KEY)\s*[:=]\s*["'"'"']?[A-Za-z0-9_\-]{16,}' || true)
           if [ -n "$cred" ]; then echo "::error::Credential-like value added"; exit 1; fi
 
+      - name: Mobile design diff must not grow legacy debt
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -e
+          python scripts/mobile-design-diff-integrity.py --self-test
+          python scripts/mobile-design-diff-integrity.py --base "$BASE" --head "$HEAD"
+
       - name: Test baseline must not decrease
         run: |
           B="$RUNNER_TEMP/pr_body.md"
