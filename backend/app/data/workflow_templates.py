@@ -52,6 +52,15 @@ WORKFLOW_TEMPLATES: dict[str, dict] = {
     },
 }
 
+GENERIC_WORK_TYPE = "general"
+GENERIC_STEPS: list[str] = ["Выполнение", "Проверка", "Приёмка"]
+GENERIC_CHECKLIST: list[str] = [
+    "Качество соответствует договорённости",
+    "Убран мусор",
+    "Материалы согласованы",
+    "Фото зафиксированы",
+]
+
 NAME_HINTS: list[tuple[str, str]] = [
     ("электр", "electrical"), ("сантех", "plumbing"), ("плитк", "tiling"),
     ("покрас", "painting"), ("штукатур", "plaster"), ("ламинат", "flooring"),
@@ -66,10 +75,36 @@ def resolve_work_type(code: str | None = None, stage_name: str | None = None) ->
     for hint, wt in NAME_HINTS:
         if hint in n:
             return wt
-    return code or "demolition"
+    # Не «демонтаж»: этап, который не опознан ни кодом, ни именем, — это просто
+    # неопознанный этап. Прежний запасной вариант выдавал «Демонтаж» и за
+    # название, и за шаги, а в построении зависимостей складывал все
+    # неопознанные этапы в одну корзину с настоящим демонтажом — и работы,
+    # которым положено идти после демонтажа, привязывались к постороннему
+    # этапу с меньшим порядковым номером.
+    return code or GENERIC_WORK_TYPE
 
 
 def get_template(work_type: str | None = None, stage_name: str | None = None) -> dict:
+    # Стандартные этапы Renova названы своими именами, а не кодами работ. Без
+    # этой ветки «Подготовка», «Инженерные системы», «Стены», «Потолок» и
+    # «Чистовая отделка» не попадали ни в один NAME_HINTS и уезжали в
+    # `demolition`: ручка возвращала «Демонтаж» почти для каждого этапа — и его
+    # шаги — рядом с правильным чек-листом этого же этапа. Один ответ
+    # противоречил сам себе.
+    if stage_name and stage_name in PHASE_TEMPLATES and not (
+        work_type and work_type in WORKFLOW_TEMPLATES
+    ):
+        phase = PHASE_TEMPLATES[stage_name]
+        phase_type = phase.get("work_type")
+        trade = WORKFLOW_TEMPLATES.get(phase_type) if phase_type else None
+        return {
+            "work_type": phase_type or GENERIC_WORK_TYPE,
+            "name": stage_name,
+            "steps": (trade or {}).get("steps", GENERIC_STEPS),
+            "checklist": phase.get("checklist", []),
+            "depends_on": (trade or {}).get("depends_on", []),
+        }
+
     wt = resolve_work_type(work_type, stage_name)
     tpl = WORKFLOW_TEMPLATES.get(wt)
     if tpl:
@@ -77,8 +112,8 @@ def get_template(work_type: str | None = None, stage_name: str | None = None) ->
     return {
         "work_type": wt,
         "name": stage_name or "Работа",
-        "steps": ["Выполнение", "Проверка", "Приёмка"],
-        "checklist": ["Качество соответствует договорённости", "Убран мусор", "Материалы согласованы", "Фото зафиксированы"],
+        "steps": list(GENERIC_STEPS),
+        "checklist": list(GENERIC_CHECKLIST),
         "depends_on": [],
     }
 
