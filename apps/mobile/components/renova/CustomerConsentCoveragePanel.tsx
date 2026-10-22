@@ -101,7 +101,7 @@ export function CustomerConsentCoveragePanel({
   const visible = expanded ? current?.items.slice(0, visibleLimit) ?? [] : [];
 
   return (
-    <Card variant="base">
+    <Card variant="base" style={s.layout}>
       <View style={s.header}>
         <View style={s.headerText}>
           <Text style={s.title}>Согласования и расходы</Text>
@@ -227,6 +227,7 @@ export function CustomerConsentCoveragePanel({
 }
 
 const s = StyleSheet.create({
+  layout: { gap: RenovaTheme.spacing.sm },
 
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   headerText: { flex: 1, gap: 4 },
