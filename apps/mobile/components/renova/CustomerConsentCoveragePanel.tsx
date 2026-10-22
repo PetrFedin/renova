@@ -141,13 +141,11 @@ export function CustomerConsentCoveragePanel({
             Диагностика не является разрешением на оплату.
           </Text>
           {current.budget_comparison === 'provisional_mismatch' ? (
-            <View style={s.warningBox}>
-              <Text style={s.warningText}>
-                Возможное расхождение бюджета и подтверждённых расходов:
-                {' '}{current.budget_drift_rub} ₽. Необходимо сверить источник
-                и транзакционный пересчёт; это не окончательная бухгалтерская сверка.
-              </Text>
-            </View>
+            <InfoBanner
+              tone="danger"
+              title="Не сходятся финансовые данные"
+              message={`Предварительное расхождение: ${current.budget_drift_rub} ₽. Нужна транзакционная сверка.`}
+            />
           ) : null}
           {current.budget_comparison === 'unverifiable' ? (
             <Text style={s.truncated}>
@@ -164,9 +162,10 @@ export function CustomerConsentCoveragePanel({
             <View key={item.kind + ':' + item.id} style={s.row}>
               <View style={s.rowHeading}>
                 <Text style={s.rowKind}>{KINDS[item.kind]}</Text>
-                <Text style={[s.rowRisk, item.risk === 'critical' ? s.dangerText : null]}>
-                  {item.evidence_level === 'broken' ? 'Проверить связь' : 'Нет полного согласия'}
-                </Text>
+                <StatusPill
+                  tone={item.evidence_level === 'broken' ? 'danger' : 'warning'}
+                  label={item.evidence_level === 'broken' ? 'Нарушена связь' : 'Уточнить'}
+                />
               </View>
               <Text style={s.rowTitle} numberOfLines={2}>{item.title}</Text>
               {item.amount_rub !== null ? (
@@ -187,13 +186,23 @@ export function CustomerConsentCoveragePanel({
               ) : null}
             </View>
           ))}
-          {current.items.length > 5 ? (
+          {current.items.length > 0 ? (
             <Pressable
               accessibilityRole="button"
               onPress={() => setExpanded((value) => !value)}
               style={s.showMore}
             >
-              <Text style={s.refreshText}>{expanded ? 'Свернуть список' : 'Показать больше записей'}</Text>
+              <Text style={s.refreshText}>{expanded ? 'Скрыть детали' : `Посмотреть операции (${current.items.length})`}</Text>
+            </Pressable>
+          ) : null}
+          {expanded && current.items.length > visibleLimit ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Показать следующие финансовые операции"
+              onPress={() => setVisibleLimit((limit) => limit + 10)}
+              style={s.showMore}
+            >
+              <Text style={s.refreshText}>Показать ещё ({Math.min(10, current.items.length - visibleLimit)})</Text>
             </Pressable>
           ) : null}
           {current.items.length === 0 ? (
@@ -201,8 +210,7 @@ export function CustomerConsentCoveragePanel({
           ) : null}
           {current.scan_truncated || current.items_limited ? (
             <Text style={s.truncated}>
-              Проверка неполная: превышен лимит сканирования или отображения.
-              Нужна постраничная сверка полного реестра.
+              Проверка неполная: превышен лимит выборки. Для остальных операций нужна постраничная сверка.
             </Text>
           ) : null}
           <Text style={s.disclaimer}>
@@ -219,34 +227,26 @@ export function CustomerConsentCoveragePanel({
 }
 
 const s = StyleSheet.create({
-  card: {
-    backgroundColor: ALERT_COLORS.surface,
-    borderColor: ALERT_COLORS.border,
-    borderWidth: 1,
-    borderRadius: RenovaTheme.radius.lg,
-    padding: 16,
-    marginBottom: 16,
-    gap: 12,
-  },
+
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   headerText: { flex: 1, gap: 4 },
-  kicker: { color: ALERT_COLORS.textMuted, fontSize: RenovaTheme.fontSize.tiny, fontWeight: '700', letterSpacing: 0.8 },
+
   title: { color: ALERT_COLORS.text, fontSize: RenovaTheme.fontSize.h3, fontWeight: '700' },
   refresh: { minHeight: RenovaTheme.minTouch, minWidth: 68, alignItems: 'center', justifyContent: 'center' },
   refreshText: { color: ALERT_COLORS.accent, fontSize: RenovaTheme.fontSize.bodySmall, fontWeight: '600' },
   explainer: { color: ALERT_COLORS.textMuted, fontSize: RenovaTheme.fontSize.bodySmall, lineHeight: 19 },
   status: { color: ALERT_COLORS.textMuted, fontSize: RenovaTheme.fontSize.bodySmall },
-  metrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  metric: { flex: 1, minWidth: 82, backgroundColor: ALERT_COLORS.surfaceMuted, padding: 10, borderRadius: RenovaTheme.radius.md },
-  value: { color: ALERT_COLORS.text, fontSize: RenovaTheme.fontSize.h2, fontWeight: '700' },
-  metricLabel: { color: ALERT_COLORS.textMuted, fontSize: RenovaTheme.fontSize.tiny, marginTop: 4 },
-  warningBox: { padding: 12, backgroundColor: ALERT_COLORS.warningBg, borderRadius: RenovaTheme.radius.md },
-  warningText: { color: ALERT_COLORS.warningText, fontSize: RenovaTheme.fontSize.bodySmall, lineHeight: 19 },
+
+
+
+
+
+
   dangerText: { color: ALERT_COLORS.danger, fontSize: RenovaTheme.fontSize.bodySmall },
   row: { borderTopWidth: 1, borderTopColor: ALERT_COLORS.borderLight, paddingTop: 12, gap: 4 },
   rowHeading: { flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 },
   rowKind: { color: ALERT_COLORS.textMuted, fontSize: RenovaTheme.fontSize.caption },
-  rowRisk: { color: ALERT_COLORS.warning, fontSize: RenovaTheme.fontSize.caption, fontWeight: '600' },
+
   rowTitle: { color: ALERT_COLORS.text, fontSize: RenovaTheme.fontSize.body, fontWeight: '600' },
   rowAmount: { color: ALERT_COLORS.text, fontSize: RenovaTheme.fontSize.body, fontWeight: '600' },
   rowReason: { color: ALERT_COLORS.textMuted, fontSize: RenovaTheme.fontSize.caption, lineHeight: 18 },
