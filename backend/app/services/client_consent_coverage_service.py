@@ -8,10 +8,15 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
+import hashlib
+import json
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.client_scope_consent import (
+    ClientScopeVersion, ClientScopeDecision, ClientFinancialAuthorization,
+)
 from app.models.entities import (
     ChangeOrder, ChangeOrderStatus, Expense, MaterialPick, MaterialPickStatus,
     Payment, Project, Purchase, PurchaseItem, Receipt, Stage, WorkOrder,
@@ -84,6 +89,33 @@ async def consent_coverage_snapshot(db: AsyncSession, project: Project) -> dict:
     stages, s_cut = await _project_rows(db, Stage, project_id)
     picks, m_cut = await _project_rows(db, MaterialPick, project_id)
     receipts, r_cut = await _project_rows(db, Receipt, project_id)
+    scope_rows, scope_cut = await _project_rows(db, ClientScopeVersion, project_id)
+
+    # The latest proposal is evidence, not spend. Join only within this project.
+    latest_scope_by_work = {}
+    for scope in scope_rows:
+        current = latest_scope_by_work.get(scope.work_order_id)
+        if current is None or scope.version > current.version:
+            latest_scope_by_work[scope.work_order_id] = scope
+    scope_ids = [s.id for s in latest_scope_by_work.values()]
+    decisions = {
+        d.scope_version_id: d
+        for d in (await db.execute(
+            select(ClientScopeDecision).where(
+                ClientScopeDecision.project_id == project_id,
+                ClientScopeDecision.scope_version_id.in_(scope_ids),
+            )
+        )).scalars().all()
+    } if scope_ids else {}
+    grants = {
+        g.scope_version_id: g
+        for g in (await db.execute(
+            select(ClientFinancialAuthorization).where(
+                ClientFinancialAuthorization.project_id == project_id,
+                ClientFinancialAuthorization.scope_version_id.in_(scope_ids),
+            )
+        )).scalars().all()
+    } if scope_ids else {}
 
     payment_by_id = {p.id: p for p in payments}
     purchase_by_id = {p.id: p for p in purchases}
@@ -226,22 +258,115 @@ async def consent_coverage_snapshot(db: AsyncSession, project: Project) -> dict:
             missing.append("scope_location")
         if work.budget_planned is None:
             missing.append("priced_scope")
-        # Current WorkOrder has no canonical structured quantity/unit, exclusion
-        # list or payment-milestone consent. Notes cannot stand in for a signed
-        # itemized version, so these remain universally unverified.
-        missing.extend((
-            "structured_quantity_unit",
-            "explicit_inclusions_exclusions",
-            "payment_milestone",
-        ))
+
+        # A partial scope scan cannot prove which revision is newest.
+        scope = latest_scope_by_work.get(work.id) if not scope_cut else None
+        references = {
+            "missing_details": missing,
+            "assignee_id": work.assignee_id,
+            "stage_id": work.stage_id,
+            "room_id": work.room_id,
+        }
         evidence = "partial" if state in _COMMITTED_WORK_STATUSES else "missing"
+        risk = "high" if missing and state in _COMMITTED_WORK_STATUSES else "medium"
+        reason = "scope_version_and_customer_consent_snapshot_missing"
+        if scope is None:
+            if scope_cut:
+                # Absence cannot be inferred from a truncated source scan.
+                evidence, risk, reason = "unknown", "high", "scope_history_scan_incomplete"
+            else:
+                missing.extend((
+                    "structured_quantity_unit",
+                    "explicit_inclusions_exclusions",
+                    "payment_milestone",
+                ))
+        else:
+            references["scope_version"] = scope.version
+            references["scope_version_id"] = scope.id
+            references["scope_cap_rub"] = _money(scope.amount_cap)
+            decision = decisions.get(scope.id)
+            grant = grants.get(scope.id)
+            references["scope_decision"] = decision.decision if decision else "pending"
+            try:
+                data = json.loads(scope.snapshot_json)
+                detail = data["work_order"]
+                terms = data["terms"]
+                structured_terms_valid = (
+                    terms["specialist_id"] == scope.specialist_id
+                    and Decimal(str(terms["quantity"])) == scope.quantity
+                    and isinstance(terms["unit"], str)
+                    and terms["unit"].strip() == scope.unit
+                    and _money(terms["unit_price_rub"]) == _money(scope.unit_price)
+                    and _money(terms["amount_cap_rub"]) == _money(scope.amount_cap)
+                    and terms["currency"] == scope.currency == "RUB"
+                    and isinstance(terms["inclusions"], list)
+                    and len(terms["inclusions"]) > 0
+                    and isinstance(terms["exclusions"], list)
+                    and isinstance(terms["deliverables"], list)
+                    and len(terms["deliverables"]) > 0
+                    and isinstance(terms["payment_milestone"], str)
+                    and bool(terms["payment_milestone"].strip())
+                    and scope.quantity * scope.unit_price == scope.amount_cap
+                )
+                snapshot_matches = (
+                    structured_terms_valid
+                    and detail["id"] == work.id
+                    and detail["project_id"] == project_id
+                    and detail["title"] == work.title
+                    and detail["work_type"] == work.work_type
+                    and detail["room_id"] == work.room_id
+                    and detail["stage_id"] == work.stage_id
+                    and detail["planned_start"] == (
+                        work.planned_start.isoformat() if work.planned_start else None
+                    )
+                    and detail["planned_end"] == (
+                        work.planned_end.isoformat() if work.planned_end else None
+                    )
+                    and detail["assignee_id"] == work.assignee_id
+                    and detail["notes"] == work.notes
+                    and _money(detail["budget_planned_rub"]) == _money(scope.amount_cap)
+                    and _money(work.budget_planned) == _money(scope.amount_cap)
+                    and scope.specialist_id == work.assignee_id
+                )
+                digest_valid = (
+                    hashlib.sha256(scope.snapshot_json.encode("utf-8")).hexdigest()
+                    == scope.snapshot_sha256
+                )
+                valid_scope = digest_valid and snapshot_matches
+            except (ValueError, KeyError, TypeError, AttributeError, InvalidOperation, json.JSONDecodeError):
+                valid_scope = False
+
+            if not valid_scope:
+                evidence, risk, reason = "broken", "critical", "scope_snapshot_integrity_failed"
+                source_integrity_issues += 1
+            elif decision is None or decision.decision == "rejected":
+                evidence, risk, reason = "missing", "high", "scope_requires_customer_decision"
+            elif (
+                decision.decision != "approved"
+                or decision.customer_id != project.customer_id
+                or decision.reviewed_digest != scope.snapshot_sha256
+                or grant is None
+                or grant.decision_id != decision.id
+                or grant.customer_id != project.customer_id
+                or grant.scope_version_id != scope.id
+                or grant.amount_cap != scope.amount_cap
+                or grant.currency != "RUB"
+            ):
+                evidence, risk, reason = "broken", "critical", "scope_authorization_incomplete"
+                source_integrity_issues += 1
+            else:
+                # Itemized work terms were approved by this project's customer.
+                # There is still NO FK allocation from Payment/Purchase/Expense.
+                evidence, risk, reason = (
+                    "partial", "medium", "scope_approved_payments_not_allocated"
+                )
+                references["scope_approved"] = True
+                references["financial_allocations_enforced"] = False
+
         entries.append(_entry(
             "work_order", work, status=state, evidence=evidence,
-            risk="high" if missing and state in _COMMITTED_WORK_STATUSES else "medium",
-            reason="scope_version_and_customer_consent_snapshot_missing",
-            amount=work.budget_planned,
-            references={"missing_details":missing, "assignee_id":work.assignee_id,
-                        "stage_id":work.stage_id, "room_id":work.room_id},
+            risk=risk, reason=reason,
+            amount=work.budget_planned, references=references,
         ))
 
     for order in changes:
@@ -259,7 +384,7 @@ async def consent_coverage_snapshot(db: AsyncSession, project: Project) -> dict:
             ("work_orders", work_orders), ("change_orders", changes),
         )
     }
-    truncated = any((p_cut, e_cut, u_cut, w_cut, c_cut, s_cut, m_cut, r_cut, items_truncated))
+    truncated = any((p_cut, e_cut, u_cut, w_cut, c_cut, s_cut, m_cut, r_cut, scope_cut, items_truncated))
     severity = {"critical":0, "high":1, "medium":2, "low":3}
     entries.sort(key=lambda entry:(severity[entry["risk"]],entry["kind"],entry["id"]))
     # An advisory drift signal is useful, but never treat this READ COMMITTED

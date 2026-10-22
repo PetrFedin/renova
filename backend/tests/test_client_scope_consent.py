@@ -233,12 +233,15 @@ async def test_superseded_version_bad_digest_and_rejected_decision_fail_closed(d
 @pytest.mark.asyncio
 async def test_stale_work_budget_and_changed_scope_do_not_create_consent(db):
     customer, contractor, _, project, work = await _seed(db, "stale")
+    # The expected service rollback expires every ORM attribute, including id.
+    # Capture scalar identities *before* triggering that transaction rollback.
+    work_id, project_id = work.id, project.id
+    contractor_id, customer_id = contractor.id, customer.id
     with pytest.raises(ValueError, match="scope_work_budget_mismatch"):
         await scopes.propose_scope(
             db, project=project, work_order_id=work.id, actor=contractor,
             **_fields(work, unit_price="2700.00", amount_cap="5400.00"),
         )
-    work_id, project_id, contractor_id = work.id, project.id, contractor.id
     await db.rollback()
     work = await db.get(WorkOrder, work_id)
     project = await db.get(Project, project_id)

@@ -101,27 +101,63 @@ tolerance = 1 ₽ by default
 
 ServerFact — канонический server budget_spent. Tolerance — UI reconciliation, не разрешение терять рубль в ledger.
 
-## 11. Budget Summary decision model
+## 11. Budget Summary decision model — audited candidate C3 (2026-10-23)
 
-Source `buildBudgetSummaryView.ts`, blob `957411d46266104a39ac2b0d16140a911ffb8351`.
+Source `buildBudgetSummaryView.ts`, blob `f90c38b2a5f799deba5c009c7a18ac431618e0fa`.
+The canonical `Project.budget_spent` still comes from confirmed Expenses, not
+from a local aggregation of Payment + Receipt + Purchase. Mobile arithmetic is
+an **independent consistency check**, never a new financial writer.
 
 ```text
-planned = max(0, finite(input.planned, 0))
-spent   = max(0, finite(input.spent, 0))
-deviation = explicit finite deviation else spent - planned
-deviationPct = explicit finite value else:
-    planned > 0 ? round_to_0.1(deviation / planned × 100) : 0
-remaining = max(0, explicit finite remaining else planned - spent)
+money_kopecks(x) = integer round(x × 100) only if x is finite, >= 0
+                   and has no more than 2 decimal places (binary noise tolerated)
+planned = planned_kopecks / 100  (invalid -> figuresValid=false, display "—")
+spent = spent_kopecks / 100     (invalid -> figuresValid=false, display "—")
+deviation = (spent_kopecks - planned_kopecks) / 100
+deviationPct = planned_kopecks > 0 ? round_to_0.1(100 × deviation_kopecks / planned_kopecks) : 0
+remaining = max(0, planned_kopecks - spent_kopecks) / 100
 margin    = planned - spent
-pendingAmounts = finite positive pending amounts
-pendingAmount = round_to_0.01(Σ pendingAmounts)
-pendingCount = count(pendingAmounts)
-customerBudget = finite positive input else null
-customerBudgetOver = customerBudget == null ? 0 : max(0, spent - customerBudget)
-forecast = null for null/undefined input, else max(0, finite(input.forecast, planned))
+pendingAmount = Σ validated positive amounts in integer kopecks
+pendingCount = number of positive validated pending requests
+pendingValid = false if any requested amount is invalid, non-positive or overflows
+customerBudgetOver = max(0, spent - customerBudget) only if both are valid
+forecast = null if missing, invalid or below recorded actual
 ```
 
-Приоритет: empty при planned=spent=0; иначе over при deviation>0; иначе forecast-risk при forecast>planned; иначе on-track. `margin` здесь остаток плана, не доказанная прибыль подрядчика. Source sanitation не заменяет явного missing-data/error state вызывающего экрана.
+**Terminology invariant:** legacy field `margin` is *budget headroom*, not
+contractor profit. User-facing copy is **«остаток по плану»**, never «маржа»
+when based only on `planned - spent`. Backend commercial gross margin would
+require a separate revenue and cost source.
+
+**Cross-check of published derivatives:** supplied server `deviation`,
+`remaining`, `deviationPct` are compared with local plan/fact arithmetic
+and never override it when inconsistent. The percent comparison permits
+0.051 percentage points only for one-decimal rounding; money comparisons
+are exact kopecks. Unknown or invalid sources yield `reconciliation=unavailable`;
+conflicting derivatives, pending requests, invalid forecast or customer budget
+yield `mismatch`. `state='empty'` on malformed input is backward-compatible
+only, and must not be presented as a trustworthy zero; UI guards
+`figuresValid` and shows **«Нет достоверных сумм»**.
+
+**Action integrity:** the budget summary never offers a one-click «Оплатить»
+based solely on a pending invoice. It links to **«Проверить счета»** where the
+user can inspect the source and project; this is UX hardening, not a substitute
+for the still-required server-side universal `ClientFinancialAuthorization`
+consumption gates (#757). Failed read, pending fact and mismatched numbers
+cannot masquerade as permission to pay.
+
+**Visual contract:** customer financial evidence panel is located immediately
+after authoritative summary, collapses details initially and exposes all
+server-returned rows in ten-row increments, with explicit warnings for
+120-row report caps and 1,000-row source scans. It uses canonical
+`Card`, `StatusPill` and `InfoBanner` surfaces instead of metric tiles.
+Customer identity and project ID fence responses. This remains read-only
+and reports no fully authorized money until canonical writer allocations
+actually exist.
+
+**Evidence:** focused TypeScript regression and CI pending new exact SHA;
+cross-source consent linkage, payment authorization and production UI acceptance
+remain separate release blockers.
 
 ## 12. Progress from stages
 

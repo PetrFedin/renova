@@ -3,10 +3,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { RenovaTheme } from '@/constants/Theme';
+import { Card, InfoBanner, StatusPill } from '@/components/ui';
 import { api } from '@/lib/api';
 import type { CustomerConsentCoverage, CustomerConsentCoverageEntry } from '@/lib/api/os';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { reportError } from '@/lib/reportError';
+import { pushOsNav } from '@/lib/pushOsNav';
 
 const KINDS: Record<CustomerConsentCoverageEntry['kind'], string> = {
   payment: 'Оплата',
@@ -32,6 +34,11 @@ const REASONS: Record<string, string> = {
   purchase_items_scan_incomplete: 'Перечень закупок слишком велик для полной проверки',
   scope_version_and_customer_consent_snapshot_missing: 'Нет полной неизменяемой версии объёма, сроков и ответственного',
   change_order_lacks_quantity_specialist_and_scope_digest: 'Нужны объём, специалист, сроки и точная версия согласованных допработ',
+  scope_approved_payments_not_allocated: 'Условия работы согласованы заказчиком, но ни один платёж ещё не связан с этим разрешённым лимитом.',
+  scope_requires_customer_decision: 'Есть детальное предложение, но требуется отдельное решение заказчика по его точной версии.',
+  scope_snapshot_integrity_failed: 'Версия согласованных условий не совпадает с данными работы или контрольной суммой. Нужна проверка истории.',
+  scope_authorization_incomplete: 'Согласие заказчика и разрешённый лимит связаны некорректно. Финансовое разрешение не подтверждено.',
+  scope_history_scan_incomplete: 'Недостаточно данных, чтобы установить последнюю версию условий работ.',
 };
 
 const MISSING_WORK_DETAILS: Record<string, string> = {
@@ -57,16 +64,21 @@ export function CustomerConsentCoveragePanel({
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
+  const [visibleLimit, setVisibleLimit] = useState(10);
+  const [reportIdentity, setReportIdentity] = useState<string | null>(null);
   const requestGeneration = useRef(0);
 
   const reload = useCallback(async () => {
     const generation = ++requestGeneration.current;
+    setReport(null);
+    setReportIdentity(null);
     setLoading(true);
     try {
       const result = await api.customerConsentCoverage(userId, projectId);
       if (generation !== requestGeneration.current) return;
       if (result.project_id !== projectId) throw new Error('consent_coverage_project_mismatch');
       setReport(result);
+      setReportIdentity(userId + ':' + projectId);
       setFailed(false);
     } catch (error: unknown) {
       if (generation !== requestGeneration.current) return;
@@ -83,23 +95,23 @@ export function CustomerConsentCoveragePanel({
     requestGeneration.current += 1;
     setReport(null);
     setExpanded(false);
+    setVisibleLimit(10);
     void reload();
     return () => { requestGeneration.current += 1; };
   }, [reload]);
   useProjectDataReload(reload);
 
   // Project changes can render before effects execute. Never show old project money.
-  const current = report?.project_id === projectId ? report : null;
+  const current = report?.project_id === projectId && reportIdentity === userId + ':' + projectId ? report : null;
   const issueCount = current?.items_requiring_evidence ?? 0;
-  const severeCount = current?.items.filter((row) => row.risk === 'critical' || row.risk === 'high').length ?? 0;
-  const visible = current?.items.slice(0, expanded ? 25 : 5) ?? [];
+  const visible = expanded ? current?.items.slice(0, visibleLimit) ?? [] : [];
 
   return (
-    <View style={s.card} accessibilityLabel="Проверка подтверждений заказчика">
+    <Card variant="base" style={s.layout}>
       <View style={s.header}>
         <View style={s.headerText}>
-          <Text style={s.kicker}>ФИНАНСОВЫЙ КОНТРОЛЬ</Text>
-          <Text style={s.title}>Доказательства согласований</Text>
+          <Text style={s.title}>Согласования и расходы</Text>
+          <Text style={s.status}>Проверка документов по объекту</Text>
         </View>
         <Pressable
           accessibilityRole="button"
@@ -110,52 +122,36 @@ export function CustomerConsentCoveragePanel({
           <Text style={s.refreshText}>Обновить</Text>
         </Pressable>
       </View>
+      <StatusPill
+        tone={failed || (current?.source_integrity_issues ?? 0) > 0 ? 'danger' : 'warning'}
+        label={loading ? 'Проверка' : failed ? 'Нет данных' : 'Нужно подтверждение'}
+      />
       <Text style={s.explainer}>
-        Проверка выявляет пробелы в связях платежей, закупок, расходов и работ.
-        Сама по себе оплата, приёмка или статус «согласовано» не доказывают,
-        что заказчик утвердил конкретную сумму и объём работ.
+        Связи платежей с документами не заменяют согласие заказчика
+        на конкретные объём и стоимость работ.
       </Text>
       {loading && !current ? (
         <Text style={s.status}>Проверяем документы и финансовые связи…</Text>
       ) : failed || !current ? (
-        <View style={s.warningBox}>
-          <Text style={s.warningText}>
-            Проверка недоступна. Это не означает, что все расходы согласованы.
-            Обновите данные перед финансовым решением.
-          </Text>
-        </View>
+        <InfoBanner
+          tone="warning"
+          message="Проверка недоступна. Это не означает, что все расходы согласованы. Обновите данные перед финансовым решением."
+        />
       ) : (
         <>
-          <View style={s.metrics}>
-            <View style={s.metric}>
-              <Text style={s.value}>{current.total_scanned}</Text>
-              <Text style={s.metricLabel}>Записей изучено</Text>
-            </View>
-            <View style={s.metric}>
-              <Text style={s.value}>{issueCount}</Text>
-              <Text style={s.metricLabel}>Требуют доказательств</Text>
-            </View>
-            <View style={s.metric}>
-              <Text style={[s.value, severeCount > 0 ? s.dangerText : null]}>
-                {severeCount}
-              </Text>
-              <Text style={s.metricLabel}>Высокий риск в выборке</Text>
-            </View>
-          </View>
-          <View style={s.warningBox}>
-            <Text style={s.warningText}>
-              Полное индивидуальное согласие на каждую операцию пока не подтверждено.
-              Это диагностический отчёт, а не разрешение на оплату.
-            </Text>
-          </View>
+          <Text style={s.explainer}>
+            Проверено: {current.total_scanned}. Требуют подтверждения: {issueCount}.
+          </Text>
+          <Text style={s.disclaimer}>
+            Полное индивидуальное согласие на каждую операцию пока не подтверждено.
+            Диагностика не является разрешением на оплату.
+          </Text>
           {current.budget_comparison === 'provisional_mismatch' ? (
-            <View style={s.warningBox}>
-              <Text style={s.warningText}>
-                Возможное расхождение бюджета и подтверждённых расходов:
-                {' '}{current.budget_drift_rub} ₽. Необходимо сверить источник
-                и транзакционный пересчёт; это не окончательная бухгалтерская сверка.
-              </Text>
-            </View>
+            <InfoBanner
+              tone="danger"
+              title="Не сходятся финансовые данные"
+              message={`Предварительное расхождение: ${current.budget_drift_rub} ₽. Нужна транзакционная сверка.`}
+            />
           ) : null}
           {current.budget_comparison === 'unverifiable' ? (
             <Text style={s.truncated}>
@@ -172,9 +168,10 @@ export function CustomerConsentCoveragePanel({
             <View key={item.kind + ':' + item.id} style={s.row}>
               <View style={s.rowHeading}>
                 <Text style={s.rowKind}>{KINDS[item.kind]}</Text>
-                <Text style={[s.rowRisk, item.risk === 'critical' ? s.dangerText : null]}>
-                  {item.evidence_level === 'broken' ? 'Проверить связь' : 'Нет полного согласия'}
-                </Text>
+                <StatusPill
+                  tone={item.evidence_level === 'broken' ? 'danger' : 'warning'}
+                  label={item.evidence_level === 'broken' ? 'Нарушена связь' : 'Уточнить'}
+                />
               </View>
               <Text style={s.rowTitle} numberOfLines={2}>{item.title}</Text>
               {item.amount_rub !== null ? (
@@ -187,6 +184,28 @@ export function CustomerConsentCoveragePanel({
                 </Text>
               ) : null}
               <Text style={s.rowReason}>{REASONS[item.reason_code] || 'Нужна дополнительная проверка документов и согласия'}</Text>
+              {item.kind === 'work_order' && item.references.scope_version != null ? (
+                <Text style={s.rowReason}>
+                  Версия условий №{String(item.references.scope_version)}
+                  {item.references.scope_approved === true
+                    ? ` · лимит работы ${String(item.references.scope_cap_rub)} ₽`
+                    : ' · требуется проверка'}
+                </Text>
+              ) : null}
+              {item.kind === 'work_order' ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Открыть карточку согласуемой работы"
+                  style={s.showMore}
+                  onPress={() => pushOsNav(
+                    { pathname: '/work-order/[id]', params: { id: item.id } },
+                    undefined,
+                    'customer',
+                  )}
+                >
+                  <Text style={s.refreshText}>Открыть работу</Text>
+                </Pressable>
+              ) : null}
               {item.kind === 'work_order' && Array.isArray(item.references.missing_details)
                 && item.references.missing_details.length > 0 ? (
                 <Text style={s.rowReason}>
@@ -195,13 +214,23 @@ export function CustomerConsentCoveragePanel({
               ) : null}
             </View>
           ))}
-          {current.items.length > 5 ? (
+          {current.items.length > 0 ? (
             <Pressable
               accessibilityRole="button"
               onPress={() => setExpanded((value) => !value)}
               style={s.showMore}
             >
-              <Text style={s.refreshText}>{expanded ? 'Свернуть список' : 'Показать больше записей'}</Text>
+              <Text style={s.refreshText}>{expanded ? 'Скрыть детали' : `Посмотреть операции (${current.items.length})`}</Text>
+            </Pressable>
+          ) : null}
+          {expanded && current.items.length > visibleLimit ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Показать следующие финансовые операции"
+              onPress={() => setVisibleLimit((limit) => limit + 10)}
+              style={s.showMore}
+            >
+              <Text style={s.refreshText}>Показать ещё ({Math.min(10, current.items.length - visibleLimit)})</Text>
             </Pressable>
           ) : null}
           {current.items.length === 0 ? (
@@ -209,8 +238,7 @@ export function CustomerConsentCoveragePanel({
           ) : null}
           {current.scan_truncated || current.items_limited ? (
             <Text style={s.truncated}>
-              Проверка неполная: превышен лимит сканирования или отображения.
-              Нужна постраничная сверка полного реестра.
+              Проверка неполная: превышен лимит выборки. Для остальных операций нужна постраничная сверка.
             </Text>
           ) : null}
           <Text style={s.disclaimer}>
@@ -222,39 +250,32 @@ export function CustomerConsentCoveragePanel({
           </Text>
         </>
       )}
-    </View>
+    </Card>
   );
 }
 
 const s = StyleSheet.create({
-  card: {
-    backgroundColor: ALERT_COLORS.surface,
-    borderColor: ALERT_COLORS.border,
-    borderWidth: 1,
-    borderRadius: RenovaTheme.radius.lg,
-    padding: 16,
-    marginBottom: 16,
-    gap: 12,
-  },
+  layout: { gap: RenovaTheme.spacing.sm },
+
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   headerText: { flex: 1, gap: 4 },
-  kicker: { color: ALERT_COLORS.textMuted, fontSize: RenovaTheme.fontSize.tiny, fontWeight: '700', letterSpacing: 0.8 },
+
   title: { color: ALERT_COLORS.text, fontSize: RenovaTheme.fontSize.h3, fontWeight: '700' },
   refresh: { minHeight: RenovaTheme.minTouch, minWidth: 68, alignItems: 'center', justifyContent: 'center' },
   refreshText: { color: ALERT_COLORS.accent, fontSize: RenovaTheme.fontSize.bodySmall, fontWeight: '600' },
   explainer: { color: ALERT_COLORS.textMuted, fontSize: RenovaTheme.fontSize.bodySmall, lineHeight: 19 },
   status: { color: ALERT_COLORS.textMuted, fontSize: RenovaTheme.fontSize.bodySmall },
-  metrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  metric: { flex: 1, minWidth: 82, backgroundColor: ALERT_COLORS.surfaceMuted, padding: 10, borderRadius: RenovaTheme.radius.md },
-  value: { color: ALERT_COLORS.text, fontSize: RenovaTheme.fontSize.h2, fontWeight: '700' },
-  metricLabel: { color: ALERT_COLORS.textMuted, fontSize: RenovaTheme.fontSize.tiny, marginTop: 4 },
-  warningBox: { padding: 12, backgroundColor: ALERT_COLORS.warningBg, borderRadius: RenovaTheme.radius.md },
-  warningText: { color: ALERT_COLORS.warningText, fontSize: RenovaTheme.fontSize.bodySmall, lineHeight: 19 },
+
+
+
+
+
+
   dangerText: { color: ALERT_COLORS.danger, fontSize: RenovaTheme.fontSize.bodySmall },
   row: { borderTopWidth: 1, borderTopColor: ALERT_COLORS.borderLight, paddingTop: 12, gap: 4 },
   rowHeading: { flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 },
   rowKind: { color: ALERT_COLORS.textMuted, fontSize: RenovaTheme.fontSize.caption },
-  rowRisk: { color: ALERT_COLORS.warning, fontSize: RenovaTheme.fontSize.caption, fontWeight: '600' },
+
   rowTitle: { color: ALERT_COLORS.text, fontSize: RenovaTheme.fontSize.body, fontWeight: '600' },
   rowAmount: { color: ALERT_COLORS.text, fontSize: RenovaTheme.fontSize.body, fontWeight: '600' },
   rowReason: { color: ALERT_COLORS.textMuted, fontSize: RenovaTheme.fontSize.caption, lineHeight: 18 },
