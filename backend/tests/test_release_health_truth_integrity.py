@@ -36,6 +36,10 @@ async def setup_db(tmp_path, monkeypatch):
     monkeypatch.setattr(cfg.settings, "otel_exporter_otlp_endpoint", None)
     monkeypatch.setattr(cfg.settings, "otel_exporter_otlp_insecure", False)
     monkeypatch.setattr(cfg.settings, "log_json", False)
+    monkeypatch.setattr(cfg.settings, "smtp_host", None)
+    monkeypatch.setattr(cfg.settings, "ops_alert_email", None)
+    monkeypatch.setattr(cfg.settings, "smtp_use_tls", True)
+    monkeypatch.setattr(cfg.settings, "document_ocr_mode", "metadata")
 
     from app.db import session as sess
 
@@ -175,6 +179,21 @@ async def test_release_health_api_is_truthful_and_backward_compatible(monkeypatc
     assert body["observability"]["external_confirmations"]["alert_delivery"] is False
     assert "dsn" not in body["observability"]
     assert body["integrations"]["outbox"] is not None
+    assert body["integrations"]["smtp"] == {
+        "configured": False,
+        "ops_alert_recipient_configured": False,
+        "tls_enabled": True,
+        "status": "not_configured",
+        "external_delivery_confirmed": False,
+    }
+    assert body["integrations"]["document_ocr"] == {
+        "mode": "metadata",
+        "status": "metadata_only",
+        "content_ocr_available": False,
+        "content_read": False,
+        "background_worker_active": False,
+        "runtime_owner": None,
+    }
 
     assert forbidden.status_code == 403
 
