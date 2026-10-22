@@ -325,6 +325,7 @@ async def consent_coverage_snapshot(db: AsyncSession, project: Project) -> dict:
                     and detail["assignee_id"] == work.assignee_id
                     and detail["notes"] == work.notes
                     and _money(detail["budget_planned_rub"]) == _money(scope.amount_cap)
+                    and _money(work.budget_planned) == _money(scope.amount_cap)
                     and scope.specialist_id == work.assignee_id
                 )
                 digest_valid = (
