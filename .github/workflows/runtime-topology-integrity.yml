@@ -73,7 +73,7 @@ jobs:
         run: bash scripts/runtime-topology-smoke.sh
       - name: Upload topology diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: runtime-topology-diagnostics
           if-no-files-found: ignore
