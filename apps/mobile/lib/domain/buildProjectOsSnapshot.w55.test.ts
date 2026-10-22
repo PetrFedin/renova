@@ -172,6 +172,11 @@ function project(partial: Partial<ProjectDetail> & { stages?: ProjectDetail['sta
   );
   if (snap.nextAction.kind !== 'payment') throw new Error('payment hero');
   if (snap.pendingPayments !== 2) throw new Error('pending count');
+  if (snap.nextAction.button !== 'Проверить' || !snap.nextAction.title.startsWith('Проверить')) {
+    throw new Error('pending invoice must be reviewed, not represented as authorized to pay');
+  }
+  const route = JSON.stringify(snap.nextAction.href);
+  if (route.includes('openPayment')) throw new Error('hero must not jump directly to payment action');
 }
 
 console.log('buildProjectOsSnapshot.w55.test OK');
