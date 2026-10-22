@@ -242,3 +242,34 @@ The following claims are restricted to current **published official product/help
 **Cross-market gaps to implement after #760 GREEN:** 1) typed project-customer financial authorization consumption at all payable writer paths; 2) supplier quote -> client choice -> purchase order -> receiving -> invoice -> payment with cap-aware diff and dispute; 3) named specialist, qualifications, substitutions and acceptance evidence; 4) immutable contract/schedule/material change scenario comparison and customer decision; 5) all exceptions classified (emergency / imported external settlement / legacy history), never backfilled as implied consent; 6) mobile/desktop user-path video evidence pinned to exact SHA. Every enhancement needs RBAC, negative/postgres concurrency/replay, mobile/client and rollback tests. No claim of complete feature parity without executing comparable provider accounts.
 
 **Current P0 source evidence:** #760 scope snapshot and consent authorization exist but canonical money writers are *not yet* universally bound to the cap. Earlier full backend job 39353981722 failed six tests (five AsyncSession expired-object lazy-loads in test journeys, one contractor acceptance error-code regression); the subsequent isolated corrections must re-qualify at their exact new SHA. No release until entire CI + migration + object ACL + independent reviewer and live evidence converge.
+
+## 15. Customer financial review ↔ versioned work authorization (candidate PR #761)
+
+The customer budget review now joins the authoritative work-scope records from
+#760 with the read-only evidence scanner from #759. For each WorkOrder, the
+scanner queries the latest project-scoped ClientScopeVersion, its decision and
+ClientFinancialAuthorization, validates the SHA-256 snapshot against the current
+work's agreed scope fields, specialist and RUB cap, and distinguishes:
+- **missing:** no itemized work version (or customer decision still pending/rejected);
+- **partial:** exact work version, project-customer consent and capped authorization
+  agree, **but no Payment/Purchase/Expense is allocated to that authorization**;
+- **broken:** checksum/scope drift or inconsistent authorization/decision;
+- **unknown:** scope history scan truncated; no latest-version claim is allowed.
+
+The work row links to the canonical work detail. It shows the *approved limit of
+that particular work only*, not an implied total that the customer owes. All
+Payment/Expense/Purchase rows remain `consent_status=not_verifiable` until
+authorization allocations become authoritative across every financial writer.
+`complete_customer_consent_proven` remains false. All reads remain project-
+customer-only, bounded, non-atomic and without a write to Payment/Expense/outbox.
+
+Negative verification target: an authenticated approved version stays `partial`
+and unallocatable; tampering with the immutable scope snapshot produces a
+`broken` result, **not** a fake approval. The amount cap does not unlock
+checkout by UI convention. Dedicated scope test and full PostgreSQL CI are
+required before a validated implementation claim.
+
+**Known blocker:** new payment writer admission, individual specialist
+replacement/amendment versions, historical records without consent, foreign
+currency, legal signing and provider reconciliation remain P0 (#757). This
+bounded join is not an alternative ledger or a backdoor admin approval.
