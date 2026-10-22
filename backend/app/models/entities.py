@@ -185,6 +185,15 @@ class Stage(Base):
     actual_start: Mapped[date | None] = mapped_column(Date, nullable=True)
     actual_end: Mapped[date | None] = mapped_column(Date, nullable=True)
 
+    #: Этап, который этому объекту не нужен. Не удаление: на этап ссылаются
+    #: двенадцать таблиц, и пропущенный этап остаётся в истории, перестаёт
+    #: тянуть прогресс вниз и возвращается обратно одним действием.
+    skipped_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    skipped_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    skipped_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+
     project: Mapped["Project"] = relationship(back_populates="stages")
     comments: Mapped[list["StageComment"]] = relationship(back_populates="stage", cascade="all, delete-orphan")
     photos: Mapped[list["StagePhoto"]] = relationship(back_populates="stage", cascade="all, delete-orphan")

@@ -61,14 +61,30 @@ def works_counts(stage: Stage) -> tuple[int, int]:
     return len(items), done
 
 
+def is_skipped(stage: Stage) -> bool:
+    """Этап, который этому объекту не нужен."""
+    return getattr(stage, "skipped_at", None) is not None
+
+
+def active_stages(stages: list[Stage]) -> list[Stage]:
+    """Этапы, которые реально делают. Пропущенные — не делают."""
+    return [stage for stage in stages if not is_skipped(stage)]
+
+
 def weighted_progress(stages: list[Stage]) -> float:
-    """§4.8–4.9 — прогресс проекта по весам этапов."""
-    if not stages:
+    """§4.8–4.9 — прогресс проекта по весам этапов.
+
+    Пропущенные этапы не считаются. Иначе ненужный объекту этап вечно висел бы
+    на нуле и тянул прогресс вниз — а именно ради этого его и пропускают.
+    Пропуск всех этапов даёт 0, а не деление на ноль.
+    """
+    counted = active_stages(stages)
+    if not counted:
         return 0.0
-    total_w = sum(getattr(s, "weight_coefficient", 0) or 0 for s in stages)
+    total_w = sum(getattr(s, "weight_coefficient", 0) or 0 for s in counted)
     if total_w <= 0:
-        return round(sum(s.percent_complete for s in stages) / len(stages), 1)
-    acc = sum((getattr(s, "weight_coefficient", 0) or 0) * s.percent_complete for s in stages)
+        return round(sum(s.percent_complete for s in counted) / len(counted), 1)
+    acc = sum((getattr(s, "weight_coefficient", 0) or 0) * s.percent_complete for s in counted)
     return round(acc / total_w, 1)
 
 
