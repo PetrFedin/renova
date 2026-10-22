@@ -295,6 +295,18 @@ async def test_scope_decision_evidence_links_to_work_but_never_auto_authorizes_p
     assert result["complete_customer_consent_proven"] is False
     assert result["items_requiring_evidence"] == 1
 
+    # Even direct DB-level drift of an already accepted work price must not
+    # be reported as unchanged customer consent, despite an intact hash.
+    work.budget_planned = 5000.01
+    await db.commit()
+    changed_work = await consent_coverage_snapshot(db, project)
+    changed_item = next(item for item in changed_work["items"] if item["kind"] == "work_order")
+    assert changed_item["evidence_level"] == "broken"
+    assert changed_item["reason_code"] == "scope_snapshot_integrity_failed"
+    assert changed_work["complete_customer_consent_proven"] is False
+
+    work.budget_planned = 5000
+    await db.commit()
     # A changed snapshot must revoke diagnostic confidence even if a historic
     # decision and cap still exist. The audit does not mutate or repair it.
     version.snapshot_json = encoded + " "
