@@ -50,6 +50,21 @@ async def get_sub(
     return s
 
 
+def trial_was_used(s: Subscription) -> bool:
+    """H1.1 — пробный период даётся один раз за всё время.
+
+    `plan` описывает только настоящее: покупка Pro пишет туда "pro", истечение
+    Pro — "free". Признак "trial_used" исчезал вместе с ними, и после одного
+    оплаченного месяца исполнитель снова получал бесплатные 14 дней — сколько
+    угодно раз. Факт из прошлого читается из `trial_started_at`.
+
+    Строка "trial_used" остаётся во втором условии ради подписок, созданных до
+    появления колонки: бэкфилл миграции их закрывает, но читать признак и там,
+    и там дешевле, чем полагаться на то, что миграция везде прошла.
+    """
+    return bool(s.trial_started_at) or s.plan in ("trial", "trial_used")
+
+
 async def _expire_if_needed(db: AsyncSession, s: Subscription) -> Subscription:
     """Trial/Pro с истёкшим expires_at → free (trial помечаем trial_used)."""
     if s.status != SubscriptionStatus.active:
@@ -106,11 +121,13 @@ async def start_trial(db: AsyncSession, user_id: str) -> tuple[Subscription | No
     s = await _expire_if_needed(db, await get_sub(db, user_id))
     if s.status == SubscriptionStatus.active and s.plan in ("pro", "trial"):
         return s, {"code": "already_active", "plan": s.plan}
-    if s.plan == "trial_used":
+    if trial_was_used(s):
         return None, {"code": "trial_used", "message": "Пробный период уже использован — оформите Pro"}
+    now = utc_now()
     s.status = SubscriptionStatus.active
     s.plan = "trial"
-    s.expires_at = utc_now() + timedelta(days=TRIAL_DAYS)
+    s.trial_started_at = now
+    s.expires_at = now + timedelta(days=TRIAL_DAYS)
     await db.commit()
     await db.refresh(s)
     return s, {"code": "trial_started", "days": TRIAL_DAYS}
@@ -133,7 +150,7 @@ async def subscription_payload(db: AsyncSession, user_id: str) -> dict:
         "expires_at": s.expires_at.isoformat() if s.expires_at else None,
         "is_pro": pro,
         "is_trial": pro and s.plan == "trial",
-        "trial_available": s.plan not in ("trial", "trial_used", "pro") and not pro,
+        "trial_available": not trial_was_used(s) and not pro,
         "trial_days": TRIAL_DAYS,
         "days_left": days_left,
         "price": PRO_PRICE,
