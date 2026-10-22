@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import type { CustomerConsentCoverage, CustomerConsentCoverageEntry } from '@/lib/api/os';
 import { useProjectDataReload } from '@/lib/useProjectDataReload';
 import { reportError } from '@/lib/reportError';
+import { pushOsNav } from '@/lib/pushOsNav';
 
 const KINDS: Record<CustomerConsentCoverageEntry['kind'], string> = {
   payment: 'Оплата',
@@ -33,6 +34,11 @@ const REASONS: Record<string, string> = {
   purchase_items_scan_incomplete: 'Перечень закупок слишком велик для полной проверки',
   scope_version_and_customer_consent_snapshot_missing: 'Нет полной неизменяемой версии объёма, сроков и ответственного',
   change_order_lacks_quantity_specialist_and_scope_digest: 'Нужны объём, специалист, сроки и точная версия согласованных допработ',
+  scope_approved_payments_not_allocated: 'Условия работы согласованы заказчиком, но ни один платёж ещё не связан с этим разрешённым лимитом.',
+  scope_requires_customer_decision: 'Есть детальное предложение, но требуется отдельное решение заказчика по его точной версии.',
+  scope_snapshot_integrity_failed: 'Версия согласованных условий не совпадает с данными работы или контрольной суммой. Нужна проверка истории.',
+  scope_authorization_incomplete: 'Согласие заказчика и разрешённый лимит связаны некорректно. Финансовое разрешение не подтверждено.',
+  scope_history_scan_incomplete: 'Недостаточно данных, чтобы установить последнюю версию условий работ.',
 };
 
 const MISSING_WORK_DETAILS: Record<string, string> = {
@@ -178,6 +184,28 @@ export function CustomerConsentCoveragePanel({
                 </Text>
               ) : null}
               <Text style={s.rowReason}>{REASONS[item.reason_code] || 'Нужна дополнительная проверка документов и согласия'}</Text>
+              {item.kind === 'work_order' && item.references.scope_version != null ? (
+                <Text style={s.rowReason}>
+                  Версия условий №{String(item.references.scope_version)}
+                  {item.references.scope_approved === true
+                    ? ` · лимит работы ${String(item.references.scope_cap_rub)} ₽`
+                    : ' · требуется проверка'}
+                </Text>
+              ) : null}
+              {item.kind === 'work_order' ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Открыть карточку согласуемой работы"
+                  style={s.showMore}
+                  onPress={() => pushOsNav(
+                    { pathname: '/work-order/[id]', params: { id: item.id } },
+                    undefined,
+                    'customer',
+                  )}
+                >
+                  <Text style={s.refreshText}>Открыть работу</Text>
+                </Pressable>
+              ) : null}
               {item.kind === 'work_order' && Array.isArray(item.references.missing_details)
                 && item.references.missing_details.length > 0 ? (
                 <Text style={s.rowReason}>
