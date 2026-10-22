@@ -259,7 +259,8 @@ async def consent_coverage_snapshot(db: AsyncSession, project: Project) -> dict:
         if work.budget_planned is None:
             missing.append("priced_scope")
 
-        scope = latest_scope_by_work.get(work.id)
+        # A partial scope scan cannot prove which revision is newest.
+        scope = latest_scope_by_work.get(work.id) if not scope_cut else None
         references = {
             "missing_details": missing,
             "assignee_id": work.assignee_id,
