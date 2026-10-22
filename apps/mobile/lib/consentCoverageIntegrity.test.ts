@@ -10,6 +10,7 @@ const route = read('backend/app/api/v1/approvals.py');
 const mobileApi = read('apps/mobile/lib/api/os.ts');
 const panel = read('apps/mobile/components/renova/CustomerConsentCoveragePanel.tsx');
 const screen = read('apps/mobile/components/screens/OsBudgetScreen.tsx');
+const summarySection = read('apps/mobile/components/screens/budget/BudgetSummarySection.tsx');
 const tests = read('backend/tests/test_client_consent_coverage.py');
 
 assert.match(route, /@router\.get\("\/\{project_id\}\/consent-coverage"\)/);
@@ -32,8 +33,10 @@ assert.doesNotMatch(report, /await db\.commit\(|await db\.flush\(|db\.add\(/, 'E
 assert.match(mobileApi, /customerConsentCoverage:/);
 assert.match(mobileApi, /req<CustomerConsentCoverage>/);
 assert.doesNotMatch(mobileApi, /cachedGet<CustomerConsentCoverage>/, 'Do not present an old consent state as current');
-assert.match(screen, /role === 'customer'/);
-assert.match(screen, /CustomerConsentCoveragePanel userId=\{user\.id\} projectId=\{activeProject\.id\}/);
+assert.match(screen, /<BudgetSummarySection/);
+assert.match(summarySection, /role === 'customer'/);
+assert.match(summarySection, /CustomerConsentCoveragePanel userId=\{userId\} projectId=\{projectId\}/);
+assert.doesNotMatch(screen, /<CustomerConsentCoveragePanel/, 'Customer consent panel must not precede budget facts');
 assert.match(panel, /complete_customer_consent_proven|Полное индивидуальное согласие/);
 assert.match(panel, /Проверка недоступна\. Это не означает/);
 assert.match(panel, /current\.scan_truncated \|\| current\.items_limited/);
@@ -41,6 +44,9 @@ assert.match(panel, /useProjectDataReload\(reload\)/);
 assert.match(panel, /requestGeneration\.current/, 'Out-of-order requests must not replace current financial facts');
 assert.match(panel, /report\?\.project_id === projectId/, 'Never leak another project snapshot while switching');
 assert.match(panel, /consent_coverage_project_mismatch/, 'Server response must match requested project');
+assert.match(panel, /setVisibleLimit\(\(limit\) => limit \+ 10\)/, 'Do not hide entries after the 25th row');
+assert.match(panel, /reportIdentity === userId \+ ':' \+ projectId/, 'Customer identity must fence cached evidence');
+assert.match(summarySection, /Проверить счета/, 'The budget primary CTA must not infer payment authorization');
 
 assert.match(tests, /test_audit_separates_payment_from_consent_and_detects_foreign_links/);
 assert.match(tests, /test_customer_coverage_route_denies_contractor_and_cross_project_user/);
