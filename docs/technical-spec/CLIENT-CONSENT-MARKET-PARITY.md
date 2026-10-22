@@ -228,7 +228,7 @@ A capability is READY only after all applicable axes pass on the same SHA; a cod
 
 **Tests required:** exact submission, incorrect cap, stale version, other-project actor, changed scope/identity, duplicate proposal/decision, rejected/superseded version, DB CHECK, outbox rollback, status bypass, migrated PostgreSQL double-decision race, mobile compile, end-to-end real customer/contractor and schema parity. No main/staging/production merge until independent review and all qualified gates.
 
-## 14. International competitive reference update — 2026-10-20
+## 16. Additional international competitive reference — 2026-10-20
 
 The following claims are restricted to current **published official product/help pages** (not credentialed functional execution, full plan entitlements or penetration tests). Treat vendor workflows as *capability references*, not copyable UI/source.
 
@@ -243,7 +243,7 @@ The following claims are restricted to current **published official product/help
 
 **Current P0 source evidence:** #760 scope snapshot and consent authorization exist but canonical money writers are *not yet* universally bound to the cap. Earlier full backend job 39353981722 failed six tests (five AsyncSession expired-object lazy-loads in test journeys, one contractor acceptance error-code regression); the subsequent isolated corrections must re-qualify at their exact new SHA. No release until entire CI + migration + object ACL + independent reviewer and live evidence converge.
 
-## 15. Customer financial review ↔ versioned work authorization (candidate PR #761)
+## 17. Customer financial review ↔ versioned work authorization (candidate PR #761)
 
 The customer budget review now joins the authoritative work-scope records from
 #760 with the read-only evidence scanner from #759. For each WorkOrder, the
@@ -273,3 +273,30 @@ required before a validated implementation claim.
 replacement/amendment versions, historical records without consent, foreign
 currency, legal signing and provider reconciliation remain P0 (#757). This
 bounded join is not an alternative ledger or a backdoor admin approval.
+
+## 18. Project actions never equate a pending invoice with customer consent
+
+Source `apps/mobile/lib/domain/buildProjectOsSnapshot.ts` connects customer and
+contractor Home/Object/Budget action queues with the same canonical budget tab.
+A pending Payment is a **request to inspect** rather than permission to pay:
+customer queue title and button use **«Проверить счёт» / «Проверить»**.
+The amount is described as **«выставлено»**, not as a proven contractual
+liability. The route opens the payment list, **without `openPayment=1` or a
+one-click checkout deep link**. The same rule applies when the legacy
+`Dashboard.next_action_type` equals `payment` or a project is closed.
+
+This UX rule matches the Budget Summary CTA, which also points to
+**«Проверить счета»** and never infers consent from a pending invoice.
+Both legacy billing flows and the canonical backend payment writers remain
+unchanged, so this is an **advisory UX control only**. No claim is made that
+unauthorized money cannot be moved: #757's PostgreSQL allocation/authorization
+gate and external unmatched-money reconciliation remain mandatory P0.
+Customer's existing contractual rights and lawful already-due payments must be
+preserved in the server-level policy, without inventing signatures for legacy
+operations.
+
+Regression: `buildProjectOsSnapshot.w55.test.ts` asserts review label and a
+list-only route, while `buildBudgetSummaryView.test.ts` checks exact kopecks
+and contradictory server facts. Exact-head CI and two-role browser acceptance
+required. Baseline screenshots from #760 are historical, not the newly
+rendered interface; only fresh exact-build screenshots can prove styling.
